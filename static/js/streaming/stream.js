@@ -95,6 +95,61 @@ export class MultiStreamManager {
 
     }
 
+    _attachFullscreenLatencyMeter(hls, videoEl) {
+        if (!hls || !videoEl) return;
+        // reuse badge if created
+        if (!videoEl._fsLatencyOverlay) {
+            const badge = document.createElement('div');
+            Object.assign(badge.style, {
+                position: 'absolute',
+                right: '16px',
+                top: '16px',
+                padding: '4px 8px',
+                fontSize: '14px',
+                lineHeight: '18px',
+                background: 'rgba(0,0,0,0.6)',
+                color: '#fff',
+                borderRadius: '8px',
+                fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+                pointerEvents: 'none',
+                zIndex: 20,
+            });
+            // fullscreen overlay is already a flex container; ensure relative
+            const overlay = this.$fullscreenOverlay[0];
+            overlay.style.position = overlay.style.position || 'relative';
+            overlay.appendChild(badge);
+            videoEl._fsLatencyOverlay = badge;
+        }
+
+        const overlay = videoEl._fsLatencyOverlay;
+        videoEl._fsLastPdtMs = null;
+
+        const onFrag = (_, data) => {
+            const pdt = data?.frag?.programDateTime;
+            if (pdt != null) {
+                videoEl._fsLastPdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
+            }
+        };
+
+        hls.on(Hls.Events.FRAG_CHANGED, onFrag);
+
+        if (videoEl._fsLatencyTimer) clearInterval(videoEl._fsLatencyTimer);
+        videoEl._fsLatencyTimer = setInterval(() => {
+            if (!videoEl._fsLastPdtMs) return;
+            const s = ((Date.now() - videoEl._fsLastPdtMs) / 1000).toFixed(1);
+            overlay.textContent = `${s}s`;
+            overlay.style.display = '';
+        }, 250);
+
+        videoEl._fsLatencyDetach = () => {
+            hls.off(Hls.Events.FRAG_CHANGED, onFrag);
+            if (videoEl._fsLatencyTimer) { clearInterval(videoEl._fsLatencyTimer); videoEl._fsLatencyTimer = null; }
+            if (videoEl._fsLatencyOverlay) { videoEl._fsLatencyOverlay.textContent = ''; }
+            videoEl._fsLastPdtMs = null;
+        };
+    }
+
+
     setupLayout() {
         const $streamItems = this.$container.find('.stream-item');
         const count = $streamItems.length;
@@ -457,6 +512,7 @@ export class MultiStreamManager {
             this.$fullscreenTitle.text(name);
             this.$fullscreenOverlay.css('display', 'flex');
 
+
             // Use streamType to determine fullscreen rendering method
             if (streamType === 'HLS') {
                 // HLS fullscreen (works for both Eufy and UniFi in HLS mode)
@@ -469,10 +525,13 @@ export class MultiStreamManager {
                 if (!response.ok) throw new Error('Failed to start fullscreen stream');
 
                 // Wait for stream
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // await new Promise(resolve => setTimeout(resolve, 2000));
+                // Wait briefly for playlist to appear (keep very small to avoid startup lag)
+                await new Promise(resolve => setTimeout(resolve, 200));
 
                 // Load in fullscreen video
-                const playlistUrl = `/api/streams/${serial}/playlist.m3u8`;
+                // const playlistUrl = `/api/streams/${serial}/playlist.m3u8`;
+                const playlistUrl = `/api/streams/${serial}/playlist.m3u8?t=${Date.now()}`;
 
                 if (Hls.isSupported()) {
                     this.destroyFullscreenHls();
@@ -480,11 +539,18 @@ export class MultiStreamManager {
                     this.fullscreenHls = new Hls({
                         enableWorker: true,
                         lowLatencyMode: true,
-                        backBufferLength: 90
+                        // keep backBufferLength but don’t hoard 90s; 10s is ample for scrubbing
+                        backBufferLength: 10,
+                        // hug the live edge: ~1 part target behind, cap max drift to ~2
+                        liveSyncDurationCount: 1,
+                        liveMaxLatencyDurationCount: 2,
+                        // allow gentle catch-up when we fall behind without causing stalls
+                        maxLiveSyncPlaybackRate: 1.5
                     });
 
                     this.fullscreenHls.loadSource(playlistUrl);
                     this.fullscreenHls.attachMedia(this.$fullscreenVideo[0]);
+                    this._attachFullscreenLatencyMeter(this.fullscreenHls, this.$fullscreenVideo[0]);
 
                     this.fullscreenHls.on(Hls.Events.MANIFEST_PARSED, () => {
                         this.$fullscreenVideo[0].play().catch(() => { });
@@ -541,6 +607,10 @@ export class MultiStreamManager {
 
     destroyFullscreenHls() {
         if (this.fullscreenHls) {
+            if (this.$fullscreenVideo[0]?._fsLatencyDetach) {
+                this.$fullscreenVideo[0]._fsLatencyDetach();
+                delete this.$fullscreenVideo[0]._fsLatencyDetach;
+            }
             this.fullscreenHls.destroy();
             this.fullscreenHls = null;
         }

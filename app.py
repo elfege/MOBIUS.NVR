@@ -140,15 +140,15 @@ try:
         bridge_watchdog.start_monitoring()
         print("✅ Bridge watchdog started")
 
-    # print("\n🎬 Auto-starting camera streams...")
-    # for serial, camera in camera_repo.get_streaming_cameras().items():
-    #     try:
-    #         Thread(target=stream_manager.start_stream,
-    #                args=(serial,), daemon=True).start()
-    #         time.sleep(0.4)
-    #         print(f"  ✅ Started: {camera['name']}")
-    #     except Exception as e:
-    #         print(f"  ⚠️  Failed to start {camera['name']}: {e}")
+    print("\n🎬 Auto-starting camera streams...")
+    for serial, camera in camera_repo.get_streaming_cameras().items():
+        try:
+            Thread(target=stream_manager.start_stream,
+                   args=(serial,), daemon=True).start()
+            time.sleep(0.4)
+            print(f"  ✅ Started: {camera['name']}")
+        except Exception as e:
+            print(f"  ⚠️  Failed to start {camera['name']}: {e}")
 
 except Exception as e:
     print(f"⚠️  Bridge/streaming startup warning: {e}")
@@ -536,10 +536,12 @@ def serve_playlist(camera_serial):
 
 @app.route('/api/streams/<camera_serial>/<segment>')
 def serve_segment(camera_serial, segment):
-    """Serve HLS segment for camera"""
+    """Serve HLS segment for camera - supports both MPEG-TS (.ts) and fMP4 (.m4s, init.mp4)"""
     try:
-        if not segment.endswith('.ts'):
-            return "Invalid segment", 400
+        # Accept .ts (MPEG-TS), .m4s (fMP4 segments), and .mp4 (fMP4 init)
+        valid_extensions = ('.ts', '.m4s', '.mp4')
+        if not segment.endswith(valid_extensions):
+            return "Invalid segment format", 400
 
         if camera_serial not in stream_manager.active_streams:
             return "Stream not found", 404
@@ -553,10 +555,20 @@ def serve_segment(camera_serial, segment):
         with open(segment_path, 'rb') as f:
             content = f.read()
 
-        # segments: do NOT cache (or keep it very short)
+        # Determine MIME type based on extension
+        if segment.endswith('.ts'):
+            mimetype = 'video/mp2t'
+        elif segment.endswith('.m4s'):
+            mimetype = 'video/iso.segment'  # Standard MIME for fMP4 segments
+        elif segment.endswith('.mp4'):
+            mimetype = 'video/mp4'  # For init.mp4
+        else:
+            mimetype = 'application/octet-stream'
+
+        # Segments: do NOT cache (or keep it very short)
         return Response(
             content,
-            mimetype='video/mp2t',
+            mimetype=mimetype,
             headers={
                 'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
                 'Pragma': 'no-cache',
@@ -565,7 +577,6 @@ def serve_segment(camera_serial, segment):
         )
     except Exception as e:
         return f"Error serving segment: {e}", 500
-
 # ===== UniFi Camera Routes =====
 
 

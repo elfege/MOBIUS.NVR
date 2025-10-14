@@ -384,7 +384,11 @@ class StreamManager:
                 stream_dir.mkdir(exist_ok=True)
                 
                 playlist_path = stream_dir / "playlist.m3u8"
-                segment_pattern = stream_dir / "segment_%03d.ts"
+
+                # pick extension based on camera config
+                hls_cfg  = (camera.get('rtsp_output') or {})
+                seg_ext  = "m4s" if str(hls_cfg.get('hls_segment_type', '')).lower() == "fmp4" else "ts"
+                segment_pattern = stream_dir / f"segment_%03d.{seg_ext}"
                 
                 process = self._start_ffmpeg(
                     rtsp_url=source_url,

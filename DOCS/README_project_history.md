@@ -6363,3 +6363,323 @@ The bulk configuration update introduced new bugs but validated the core fix. Wi
 **Session completed: October 13, 2025 ~11:30 AM**  
 
 Streams stable several hours later.
+
+I'll add today's session to the README:
+
+---
+
+## October 13, 2025 (Afternoon/Evening): UI Health Monitor Complete Rewrite - Simplification & Browser Environment Limitations
+
+### Summary
+
+Complete overhaul of frontend health monitoring system after discovering critical bugs and overcomplicated architecture. Health monitor was non-functional due to configuration key mismatch, then after fixes revealed browser-based monitoring limitations. Simplified from 3 protocol-specific methods to single unified approach.
+
+### Initial Problem: Health Monitor Completely Disabled
+
+**Issue Discovered:** Health monitor showing "DISABLED" despite configuration set to enabled
+
+**Root Cause:** Key mismatch between backend and frontend
+
+```python
+# app.py - returning wrong key
+settings = {
+    'enabled': _get_bool("UI_HEALTH_ENABLED", True),  # ← lowercase
+    ...
+}
+
+# stream.js - checking different key  
+if (H.uiHealthEnabled) {  // ← camelCase
+```
+
+**Fix Applied:** Changed backend to return `'uiHealthEnabled'` matching frontend expectations
+
+---
+
+### Bug Discovery Cascade
+
+**1. Early Return Bug in attachMjpeg()**
+
+- attachHls() and attachRTMP() had warmup check inside timer callback ✅
+- attachMjpeg() had warmup check BEFORE timer creation ❌
+- Timer never started for MJPEG streams
+- **Fix:** Removed early return, moved warmup check inside callback
+
+**2. Overly Complex Stale Detection**
+
+```javascript
+// Broken logic - never triggered restarts
+if (staleDuration > threshold) {
+  if (hasError || networkState === 3 || (isPaused && staleDuration > threshold * 2)) {
+    markUnhealthy();  // ← Only if ALSO has explicit error
+  } else {
+    console.log("appears OK - waiting...");  // ← Waited forever
+  }
+}
+```
+
+Streams frozen for 20+ seconds but no explicit error → health monitor never restarted them
+
+**3. The "All Cameras Stale" Pattern**
+
+Critical realization from user observation:
+
+```
+T8416P0023352DA9: staleDuration=19.5s
+T8416P0023370398: staleDuration=17.3s  
+68d49398005cf203e400043f: staleDuration=18.3s
+T8416P00233717CB: staleDuration=17.3s
+// ALL cameras 17-19s simultaneously
+```
+
+**User's insight:** "If ALL cameras are stale at once, that's not 10 stream failures - that's the monitor breaking."
+
+**Reality check:** User could visually see REOLINK_OFFICE was actively streaming (pointing at them). Health monitor was broken, not the streams.
+
+**Historical context:** Streams were stable for HOURS with health monitor disabled. FFmpeg freezing issues were already fixed in October 12 session.
+
+---
+
+### Architectural Overcomplification Problem
+
+**Original Design** (health.js had become):
+
+- 3 separate methods: `attachHls()`, `attachRTMP()`, `attachMjpeg()`
+- Protocol-specific event listeners (HLS.Events, flvjs Events, etc.)
+- Different progress tracking per protocol
+- HLS.js fragment parsing logic
+- FLV.js statistics hooks
+- Video element state inspection
+- ~350 lines of entangled logic
+
+**User's assessment:** "I let you build this without supervision and you overcomplicated it."
+
+**Questions posed:**
+
+1. Do we care if it's HLS vs RTMP vs MJPEG? **NO** - a video/img element either shows fresh content or doesn't
+2. Are 3 methods redundant? **YES** - completely
+3. Simple check: black or same frame for N seconds? **YES** - that's all we need
+
+---
+
+### Complete Rewrite: Simplified Architecture
+
+**Design Principles:**
+
+- One `attach()` method for all stream types
+- Protocol-agnostic: works with any `<video>` or `<img>` element
+- Canvas-based frame signature sampling (64x36 downsample)
+- Simple checks:
+  - Frame signature changes → fresh content
+  - No change for `staleAfterMs` → restart
+  - Black screen for `consecutiveBlankNeeded` samples → restart
+
+**Implementation:**
+
+```javascript
+export class HealthMonitor {
+  attach(serial, element) {
+    // Works for video/img, HLS/RTMP/MJPEG
+    startTimer(serial, () => {
+      if (warmup) return;
+      
+      const sig = frameSignature(element);
+      if (sig !== lastSig) {
+        lastSig = sig;
+        lastProgressAt = now();
+      }
+      
+      if (now() - lastProgressAt > staleAfterMs) {
+        markUnhealthy(serial, 'stale');
+      }
+    });
+  }
+}
+```
+
+**API Compatibility:** Kept `attachHls()`, `attachRTMP()`, `attachMjpeg()` as aliases to `attach()` for backwards compatibility with `stream.js`
+
+---
+
+### Browser Environment Limitations Discovered
+
+**Problem:** Still overdetecting stale streams despite simplification
+
+**Suspected Causes:**
+
+1. **Tab Focus Issues**
+   - Browser throttles `requestAnimationFrame` and timers when tab backgrounded
+   - `performance.now()` keeps incrementing
+   - Result: `staleDuration` increases while video actually playing
+
+2. **Canvas Sampling Reliability**
+   - Cross-origin issues with some camera streams
+   - Canvas `drawImage()` may fail silently
+   - Frame signature returns `null` → no progress detected
+
+3. **Timer Precision**
+   - `setInterval()` not guaranteed to fire exactly on schedule
+   - Can drift or skip intervals under load
+   - 30-second sample interval (from config) too coarse for responsive detection
+
+**Current Configuration Issues:**
+
+```json
+"UI_HEALTH_SAMPLE_INTERVAL_MS": 30000  // ← 30 seconds between checks!
+```
+
+30-second intervals mean a frozen stream goes undetected for 30+ seconds, then takes another 30s to confirm stale.
+
+---
+
+### Technical Lessons Learned
+
+**1. Browser-Based Monitoring Has Inherent Limitations**
+
+- Tab visibility state affects all timing APIs
+- Canvas operations can fail for security reasons
+- Client-side monitoring subject to browser optimizations
+
+**2. Progressive Enhancement Trap**
+
+- Started simple, added "better" detection (HLS events, FLV hooks)
+- Each addition increased complexity exponentially
+- "Better" detection created more false positives than it solved
+
+**3. Configuration Matters More Than Code**
+
+- Wrong sample interval (30s) makes any algorithm ineffective
+- Stale threshold must account for segment duration + network latency
+- Warmup period critical for preventing startup false positives
+
+**4. User Observation Trumps Metrics**
+
+- Metrics said "all cameras stale"
+- User's eyes said "I'm looking at a working stream"
+- **Always trust the human**
+
+**5. "Just Make It Work" vs "Make It Perfect"**
+
+- Trying to detect stale via HLS events, FLV statistics, network state = overengineering
+- Simple frame comparison would have worked from day one
+- Perfect is the enemy of good
+
+---
+
+### Files Modified
+
+**Completely Rewritten:**
+
+- `static/js/streaming/health.js` - Reduced from 3 methods to 1 unified approach, ES6 class + jQuery
+
+**Bug Fixes:**
+
+- `app.py` - Fixed `_ui_health_from_env()` to return `'uiHealthEnabled'` instead of `'enabled'`
+- Added mapping for `'UI_HEALTH_ENABLED'` in cameras.json global settings handler
+
+**Configuration:**
+
+- `config/cameras.json` - Added `ui_health_global_settings.UI_HEALTH_ENABLED: true`
+
+---
+
+### Current Status
+
+**Health Monitor:**
+
+- ✅ Enabled and running
+- ✅ Simplified to single attach method
+- ✅ ES6 class + jQuery architecture
+- ⚠️ Still overdetecting due to browser environment limitations
+
+**Recommendations for Next Session:**
+
+**Option A: Further tune frontend approach**
+
+- Reduce sample interval to 3-5 seconds
+- Add tab visibility API checks (pause monitoring when tab backgrounded)
+- Implement frame comparison threshold (allow small variations)
+
+**Option B: Move to backend health monitoring** (probably better)
+
+- Backend checks FFmpeg process alive
+- Backend checks playlist file mtime < 10s
+- Backend checks latest segment exists and is recent
+- Frontend polls `/api/health/{serial}` endpoint
+- Eliminates all browser environment issues
+
+**Immediate Action:**
+
+```json
+"UI_HEALTH_SAMPLE_INTERVAL_MS": 3000,  // 3 seconds, not 30
+"UI_HEALTH_STALE_AFTER_MS": 15000      // 15 seconds = 5 failed samples
+```
+
+---
+
+**Session completed:** October 13, 2025 11:30 PM  
+**Status:** Health monitor functional but needs backend implementation for reliability  
+**Key Insight:** Browser-based video monitoring fundamentally limited by tab focus, canvas security, timer precision
+
+## 2025-10-14 05:07:25 — LL‑HLS tuning & working TS config (documented)
+
+**Scope:** Reduce glass‑to‑glass latency for Reolink substream while staying within HLS (no parts).
+
+**Experiments & findings**
+
+- Implemented fMP4 LL‑HLS (0.5s segments, aligned GOP). Latency meter showed ~3.0s (2.7–3.2s).
+- Added frontend Hls.js live‑edge options and trimmed startup waits; added on‑screen latency badge using `FRAG_CHANGED` + `programDateTime` (tiles + fullscreen).
+- Switched input to `rtsp_transport=tcp`, kept tiny probe windows, removed audio (`map: ["0:v:0"]`), and used `-muxpreload 0 -muxdelay 0`.
+- **Hypothesis:** MP4 fragment interleave adds ~0.3–0.5s.
+  - **Test:** Re‑encode to **TS segments** (no fMP4 / no `#EXT-X-MAP`).
+  - **Result:** Meter improved to **~2.6–2.9s** (small but measurable). CPU ~4–5% on server, RAM ~136MB per ffmpeg.
+
+**Working TS output proposal (kept here for reference)**
+Use when we want minimum latency within “short‑segment HLS” (still not Apple LL‑HLS because no parts).
+
+```json
+"rtsp_output": {
+  "map": ["0:v:0"],
+  "c:v": "libx264",
+  "profile:v": "baseline",
+  "pix_fmt": "yuv420p",
+  "r": 15,
+  "vf": "scale=640:480",
+  "tune": "zerolatency",
+  "g": 7,
+  "keyint_min": 7,
+  "preset": "ultrafast",
+
+  "vsync": 0,
+  "sc_threshold": 0,
+  "force_key_frames": "expr:gte(t,n_forced*0.5)",
+
+  "f": "HLS",
+  "hls_time": "0.5",
+  "hls_list_size": "1",
+  "hls_flags": "program_date_time+delete_segments+split_by_time",
+  "hls_delete_threshold": "1"
+}
+```
+
+**Notes**
+
+- This TS profile removes fMP4‑specific keys (`hls_segment_type`, `hls_fmp4_init_filename`, `movflags`) to avoid MP4 fragment overhead.
+- Keep GOP aligned to `hls_time` and enforce IDRs via `force_key_frames` for consistent cuts.
+- Player side (Hls.js):
+  - `lowLatencyMode: true`
+  - `liveSyncDurationCount: 1`, `liveMaxLatencyDurationCount: 2`
+  - `maxLiveSyncPlaybackRate: 1.5`
+  - `backBufferLength: 10`
+  - Added a latency badge overlay in tiles and fullscreen.
+
+**Current decision**
+
+- For now, we keep the **fMP4** configuration active on this camera for consistency, but this **TS profile** is recorded as the working lower‑latency alternative (~0.3–0.5s improvement on our setup).
+
+**Next possible steps (single‑hypothesis approach)**
+
+1. Try `-vsync 0` and `-sc_threshold 0` with fMP4 to see if we recover some of the TS gain without leaving fMP4.  
+2. Explore true **LL‑HLS with parts** (`#EXT-X-PART`) when feasible.  
+3. For sub‑second targets: prototype a **WebRTC** path for the fullscreen view (RTSP→transcode→WebRTC).
+
+---

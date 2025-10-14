@@ -10,6 +10,69 @@ export class HLSStreamManager {
         this.retryAttempts = new Map();
     }
 
+    // --- latency overlay helpers (non-breaking additions) ---
+    _ensureLatencyOverlay(videoEl) {
+        if (videoEl._latencyOverlay) return videoEl._latencyOverlay;
+        const badge = document.createElement('div');
+        badge.className = 'latency-badge';
+        Object.assign(badge.style, {
+            position: 'absolute',
+            right: '8px',
+            top: '8px',
+            padding: '2px 6px',
+            fontSize: '12px',
+            lineHeight: '16px',
+            background: 'rgba(0,0,0,0.6)',
+            color: '#fff',
+            borderRadius: '6px',
+            fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+            pointerEvents: 'none',
+            zIndex: 2,
+        });
+        // container: assume parent .stream-item is position:relative (your markup already uses cards)
+        const parent = videoEl.parentElement || document.body;
+        parent.style.position = parent.style.position || 'relative';
+        parent.appendChild(badge);
+        videoEl._latencyOverlay = badge;
+        return badge;
+    }
+
+    _attachLatencyMeter(hls, videoEl) {
+        // keep last seen PDT in ms
+        videoEl._lastFragPdtMs = null;
+
+        const overlay = this._ensureLatencyOverlay(videoEl);
+
+        const onFrag = (_, data) => {
+            // programDateTime may be number or string; normalize to ms
+            const pdt = data?.frag?.programDateTime;
+            if (pdt != null) {
+                videoEl._lastFragPdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
+            }
+        };
+
+        hls.on(Hls.Events.FRAG_CHANGED, onFrag);
+
+        // update text ~4×/sec
+        if (videoEl._latencyTimer) clearInterval(videoEl._latencyTimer);
+        videoEl._latencyTimer = setInterval(() => {
+            if (!videoEl._lastFragPdtMs) return;
+            const ms = Date.now() - videoEl._lastFragPdtMs;
+            const s = (ms / 1000).toFixed(1);
+            overlay.textContent = `${s}s`;
+            overlay.style.display = ''; // ensure shown
+        }, 250);
+
+        // store for cleanup
+        videoEl._latencyDetach = () => {
+            hls.off(Hls.Events.FRAG_CHANGED, onFrag);
+            if (videoEl._latencyTimer) { clearInterval(videoEl._latencyTimer); videoEl._latencyTimer = null; }
+            if (videoEl._latencyOverlay) { videoEl._latencyOverlay.textContent = ''; }
+            videoEl._lastFragPdtMs = null;
+        };
+    }
+
+
     /**
      * Force refresh a stream by destroying and recreating the HLS instance
      */
@@ -86,8 +149,6 @@ export class HLSStreamManager {
         return await this.startStream(cameraId, videoElement, streamType);
     }
 
-
-
     /**
      * Start HLS stream for a camera
      */
@@ -102,8 +163,8 @@ export class HLSStreamManager {
 
             if (!response.ok) throw new Error('Failed to start stream');
 
-            // Wait for stream initialization
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            // Keep startup wait tiny to avoid adding visible latency
+            await new Promise(resolve => setTimeout(resolve, 200));
 
             // CACHE BUSTING: Add timestamp to URL
             const timestamp = Date.now();
@@ -113,7 +174,12 @@ export class HLSStreamManager {
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: true,
-                    backBufferLength: streamType === 'main' ? 90 : 30,
+                    // hug the live edge
+                    liveSyncDurationCount: 1,
+                    liveMaxLatencyDurationCount: 2,
+                    maxLiveSyncPlaybackRate: 1.5,
+                    // don’t hoard buffer; keeps GC churn and drift down
+                    backBufferLength: 10,
                     xhrSetup: (xhr, url) => {
                         xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                         xhr.setRequestHeader('Pragma', 'no-cache');
@@ -123,6 +189,7 @@ export class HLSStreamManager {
 
                 hls.loadSource(playlistUrl);
                 hls.attachMedia(videoElement);
+                this._attachLatencyMeter(hls, videoElement);
 
                 return new Promise((resolve, reject) => {
                     hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -214,6 +281,11 @@ export class HLSStreamManager {
             const stream = this.activeStreams.get(cameraId);
             if (stream) {
                 stream.element.src = '';
+                if (stream.element._latencyDetach) {
+                    stream.element._latencyDetach();
+                    delete stream.element._latencyDetach;
+                }
+
                 this.activeStreams.delete(cameraId);
             }
 

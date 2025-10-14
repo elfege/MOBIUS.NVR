@@ -1,0 +1,130 @@
+**/0_*
+
+.git
+
+# Ignore files containing the word "copy"
+*copy*
+!**/copy_installation_files.sh
+
+venv
+
+# Ignore all .txt files
+*.txt
+# txt exceptions
+!requirements.txt
+!tree.txt
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+**/__pycache__/
+__pycache__
+
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# HLS streaming segments
+**/streams/
+*stream/
+
+# config files (contain creds)
+**/config/
+
+# environment files
+.env
+.env.*
+
+# Ignore node_modules directory
+node_modules/
+
+# Ignore npm debug log
+npm-debug.log
+
+# Ignore yarn debug log
+yarn-debug.log
+
+# Ignore files matching app.log.[NUMBER] pattern
+**/app.log.*
+
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+develop-eggs/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg
+*.tar.gz
+*.tar.bz2
+*.tar
+*.zip
+*.tgz
+*.gz
+*.bz2
+*.tbz
+*.dmg
+*.xpi
+*.gem
+*.rar
+*.7z
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+*_test*
+_test*
+
+# files containing creds
+config/eufy_bridge.json
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Archives, temporary files/dirs, drafts and copies
+*archive*
+*temp*
+*draft*
+*copy*
+
+# Anything vpn related
+*vpn*
+
+# scripts
+**/DAMS_flat_copy.sh

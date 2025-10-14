@@ -1,0 +1,416 @@
+/* ============================================================================
+   SETTINGS OVERLAY & PANEL
+
+   STRUCTURE:
+   - Overlay: Full-screen dark backdrop
+   - Panel: Centered scrollable container with settings
+   - Content: Individual setting rows with labels, controls, and descriptions
+
+   LEARNING NOTE: This uses a modal overlay pattern - common in web apps
+   for displaying configuration panels without navigating away from the page.
+   ============================================================================ */
+
+/* Full-screen overlay backdrop
+   - Hidden by default (display: none)
+   - Shown when .active class is added
+   - Semi-transparent black background dims the main content
+   - position: fixed keeps it covering viewport even if page scrolls
+*/
+.settings-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85); /* Semi-transparent black */
+    backdrop-filter: blur(5px); /* Blurs the content behind */
+
+    display: none; /* Hidden by default */
+    align-items: center; /* Vertically centers the panel */
+    justify-content: center; /* Horizontally centers the panel */
+
+    z-index: 3000; /* Above everything else (header is 1000, fullscreen is 2000) */
+
+    /* Fade-in animation when shown */
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+/* Active state - shown and visible */
+.settings-overlay.active {
+    display: flex;
+    opacity: 1;
+}
+
+/* The actual settings panel - white box in center */
+.settings-panel {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+
+    width: 90%; /* Responsive width */
+    max-width: 600px; /* Don't get too wide on large screens */
+    max-height: 80vh; /* Don't exceed 80% of viewport height */
+
+    display: flex;
+    flex-direction: column; /* Stack header and content vertically */
+
+    /* Slide-up animation when shown */
+    transform: translateY(20px);
+    transition: transform 0.3s ease;
+}
+
+.settings-overlay.active .settings-panel {
+    transform: translateY(0); /* Slides into place */
+}
+
+/* Panel header with title and close button */
+.settings-header {
+    padding: 1.5rem;
+    border-bottom: 2px solid #e0e0e0;
+
+    display: flex;
+    justify-content: space-between; /* Title left, close button right */
+    align-items: center;
+
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0; /* Rounded top corners only */
+}
+
+.settings-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Close button (X) in header */
+.settings-close-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%; /* Circular button */
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 1.2rem;
+
+    transition: all 0.2s ease;
+}
+
+.settings-close-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+/* Scrollable content area
+   - This is where settings will be dynamically added
+   - overflow-y: auto adds scrollbar when content exceeds height
+*/
+.settings-content {
+    padding: 1.5rem;
+    overflow-y: auto; /* Scrollable if content is long */
+
+    /* Custom scrollbar styling for better look */
+    scrollbar-width: thin;
+    scrollbar-color: #667eea #f0f0f0;
+}
+
+/* Webkit scrollbar styling (Chrome, Safari, Edge) */
+.settings-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.settings-content::-webkit-scrollbar-track {
+    background: #f0f0f0;
+    border-radius: 4px;
+}
+
+.settings-content::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 4px;
+}
+
+.settings-content::-webkit-scrollbar-thumb:hover {
+    background: #764ba2;
+}
+
+/* ============================================================================
+   INDIVIDUAL SETTING ROWS
+   ============================================================================ */
+
+/* Each setting is a row with label, control, and optional description */
+.setting-row {
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #667eea; /* Accent bar on left */
+
+    transition: all 0.2s ease;
+}
+
+.setting-row:hover {
+    background: #e9ecef;
+    transform: translateX(4px); /* Slight slide on hover */
+}
+
+.setting-row:last-child {
+    margin-bottom: 0;
+}
+
+/* Top section of setting row - label and control */
+.setting-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+/* Setting label/title */
+.setting-label {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.setting-label i {
+    color: #667eea;
+    font-size: 1.1rem;
+}
+
+/* Container for the control element (button, toggle, input, etc.) */
+.setting-control {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Description text below setting */
+.setting-description {
+    font-size: 0.85rem;
+    color: #666;
+    line-height: 1.4;
+    margin-top: 0.5rem;
+}
+
+/* ============================================================================
+   SETTING CONTROLS (Buttons, Toggles, Inputs)
+   ============================================================================ */
+
+/* Button inside settings (not the header buttons) */
+.setting-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.setting-btn-primary {
+    background: #667eea;
+    color: white;
+}
+
+.setting-btn-primary:hover {
+    background: #5568d3;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+.setting-btn-primary:active {
+    transform: translateY(0);
+}
+
+/* Toggle switch (checkbox styled as iOS-style toggle)
+   LEARNING NOTE: This is the "checkbox hack" again, but for a different purpose
+   We hide the checkbox and style a label to look like a toggle switch
+*/
+.setting-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 28px;
+}
+
+/* Hide the actual checkbox */
+.setting-toggle input[type="checkbox"] {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+/* The toggle slider - this is what looks like a switch */
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    border-radius: 28px;
+    transition: 0.3s;
+}
+
+/* The circular knob that slides */
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    border-radius: 50%;
+    transition: 0.3s;
+}
+
+/* When checkbox is checked - slider turns blue */
+.setting-toggle input:checked + .toggle-slider {
+    background-color: #667eea;
+}
+
+/* When checked - knob slides to the right */
+.setting-toggle input:checked + .toggle-slider:before {
+    transform: translateX(22px);
+}
+
+/* Hover effect */
+.toggle-slider:hover {
+    box-shadow: 0 0 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Number input field for "auto-fullscreen after N seconds" */
+.setting-input {
+    width: 80px;
+    padding: 0.4rem 0.6rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    text-align: center;
+
+    transition: all 0.2s ease;
+}
+
+.setting-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Label for input fields */
+.setting-input-label {
+    font-size: 0.9rem;
+    color: #666;
+    margin-left: 0.5rem;
+}
+
+/* Container for input + label combo */
+.setting-input-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: white;
+    border-radius: 6px;
+    margin-top: 0.75rem;
+}
+
+/* Disabled state for inputs when parent setting is off */
+.setting-input-group.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .settings-panel {
+        width: 95%;
+        max-height: 90vh;
+    }
+
+    .settings-header {
+        padding: 1rem;
+    }
+
+    .settings-header h2 {
+        font-size: 1.25rem;
+    }
+
+    .settings-content {
+        padding: 1rem;
+    }
+
+    .setting-row {
+        padding: 1rem;
+    }
+
+    .setting-top {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* Secondary button style for settings button in header */
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Select dropdown styling */
+.setting-select {
+    padding: 0.5rem 2rem 0.5rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: rgb(29, 20, 20);
+    font-size: 0.9rem;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='white' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 12px;
+}
+
+.setting-select:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.setting-select:focus {
+    outline: none;
+    border-color: #667eea;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.setting-select option {
+    background: #2d3748;
+    color: white;
+}

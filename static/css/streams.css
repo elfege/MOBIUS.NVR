@@ -1,0 +1,986 @@
+/* ============================================================================
+   STREAMS.CSS - Multi-Camera Stream Display
+
+   PURPOSE: Responsive grid layout for displaying multiple camera streams that
+   dynamically adjusts to fill available viewport space while maintaining
+   aspect ratios and keeping all controls functional.
+
+   LEARNING NOTES FOR CSS BEGINNERS:
+   - Modern CSS Grid is used for the main layout (much easier than old float/table methods)
+   - Flexbox is used for internal component alignment (great for 1-dimensional layouts)
+   - CSS Custom Properties (--variables) make it easy to adjust values in one place
+   - Box-sizing: border-box makes width/height calculations much more predictable
+   ============================================================================ */
+
+/* ============================================================================
+   GLOBAL RESET & BASE STYLES
+   ============================================================================ */
+
+/* Universal selector (*) applies to ALL elements
+   box-sizing: border-box means padding/border are INCLUDED in width/height
+   (Without this, a 100px wide div + 10px padding = 120px total width - confusing!)
+*/
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Root font size - rem units are relative to this
+   Example: 1rem = 16px, 2rem = 32px, 0.5rem = 8px
+*/
+html {
+    font-size: 16px;
+}
+
+/* Body takes full viewport height using viewport units
+   - vh = viewport height (100vh = 100% of browser window height)
+   - Prevents scrolling by using overflow: hidden
+   - Background color for the whole page
+*/
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    background: #1a1a1a;
+    color: #ffffff;
+    overflow: hidden;
+    /* Prevents page scrolling - we want everything to fit in viewport */
+    height: 100vh;
+    /* Full viewport height */
+    display: flex;
+    /* Makes body a flex container */
+    flex-direction: column;
+    /* Stacks children vertically (header on top, content below) */
+}
+
+/* ============================================================================
+   HEADER SECTION
+   ============================================================================ */
+
+/* Fixed header at the top - won't scroll away
+   - position: fixed removes element from normal document flow
+   - top: 0 pins it to the top edge
+   - z-index: 1000 ensures it stays above other content (higher = more on top)
+*/
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    /* Pushes content to edges with space between */
+    align-items: center;
+    /* Vertically centers items */
+    flex-wrap: wrap;
+    /* Allows wrapping on small screens */
+    gap: 1rem;
+    /* Space between wrapped items */
+}
+
+.header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+/* Navigation controls - groups buttons together */
+.nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.global-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+#stream-count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+/* ============================================================================
+   BUTTON STYLES
+   ============================================================================ */
+
+/* Base button styling - applies to ALL buttons with .btn class */
+.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    /* Changes cursor to pointer (hand) on hover */
+    transition: all 0.3s ease;
+    /* Smooth transition for hover effects */
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    color: white;
+}
+
+/* Button hover effect - applies when mouse is over button
+   transform: translateY moves element up/down
+   box-shadow creates depth effect
+*/
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Active state - when button is being clicked */
+.btn:active {
+    transform: translateY(0);
+}
+
+/* Color variants - specific colors for different button types */
+.btn-success {
+    background: #28a745;
+}
+
+.btn-success:hover {
+    background: #218838;
+}
+
+.btn-danger {
+    background: #dc3545;
+}
+
+.btn-danger:hover {
+    background: #c82333;
+}
+
+.btn-info {
+    background: #17a2b8;
+}
+
+.btn-info:hover {
+    background: #138496;
+}
+
+.btn-primary {
+    background: #007bff;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+
+/* Serious professional button - minimal, focused, no-nonsense */
+.btn-beserious {
+    background: #2d3748;
+    /* Dark slate gray */
+    color: #e2e8f0;
+    /* Light gray text */
+    border: 1px solid #4a5568;
+    /* Subtle border */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.btn-beserious:hover {
+    background: #1a202c;
+    /* Darker on hover */
+    border-color: #2d3748;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.btn-beserious:active {
+    background: #0f131a;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================================
+   MAIN STREAMS CONTAINER
+   ============================================================================ */
+
+/* This is the KEY container for dynamic sizing
+   - margin-top: 80px leaves space for the fixed header
+   - height: calc() does math to get remaining viewport height
+     (100vh - 80px header = available space for streams)
+   - padding: 1rem adds breathing room inside
+   - overflow: auto allows scrolling if content exceeds height
+*/
+.streams-container {
+    margin-top: 80px;
+    /* Space for fixed header */
+    height: calc(100vh - 80px);
+    /* Full remaining height after header */
+    padding: 1rem;
+    overflow: auto;
+    /* Allows scrolling if needed */
+
+    /* CSS Grid - modern layout system for 2D layouts
+       - display: grid makes this a grid container
+       - gap: space between grid items (like gutters)
+    */
+    display: grid;
+    gap: 1rem;
+
+    /* Grid columns are set by JavaScript dynamically
+       based on number of cameras (grid-1, grid-2, etc. classes below) */
+}
+
+/* Grid layout classes - dynamically applied by JavaScript
+   These determine how many columns based on camera count
+   - repeat(N, 1fr) creates N equal-width columns
+   - 1fr = one "fraction" of available space
+   - grid-auto-rows controls row height
+   - minmax(0, 1fr) allows rows to shrink/grow equally
+*/
+
+/* 1 camera: single full-width column */
+.grid-1 {
+    grid-template-columns: repeat(1, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 2-4 cameras: 2 columns (2x2 grid) */
+.grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 5-9 cameras: 3 columns (3x3 grid) */
+.grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 10-16 cameras: 4 columns (4x4 grid) */
+.grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 17+ cameras: 5 columns (5x5 grid) */
+.grid-5 {
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* ============================================================================
+   GRID LAYOUT MODES
+   ============================================================================ */
+
+/* Attached mode - professional NVR look with no gaps */
+.streams-container.grid-attached {
+    gap: 0;
+}
+
+.streams-container.grid-attached .stream-item {
+    border-radius: 0;
+    box-shadow: none;
+    border: 1px solid #1a1a1a;
+    /* Subtle divider between streams */
+}
+
+.streams-container.grid-attached .stream-item:hover {
+    transform: none;
+    /* No scale effect in attached mode */
+    box-shadow: none;
+    border-color: #667eea;
+    /* Highlight border on hover instead */
+}
+
+/* Keep rounded corners on outer edges only */
+.streams-container.grid-attached .stream-item:first-child {
+    border-top-left-radius: 8px;
+}
+
+.streams-container.grid-attached .stream-item:nth-child(2) {
+    border-top-right-radius: 8px;
+}
+
+/* These selectors would need JavaScript to determine last row items */
+/* For now, we'll rely on JavaScript to add specific classes */
+
+/* ============================================================================
+   INDIVIDUAL STREAM ITEM
+   ============================================================================ */
+
+/* Each camera stream container
+   - position: relative allows absolutely positioned children (overlay, controls)
+   - background: dark color shows while video loads
+   - aspect-ratio: 16/9 maintains proper video proportions
+     (This is SET BY JAVASCRIPT, but we provide a fallback)
+   - overflow: hidden keeps content from spilling out
+*/
+.stream-item {
+    position: relative;
+    /* Makes this a positioning context for children */
+    background: #2c2c2c;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    /* Fallback aspect ratio if JavaScript doesn't set it */
+    aspect-ratio: 16 / 9;
+
+    /* Make sure the item fills its grid cell */
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    /* Allows grid item to shrink below content size */
+}
+
+/* Hover effect on stream item */
+.stream-item:hover {
+    transform: scale(1.02);
+    /* Slightly enlarges */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+}
+
+/* ============================================================================
+   VIDEO/IMAGE ELEMENTS (The actual stream display)
+   ============================================================================ */
+
+/* This is CRITICAL for proper sizing
+   - width: 100% fills container width
+   - height: 100% fills container height
+   - object-fit: cover maintains aspect ratio, crops if needed
+     (like "background-size: cover" but for video/img elements)
+   - display: block removes bottom gap (inline elements have descender space)
+*/
+.stream-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Maintains aspect ratio, fills container */
+    display: block;
+    /* Removes inline element spacing issues */
+    background: #000;
+}
+
+/* ============================================================================
+   STREAM OVERLAY (Title and status indicator)
+   ============================================================================ */
+
+/* Positioned absolutely over the video
+   - position: absolute takes element out of normal flow
+   - top: 0; left: 0; right: 0 stretches across top
+   - pointer-events: none allows clicks to pass through to video
+   - background: linear-gradient creates fade effect from dark to transparent
+*/
+.stream-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0) 100%);
+    pointer-events: none;
+    /* Allows clicking through to video element */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    z-index: 10;
+    /* Above video, below controls */
+}
+
+.stream-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Status indicator section */
+.stream-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Status indicator with animated dot */
+.stream-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 12px;
+}
+
+/* Animated dot icon for different states */
+.stream-indicator i {
+    font-size: 0.5rem;
+}
+
+/* State-specific colors */
+.stream-indicator.live i {
+    color: #28a745;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.stream-indicator.loading i {
+    color: #ffc107;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.stream-indicator.error i {
+    color: #dc3545;
+}
+
+.stream-indicator.stopped i {
+    color: #6c757d;
+}
+
+/* Pulse animation for live/loading states
+   @keyframes defines the animation sequence
+   opacity changes create fade in/out effect
+*/
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* ============================================================================
+   STREAM CONTROLS (Play, Stop, Refresh buttons)
+   ============================================================================ */
+
+/* Control panel at bottom of each stream
+   - Initially hidden (opacity: 0, pointer-events: none)
+   - Appears on hover of parent .stream-item
+*/
+.stream-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
+
+    /* Hidden by default but ALWAYS interactive */
+    opacity: 0;
+    pointer-events: auto;
+    /* Always enabled - buttons always work */
+
+    transition: opacity 0.3s ease;
+    /* Smooth fade in/out */
+    z-index: 20;
+    /* Above overlay */
+}
+
+/* Show controls when hovering over stream item OR controls themselves */
+.stream-item:hover .stream-controls,
+.stream-controls:hover {
+    opacity: 1;
+}
+
+/* IMPORTANT: Keep controls visible briefly after hover ends
+   This gives user time to move mouse to button */
+.stream-controls:hover {
+    transition-delay: 0.5s;
+    /* Controls stay visible for 0.5s after mouse leaves */
+}
+
+/* Horizontal row of control buttons */
+.control-row {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    /* Centers buttons horizontally */
+    margin-bottom: 0.5rem;
+}
+
+/* Individual stream control buttons */
+.stream-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    /* Creates frosted glass effect */
+}
+
+.stream-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+/* ============================================================================
+   PTZ CONTROLS (Pan-Tilt-Zoom directional buttons)
+   ============================================================================ */
+
+.ptz-controls {
+    margin-top: 0.5rem;
+}
+
+/* 3x3 Grid layout for directional controls
+   Example layout:
+   [    ] [ UP ] [    ]
+   [LEFT] [    ] [RIGHT]
+   [    ] [DOWN] [    ]
+*/
+.ptz-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    /* 3 equal columns */
+    gap: 0.25rem;
+    max-width: 150px;
+    /* Limits PTZ control size */
+    margin: 0 auto;
+    /* Centers the PTZ grid */
+}
+
+/* Each PTZ direction button */
+.ptz-btn {
+    aspect-ratio: 1;
+    /* Makes buttons square */
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+
+.ptz-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+/* Active state when button is pressed */
+.ptz-btn:active {
+    background: rgba(255, 255, 255, 0.4);
+    transform: scale(0.95);
+}
+
+/* Specific positioning for directional buttons using nth-child
+   nth-child(n) selects the nth button in the grid
+*/
+.ptz-btn[data-direction="up"] {
+    grid-column: 2;
+    /* Second column */
+    grid-row: 1;
+    /* First row */
+}
+
+.ptz-btn[data-direction="left"] {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.ptz-btn[data-direction="right"] {
+    grid-column: 3;
+    grid-row: 2;
+}
+
+.ptz-btn[data-direction="down"] {
+    grid-column: 2;
+    grid-row: 3;
+}
+
+/* ============================================================================
+   LOADING INDICATOR
+   ============================================================================ */
+
+/* Spinning loader displayed while stream initializes */
+.loading-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Centers element precisely */
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* The actual spinner animation */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    /* Makes it circular */
+    animation: spin 1s linear infinite;
+}
+
+/* Spin animation - rotates 360 degrees continuously */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Hide spinner when stream is loaded */
+.stream-item.loaded .loading-indicator {
+    display: none;
+}
+
+/* ============================================================================
+   FULLSCREEN OVERLAY
+   ============================================================================ */
+
+/* Full-screen modal for viewing single camera
+   - position: fixed covers entire viewport
+   - top/left/right/bottom: 0 stretches to all edges
+   - Initially hidden with display: none
+*/
+.fullscreen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    display: none;
+    /* Hidden by default */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    /* Above everything else */
+    padding: 2rem;
+}
+
+/* Show fullscreen when active class is added */
+.fullscreen-overlay.active {
+    display: flex;
+}
+
+/* Close button in top-right corner */
+.fullscreen-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.fullscreen-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+/* Fullscreen video title */
+.fullscreen-title {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    text-align: center;
+}
+
+/* Fullscreen video element
+   - max-width/max-height: 90% leaves margin around video
+   - width/height: auto maintains aspect ratio
+*/
+.fullscreen-video {
+    max-width: 90%;
+    max-height: 80vh;
+    width: auto;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN - Mobile/Tablet Adjustments
+   ============================================================================ */
+
+
+
+
+/* phones - keep 2 columns */
+@media (max-width: 480px) {
+    .streams-container {
+        padding: 0.25rem;
+        gap: 0.25rem;
+    }
+
+    /* 2 columns even on tiny screens */
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .grid-5 {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+/* iPad Mini and similar tablets (portrait or landscape) */
+@media screen and (min-width: 700px) and (max-width: 1100px) {
+    .streams-container {
+        display: grid !important;
+        gap: 0.5rem;
+        grid-template-columns: repeat(3, 1fr) !important;
+        grid-auto-rows: minmax(0, 1fr) !important;
+    }
+
+    .stream-item {
+        min-height: 0;
+        height: 100%;
+    }
+}
+
+
+
+/* ============================================================================
+   COLLAPSIBLE HEADER MECHANISM
+
+   HOW THIS WORKS (Pure CSS trick):
+   - Hidden checkbox controls the state (checked = expanded, unchecked = collapsed)
+   - CSS :checked selector changes styles based on checkbox state
+   - Label element acts as the toggle button (clicking label toggles checkbox)
+   - No JavaScript needed for the collapse/expand functionality!
+
+   LEARNING NOTE: This is called the "CSS checkbox hack" - a clever way to
+   create interactive elements without JavaScript by using the natural behavior
+   of form inputs.
+   ============================================================================ */
+
+/* Hide the actual checkbox but keep it functional
+   - position: absolute removes it from layout
+   - opacity: 0 makes it invisible
+   - pointer-events: none prevents accidental clicks
+   We need to keep it in the DOM so the :checked selector works
+*/
+.header-toggle-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* The toggle button - always visible at the top
+   - position: fixed keeps it on screen even when header collapses
+   - z-index: 1001 puts it above the header (which is z-index: 1000)
+   - Centered horizontally with left: 50% + transform: translateX(-50%)
+*/
+/* The toggle button - make it much smaller and barely visible */
+.header-toggle-btn {
+    position: fixed;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+
+    background: rgba(0, 0, 0, 0.15);
+    /* Even more transparent */
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    /* More subtle border */
+    border-radius: 0 0 8px 8px;
+    /* Smaller radius */
+
+    padding: 0.25rem 0.75rem;
+    /* Much smaller padding */
+    cursor: pointer;
+
+    transition: all 0.3s ease;
+
+    z-index: 1001;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: rgba(255, 255, 255, 0.3);
+    /* Very weak opacity - barely visible */
+}
+
+/* Hover effect - becomes visible but still subtle */
+.header-toggle-btn:hover {
+    background: rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 0.8);
+    /* Not fully opaque even on hover */
+    transform: translateX(-50%) scale(1.1);
+}
+
+/* Icon inside the toggle button - much smaller */
+.header-toggle-btn i {
+    font-size: 0.7rem;
+    /* Much smaller - was 1.2rem */
+    transition: transform 0.3s ease;
+}
+
+/* Rotate icon when header is collapsed (checkbox unchecked)
+   ~ is the "general sibling selector" - selects .header-toggle-btn
+   that comes AFTER the unchecked input
+*/
+/* When header is collapsed, streams take full viewport */
+.header-toggle-input:not(:checked)~.streams-container {
+    margin-top: 15px;
+    /* Much smaller - was 30px */
+    height: calc(100vh - 5px);
+    /* Almost full viewport height */
+}
+
+/* ============================================================================
+   HEADER COLLAPSE BEHAVIOR
+   ============================================================================ */
+
+/* Default state - header is visible
+   We need to add transition for smooth collapse/expand
+*/
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+
+    /* Add smooth transition for collapse animation */
+    transform: translateY(0);
+    /* Normal position */
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Smooth easing */
+}
+
+/* Collapsed state - when checkbox is unchecked
+   The ~ selector means "select .header that comes after unchecked input"
+*/
+.header-toggle-input:not(:checked)~.header {
+    /* Move header up by its own height to hide it
+       We use translateY instead of display:none to keep smooth animation */
+    transform: translateY(-100%);
+}
+
+/* Adjust streams container margin based on header state
+   When header is visible, we need top margin
+   When collapsed, we need less margin
+*/
+.streams-container {
+    margin-top: 85px;
+    /* Actual header height + 1px gap (header is ~84px tall) */
+    height: calc(100vh - 85px);
+    padding: 1rem;
+    overflow: auto;
+    display: grid;
+    gap: 1rem;
+
+    transition: margin-top 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* When header is collapsed, streams take full viewport */
+.header-toggle-input:not(:checked)~.streams-container {
+    margin-top: 2px;
+    /* Minimal space - was 5px */
+    height: calc(100vh - 2px);
+}
+
+/* Settings button styling */
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Icon spacing in buttons */
+.btn i {
+    margin-right: 0.3rem;
+}
+
+/* ============================================================================
+   STREAM FULLSCREEN BUTTON
+   ============================================================================ */
+
+/* Fullscreen button overlay - visible tap target for mobile */
+.stream-fullscreen-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    width: 44px;
+    /* iOS minimum touch target */
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 25; /* must remain > .stream-controls' z-index */
+    /* Above overlay, below controls */
+    opacity: 0;
+    pointer-events: auto;
+    /* Always clickable */
+    transition: opacity 0.3s ease, background 0.2s ease;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .stream-fullscreen-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .stream-fullscreen-btn {
+        opacity: 0.7;
+    }
+
+    .stream-fullscreen-btn:active {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* Desktop hover effect */
+@media (hover: hover) {
+    .stream-fullscreen-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+    }
+}
+
+.stream-fullscreen-btn i {
+    font-size: 1.1rem;
+}

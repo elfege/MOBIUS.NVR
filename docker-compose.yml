@@ -1,0 +1,98 @@
+# Unified NVR Docker Compose
+
+services:
+  nvr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: unified-nvr
+    ports:
+      - "5000:5000"
+    environment:
+      # UniFi Protect Configuration (loaded from host environment)
+      - PROTECT_HOST=${PROTECT_HOST:-192.168.10.3}
+      - PROTECT_USERNAME=${PROTECT_USERNAME}
+      - PROTECT_SERVER_PASSWORD=${PROTECT_SERVER_PASSWORD}
+      - CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS=${CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS}
+      - PROTECT_PORT=${PROTECT_PORT}
+      - USE_EUFY_BRIDGE=${USE_EUFY_BRIDGE}
+      - USE_PROTECT=${USE_PROTECT}
+      - REOLINK_USERNAME=${REOLINK_USERNAME}
+      - REOLINK_PASSWORD=${REOLINK_PASSWORD}
+      - EUFY_CAMERA_T8416P0023352DA9_USERNAME=${EUFY_CAMERA_T8416P0023352DA9_USERNAME}
+      - EUFY_CAMERA_T8416P0023352DA9_PASSWORD=${EUFY_CAMERA_T8416P0023352DA9_PASSWORD}
+      - EUFY_CAMERA_T8416P0023370398_USERNAME=${EUFY_CAMERA_T8416P0023370398_USERNAME}
+      - EUFY_CAMERA_T8416P0023370398_PASSWORD=${EUFY_CAMERA_T8416P0023370398_PASSWORD}
+      - EUFY_CAMERA_T8416P00233717CB_USERNAME=${EUFY_CAMERA_T8416P00233717CB_USERNAME}
+      - EUFY_CAMERA_T8416P00233717CB_PASSWORD=${EUFY_CAMERA_T8416P00233717CB_PASSWORD}
+      - EUFY_CAMERA_T8416P0023390DE9_USERNAME=${EUFY_CAMERA_T8416P0023390DE9_USERNAME}
+      - EUFY_CAMERA_T8416P0023390DE9_PASSWORD=${EUFY_CAMERA_T8416P0023390DE9_PASSWORD}
+      - EUFY_CAMERA_T8416P6024350412_USERNAME=${EUFY_CAMERA_T8416P6024350412_USERNAME}
+      - EUFY_CAMERA_T8416P6024350412_PASSWORD=${EUFY_CAMERA_T8416P6024350412_PASSWORD}
+      - EUFY_CAMERA_T8419P0024110C6A_USERNAME=${EUFY_CAMERA_T8419P0024110C6A_USERNAME}
+      - EUFY_CAMERA_T8419P0024110C6A_PASSWORD=${EUFY_CAMERA_T8419P0024110C6A_PASSWORD}
+      - EUFY_CAMERA_T8441P12242302AC_USERNAME=${EUFY_CAMERA_T8441P12242302AC_USERNAME}
+      - EUFY_CAMERA_T8441P12242302AC_PASSWORD=${EUFY_CAMERA_T8441P12242302AC_PASSWORD}
+      - EUFY_CAMERA_T8441P122428038A_USERNAME=${EUFY_CAMERA_T8441P122428038A_USERNAME}
+      - EUFY_CAMERA_T8441P122428038A_PASSWORD=${EUFY_CAMERA_T8441P122428038A_PASSWORD}
+      - EUFY_CAMERA_T821451024233587_USERNAME=${EUFY_CAMERA_T821451024233587_USERNAME}
+      - EUFY_CAMERA_T821451024233587_PASSWORD=${EUFY_CAMERA_T821451024233587_PASSWORD}
+
+      - ENABLE_WATCHDOG=${ENABLE_WATCHDOG}
+
+      # Flask Configuration
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_DEBUG=${FLASK_DEBUG:-0}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
+
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Stream Settings
+      - HLS_SEGMENT_TIME=${HLS_SEGMENT_TIME:-4}
+      - HLS_MAX_SEGMENTS=${HLS_MAX_SEGMENTS:-6}
+
+    volumes:
+      # Configuration (read-only)
+      - ./config:/app/config:ro
+
+      # Stream output (ephemeral, cleared on restart)
+      - ./streams:/app/streams
+
+      # Logs (persistent for debugging)
+      - ./logs:/app/logs
+
+      # Node modules for Eufy bridge
+      - ./node_modules:/app/node_modules:ro
+
+      # static for fast ui editting/testing
+      - ./static:/app/static
+
+      # config *.json
+      - ./config:/app/config
+
+    restart: unless-stopped
+
+    networks:
+      - nvr-net
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # Resource limits (adjust based on camera count)
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 2G
+        reservations:
+          cpus: '2.0'
+          memory: 1G
+
+networks:
+  nvr-net:
+    driver: bridge

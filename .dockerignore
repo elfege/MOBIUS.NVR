@@ -1,0 +1,81 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
+*.egg-info
+
+# Logs (don't copy into image, use volume mount)
+logs/
+*.log
+
+# Streams (don't copy into image, use volume mount)
+streams/
+*.m3u8
+*.ts
+
+# Node modules (will be installed in image)
+node_modules/
+
+# Environment files
+.env
+.env.*
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README*.md
+DOCS/
+
+# Tests
+TESTS/
+test_*.py
+*_test.py
+
+# Archives and backups
+*.tar.gz
+*.zip
+*.bak
+*.old
+
+# Maintenance scripts (run on host, not in container)
+0_MAINTENANCE_SCRIPTS/
+deploy.sh
+start_nvr.sh
+stop_nvr.sh
+
+# Other project files
+tree.txt
+bootstrap.json
+cameras.json
+LL-HSL/
+
+# Research/deprecated scripts
+G5-Flex_*.py
+PTZ_Discovery.py
+ptz_pan_right.py
+g5flex_ptz_http.py
+stream_proxy.py

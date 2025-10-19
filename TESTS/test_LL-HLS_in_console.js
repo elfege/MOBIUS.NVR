@@ -5,14 +5,14 @@
  * 
   CON_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' nvr-packager)
     
-  ffmpeg -rtsp_transport tcp -i rtsp://admin:TarTo56%29%29%23FatouiiDRtu@192.168.10.88:554/h264Preview_01_sub   -c:v libx264 -preset veryfast -tune zerolatency   -g 15 -keyint_min 15 -force_key_frames "expr:gte(t,n_forced*1)"   -x264-params "scenecut=0:min-keyint=15:open_gop=0"   -b:v 800k -maxrate 800k -bufsize 1600k -pix_fmt yuv420p -profile:v baseline   -c:a aac -b:a 64k -ar 44100 -ac 1   -f flv rtmp://$CON_IP:1935/REOLINK_OFFICE
+  ffmpeg -rtsp_transport tcp -i rtsp://admin:xxxxxxxxxxxxxxxxxxxxxxx@192.168.10.88:554/h264Preview_01_sub   -c:v libx264 -preset veryfast -tune zerolatency   -g 15 -keyint_min 15 -force_key_frames "expr:gte(t,n_forced*1)"   -x264-params "scenecut=0:min-keyint=15:open_gop=0"   -b:v 800k -maxrate 800k -bufsize 1600k -pix_fmt yuv420p -profile:v baseline   -c:a aac -b:a 64k -ar 44100 -ac 1   -f flv rtmp://$CON_IP:1935/REOLINK_OFFICE
   
 /*
  CON_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' nvr-packager)
 
  # publish video-only with 1 s GOP to MediaMTX (single line)
 
-ffmpeg -loglevel warning -rtsp_transport tcp -i rtsp://admin:TarTo56%29%29%23FatouiiDRtu@192.168.10.88:554/h264Preview_01_sub -an -c:v libx264 -preset veryfast -tune zerolatency -g 15 -keyint_min 15 -force_key_frames "expr:gte(t,n_forced*1)" -x264-params "scenecut=0:min-keyint=15:open_gop=0" -b:v 800k -maxrate 800k -bufsize 1600k -pix_fmt yuv420p -profile:v baseline -f flv rtmp://$CON_IP:1935/REOLINK_OFFICE
+ffmpeg -loglevel warning -rtsp_transport tcp -i rtsp://admin:xxxxxxxxxxxxxxxxxxxxxxx@192.168.10.88:554/h264Preview_01_sub -an -c:v libx264 -preset veryfast -tune zerolatency -g 15 -keyint_min 15 -force_key_frames "expr:gte(t,n_forced*1)" -x264-params "scenecut=0:min-keyint=15:open_gop=0" -b:v 800k -maxrate 800k -bufsize 1600k -pix_fmt yuv420p -profile:v baseline -f flv rtmp://$CON_IP:1935/REOLINK_OFFICE
 
 
 */

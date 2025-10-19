@@ -13,6 +13,9 @@ export class MultiStreamManager {
         this.mjpegManager = new MJPEGStreamManager();
         this.hlsManager = new HLSStreamManager();
         this.flvManager = new FLVStreamManager();
+        // Arrow function preserves context
+        this.getCameraConfig = (id) => this.hlsManager.getCameraConfig(id);
+        this.buildHlsConfig = (config, isLL) => this.hlsManager.buildHlsConfig(config, isLL);
 
         // Cache jQuery selectors
         this.$container = $('#streams-container');
@@ -511,7 +514,6 @@ export class MultiStreamManager {
             this.$fullscreenTitle.text(name);
             this.$fullscreenOverlay.css('display', 'flex');
 
-
             // Use streamType to determine fullscreen rendering method
             if (streamType === 'HLS' || streamType === 'LL_HLS') {
                 // HLS fullscreen (works for both Eufy and UniFi in HLS mode)
@@ -523,30 +525,35 @@ export class MultiStreamManager {
 
                 if (!response.ok) throw new Error('Failed to start fullscreen stream');
 
-                // Wait for stream
-                // await new Promise(resolve => setTimeout(resolve, 2000));
+                // Fetch stream metadata from backend after starting the stream.
+                // Returns: { protocol: 'll_hls'|'hls'|'rtmp', stream_url: '/hls/...' or '/api/streams/...', camera_name: '...' }
+                // This tells us what the backend ACTUALLY started (vs what's configured in cameras.json)
+                // Used to determine the correct playlist URL and verify the stream type matches expectations.
+                const startInfo = await response.json().catch(() => ({}));
+
                 // Wait briefly for playlist to appear (keep very small to avoid startup lag)
                 await new Promise(resolve => setTimeout(resolve, 200));
 
-                // Load in fullscreen video
-                // const playlistUrl = `/api/streams/${serial}/playlist.m3u8`;
-                const playlistUrl = `/api/streams/${serial}/playlist.m3u8?t=${Date.now()}`;
+                // Choose playlist URL based on stream type
+
+                let playlistUrl;
+                if (typeof startInfo?.stream_url === 'string' && startInfo.stream_url.startsWith('/hls/')) {
+                    // LL-HLS: use MediaMTX URL from backend
+                    playlistUrl = startInfo.stream_url;
+                } else {
+                    // Regular HLS: use app-generated playlist
+                    playlistUrl = `/api/streams/${serial}/playlist.m3u8?t=${Date.now()}`;
+                }
 
                 if (Hls.isSupported()) {
                     this.destroyFullscreenHls();
 
-                    this.fullscreenHls = new Hls({
-                        enableWorker: true,
-                        lowLatencyMode: true,
-                        // keep backBufferLength but don’t hoard 90s; 10s is ample for scrubbing
-                        backBufferLength: 10,
-                        // hug the live edge: ~1 part target behind, cap max drift to ~2
-                        liveSyncDurationCount: 1,
-                        liveMaxLatencyDurationCount: 2,
-                        // allow gentle catch-up when we fall behind without causing stalls
-                        maxLiveSyncPlaybackRate: 1.5
-                    });
+                    // Get camera config and build player settings
+                    const cameraConfig = await this.getCameraConfig(serial);
+                    const isLLHLS = cameraConfig?.stream_type === 'LL_HLS';
+                    const hlsConfig = this.buildHlsConfig(cameraConfig, isLLHLS);
 
+                    this.fullscreenHls = new Hls(hlsConfig);
                     this.fullscreenHls.loadSource(playlistUrl);
                     this.fullscreenHls.attachMedia(this.$fullscreenVideo[0]);
                     this._attachFullscreenLatencyMeter(this.fullscreenHls, this.$fullscreenVideo[0]);
@@ -556,6 +563,7 @@ export class MultiStreamManager {
                     });
 
                 } else if (this.$fullscreenVideo[0].canPlayType('application/vnd.apple.mpegurl')) {
+                    // Native HLS support (Safari)
                     this.$fullscreenVideo.attr('src', playlistUrl);
                     this.$fullscreenVideo.on('loadedmetadata.fullscreen', () => {
                         this.$fullscreenVideo[0].play().catch(() => { });
@@ -583,6 +591,35 @@ export class MultiStreamManager {
                 }
 
                 $mjpegImg.attr('src', mjpegUrl).show();
+            } else if (streamType === 'RTMP') {
+                // RTMP fullscreen using FLV.js
+                const response = await fetch(`/api/stream/start/${serial}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'main' })
+                });
+
+                if (!response.ok) throw new Error('Failed to start fullscreen stream');
+
+                await new Promise(resolve => setTimeout(resolve, 200));
+
+                const flvUrl = `/api/camera/${serial}/flv?t=${Date.now()}`;
+
+                if (flvjs.isSupported()) {
+                    this.destroyFullscreenFlv(); // Need to add this method
+
+                    this.fullscreenFlv = flvjs.createPlayer({
+                        type: 'flv',
+                        url: flvUrl,
+                        isLive: true,
+                        hasAudio: false
+                    });
+
+                    this.fullscreenFlv.attachMediaElement(this.$fullscreenVideo[0]);
+                    this.fullscreenFlv.load();
+                    this.fullscreenFlv.play().catch(() => { });
+                }
+
             }
 
         } catch (error) {

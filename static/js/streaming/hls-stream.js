@@ -164,37 +164,25 @@ export class HLSStreamManager {
             if (!response.ok) throw new Error('Failed to start stream');
             const startInfo = await response.json().catch(() => ({}));
 
-            // Choose playlist URL:
-            // - LL-HLS publishers: use server-provided same-origin URL verbatim (e.g., "/hls/<path>/index.m3u8")
-            // - Classic HLS: keep existing /api/streams/... with cache-busting
+            // Choose playlist URL
             let playlistUrl;
-            // Treat any server-provided /hls/... URL as LL-HLS
             if (typeof startInfo?.stream_url === 'string' && startInfo.stream_url.startsWith('/hls/')) {
-                playlistUrl = startInfo.stream_url;            // ← DO NOT rewrite
+                playlistUrl = startInfo.stream_url;
             } else {
-                // CACHE BUSTING: Add timestamp to URL
                 const ts = Date.now();
                 playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${ts}`;
-                // tiny grace so the playlist appears without adding visible latency
                 await new Promise(r => setTimeout(r, 200));
             }
 
             if (Hls.isSupported()) {
-                const hls = new Hls({
-                    enableWorker: true,
-                    lowLatencyMode: true,
-                    liveSyncDurationCount: 2,
-                    liveMaxLatencyDurationCount: 3,
-                    maxLiveSyncPlaybackRate: 1.5,
-                    backBufferLength: 10,
-                    ...(startInfo?.protocol !== 'll_hls' && {
-                        xhrSetup: (xhr) => {
-                            xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-                            xhr.setRequestHeader('Pragma', 'no-cache');
-                            xhr.setRequestHeader('Expires', '0');
-                        }
-                    })
-                });
+                // Get camera config for player settings
+                const cameraConfig = await this.getCameraConfig(cameraId);
+                const isLLHLS = startInfo?.protocol === 'll_hls' || cameraConfig?.stream_type === 'LL_HLS';
+
+                // Build hls.js config with smart defaults + camera overrides
+                const hlsConfig = this.buildHlsConfig(cameraConfig, isLLHLS);
+
+                const hls = new Hls(hlsConfig);
 
                 hls.loadSource(playlistUrl);
                 hls.attachMedia(videoElement);
@@ -368,5 +356,56 @@ export class HLSStreamManager {
      */
     getActiveStreamIds() {
         return Array.from(this.activeStreams.keys());
+    }
+
+    /**
+     * Get camera configuration from API
+     */
+    async getCameraConfig(cameraId) {
+        try {
+            const response = await fetch(`/api/cameras/${cameraId}`);
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.warn(`Failed to fetch camera config for ${cameraId}:`, error);
+            return null;
+        }
+    }
+
+    /**
+     * Build hls.js configuration with smart defaults + camera overrides
+     */
+    buildHlsConfig(cameraConfig, isLLHLS) {
+        // Smart defaults based on stream type
+        const defaults = isLLHLS ? {
+            enableWorker: true,
+            lowLatencyMode: true,
+            liveSyncDurationCount: 1,
+            liveMaxLatencyDurationCount: 2,
+            maxLiveSyncPlaybackRate: 1.5,
+            backBufferLength: 5
+        } : {
+            enableWorker: true,
+            lowLatencyMode: false,
+            liveSyncDurationCount: 3,
+            liveMaxLatencyDurationCount: 5,
+            maxLiveSyncPlaybackRate: 1.5,
+            backBufferLength: 10
+        };
+
+        // Merge with camera-specific overrides
+        const cameraOverrides = cameraConfig?.player_settings?.hls_js || {};
+        const config = { ...defaults, ...cameraOverrides };
+
+        // Add cache control for non-LL-HLS
+        if (!isLLHLS) {
+            config.xhrSetup = (xhr) => {
+                xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                xhr.setRequestHeader('Pragma', 'no-cache');
+                xhr.setRequestHeader('Expires', '0');
+            };
+        }
+
+        return config;
     }
 }

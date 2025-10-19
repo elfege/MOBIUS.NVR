@@ -31,6 +31,15 @@ if [ ! -f docker-compose.yml ]; then
     exit 1
 fi
 
+# Stop and remove containers
+docker compose down &>/dev/null || true 
+
+# Remove the old image
+docker rmi 0_nvr-nvr &>/dev/null || true 
+
+# Clean up unused Docker resources
+docker system prune -f  || true 
+
 get_cameras_credentials >/dev/null 
 
 echo "Building Docker image..."

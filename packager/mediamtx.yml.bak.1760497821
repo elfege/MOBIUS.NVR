@@ -1,0 +1,28 @@
+# MediaMTX config — LL-HLS sidecar
+# We do NOT touch Flask/FFmpeg flow.
+# This packager ingests RTSP directly from the camera and serves LL-HLS (with PARTs).
+
+# === HLS/LL-HLS (HTTP) ===
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency          # emit #EXT-X-PART + PRELOAD-HINT
+hlsSegmentCount: 7              # keep very small live window
+hlsSegmentDuration: 1s          # full segment duration
+hlsPartDuration: 200ms          # partial segment duration
+hlsAllowOrigin: "*"             # allow browser clients
+hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
+
+# (leave RTSP/RTMP/WEBRTC defaults alone for now)
+
+# === Paths (inputs) ===
+# paths:
+#   REOLINK_OFFICE:
+#     source: publisher
+#     runOnInit: >
+#       ffmpeg -rtsp_transport tcp -i rtsp://admin:TarTo56%29%29%23FatouiiDRtu@192.168.10.88:554/h264Preview_01_sub
+#       -an -c:v libx264 -preset veryfast -tune zerolatency
+#       -g 15 -keyint_min 15 -force_key_frames "expr:gte(t,n_forced*1)"
+#       -x264-params "scenecut=0:min-keyint=15:open_gop=0"
+#       -b:v 800k -maxrate 800k -bufsize 1600k -pix_fmt yuv420p -profile:v baseline
+#       -f flv rtmp://localhost:1935/REOLINK_OFFICE
+#     runOnInitRestart: yes

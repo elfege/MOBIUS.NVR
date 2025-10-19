@@ -4,7 +4,7 @@ A containerized solution for integrating UniFi G5-Flex cameras with Blue Iris su
 
 ## Overview
 
-The UniFi G5-Flex cameras require session-based authentication which Blue Iris cannot handle natively. This proxy stack maintains the session with your cameras and serves standard MJPEG streams that Blue Iris can consume without authentication.
+The UniFi G5-Flex cameras require session-based authentication which Blue Iris cannot handle natively. This proxy stack maintains the session with  cameras and serves standard MJPEG streams that Blue Iris can consume without authentication.
 
 ## Features
 
@@ -184,4 +184,4 @@ sudo netstat -tlnp | grep 8080
 
 ## License
 
-This is a custom solution for integrating UniFi cameras with Blue Iris. Use at your own discreti
+This is a custom solution for integrating UniFi cameras with Blue Iris. Use at  own discreti

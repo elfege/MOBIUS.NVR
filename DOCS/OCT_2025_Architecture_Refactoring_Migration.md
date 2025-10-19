@@ -76,7 +76,7 @@ Copy the config files from the artifacts:
 # - config/reolink.json
 ```
 
-**Update `unifi_protect.json` with your actual rtsp_alias:**
+**Update `unifi_protect.json` with  actual rtsp_alias:**
 ```json
 {
   "console": {
@@ -114,7 +114,7 @@ streaming/handlers/reolink_stream_handler.py
 
 ### **Step 4: Update cameras.json**
 
-Replace your current `config/cameras.json` with the cleaned version (see artifact above).
+Replace  current `config/cameras.json` with the cleaned version (see artifact above).
 
 **Key changes:**
 - ❌ Removed all `credentials` objects
@@ -263,7 +263,7 @@ def api_status():
 
 ### **Step 7: Load AWS Secrets Before Starting**
 
-**Update your start script or manually load:**
+**Update  start script or manually load:**
 
 ```bash
 # In start.sh or run manually before starting app
@@ -324,7 +324,7 @@ print(f"Protect credentials: {username}, {password[:4]}****")
 **Expected output:**
 ```
 Eufy camera credentials: Hs07XmLA7MT8zb3j, Kq5P****
-Protect credentials: user-api, your****
+Protect credentials: user-api, ****
 ```
 
 #### **Test 3: Stream Handler**

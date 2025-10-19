@@ -606,7 +606,7 @@ but keeping these for future Unifi PTZ capable (pricey)
 - **Alternative Approaches**: Investigate different HLS implementations or direct RTSP-to-browser streaming options
 - **Blue Iris Integration**: Current system serves Blue Iris successfully despite FFmpeg issues, providing viable production workaround
 
-I'll add a new section to document today's troubleshooting efforts:I've added the afternoon session to your project history. Here's a summary of what we accomplished and where we stand:
+I'll add a new section to document today's troubleshooting efforts:I've added the afternoon session to  project history. Here's a summary of what we accomplished and where we stand:
 
 ## What We Tried to Accomplish Today (Unsuccessful)
 
@@ -2103,7 +2103,7 @@ Created final merged `app.py` combining:
 - Must verify all credential environment variables correctly loaded
 - Need to test actual streaming after credential fixes
 
-Here’s a ready-to-paste continuation for `DOCS/README_project_history.md`, picking up from your last “Next Session Priority” and covering this whole block of work.
+Here’s a ready-to-paste continuation for `DOCS/README_project_history.md`, picking up from  last “Next Session Priority” and covering this whole block of work.
 
 ---
 
@@ -2218,7 +2218,7 @@ Stabilized dev reloads and stream startup by asserting `streams/` ownership on i
 - **Watchdog improvements**
 
   - Root cause: watchdog judged streams “dead” while HLS was still warming up, then restarted them in a loop.
-  - Temporary dev mitigation: allow bypass (your manual `continue` or `ENABLE_WATCHDOG=0`).
+  - Temporary dev mitigation: allow bypass ( manual `continue` or `ENABLE_WATCHDOG=0`).
   - Introduced **grace window** per camera: suppress health checks for ~10s after cleanup/start so the first playlist/segments can land.
   - Designed single-flight restart (per-camera lock + `in_progress` flag) and fixed “cannot join current thread” by calling `stop_stream(camera_serial, stop_watchdog=False)` during watchdog-initiated restarts (never join the current thread).
 - **Safer HLS cleanup**
@@ -2679,7 +2679,7 @@ def kill_ffmpeg():
                 print("✅ No ffmpeg processes left")
                 break
         except:
-            print(traceback_exc())
+            print(traceback.print_exc())
             raise Exception(f"❌ ffmpeg Cleanup error")
 ```
 
@@ -3647,7 +3647,7 @@ if (streamType === 'll_hls') {
 
 ## README_project_history.md Update
 
-Add this section to your README:
+Add this section to  README:
 
 ---
 
@@ -4716,7 +4716,7 @@ Massive architectural refactor of camera streaming pipeline to fully de-vendoriz
 
 ---
 
-Got it. Based on your current trajectory — the FFmpeg latency tests, RTMP/FLV attempt, and the discovery that Ubuntu 24.04 (with FFmpeg ≥6.1) is required for LL-HLS/WebRTC experiments — here’s what I’ll append to `README_project_history.md` under a **“Next Steps / Migration Plan”** section:
+Got it. Based on  current trajectory — the FFmpeg latency tests, RTMP/FLV attempt, and the discovery that Ubuntu 24.04 (with FFmpeg ≥6.1) is required for LL-HLS/WebRTC experiments — here’s what I’ll append to `README_project_history.md` under a **“Next Steps / Migration Plan”** section:
 
 ---
 
@@ -4786,7 +4786,7 @@ Got it. Based on your current trajectory — the FFmpeg latency tests, RTMP/FLV 
    - Preserve `/api/.../flv` as fallback.
 
 ---
-Got it! Here's a new supplementary section to add after your existing October 9-10 entry:
+Got it! Here's a new supplementary section to add after  existing October 9-10 entry:
 
 ---
 
@@ -5424,7 +5424,7 @@ async restartStream(serial, $streamItem) {
             delete videoElement._healthDetach;
         }
 
-        if (streamType === 'HLS') {
+        if (streamType === 'HLS' || streamType === 'LL_HLS') {
             await this.hlsManager.forceRefreshStream(serial, videoElement);
             this.setStreamStatus($streamItem, 'live', 'Live');
         } else if (streamType === 'mjpeg_proxy' || streamType === 'RTMP') {   // ✅ unified branch
@@ -5458,7 +5458,7 @@ async restartStream(serial, $streamItem) {
 
 ---
 
-Here’s the next block to append to `README_project_history.md` (same tone/structure as your recent entries). I’ve included precise references to where the bugs/behaviors showed up in the code so you can trace later.
+Here’s the next block to append to `README_project_history.md` (same tone/structure as  recent entries). I’ve included precise references to where the bugs/behaviors showed up in the code so we can trace later.
 
 ---
 
@@ -5516,7 +5516,7 @@ Here’s the next block to append to `README_project_history.md` (same tone/stru
 
 #### Notes & rationale
 
-- We respected your existing `onUnhealthy` exponential backoff wiring (attempts/timers) in the constructor【turn5file2】【turn5file2】.
+- We respected  existing `onUnhealthy` exponential backoff wiring (attempts/timers) in the constructor【turn5file2】【turn5file2】.
 - RTMP/FLV must be re-created on restart; destroying and rebuilding the flv.js player is the reliable “refresh” (HLS needs cache bust via `forceRefreshStream`, MJPEG just restarts) — hence the symmetric but protocol-specific branches in `restartStream()`.
 
 #### Outcome
@@ -5535,7 +5535,7 @@ Backend Watchdog needs updating due to many refactorings: varibles not passed wh
 
 ---
 
-I'll update the README with the current state and the critical issues you're facing.I need to read the README first to append to it properly. Let me check the file structure:Let me check what files are available:Based on the issues you've described, here's what needs to be documented:
+I'll update the README with the current state and the critical issues we're facing.I need to read the README first to append to it properly. Let me check the file structure:Let me check what files are available:Based on the issues we've described, here's what needs to be documented:
 
 ---
 
@@ -6041,7 +6041,7 @@ process = subprocess.Popen(
 **Option 3: Read in Background Thread (Complex)**
 
 ```python
-# Only if you NEED to process FFmpeg output in real-time
+# Only if we NEED to process FFmpeg output in real-time
 # Requires threading.Thread reading from process.stdout/stderr
 ```
 
@@ -6074,7 +6074,7 @@ segment_178.ts
 **Critical Python Subprocess Gotcha:**
 
 - `subprocess.PIPE` creates a **fixed-size buffer** (typically 64KB on Linux)
-- If you capture output but **never read from the pipe**, the buffer fills
+- If we capture output but **never read from the pipe**, the buffer fills
 - When buffer is full, the child process **blocks on write()**
 - This creates a **deadlock**: parent waiting for child, child waiting for parent to read
 
@@ -6087,9 +6087,9 @@ segment_178.ts
 
 **Best Practices:**
 
-1. **Default:** Use `subprocess.DEVNULL` if you don't need output
-2. **Logging:** Redirect to file if you need logs
-3. **Real-time:** Use threading if you must process output live
+1. **Default:** Use `subprocess.DEVNULL` if we don't need output
+2. **Logging:** Redirect to file if we need logs
+3. **Real-time:** Use threading if we must process output live
 4. **Never:** Use `PIPE` without reading from it
 
 ### **Why This Was Hard to Debug**
@@ -6451,7 +6451,7 @@ T8416P00233717CB: staleDuration=17.3s
 - Video element state inspection
 - ~350 lines of entangled logic
 
-**User's assessment:** "I let you build this without supervision and you overcomplicated it."
+**User's assessment:** "I let we build this without supervision and we overcomplicated it."
 
 **Questions posed:**
 
@@ -6683,3 +6683,435 @@ Use when we want minimum latency within “short‑segment HLS” (still not App
 3. For sub‑second targets: prototype a **WebRTC** path for the fullscreen view (RTSP→transcode→WebRTC).
 
 ---
+
+## October 14th 2025 — HTTPS/HTTP-2 edge + LL-HLS packager (MediaMTX)
+
+**Goal:** set the stage for true LL-HLS (partials) while keeping existing HLS working.
+
+### What we added/changed (one step at a time)
+
+- **TLS cert helper**
+
+  - New script: `0_MAINTENANCE_SCRIPTS/make_self_signed_tls.sh`
+  - Fix: use `${HOME}/0_NVR` (not `"~"`) so certs land at `certs/dev/{fullchain.pem,privkey.pem}`.
+
+- **NGINX edge (HTTP/2)**
+
+  - `docker-compose.yml`
+
+    - New service: `nvr-edge` on ports `80` and `443`, network `nvr-net`.
+    - `nvr` ports now bound to loopback: `127.0.0.1:5000:5000` (forces clients through edge).
+  - `nginx/nginx.conf`
+
+    - Added `server { listen 80; … return 301 https://… }`.
+    - Added `server { listen 443 ssl http2; … }` with:
+
+      - TLS from `/etc/nginx/certs`.
+      - Proxy to `http://nvr:5000`.
+      - Low-latency passthrough blocks:
+
+        - `location ^~ /streams/ { … proxy_buffering off … }` (legacy HLS from our app).
+        - `location ^~ /hls/ { … }` (proxy to packager; LL-HLS).
+    - Confirmed browser shows **h2** in DevTools when hitting the edge.
+
+- **Compose cleanup**
+
+  - Single unified `docker-compose.yml`; removed the override.
+  - `depends_on: [nvr]` for `nvr-edge` so edge waits for the app.
+  - Removed duplicate volume entry for `./config:/app/config`.
+
+- **FFmpeg reality check**
+
+  - Debian/Ubuntu FFmpeg builds lack Apple LL-HLS partials. Tried static builds; still no `hls_part_size`/`part_inf` in our env → decided to **not** rely on FFmpeg for `#EXT-X-PART`.
+
+- **LL-HLS sidecar (MediaMTX)**
+
+  - New service: `packager` (`bluenviron/mediamtx`) on `:8888`, in `nvr-net`.
+  - New config file: `packager/mediamtx.yml`
+
+    - `hls: yes`, `hlsVariant: lowLatency`
+    - `hlsSegmentCount: 7`, `hlsSegmentDuration: 1s`, `hlsPartDuration: 200ms`
+    - Path `REOLINK_OFFICE`:
+
+      - `source: rtsp://admin:TarTo56%29%29%23FatouiiDRtu@192.168.10.88:554/h264Preview_01_sub`
+      - `rtspTransport` (aka `sourceProtocol`) set to **TCP** (UDP caused decode errors/packet loss).
+      - `sourceOnDemand: no` to keep it constantly up for debugging.
+  - NGINX proxies `/hls/…` → `nvr-packager:8888` (HTTP/2 at the edge, self-signed cert).
+  - NOTE: MediaMTX logs initially warned “LL-HLS requires at least 7 segments” → fixed by raising `hlsSegmentCount` to 7.
+
+- **Player tuning (interim)**
+
+  - To avoid spinner with classic HLS (no PARTs), relaxed hls.js edge:
+
+    - `liveSyncDurationCount: 2` (was 1)
+    - `liveMaxLatencyDurationCount: 3` (was 2)
+
+### Current state
+
+- `https://<server>/streams/...` = **legacy HLS** from unified-nvr (works as before).
+- `https://<server>/hls/REOLINK_OFFICE/index.m3u8` = **MediaMTX LL-HLS** path via edge.
+  MediaMTX is running, RTSP pull is stable over TCP, and the HLS muxer is created. Use this URL in the UI to test LL-HLS; manifest should include `#EXT-X-PART` (when the mux has filled enough segments).
+
+### Gotchas we hit (and fixed)
+
+- Hitting `http://<ip>:5000` bypassed the edge → added loopback bind for app port.
+- Self-signed script initially wrote to `"~"` path literal → switched to `${HOME}`.
+- MediaMTX 404s were due to:
+
+  - Wrong path (checked `/hls/...`, not `/streams/...`), and
+  - RTSP UDP causing decode errors → forced TCP.
+- Early LL-HLS error: “requires ≥7 segments” → set `hlsSegmentCount: 7`.
+
+### Backlog / next steps
+
+- UI: add a per-camera toggle to choose **HLS (app)** vs **LL-HLS (packager)**; point to `/hls/<CAM>/index.m3u8` for LL-HLS.
+- NGINX: optional `/llhls/` alias if we want a clean split for testing.
+- MediaMTX: consider `hlsLowLatencyMaxAge` / cache headers fine-tuning.
+- Optional: WebRTC from MediaMTX for sub-second on LAN (useful for PTZ/interactive).
+- Metrics: add simple probe to compare **PROGRAM-DATE-TIME delta** between the two paths for real latency numbers.
+
+---
+
+## October 14th (late evening): Session snapshot (LL-HLS via MediaMTX)
+
+### What’s working end-to-end
+
+- **Edge → Packager:** `nginx` proxies `/hls/` to `nvr-packager:8888/` (note the trailing slash). Gzip disabled for `/hls/` and `Accept-Encoding` cleared.
+- **Packager (MediaMTX):** LL-HLS manifests show `EXT-X-PART`, `SERVER-CONTROL`, `PRELOAD-HINT`.
+- **Latency:** ~1–2s achieved after (a) 1s GOP publish and (b) gzip off on `/hls/`.
+- **Player:** hls.js with `lowLatencyMode: true` works when using the **same origin** (e.g., `https://localhost/hls/<CAM>/index.m3u8`).
+
+### Config changes
+
+- **cameras.json (guinea pig)** `REOLINK_OFFICE`
+
+  - `"stream_type": "LL_HLS"`
+  - `"packager_path": "REOLINK_OFFICE"`
+  - `"ll_hls": { ... }` block added:
+
+    - `publisher`: `protocol: "rtsp"`, `host: "nvr-packager"`, `port: 8554`, `path: "REOLINK_OFFICE"`.
+    - `video`: ffmpeg-style keys (`c:v`, `r`, `g`, `keyint_min`, `x264-params`, `vf`, etc.).
+    - `audio`: `"enabled": false` for tight LL (can enable later).
+  - Optional `"__notes"` block added (purely informational).
+
+### NGINX (edge)
+
+- `location ^~ /hls/ { proxy_pass http://nvr-packager:8888/; gzip off; proxy_set_header Accept-Encoding ""; proxy_buffering off; proxy_request_buffering off; … }`
+
+### MediaMTX
+
+- We’re using **publisher** mode for the `REOLINK_OFFICE` path (no camera `source:`) so the NVR publishes a 1s GOP stream to the packager (RTSP or RTMP — chosen by JSON).
+
+### Backend architecture updates (minimal, no renames)
+
+- **ffmpeg_params.py**
+
+  - Added `FFmpegHLSParamBuilder.build_ll_hls_publish_output(ll_hls_cfg)` — emits **output** args for publishing (RTSP or RTMP), fully driven by `cameras.json` (no hardcoding).
+  - Added helpers:
+
+    - `build_ll_hls_input_publish_params(camera_config)` → mirrors `build_rtsp_input_params` (input flags).
+    - `build_ll_hls_output_publish_params(camera_config, vendor_prefix)` → calls the new builder method (output flags).
+
+- **Vendor handlers (Reolink/Unifi/Eufy)**
+
+  - New private method in each:
+    `_build_ll_hls_publish(self, camera_config, rtsp_url) -> (argv, play_url)`
+
+    - Uses the two helpers above to build: `["ffmpeg", <input>, "-i", rtsp_url, <output>]`
+    - Returns `play_url = "/hls/<packager_path|serial|id>/index.m3u8"`
+
+- **stream_manager.py**
+
+  - `start_stream()` and `_start_stream()` now recognize `"LL_HLS"`:
+
+    - Build argv via handler’s `_build_ll_hls_publish(...)`, spawn publisher, store `protocol: "ll_hls"` and `stream_url`.
+    - When a stream is “starting”, return `/hls/<path>/index.m3u8` for LL-HLS cams.
+  - `get_stream_url()` returns stored `stream_url` when `protocol == "ll_hls"`.
+  - `stop_stream()` kills the publisher process and skips filesystem cleanup for LL-HLS.
+
+- **app.py**
+
+  - No change needed. It already returns the `stream_url` from `start_stream()`.
+
+### UI (pending small change)
+
+- If `camera.stream_type === "LL_HLS"`:
+
+  - Use the API’s returned `stream_url` as the player src.
+  - Instantiate hls.js with `lowLatencyMode: true` and the tight live-edge settings we verified (or auto-tune from `SERVER-CONTROL`/`PART-INF` as we did).
+
+### Why we publish (instead of direct camera pull)
+
+- The camera’s GOP ≈ 4–5s forces large `TARGETDURATION` and ~3–5s latency. Publishing a 1s GOP stream (with the chosen encoder settings) lets MediaMTX produce short segments/parts and stay ~1–2s.
+
+### Next
+
+Sweet—picking up from **UI implementation** only. Here’s the tight plan (no code yet):
+
+1. **Use the URL the API returns**
+
+   - When you call `/api/stream/start/<id>`, use `res.stream_url` as-is for the player source. Don’t reconstruct `/streams/...` for LL_HLS cams.
+
+2. **Detect LL_HLS and init the player accordingly**
+
+   - If `camera.stream_type === 'LL_HLS'`:
+
+     - Use **same-origin** URL (whatever origin the page is on).
+     - hls.js with `lowLatencyMode: true` + your tuned settings (or auto-tune from `SERVER-CONTROL` + `PART-INF`).
+   - Else (classic HLS): keep your existing path.
+
+3. **Keep native fallback**
+
+   - If `video.canPlayType('application/vnd.apple.mpegurl')` is true, set `video.src = stream_url` (especially on iOS/Safari). Otherwise use hls.js.
+
+4. **Hide/adjust controls for LL_HLS**
+
+   - Hide or noop any “Restart/Transcode/Regenerate” controls that are only meaningful for app-side HLS.
+   - Keep Start/Stop mapped to the same backend endpoints (publisher start/stop already wired).
+
+5. **Health badge via playlist probe**
+
+   - For LL_HLS tiles, poll the **variant** playlist every ~2s and verify `#EXT-X-PART` count or `MEDIA-SEQUENCE` increases → show “Live”. If fetch fails or stalls for N intervals → show “Stalled”.
+
+6. **Latency readout (tiny overlay)**
+
+   - Parse `#EXT-X-PROGRAM-DATE-TIME` and show `now - PDT` as an approximate latency badge (only for LL_HLS). Useful for regressions.
+
+7. **Per-camera toggle (optional)**
+
+   - If you expose a UI control to force LL_HLS/HLS per camera session, make it only change which URL you request; do **not** change `cameras.json` (that’s ops-owned). Persist per-user in localStorage if helpful.
+
+8. **Edge quirks guardrails**
+
+   - Ensure player requests hit `https://<current-origin>/hls/...` (no hardcoded hostnames).
+   - Don’t add `Accept-Encoding` headers from the client (edge already strips them).
+   - If you use a service worker, bypass caching for `/hls/` requests.
+
+---
+
+## October 15 to Octover 19 (Early Morning), 2025 : LL-HLS First Successful Implementation - FFmpeg Static Build Bug Resolution
+
+### Summary
+
+Achieved first successful LL-HLS stream through complete integration of camera → FFmpeg publisher → MediaMTX packager → Browser pipeline. Resolved critical FFmpeg static build segfault bug by reverting to Ubuntu's native FFmpeg 6.1.1 package. Stream now delivers ~1-2 second latency as designed.
+
+### Session Timeline
+
+**Initial State:**
+
+- Backend LL-HLS code complete (ffmpeg_params.py, stream_manager.py, vendor handlers)
+- MediaMTX configured and running
+- NGINX edge proxying `/hls/` → MediaMTX
+- Frontend unable to trigger backend (stream type mismatch)
+
+**Problem 1: Frontend Not Calling Backend**
+
+- **Symptom:** REOLINK_OFFICE marked as "Failed", pitch black, no play attempt, nothing in backend logs
+- **Root Cause:** `stream.js` only recognized `"HLS"`, `"RTMP"`, `"mjpeg_proxy"` - not `"LL_HLS"`
+- **Fix:** Added `|| streamType === 'LL_HLS'` condition to use HLS manager for LL_HLS streams
+- **Result:** Backend now receives start requests
+
+**Problem 2: FFmpeg Commands Generated But Streams Failed**
+
+- **Symptom:** Backend builds correct FFmpeg command, but stream never appears; 404 on `/hls/REOLINK_OFFICE/index.m3u8`
+- **Investigation:**
+  - FFmpeg temp log files showed encoder starting successfully
+  - No "FFmpeg DIED" error message (process survived 3-second check)
+  - Process not found in `ps aux` later (died after check window)
+  - MediaMTX logs showed no incoming stream
+
+**Problem 3: RTSP Transport Protocol Mismatch**
+
+- **Initial Command:** Used TCP for both input and output (from previous testing)
+- **First Fix Attempt:** Changed input to UDP (eliminated RTP packet corruption errors from earlier TCP issues)
+- **Remaining Issue:** Output still hardcoded to TCP in `ffmpeg_params.py`
+- **Fix:** Modified `build_ll_hls_publish_output()` to read `rtsp_transport` from `ll_hls.publisher` config
+
+  ```python
+  rtsp_transport = pub.get("rtsp_transport", "tcp")
+  out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, sink]
+  ```
+
+- **Also Removed:** `-muxpreload 0 -muxdelay 0` (unnecessary for RTSP output)
+
+**Problem 4: Python Bytecode Caching**
+
+- **Symptom:** Code changes in `ffmpeg_params.py` not taking effect after container restart
+- **Root Cause:** `.pyc` files cached, some in read-only `/app/config/__pycache__`
+- **Workaround:** Full rebuild via `./deploy.sh` required for code changes (volume mounts not configured for hot reload)
+
+**Problem 5: FFmpeg Static Build Segmentation Fault**
+
+- **Symptom:** Manual test inside container: `ffmpeg ... -f rtsp -rtsp_transport udp rtsp://nvr-packager:8554/REOLINK_OFFICE` → Segmentation fault (core dumped)
+- **Comparison:** Same command worked from host with Ubuntu's FFmpeg 6.1.1
+- **Root Cause:** johnvansickle.com static FFmpeg build (N-71064-gd5e603ddc0-static) has bug with RTSP UDP output
+- **Historical Context:** Static build was installed for LL-HLS partials support, but MediaMTX now handles packaging (FFmpeg only publishes)
+- **Fix:** Reverted Dockerfile to use Ubuntu's native FFmpeg:
+
+  ```dockerfile
+  RUN apt-get update && apt-get install -y \
+      curl \
+      ffmpeg \  # ← Re-enabled native package
+      nodejs \
+      npm \
+      procps \
+      && rm -rf /var/lib/apt/lists/*
+  
+  # Removed: Static FFmpeg download and installation
+  ```
+
+### Final Working Configuration
+
+**cameras.json (REOLINK_OFFICE):**
+
+```json
+{
+  "stream_type": "LL_HLS",
+  "ll_hls": {
+    "publisher": {
+      "protocol": "rtsp",
+      "host": "nvr-packager",
+      "port": 8554,
+      "path": "REOLINK_OFFICE",
+      "rtsp_transport": "udp"  // ← Critical for low latency
+    },
+    "video": {
+      "c:v": "libx264",
+      "preset": "veryfast",
+      "tune": "zerolatency",
+      "profile:v": "baseline",
+      "pix_fmt": "yuv420p",
+      "r": 30,
+      "g": 15,
+      "keyint_min": 15,
+      "b:v": "800k",
+      "maxrate": "800k",
+      "bufsize": "1600k",
+      "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+      "force_key_frames": "expr:gte(t,n_forced*1)",
+      "vf": "scale=640:480"
+    },
+    "audio": {
+      "enabled": false
+    }
+  },
+  "rtsp_input": {
+    "rtsp_transport": "udp",  // ← UDP avoids RTP packet corruption
+    "timeout": 5000000,
+    "analyzeduration": 1000000,
+    "probesize": 1000000,
+    "use_wallclock_as_timestamps": 1,
+    "fflags": "nobuffer"
+  }
+}
+```
+
+**Working FFmpeg Command:**
+
+```bash
+ffmpeg -rtsp_transport udp -timeout 5000000 -analyzeduration 1000000 \
+  -probesize 1000000 -use_wallclock_as_timestamps 1 -fflags nobuffer \
+  -i rtsp://admin:PASSWORD@192.168.10.88:554/h264Preview_01_sub \
+  -an -c:v libx264 -preset veryfast -tune zerolatency \
+  -profile:v baseline -pix_fmt yuv420p -r 30 -g 15 -keyint_min 15 \
+  -b:v 800k -maxrate 800k -bufsize 1600k \
+  -x264-params scenecut=0:min-keyint=15:open_gop=0 \
+  -force_key_frames expr:gte(t,n_forced*1) -vf scale=640:480 \
+  -f rtsp -rtsp_transport udp rtsp://nvr-packager:8554/REOLINK_OFFICE
+```
+
+**Stream Flow:**
+
+1. Camera (192.168.10.88) → RTSP (UDP)
+2. FFmpeg (unified-nvr container) → Re-encode with 1s GOP
+3. MediaMTX (nvr-packager:8554) → Receive via RTSP, package as LL-HLS
+4. NGINX (nvr-edge:443) → Proxy `/hls/*` to MediaMTX:8888
+5. Browser → hls.js with `lowLatencyMode: true`
+
+### Testing Results
+
+**Manual Verification:**
+
+- RTSP+UDP publishing: ✅ Works (~1-2s latency)
+- RTSP+TCP publishing: ✅ Works (~3s latency)  
+- RTMP publishing: ✅ Works (~2-3s latency)
+
+**Final Choice:** RTSP+UDP for best latency
+
+**Browser Playback:**
+
+```javascript
+const video = document.createElement('video');
+video.controls = true;
+video.style.cssText = 'position:fixed;top:10px;right:10px;width:400px;z-index:9999;border:2px solid red';
+document.body.appendChild(video);
+
+if (Hls.isSupported()) {
+    const hls = new Hls({lowLatencyMode: true});
+    hls.loadSource('/hls/REOLINK_OFFICE/index.m3u8');
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+}
+```
+
+Result: ✅ Stream plays with ~1-2 second latency
+
+### Technical Lessons Learned
+
+1. **Static FFmpeg builds may have platform-specific bugs** - Ubuntu's native packages are more reliable for standard operations
+2. **RTSP transport protocol significantly impacts latency** - UDP: 1-2s, TCP: 3s for same encoding settings
+3. **Container file mounts critical for development** - Without volume mounts, every code change requires full rebuild
+4. **Python bytecode caching persists across restarts** - `.pyc` files can mask code changes; full rebuild ensures clean state
+5. **Segfaults indicate low-level issues** - When FFmpeg crashes with segfault, suspect binary/library incompatibility rather than parameter issues
+6. **Protocol testing order matters** - Test simplest case first (RTSP worked when RTMP didn't), then optimize
+
+### Code Changes
+
+**Modified Files:**
+
+- `static/js/streaming/stream.js`: Added LL_HLS to stream type router
+- `streaming/ffmpeg_params.py`: Made RTSP transport configurable, removed muxdelay/muxpreload
+- `Dockerfile`: Reverted to Ubuntu FFmpeg 6.1.1 native package
+- `config/cameras.json`: Added LL_HLS configuration for REOLINK_OFFICE
+
+### Current System State
+
+**Stream Types Operational:**
+
+- ✅ HLS (app-generated) - 9 cameras
+- ✅ MJPEG (proxy) - 1 camera  
+- ✅ RTMP (flv.js) - Tested, not production
+- ✅ LL-HLS (MediaMTX) - 1 camera (REOLINK_OFFICE)
+
+**Performance:**
+
+- LL-HLS latency: ~1-2 seconds (target achieved)
+- Regular HLS latency: ~2-6 seconds  
+- CPU per LL-HLS stream: ~4-5% (publisher + MediaMTX)
+- Memory per stream: ~136MB
+
+### Next Steps
+
+1. **Amcrest Camera Integration** - Implement vendor handler for lobby camera
+2. **Recording System** - Begin architecture for video recording/playback
+3. **Expand LL-HLS** - Consider migrating additional cameras to LL-HLS
+4. **Volume Mounts** - Configure Docker volume mounts for code hot-reload during development
+5. **Health Monitor Integration** - Wire LL-HLS streams into existing health monitoring system
+
+---
+
+**Session completed:** October 19, 2025, 06:15 AM  
+**Status:** LL-HLS operational with target latency achieved, ready for Amcrest integration
+**Known Issues:**
+
+1. Initial page load sometimes fails to initialize hls.js properly for LL-HLS streams (readyState: 0, no HLS manager instance). Page reload resolves the issue. Likely race condition between stream start and hls.js initialization or module loading order. Requires investigation of JavaScript initialization sequence in stream.js and hls-stream.js.
+
+2. After some time UI stream freezes despite logs telling a different story:
+
+```bash
+nvr-edge      | 192.168.10.110 - - [19/Oct/2025:06:25:12 +0000] "POST /api/stream/start/T8441P122428038A HTTP/2.0" 200 191 "https://192.168.10.15/streams" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" "-"
+nvr-edge      | 192.168.10.110 - - [19/Oct/2025:06:25:12 +0000] "POST /api/stream/start/REOLINK_OFFICE HTTP/2.0" 200 186 "https://192.168.10.15/streams" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" "-"
+nvr-edge      | 192.168.10.110 - - [19/Oct/2025:06:25:12 +0000] "POST /api/stream/start/REOLINK_TERRACE HTTP/2.0" 200 201 "https://192.168.10.15/streams" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" "-"
+nvr-edge      | 192.168.10.110 - - [19/Oct/2025:06:25:12 +0000] "POST /api/stream/start/REOLINK_LAUNDRY HTTP/2.0" 200 199 "https://192.168.10.15/streams" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" "-"
+nvr-edge      | 192.168.10.110 - - [19/Oct/2025:06:25:12 +0000] "GET /hls/REOLINK_OFFICE/index.m3u8 HTTP/2.0" 404 18 "https://192.168.10.15/streams" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36" "-"
+```

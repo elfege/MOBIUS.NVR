@@ -29,7 +29,7 @@ export class HLSStreamManager {
             pointerEvents: 'none',
             zIndex: 2,
         });
-        // container: assume parent .stream-item is position:relative (your markup already uses cards)
+        // container: assume parent .stream-item is position:relative ( markup already uses cards)
         const parent = videoEl.parentElement || document.body;
         parent.style.position = parent.style.position || 'relative';
         parent.appendChild(badge);
@@ -130,7 +130,7 @@ export class HLSStreamManager {
         // 4) Small grace so ffmpeg releases sockets
         await new Promise(r => setTimeout(r, 250));
 
-        // 5) START on backend (singular /api/stream/*); then reattach via your existing API
+        // 5) START on backend (singular /api/stream/*); then reattach via  existing API
         try {
             const startRes = await fetch(`/api/stream/start/${encodeURIComponent(cameraId)}`, {
                 method: 'POST',
@@ -144,7 +144,7 @@ export class HLSStreamManager {
             console.warn(`[forceRefreshStream] start failed for ${cameraId}:`, e);
         }
 
-        // 6) Give the new playlist a moment, then reattach (HLS/MJPEG/RTMP handled by your startStream)
+        // 6) Give the new playlist a moment, then reattach (HLS/MJPEG/RTMP handled by  startStream)
         await new Promise(r => setTimeout(r, 500));
         return await this.startStream(cameraId, videoElement, streamType);
     }
@@ -162,29 +162,38 @@ export class HLSStreamManager {
             });
 
             if (!response.ok) throw new Error('Failed to start stream');
+            const startInfo = await response.json().catch(() => ({}));
 
-            // Keep startup wait tiny to avoid adding visible latency
-            await new Promise(resolve => setTimeout(resolve, 200));
-
-            // CACHE BUSTING: Add timestamp to URL
-            const timestamp = Date.now();
-            const playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${timestamp}`;
+            // Choose playlist URL:
+            // - LL-HLS publishers: use server-provided same-origin URL verbatim (e.g., "/hls/<path>/index.m3u8")
+            // - Classic HLS: keep existing /api/streams/... with cache-busting
+            let playlistUrl;
+            // Treat any server-provided /hls/... URL as LL-HLS
+            if (typeof startInfo?.stream_url === 'string' && startInfo.stream_url.startsWith('/hls/')) {
+                playlistUrl = startInfo.stream_url;            // ← DO NOT rewrite
+            } else {
+                // CACHE BUSTING: Add timestamp to URL
+                const ts = Date.now();
+                playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${ts}`;
+                // tiny grace so the playlist appears without adding visible latency
+                await new Promise(r => setTimeout(r, 200));
+            }
 
             if (Hls.isSupported()) {
                 const hls = new Hls({
                     enableWorker: true,
                     lowLatencyMode: true,
-                    // hug the live edge
-                    liveSyncDurationCount: 1,
-                    liveMaxLatencyDurationCount: 2,
+                    liveSyncDurationCount: 2,
+                    liveMaxLatencyDurationCount: 3,
                     maxLiveSyncPlaybackRate: 1.5,
-                    // don’t hoard buffer; keeps GC churn and drift down
                     backBufferLength: 10,
-                    xhrSetup: (xhr, url) => {
-                        xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-                        xhr.setRequestHeader('Pragma', 'no-cache');
-                        xhr.setRequestHeader('Expires', '0');
-                    }
+                    ...(startInfo?.protocol !== 'll_hls' && {
+                        xhrSetup: (xhr) => {
+                            xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                            xhr.setRequestHeader('Pragma', 'no-cache');
+                            xhr.setRequestHeader('Expires', '0');
+                        }
+                    })
                 });
 
                 hls.loadSource(playlistUrl);

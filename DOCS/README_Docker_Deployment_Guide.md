@@ -44,11 +44,11 @@ The deployment script will automatically use AWS credentials if available.
 
 ### 3. Prepare Configuration
 
-Ensure `config/cameras.json` exists with your camera definitions. See the example in this repository.
+Ensure `config/cameras.json` exists with  camera definitions. See the example in this repository.
 
 **Critical for UniFi Protect cameras:**
 - Use `camera_id` from Protect (not IP address)
-- Set `protect_host` to your UCKG2 Plus IP
+- Set `protect_host` to  UCKG2 Plus IP
 - Set `type` to `"unifi"`
 - Credentials can be placeholders (environment variables override)
 

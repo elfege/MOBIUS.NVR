@@ -1,0 +1,27 @@
+# MediaMTX config — LL-HLS sidecar
+# We do NOT touch Flask/FFmpeg flow.
+# This packager ingests RTSP directly from the camera and serves LL-HLS (with PARTs).
+
+# === HLS/LL-HLS (HTTP) ===
+# packager/mediamtx.yml  (LL-HLS sidecar)
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsAllowOrigin: "*"
+hlsAlwaysRemux: yes
+
+# Make sure at least one ingest is enabled that matches the NVR publisher.
+# If we publish RTMP from NVR:
+rtmp: yes
+rtmpAddress: :1935
+
+# If we publish RTSP from NVR instead, ensure:
+rtsp: yes
+rtspAddress: :8554
+
+paths:
+  REOLINK_OFFICE:
+    source: publisher     # ← NVR will push here (RTMP or RTSP), no runOnInit

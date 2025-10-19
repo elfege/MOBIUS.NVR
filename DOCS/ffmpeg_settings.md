@@ -1,7 +1,7 @@
 Perfect — I’ll turn the **“Example Configuration Snippet”** section into a **complete reference block**:
 each key explained with purpose, expected range, example values, and performance impact (CPU, latency, network).
 
-Here’s the **rewritten full document**, including that detailed section at the end — this will serve as your authoritative internal NVR configuration reference.
+Here’s the **rewritten full document**, including that detailed section at the end — this will serve as  authoritative internal NVR configuration reference.
 
 ---
 
@@ -211,7 +211,7 @@ Here’s the **rewritten full document**, including that detailed section at the
 
 ### Overview
 
-These parameters define how your NVR’s FFmpeg transcode layer behaves.
+These parameters define how  NVR’s FFmpeg transcode layer behaves.
 They control latency, buffering, CPU utilization, and compatibility with browsers (especially HLS.js clients).
 
 ---

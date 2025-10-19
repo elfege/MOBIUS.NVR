@@ -53,7 +53,7 @@
 - [ ] Save `cameras.json`
 
 ### Get Camera ID from Protect
-If you don't know your camera_id:
+If you don't know  camera_id:
 ```bash
 # Method 1: From the bootstrap.json you showed me earlier
 grep -o '"id":"[^"]*"' ~/0_UNIFI_NVR/LL-HLS/bootstrap.json | head -1
@@ -66,7 +66,7 @@ curl -k -b ~/0_UNIFI_NVR/cookies/cookies.txt \
   jq '.cameras[] | {id, name, type}'
 ```
 
-Your camera_id: `68d49398005cf203e400043f` ✓ (from your bootstrap.json)
+Your camera_id: `68d49398005cf203e400043f` ✓ (from  bootstrap.json)
 
 ### Configure Credentials
 

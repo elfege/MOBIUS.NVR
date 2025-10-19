@@ -68,11 +68,20 @@ services:
       - HLS_MAX_SEGMENTS=${HLS_MAX_SEGMENTS:-6}
 
     volumes:
-      # Configuration (read-only)
-      - ./config:/app/config:ro
+      # Mount Python source code for hot-reloading
+      - ./streaming:/app/streaming
+      - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
+
+      # cameras.json: we want to be able to dynamically 
+      # change settings without rebuilding each time. 
+      - ./config:/app/config:rw
 
       # Stream output (ephemeral, cleared on restart)
       - ./streams:/app/streams
+      # app.py 
+      - ./app.py:/app/app.py
+      # html templates
+      - ./templates:/app/templates
 
       # Logs (persistent for debugging)
       - ./logs:/app/logs

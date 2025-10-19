@@ -239,6 +239,21 @@ def api_cameras():
         'ptz': camera_repo.get_ptz_cameras(),
         'streaming': camera_repo.get_streaming_cameras()
     })
+    
+@app.route('/api/cameras/<camera_id>')
+def api_camera_detail(camera_id):
+    """Get single camera configuration"""
+    try:
+        # Get camera from repository
+        camera = camera_repo.get_camera(camera_id)
+        
+        if not camera:
+            return jsonify({'error': 'Camera not found'}), 404
+        
+        return jsonify(camera)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ===== Bridge Control Routes =====
 

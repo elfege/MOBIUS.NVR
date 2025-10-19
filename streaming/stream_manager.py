@@ -17,6 +17,7 @@ from low_level_handlers.process_reaper import (
     kill_processes_by_pattern,
     reap_child_processes
 )
+import tempfile
 import os
 import signal
 import time
@@ -246,10 +247,16 @@ class StreamManager:
             # Check if already running
             entry = self.active_streams.get(camera_serial)
             if entry and entry.get('status') == 'starting':
-                print("═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-")
-                print(f"Stream already starting for {camera_serial}")
-                print("═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-")
+                print("... Stream already starting ...")
+
+                cam = self.camera_repo.get_camera(camera_serial) if hasattr(self, 'camera_repo') else None
+                st  = (cam or {}).get('stream_type', 'HLS').upper()
+                if st == 'LL_HLS':
+                    path = cam.get('packager_path') or camera_serial
+                    return f"/hls/{path}/index.m3u8"
+
                 return f"/api/streams/{camera_serial}/playlist.m3u8"
+
             if entry and self.is_stream_alive(camera_serial):
                 print("═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-")
                 print(f"Stream already active for {camera_serial}")
@@ -378,6 +385,73 @@ class StreamManager:
                 logger.info(f"Started RTMP stream for {camera_name}")
                 return f"/api/camera/{camera_serial}/flv"
             
+            # ===== LL_HLS publisher path =====
+            if protocol == 'LL_HLS':
+                # Ask the vendor handler to build the publish argv and the play URL
+                argv, play_url = handler._build_ll_hls_publish(camera_config=camera, rtsp_url=source_url)
+
+                print("════════ FFmpeg LL-HLS publish command ════════")
+                print(' '.join(argv))
+                print("═══════════════════════════════════════════════")
+                
+                # Temporary file for debugging startup issues
+                stderr_file = tempfile.NamedTemporaryFile(mode='w+', delete=False, 
+                                                        prefix=f'ffmpeg_llhls_{camera_serial}_',
+                                                        suffix='.log')
+
+                process = subprocess.Popen(
+                    argv,
+                    stdout=subprocess.DEVNULL,
+                    stderr=stderr_file,  # ← Write to temp file instead of PIPE
+                )
+
+                time.sleep(3) # ← Give it more time to fail and write error
+                if process.poll() is not None:
+                    # Process died - read the log file
+                    stderr_file.seek(0)
+                    error_output = stderr_file.read()
+                    stderr_file.close()
+                    
+                    print(f"════════ FFmpeg DIED for {camera_name} ════════")
+                    print(f"Exit code: {process.returncode}")
+                    print("Command was:")
+                    print(' '.join(argv))
+                    print("STDERR output:")
+                    print(error_output)
+                    print("═══════════════════════════════════════════════")
+                    
+                    import os
+                    os.unlink(stderr_file.name)  # Clean up temp file
+                    
+                    raise Exception(f"LL-HLS publisher died (code {process.returncode}): {error_output[:200]}")
+                    
+                    # Process is running - close the file handle but keep the file for debugging
+                    stderr_file.close()
+                    # Note: temp file stays on disk for post-mortem debugging if needed
+                    # Could add cleanup in stop_stream() if desired
+
+                # Register as active
+                with self._streams_lock:
+                    self.active_streams[camera_serial] = {
+                        'process': process,
+                        'protocol': 'll_hls',
+                        'rtsp_url': source_url,
+                        'stream_dir': None,
+                        'camera_name': camera_name,
+                        'camera_type': camera_type,
+                        'start_time': time.time(),
+                        'playlist_path': None,
+                        'status': 'active',
+                        'stream_url': play_url,
+                    }
+
+                # Optional: start watchdog if you want restart behavior
+                self._start_watchdog(camera_serial)
+
+                logger.info(f"Started LL-HLS publisher for {camera_name}")
+                return play_url
+            # ===== end LL_HLS branch =====
+
             else:
                 # HLS path
                 stream_dir = self.hls_dir / camera_serial
@@ -476,10 +550,14 @@ class StreamManager:
             if process.poll() is not None:
                 # Process died - get the error output
                 stdout, stderr = process.communicate()
-                print("════════ FFmpeg STDERR ════════")
-                print(stderr.decode('utf-8'))
-                print("════════════════════════════════")
-                raise Exception(f"FFmpeg died immediately with code {process.returncode}")
+                if isinstance(stderr, (bytes, bytearray)):
+                    stderr_text = stderr.decode('utf-8', errors='replace')
+                elif isinstance(stderr, str):
+                    stderr_text = stderr
+                else:
+                    stderr_text = '[no stderr captured]'
+                print(stderr_text)
+                raise Exception(f"Failed to start FFmpeg (exit code {process.returncode}): {stderr_text}")
 
             return process
         except FileNotFoundError:
@@ -524,7 +602,6 @@ class StreamManager:
             if camera_serial not in self.active_streams:
                 logger.warning(f"Cannot stop {camera_serial} - not in active_streams")
                 return False
-            
             try:
                 stream_info = self.active_streams[camera_serial]
                 camera_name = stream_info.get('camera_name', camera_serial)
@@ -536,6 +613,33 @@ class StreamManager:
                     self.active_streams.pop(camera_serial, None)
                     self._clear_camera_segments(camera_serial)
                     return False
+
+                # NEW: LL-HLS — just kill the publisher and clear state
+                if stream_info.get('protocol') == 'll_hls':
+                    proc = stream_info.get('process')
+                    stderr_log = stream_info.get('stderr_log') 
+                    try:
+                        if proc and proc.poll() is None:
+                            proc.terminate()
+                            try:
+                                proc.wait(timeout=5)
+                            except Exception:
+                                proc.kill()
+                        stream_info['status'] = 'stopped'
+                    finally:
+                        # Clean up stderr log file if it exists
+                        if stderr_log:
+                            try:
+                                if os.path.exists(stderr_log):
+                                    os.unlink(stderr_log)
+                                    logger.info(f"Cleaned up stderr log: {stderr_log}")
+                            except Exception as e:
+                                logger.warning(f"Failed to clean up stderr log {stderr_log}: {e}")                        
+                        self.active_streams.pop(camera_serial, None)
+                        
+                    logger.info(f"Stopped LL-HLS publisher for {camera_serial}")
+                    return True
+                # ════════ END OF LL-HLS TERMINATION ════════
                 
                 # Use the reaper utility to terminate properly
                 if terminate_process_gracefully(process, timeout=5, process_name=f"{camera_name} FFmpeg"):
@@ -760,10 +864,16 @@ class StreamManager:
             return False
 
     def get_stream_url(self, camera_serial: str) -> Optional[str]:
-        """Get HLS stream URL for camera"""
         with self._streams_lock:
-            if camera_serial not in self.active_streams:
+            stream_info = self.active_streams.get(camera_serial)
+            if not stream_info :
                 return None
+
+            # NEW: honor stored URL for LL-HLS publishers
+            if stream_info.get('protocol') == 'll_hls':
+                return stream_info.get('stream_url')
+
+            # existing fallback for classic HLS
             return f"/streams/{camera_serial}/playlist.m3u8"
 
     def is_stream_alive(self, camera_serial: str) -> bool:

@@ -60,7 +60,7 @@ def stop_all_streaming_watchdogs(stream_manager):
         try:
             stream_manager.stop_watchdog = True
         except:
-            print(traceback_exc())
+            print(traceback.print_exc())
             raise Exception(
                 f"❌ FAILED to stop watchdog for stream:{camera_id}")
 
@@ -94,7 +94,7 @@ def stop_resource_monitor(unifi_cameras, unifi_resource_monitor):
         if unifi_cameras:
             unifi_resource_monitor.stop_monitoring()
     except:
-        print(traceback_exc())
+        print(traceback.print_exc())
         raise Exception(f"Resource monitoring Cleanup error")
 
     print("✅ unifi_resource_monitor stopped")
@@ -118,7 +118,7 @@ def stop_unifiy_cameras_session(unifi_cameras):
         try:
             camera.cleanup()
         except:
-            print(traceback_exc())
+            print(traceback.print_exc())
             raise Exception(f"❌ Error cleaning up camera {camera_id}")
 
     print("✅ UniFi camera sessions cleaned up")
@@ -131,7 +131,7 @@ def stop_all_streams(stream_manager):
         stream_manager.stop_all_streams()  # no longer nukes hls files.
     except:
         print(f"Error stopping streams")
-        print(traceback_exc())
+        print(traceback.print_exc())
         raise Exception(f"❌ stop_all_streams failed")
 
     print("✅ All streams stopped")
@@ -144,7 +144,7 @@ def stop_bridge(eufy_bridge, bridge_watchdog):
         bridge_watchdog.stop()
         eufy_bridge.stop()
     except:
-        print(traceback_exc())
+        print(traceback.print_exc())
         raise Exception(f"❌ Error cleaning up camera {camera_id}")
 
     print("✅ Bridge stopped")
@@ -210,7 +210,7 @@ def kill_eufy_bridge(eufy_bridge):
             subprocess.run(['pkill', '-f', 'eufy-security-server'],
                            stderr=subprocess.DEVNULL)
         except:
-            print(traceback_exc())
+            print(traceback.print_exc())
             raise Exception(f"❌ eufy-security-server Cleanup error")
 
 

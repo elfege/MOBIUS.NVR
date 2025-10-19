@@ -99,7 +99,7 @@ if [[ "$body" == *"MFA_AUTH_REQUIRED"* ]]; then
 
 	echo
 	echo "Using default 2FA method (iPhone push notification)..."
-	echo "Please check your iPhone/Watch for the push notification and approve it."
+	echo "Please check  iPhone/Watch for the push notification and approve it."
 	echo
 
 	# Extract and set the MFA cookie properly
@@ -120,7 +120,7 @@ if [[ "$body" == *"MFA_AUTH_REQUIRED"* ]]; then
 	echo
 	echo "Using default 2FA method (iPhone push notification)..."
 	echo
-	echo "⚠️  IMPORTANT: Get your Unifi App ready!"
+	echo "⚠️  IMPORTANT: Get  Unifi App ready!"
 	echo "The next step will send a push notification that you need to approve."
 	echo
 	read -p "Press Enter when you're ready to receive the 2FA notification..."
@@ -141,7 +141,7 @@ if [[ "$body" == *"MFA_AUTH_REQUIRED"* ]]; then
 	display_block "challenge_body: $challenge_body"
 
 	if [[ "$challenge_code" -eq 200 ]]; then
-		echo "✓ 2FA challenge sent to your iPhone/Watch"
+		echo "✓ 2FA challenge sent to  iPhone/Watch"
 		echo
 		echo "Waiting for approval... (timeout in 2 minutes)"
 

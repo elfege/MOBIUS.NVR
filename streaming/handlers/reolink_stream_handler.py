@@ -8,10 +8,15 @@ import os
 import logging
 import traceback
 from pprint import pprint
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from ..stream_handler import StreamHandler
 from urllib.parse import quote
-from ..ffmpeg_params import build_rtsp_output_params, build_rtsp_input_params
+from ..ffmpeg_params import (
+    build_rtsp_output_params,
+    build_rtsp_input_params,
+    build_ll_hls_input_publish_params,
+    build_ll_hls_output_publish_params
+)
 
 
 logger = logging.getLogger(__name__)
@@ -66,6 +71,34 @@ class ReolinkStreamHandler(StreamHandler):
         
         return rtsp_url
 
+    def _build_ll_hls_publish(self, camera_config: Dict, rtsp_url: str) -> Tuple[List[str], str]:
+        """
+            Build the full ffmpeg argv to *publish* LL-HLS to the packager for this camera.
+            Returns: (argv, play_url)
+            - argv: ["ffmpeg", <input flags>, "-i", <rtsp_url>, <output flags>]
+            - play_url: "/hls/<packager_path or serial>/index.m3u8"
+        """
+        # INPUT side (mirrors  RTSP input helper; redundant by design for clarity)
+        in_args: List[str] = build_ll_hls_input_publish_params(camera_config=camera_config)
+
+        # OUTPUT side (delegates to FFmpegHLSParamBuilder.build_ll_hls_publish_output via helper)
+        out_args: List[str] = build_ll_hls_output_publish_params(
+            camera_config=camera_config,
+            vendor_prefix=camera_config.get("type", "reolink")
+        )
+
+        # Assemble final argv
+        argv: List[str] = ["ffmpeg", *in_args, "-i", rtsp_url, *out_args]
+
+        # Compute the play URL for the UI/API (edge proxies /hls/ → packager)
+        path = (
+            (camera_config.get("packager_path") or
+             camera_config.get("serial") or
+             camera_config.get("id"))
+        )
+        play_url = f"/hls/{path}/index.m3u8"
+
+        return argv, play_url
 
     def _build_rtmp_url(self, camera_config: Dict, stream_type: str) -> str:
         """Build RTMP URL for Reolink camera"""

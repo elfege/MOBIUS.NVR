@@ -40,7 +40,7 @@ from services.mjpeg_capture_service import mjpeg_capture_service
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 # Flask app setup
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-change-this'
+app.config['SECRET_KEY'] = '-secret-key-change-this'
 csrf = CSRFProtect(app)
 
 logger = logging.getLogger('werkzeug')

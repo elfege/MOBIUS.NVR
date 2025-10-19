@@ -121,6 +121,94 @@ class FFmpegHLSParamBuilder:
             print(f"build_rtsp_params failed: {e}")
             raise
 
+    def build_ll_hls_publish_output(self, ll_hls_cfg: dict) -> List[str]:
+        """
+            Build ONLY the ffmpeg OUTPUT args to publish a low-latency, HLS-friendly stream
+            to MediaMTX. Input flags (`-rtsp_transport ... -i <rtsp_url>`) are NOT included.
+
+            ll_hls_cfg schema (per cameras.json):
+            {
+                "publisher": { "protocol": "rtmp|rtsp", "host": "...", "port": 1935|554, "path": "CAM_ID" },
+                "video": {
+                "c:v": "libx264", "preset": "veryfast", "tune": "zerolatency",
+                "profile:v": "baseline", "pix_fmt": "yuv420p",
+                "r": 30, "g": 15, "keyint_min": 15,
+                "b:v": "800k", "maxrate": "800k", "bufsize": "1600k",
+                "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+                "force_key_frames": "expr:gte(t,n_forced*1)",
+                "vf": "scale=640:480"          # optional, OR use width/height below
+                "width": 640, "height": 480    # optional -> auto-build vf if no explicit "vf"
+                },
+                "audio": { "enabled": false|true, "c:a": "aac", "b:a":"64k", "ar":44100, "ac":1 }
+            }
+        """
+        if not ll_hls_cfg:
+            raise ValueError("LL-HLS: missing ll_hls configuration")
+
+        pub = (ll_hls_cfg.get("publisher") or {}).copy()
+        vid = (ll_hls_cfg.get("video") or {}).copy()
+        aud = (ll_hls_cfg.get("audio") or {}).copy()
+
+        # ----- publisher sink (protocol, host, port, path) -----
+        protocol = str(pub.get("protocol", "rtmp")).lower()
+        host     = pub.get("host", "nvr-packager")
+        port     = int(pub.get("port", 1935 if protocol == "rtmp" else 554))
+        path     = pub.get("path")
+        if not host or not path:
+            raise ValueError("LL-HLS: publisher.host and publisher.path are required")
+
+        # ----- video flags (use exact ffmpeg key names when present) -----
+        # If width/height provided and "vf" not explicitly set, synthesize a scale filter.
+        if "vf" not in vid and ("width" in vid and "height" in vid):
+            try:
+                w, h = int(vid["width"]), int(vid["height"])
+                vid["vf"] = f"scale={w}:{h}"
+            except Exception:
+                pass  # ignore bad width/height
+
+        # Order matters a bit for readability; keys must be ffmpeg-style to avoid remapping.
+        video_key_order = [
+            "c:v", "preset", "tune", "profile:v", "pix_fmt",
+            "r", "g", "keyint_min",
+            "b:v", "maxrate", "bufsize",
+            "x264-params", "force_key_frames",
+            "vf"
+        ]
+        out: List[str] = []
+        for k in video_key_order:
+            if k in vid and vid[k] is not None:
+                out += [f"-{k}", str(vid[k])]
+
+        # ----- audio flags (fully controlled by JSON; no hardcoding) -----
+        if bool(aud.get("enabled", False)):
+            # Allow either friendly or ffmpeg-style keys; map friendly if present
+            c_a = aud.get("c:a", aud.get("codec", None))
+            b_a = aud.get("b:a", aud.get("bitrate", None))
+            ar  = aud.get("ar",  aud.get("rate", None))
+            ac  = aud.get("ac",  aud.get("channels", None))
+            if c_a: out += ["-c:a", str(c_a)]
+            if b_a: out += ["-b:a", str(b_a)]
+            if ar:  out += ["-ar",  str(ar)]
+            if ac is not None: out += ["-ac", str(ac)]
+        else:
+            out = ["-an"] + out
+
+        # ----- container + sink by protocol -----
+        if protocol == "rtmp":
+            sink = f"rtmp://{host}:{port}/{path}"
+            out += ["-f", "flv", sink]
+        elif protocol == "rtsp":
+            # Use TCP and low mux latency for RTSP publishing
+            # sink = f"rtsp://{host}:{port}/{path}"
+            # out += ["-f", "rtsp", "-rtsp_transport", "tcp", "-muxpreload", "0", "-muxdelay", "0", sink]
+
+            sink = f"rtsp://{host}:{port}/{path}"
+            rtsp_transport = pub.get("rtsp_transport", "tcp")  # ← Read from config, default tcp
+            out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, sink]  # ← Remove muxpreload/muxdelay
+        else:
+            raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
+
+        return out
 
 
 # Convenience functions
@@ -163,3 +251,50 @@ def build_rtsp_input_params(
         raise Exception(f"something went wrong in build_rtsp_input_params: {e}")
 
 
+# --- LL-HLS convenience helpers (publish path) ---
+
+from typing import Dict, List, Optional
+
+def build_ll_hls_input_publish_params(
+    camera_config: Dict
+) -> List[str]:
+    """
+    Thin wrapper for clarity during troubleshooting.
+    Returns INPUT flags for the *publisher* pipeline (RTSP camera source).
+    Intentionally mirrors build_rtsp_input_params behavior.
+    """
+    try:
+        # Reuse the same input policy as RTSP (redundant by design, per  request)
+        return build_rtsp_input_params(camera_config=camera_config)
+    except Exception as e:
+        print(traceback.print_exc())
+        raise Exception(f"something went wrong in build_ll_hls_input_publish_params: {e}")
+
+
+def build_ll_hls_output_publish_params(
+    camera_config: Dict,
+    vendor_prefix: str = 'Unknown',
+) -> List[str]:
+    """
+    Returns OUTPUT flags that publish to the packager (RTMP or RTSP),
+    driven 100% by cameras.json -> camera_config['ll_hls'].
+
+    Requires FFmpegHLSParamBuilder to implement:
+        build_ll_hls_publish_output(ll_hls_cfg: dict) -> List[str]
+    """
+    try:
+        camera_name = camera_config.get('name', 'unknown camera')
+        ll = camera_config.get('ll_hls')
+        if not ll:
+            raise Exception(f"Missing ll_hls config for {camera_name}")
+
+        builder = FFmpegHLSParamBuilder(
+            camera_name=camera_name,
+            stream_type='sub',                     # consistent with existing usage
+            camera_rtsp_config={},                 # not used for this call
+            vendor_prefix=vendor_prefix or camera_config.get('type', '')
+        )
+        return builder.build_ll_hls_publish_output(ll_hls_cfg=ll)
+    except Exception as e:
+        print(traceback.print_exc())
+        raise Exception(f"something went wrong in build_ll_hls_output_publish_params: {e}")

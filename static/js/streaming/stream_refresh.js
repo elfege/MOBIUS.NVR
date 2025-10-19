@@ -1,5 +1,5 @@
 // static/js/streaming/stream_refresh.js
-// ES6 module. No renames to your existing maps; they’re passed in.
+// ES6 module. No renames to  existing maps; they’re passed in.
 
 // NOT CURRENTLY IN USE
 
@@ -18,7 +18,7 @@ export class StreamRefresher {
 
   /**
    * Force refresh a stream by stopping/starting on backend, then reattaching.
-   * Protocol-agnostic: your existing startStream decides HLS/RTMP/MJPEG.
+   * Protocol-agnostic:  existing startStream decides HLS/RTMP/MJPEG.
    */
   async forceRefreshStream(cameraId, videoElement) {
     // 0) Remember current type (default to 'sub') before we clear the map
@@ -74,7 +74,7 @@ export class StreamRefresher {
     // 4) Small grace so ffmpeg releases sockets
     await new Promise(r => setTimeout(r, 250));
 
-    // 5) START on backend; then reattach via your existing API
+    // 5) START on backend; then reattach via  existing API
     try {
       const startRes = await fetch(`/api/stream/start/${encodeURIComponent(cameraId)}`, {
         method: 'POST',

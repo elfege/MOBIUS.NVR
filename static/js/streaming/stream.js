@@ -149,7 +149,6 @@ export class MultiStreamManager {
         };
     }
 
-
     setupLayout() {
         const $streamItems = this.$container.find('.stream-item');
         const count = $streamItems.length;
@@ -235,7 +234,7 @@ export class MultiStreamManager {
             // not adding this condition will make the system 
             // create a new rtsp stream while rtmp witll still 
             // be running. 
-            if (streamType === 'HLS') {
+            if (streamType === 'HLS' || streamType === 'LL_HLS') {
                 this.hlsManager.forceRefreshStream(serial, videoElement);
             }
         });
@@ -294,7 +293,7 @@ export class MultiStreamManager {
             // Use streamType to determine which manager to use
             if (streamType === 'mjpeg_proxy') {
                 success = await this.mjpegManager.startStream(serial, streamElement);
-            } else if (streamType === 'HLS') {
+            } else if (streamType === 'HLS' || streamType === 'LL_HLS') {
                 success = await this.hlsManager.startStream(serial, streamElement, 'sub');
             } else if (streamType === 'RTMP') {
                 success = await this.flvManager.startStream(serial, streamElement);
@@ -344,7 +343,7 @@ export class MultiStreamManager {
             // Use streamType to determine which manager to use
             if (streamType === 'mjpeg_proxy') {
                 success = this.mjpegManager.stopStream(serial);
-            } else if (streamType === 'HLS') {
+            } else if (streamType === 'HLS' || streamType === 'LL_HLS') {
                 success = await this.hlsManager.stopStream(serial);
             } else if (streamType === 'RTMP') {
                 success = this.flvManager.stopStream(serial);
@@ -419,7 +418,7 @@ export class MultiStreamManager {
             }
 
             // Use the proper refresh method based on stream type
-            if (streamType === 'HLS') {
+            if (streamType === 'HLS' || streamType === 'LL_HLS') {
                 // ← CHANGED: Call forceRefreshStream which destroys HLS.js cache
                 await this.hlsManager.forceRefreshStream(serial, videoElement);
                 this.setStreamStatus($streamItem, 'live', 'Live');
@@ -514,7 +513,7 @@ export class MultiStreamManager {
 
 
             // Use streamType to determine fullscreen rendering method
-            if (streamType === 'HLS') {
+            if (streamType === 'HLS' || streamType === 'LL_HLS') {
                 // HLS fullscreen (works for both Eufy and UniFi in HLS mode)
                 const response = await fetch(`/api/stream/start/${serial}`, {
                     method: 'POST',

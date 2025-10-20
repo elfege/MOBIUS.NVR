@@ -19,23 +19,6 @@ echo "  Unified NVR - Container Startup"
 echo "=========================================="
 echo ""
 
-# Source credentials from .bash_utils if available
-if [ -f ~/.bash_utils ]; then
-	echo "Loading AWS secrets from .bash_utils..."
-	source ~/.bash_utils --no-exec >/dev/null
-
-	# Try to pull Protect credentials from AWS
-	if command -v pull_secrets_from_aws &>/dev/null; then
-		if pull_secrets_from_aws Unifi-Camera-Credentials 2>/dev/null; then
-			echo -e "${GREEN}✓ Loaded credentials from AWS Secrets Manager${NC}"
-
-			# Export for Docker Compose to use
-			export PROTECT_USERNAME
-			export PROTECT_SERVER_PASSWORD
-			echo -e "${GREEN}✓ Credentials exported for container${NC}"
-		fi
-	fi
-fi
 
 # Create necessary directories
 echo ""
@@ -61,8 +44,15 @@ set -a
 . ~/0_NVR/.env
 start_spinner 20 "$BLUE Exporting Cameras Credentials..."
 get_cameras_credentials >/dev/null
+sleep 1
 stop_spinner
 set +a
+
+if [[ -f ~/0_NVR/sync_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]; then
+	start_spinner 20 "$CYAN Appending packager/mediamtx.yml"
+	~/0_NVR/sync_mediamtx_paths.sh >/dev/null
+	stop_spinner
+fi
 
 # Start the container
 echo ""
@@ -99,7 +89,7 @@ if docker ps | grep -q unified-nvr; then
 	sleep 10
 
 	# Check health
-	if curl -kI https://localhost/api/status >/dev/null 2>&1; then
+	if curl -kI https://localhost:8443/api/status >/dev/null 2>&1; then
 		echo -e "${GREEN}✓ HTTPS Health check passed!${NC}"
 	else
 		echo -e "${YELLOW}⚠️  Health check failed - check logs${NC}"

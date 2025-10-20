@@ -22,21 +22,19 @@ rtsp: yes
 rtspAddress: :8554
 
 paths:
-  68d49398005cf203e400043f:
-    source: publisher
-  T8416P0023352DA9:
-    source: publisher
-  T8416P0023370398:
-    source: publisher
-  T8416P0023390DE9:
-    source: publisher
-  T8419P0024110C6A:
-    source: publisher
-  T8441P12242302AC:
-    source: publisher
   REOLINK_OFFICE:
-    source: publisher
-  REOLINK_TERRACE:
-    source: publisher
-  REOLINK_LAUNDRY:
-    source: publisher
+    source: publisher     # ← NVR will push here (RTMP or RTSP), no runOnInit
+
+# FOR TESTS ONLY
+# === Paths (inputs) ===
+# paths:
+#   REOLINK_OFFICE:
+#     source: publisher
+#     runOnInit: >
+#       ffmpeg -rtsp_transport tcp -i rtsp://admin:xxxxxxxxxxxxxxxxxxxxxxx@192.168.10.88:554/h264Preview_01_sub
+#       -an -c:v libx264 -preset veryfast -tune zerolatency
+#       -g 15 -keyint_min 15 -force_key_frames "expr:gte(t,n_forced*1)"
+#       -x264-params "scenecut=0:min-keyint=15:open_gop=0"
+#       -b:v 800k -maxrate 800k -bufsize 1600k -pix_fmt yuv420p -profile:v baseline
+#       -f flv rtmp://localhost:1935/REOLINK_OFFICE
+#     runOnInitRestart: yes

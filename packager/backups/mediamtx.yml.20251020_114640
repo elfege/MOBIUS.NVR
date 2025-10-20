@@ -26,14 +26,6 @@ paths:
     source: publisher
   T8416P0023352DA9:
     source: publisher
-  T8416P0023370398:
-    source: publisher
-  T8416P0023390DE9:
-    source: publisher
-  T8419P0024110C6A:
-    source: publisher
-  T8441P12242302AC:
-    source: publisher
   REOLINK_OFFICE:
     source: publisher
   REOLINK_TERRACE:

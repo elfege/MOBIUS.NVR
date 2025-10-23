@@ -7855,9 +7855,178 @@ This is a personal training project, not production-ready.
 See README_project_history.md for complete session notes.
 ```
 
----
 
 **Session Duration:** ~6 hours (early afternoon through evening)  
 **Coffee consumed:** Probably too much ☕  
 **Power wasted:** Definitely too much 🔌  
 **Knowledge gained:** Priceless! 🧠
+
+---
+
+## October 22, 2025: Reolink Camera .89 Troubleshooting & Neolink Discovery
+
+### Summary
+
+Diagnosed and resolved streaming issues with Reolink TERRACE camera (192.168.10.89) through systematic hardware troubleshooting. Root cause identified as corroded RJ45 contacts from outdoor exposure. Discovered Reolink's proprietary Baichuan protocol (port 9000) and open-source Neolink bridge for ultra-low-latency streaming.
+
+### Issue: Camera .89 RTSP Stream Failures
+
+**Initial Symptoms:**
+- FFmpeg error: `Invalid data found when processing input`
+- Stream metadata missing: `Could not find codec parameters for stream 0 (Video: h264, none): unspecified size`
+- Camera worked perfectly in Reolink native app
+- Identical twin camera .88 (same model RLC-410-5MP) worked flawlessly
+
+**Initial Hypotheses Tested:**
+1. ❌ Password encoding issues - Created simple test password, still failed
+2. ❌ Stream settings mismatch - Adjusted FPS/bitrate to match .88, no change
+3. ❌ Camera reboot needed - Rebooted, temporarily worked then failed again
+4. ❌ Firmware defect - Both cameras on identical latest firmware
+5. ✅ **Hardware/wiring issue** - CONFIRMED
+
+### Root Cause: Corroded RJ45 Contacts
+
+**Diagnostic Evidence:**
+```bash
+# Before cleaning - corrupted stream metadata
+Stream #0:0: Video: h264, none, 90k tbr, 90k tbn
+[rtsp @ 0x...] Could not find codec parameters
+
+# After cleaning with 90% isopropyl alcohol
+Stream #0:0: Video: h264 (High), yuv420p(progressive), 640x480, 90k tbr, 90k tbn
+# Stream working perfectly!
+```
+
+**Network Topology:**
+- Camera .88 (working): USW Pro → Direct connection
+- Camera .89 (failing): USW Pro → Unmanaged PoE switch → Outdoor cable run (since 2022)
+
+**Resolution:**
+- Cleaned RJ45 contacts at both ends with 90% isopropyl alcohol
+- Immediate restoration of proper stream metadata and stable RTSP connection
+- Outdoor exposure since 2022 caused oxidation/corrosion on copper contacts
+
+### Discovery: Reolink Proprietary Protocol (Port 9000)
+
+**Packet Capture Analysis:**
+
+Used Wireshark on Windows native Reolink app to discover actual protocol:
+
+```bash
+# Captured from 192.168.10.110 (Windows PC) → 192.168.10.89 (camera)
+sudo tcpdump -r capture.pcap -nn | grep -oP '192\.168\.10\.89\.\K[0-9]+'
+
+Results:
+- Port 9000: ✅ Primary traffic (proprietary "Baichuan" protocol)
+- Port 554 (RTSP): ❌ Not used by native app
+- Port 1935 (FLV): ❌ Not used
+- Port 80 (HTTP): ❌ Not used
+```
+
+**Native App Latency: ~100-300ms** (near real-time)  
+**Our RTSP Latency: ~1-2 seconds** (acceptable but not ideal)
+
+**Protocol Details:**
+- Name: **Baichuan Protocol** (Reolink's Chinese parent company)
+- Port: 9000 (TCP)
+- Format: Binary protocol with obfuscated XML commands
+- Video: Raw H.264/H.265 encapsulated in custom headers
+- Reverse engineered by George Hilliard (2020)
+
+### Solution: Neolink RTSP Bridge
+
+**Discovery:** Open-source project already exists to bridge Baichuan → RTSP
+
+**Project:** [Neolink](https://github.com/QuantumEntangledAndy/neolink) (actively maintained fork)
+
+**Architecture:**
+```
+[Reolink Camera:9000] ←Baichuan→ [Neolink:8554] ←RTSP→ [NVR/FFmpeg] ←HLS→ [Browser]
+   Proprietary                    Bridge/Proxy           Your existing stack
+
+Expected latency: ~600ms-1.5s (vs current 1-2s)
+```
+
+**What Neolink Does:**
+- Connects to camera via port 9000 (Baichuan protocol)
+- Exposes RTSP server on configurable port (default 8554)
+- Passes through native H.264/H.265 streams with minimal processing
+- No transcoding - pure protocol translation
+
+### Next Steps (Continuation in Next Chat)
+
+**Phase 1: Neolink Installation & Testing**
+1. ✅ Rust toolchain installed on dellserver
+2. ✅ Neolink repository cloned to `~/neolink/`
+3. 🔄 Build Neolink: `cargo build --release` (5-15 min compile time)
+4. 🔄 Create config: `~/0_NVR/config/neolink.toml`
+5. 🔄 Test with camera .88 (OFFICE) as guinea pig (stable baseline)
+6. 🔄 Integrate into Docker container (same container as NVR app)
+
+**Phase 2: Integration Strategy**
+- Run Neolink inside existing unified-nvr Docker container
+- Modify `reolink_stream_handler.py` to use Neolink RTSP endpoint
+- Update `Dockerfile` to include Rust/Neolink binary
+- Test latency improvements vs native RTSP
+
+**Phase 3: Production Deployment**
+- Deploy to camera .88 first (proven stable)
+- Once validated, deploy to camera .89
+- Document performance improvements
+- Add to systemd or container orchestration
+
+**Guinea Pig Selection:** Camera .88 (REOLINK_OFFICE @ 192.168.10.88)
+- Same model as .89 (RLC-410-5MP)
+- Proven stable with direct USW Pro connection
+- Indoor installation (no environmental variables)
+- Already configured and working as baseline
+
+### Code Changes Needed
+
+**Files to modify for Neolink integration:**
+- `Dockerfile` - Add Rust build stage and Neolink binary
+- `docker-compose.yml` - Expose port 8554 for Neolink RTSP
+- `~/0_NVR/config/neolink.toml` - New config file for Neolink
+- `streaming/handlers/reolink_stream_handler.py` - Update to use localhost:8554
+
+### Technical Lessons Learned
+
+1. **Hardware first, software second** - Environmental factors (outdoor wiring, corrosion) can manifest as software/protocol issues
+2. **Packet capture is invaluable** - Wireshark revealed native app uses completely different protocol
+3. **Open-source reverse engineering exists** - Proprietary protocols often have community solutions
+4. **Test with stable hardware** - Use working camera as baseline to isolate variables
+5. **Network topology matters** - Direct connections vs switches with outdoor runs have different failure modes
+
+### References
+
+- [Neolink GitHub (maintained fork)](https://github.com/QuantumEntangledAndy/neolink)
+- [Original Neolink by thirtythreeforty](https://github.com/thirtythreeforty/neolink)
+- [Hacking Reolink Cameras (Blog Post)](https://www.thirtythreeforty.net/posts/2020/05/hacking-reolink-cameras-for-fun-and-profit/)
+- [Baichuan Protocol Wireshark Dissector](https://github.com/thirtythreeforty/neolink/blob/master/dissector/baichuan.lua)
+
+---
+
+**Session completed:** October 22, 2025, 11:45 PM EDT  
+**Status:** Camera .89 fixed (hardware), Neolink integration ready to begin  
+**Continuation:** Next chat will cover Neolink build, Docker integration, and latency testing
+
+**Key Achievement:** Reduced troubleshooting time from days to hours through systematic hypothesis testing and creative thinking about "shitty outdoor wiring since 2022" 🎯
+```
+
+---
+
+## Transition Note for Next Chat
+
+**Resume with:**
+```
+Continuing Neolink integration for Reolink cameras. Last session: fixed camera .89 via RJ45 cleaning, discovered Baichuan protocol (port 9000), cloned Neolink repo, installed Rust. 
+
+Next steps:
+1. Build Neolink (cargo build --release)
+2. Create ~/0_NVR/config/neolink.toml
+3. Test with camera .88 (guinea pig)
+4. Integrate into Docker container
+
+Current status: Ready to build, taking it one step at a time.
+```
+

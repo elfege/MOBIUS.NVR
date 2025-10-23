@@ -48,9 +48,9 @@ sleep 1
 stop_spinner
 set +a
 
-if [[ -f ~/0_NVR/sync_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]; then
+if [[ -f ~/0_NVR/update_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]; then
 	start_spinner 20 "$CYAN Appending packager/mediamtx.yml"
-	~/0_NVR/sync_mediamtx_paths.sh >/dev/null
+	~/0_NVR/update_mediamtx_paths.sh >/dev/null
 	stop_spinner
 fi
 

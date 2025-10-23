@@ -8028,5 +8028,490 @@ Next steps:
 4. Integrate into Docker container
 
 Current status: Ready to build, taking it one step at a time.
+
+
+---
+
+## October 23, 2025: Neolink Integration Planning & Build Issues
+
+See also: [Neolink Integration Plan](README_neolink_integration_plan.md)
+(DOCS/README_neolink_integration_plan.md)
+
+### Summary
+
+Planned integration of Neolink bridge for Reolink cameras to reduce latency from ~1-2s to ~600ms-1.5s using proprietary Baichuan protocol (port 9000). Created comprehensive integration scripts and documentation. Build failed due to missing system dependencies.
+
+### Architecture Design
+
+**Current Flow:**
+```
+Camera:554 (RTSP) -> FFmpeg -> HLS -> Browser (~1-2s latency)
 ```
 
+**Target Flow:**
+```
+Camera:9000 (Baichuan) -> Neolink:8554 (RTSP) -> FFmpeg -> HLS -> Browser (~600ms-1.5s)
+```
+
+### Scripts Created
+
+1. **`update_neolink_configuration.sh`** (~/0_NVR/)
+   - Auto-generates `config/neolink.toml` from `cameras.json`
+   - Filters for cameras with `stream_type: "NEOLINK"`
+   - Uses system credentials (`$REOLINK_USERNAME`, `$REOLINK_PASSWORD`)
+   - Bash script using `jq` for JSON parsing
+
+2. **`NEOlink_integration.sh`** (~/0_NVR/0_MAINTENANCE_SCRIPTS/)
+   - 8-step integration wizard
+   - Uses absolute paths and global variables
+   - Automated steps: 1,2,4,7,8
+   - Manual steps: 3,5,6
+
+### Build Issues Encountered
+
+**Issue 1: Missing C Compiler**
+```
+error: linker `cc` not found
+```
+**Solution:** Install build-essential
+```bash
+sudo apt-get install -y build-essential pkg-config libssl-dev
+```
+
+**Issue 2: Missing GStreamer RTSP Server (BLOCKING)**
+```
+The system library `gstreamer-rtsp-server-1.0` required by crate `gstreamer-rtsp-server-sys` was not found.
+```
+**Solution Required:**
+```bash
+sudo apt-get install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-rtsp
+```
+
+### Backend/Frontend Updates Planned
+
+**Backend Changes:**
+- `reolink_stream_handler.py`: Check `stream_type`, route to `localhost:8554/{serial}/{stream}` for NEOLINK
+- `stream_manager.py`: Add NEOLINK to valid stream types
+- `cameras.json`: Add `"neolink"` section with `baichuan_port`, `rtsp_path`, `enabled`
+
+**Frontend Changes:**
+- `stream.js`: Add NEOLINK to HLS routing (lines ~299, 321, 240)
+- From browser perspective: NEOLINK = HLS (no code changes needed)
+
+**Docker Integration:**
+- `Dockerfile`: Copy neolink binary + config
+- `docker-compose.yml`: Expose port 8554 internally
+
+### Files Modified/Created
+
+- `~/0_NVR/update_neolink_configuration.sh` (NEW)
+- `~/0_NVR/0_MAINTENANCE_SCRIPTS/NEOlink_integration.sh` (NEW)
+- `~/0_NVR/neolink/` (cloned from GitHub)
+- `~/0_NVR/neolink_integration_updates.md` (design doc)
+
+### Next Steps
+
+1. Install GStreamer dependencies
+2. Complete Neolink build (Step 1)
+3. Test standalone (Step 3)
+4. Implement backend Python changes
+5. Docker integration
+6. Production deployment
+
+### Technical Notes
+
+- Neolink repo: https://github.com/QuantumEntangledAndy/neolink
+- Baichuan protocol reverse engineered by George Hilliard (2020)
+- Camera .88 (OFFICE) selected as guinea pig - stable baseline, indoor, same model as .89
+- Camera .89 (TERRACE) second - fixed RJ45 corrosion issue previously
+
+### Status
+
+**Blocked:** Neolink build failing due to missing GStreamer RTSP server library  
+**Ready:** Scripts and architecture designed  
+**Pending:** System dependency installation, then continue with Step 1
+
+---
+
+**Session ended:** October 23, 2025 
+**Continuation:** Install GStreamer deps, complete build, test standalone
+
+---
+## October 23, 2025 (Continued): Neolink Integration - Build & Standalone Testing Complete
+
+### Summary
+Successfully completed Steps 1-3 of Neolink integration. Built Neolink binary from source, generated configuration for two Reolink cameras, and validated standalone RTSP bridge functionality. Ready for backend Python integration (Step 4).
+
+### Objective
+Reduce Reolink camera streaming latency from ~1-2 seconds (direct RTSP) to ~600ms-1.5s using Neolink bridge with Baichuan protocol (Reolink's proprietary protocol on port 9000).
+
+---
+
+## Work Completed
+
+### Step 1: Build Neolink from Source ✅
+
+**Challenge:** Rust cargo build failed due to missing GStreamer system dependencies
+
+**Errors Encountered:**
+```
+error: failed to run custom build command for `gstreamer-sys v0.23.0`
+The system library `gstreamer-rtsp-server-1.0` required by crate `gstreamer-rtsp-server-sys` was not found
+```
+
+**Resolution Process:**
+1. **Initial fix:** Added GStreamer core packages to `NEOlink_integration.sh`
+   - libgstreamer1.0-dev
+   - libgstreamer-plugins-base1.0-dev  
+   - libgstreamer-plugins-good1.0-dev
+   - libgstreamer-plugins-bad1.0-dev
+   - gstreamer1.0-rtsp
+   - libglib2.0-dev
+   - pkg-config
+
+2. **Verification failed:** pkg-config couldn't find `gstreamer-rtsp-server-1.0`
+   - Ran diagnostic: `pkg-config --list-all | grep gstreamer`
+   - Discovered missing package
+
+3. **Final fix:** Identified and added `libgstrtspserver-1.0-dev`
+   - This package contains the RTSP server .pc file
+   - Ubuntu 24.04 package name differs from core GStreamer packages
+
+4. **Build success:**
+   ```
+   Finished `release` profile [optimized] target(s) in 1m 01s
+   Binary: /home/elfege/0_NVR/neolink/target/release/neolink (17MB)
+   Version: Neolink v0.6.3.rc.2-28-g6e05e78 release
+   ```
+
+**Script Improvements:**
+- Created `check_gstreamer_dependencies()` function in `NEOlink_integration.sh`
+- Automatic dependency detection and installation
+- Removed interactive prompt (fully automated)
+- Added verification with fallback diagnostics
+- Fixed stdin consumption issue (removed colorized pipe in cargo build)
+
+**Files Modified:**
+- `NEOlink_integration.sh`: Added GStreamer dependency check function (lines 93-166)
+- Package list now includes all 12 required packages
+
+---
+
+### Step 2: Generate Neolink Configuration ✅
+
+**Challenge:** Script had multiple issues preventing config generation
+
+**Issues Fixed:**
+
+1. **Permission loss bug:**
+   - Script was losing execute permission after each run
+   - Root cause: Dangerous `pkill -9 "${BASH_SOURCE[1]}"` at line 92
+   - **Fix:** Removed the pkill line
+
+2. **Path navigation issue:**
+   - Script did `cd "$SCRIPT_DIR/.."` going to `/home/elfege/`
+   - Triggered venv auto-deactivate which called `exit 1`
+   - **Fix:** Changed to `cd "$SCRIPT_DIR"` to stay in `/home/elfege/0_NVR/`
+
+3. **JSON parsing error:**
+   - Original jq query looked for `.devices | to_entries[]`
+   - User's `cameras.json` has cameras at root level, not in `.devices` wrapper
+   - **Initial mistake:** Removed `.devices` from query
+   - **Correction:** Confirmed cameras.json DOES have `.devices` wrapper (line 7)
+   - **Final fix:** Restored `.devices |` to jq query + added safe navigation with `?` operator
+
+4. **Object type check:**
+   - Config objects (like `UI_HEALTH_*` settings) at end of JSON caused jq to fail
+   - These aren't cameras but were being processed by `to_entries[]`
+   - **Fix:** Added type checking: `select(.value | type == "object" and has("stream_type")...)`
+
+**Working jq Query:**
+```bash
+jq -r '.devices | to_entries[] | 
+  select(.value.stream_type? == "NEOLINK" and .value.type? == "reolink") | 
+  @json' cameras.json
+```
+
+**Configuration Generated:**
+- File: `~/0_NVR/config/neolink.toml`
+- Cameras configured: 2
+  - REOLINK_OFFICE (192.168.10.88:9000)
+  - REOLINK_TERRACE (192.168.10.89:9000)
+- Credentials: Retrieved from environment variables via `get_cameras_credentials`
+- **Security Issue Noted:** Passwords written in cleartext to config file
+  - Contains special characters: `)` in password
+  - **TODO:** Investigate if Neolink supports `${REOLINK_PASSWORD}` env var expansion
+  - **Deferred:** Will address in future session
+
+**Files Modified:**
+- `update_neolink_configuration.sh`:
+  - Removed dangerous pkill (line 92)
+  - Fixed cd path (line 26)
+  - Fixed jq query (lines 102-107)
+  - Added object type filtering
+  - Fixed CAMERA_COUNT calculation (line 110)
+
+---
+
+### Step 3: Test Neolink Standalone ✅
+
+**Challenge:** RTSP server failed to bind to port 8554
+
+**Initial Symptoms:**
+```bash
+[INFO] Starting RTSP Server at 0.0.0.0:8554:8554  # Note: double port!
+# But: netstat -tlnp | grep 8554  → (empty, not listening)
+```
+
+**Root Cause:** Neolink config parser bug
+- Config had correct format: `bind = "0.0.0.0:8554"`
+- Neolink parsed it as `0.0.0.0:8554:8554` (malformed)
+- RTSP server failed to start silently (no error logged)
+
+**Solution:** Changed bind format in `neolink.toml`
+```toml
+# Before (failed):
+bind = "0.0.0.0:8554"
+
+# After (working):
+bind = "0.0.0.0"
+bind_port = 8554
+```
+
+**Validation Tests:**
+
+1. **Port listening confirmed:**
+   ```bash
+   $ sudo lsof -i :8554
+   COMMAND     PID   USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+   neolink 3603740 elfege   10u  IPv4 711264660  0t0  TCP *:8554 (LISTEN)
+   ```
+
+2. **Baichuan connection successful:**
+   ```
+   [INFO] REOLINK_OFFICE: TCP Discovery success at 192.168.10.88:9000
+   [INFO] REOLINK_OFFICE: Connected and logged in
+   [INFO] REOLINK_OFFICE: Model RLC-410-5MP
+   [INFO] REOLINK_OFFICE: Firmware Version v3.0.0.2356_23062000
+   [INFO] REOLINK_OFFICE: Available at /REOLINK_OFFICE/main, /REOLINK_OFFICE/mainStream...
+   ```
+
+3. **RTSP stream validation:**
+   ```bash
+   $ ffmpeg -rtsp_transport tcp -i rtsp://localhost:8554/REOLINK_OFFICE/main -t 5 -f null -
+   
+   Input #0, rtsp, from 'rtsp://localhost:8554/REOLINK_OFFICE/main':
+     Stream #0:0: Video: h264 (High), yuv420p(progressive), 2560x1920, 30 fps
+     Stream #0:1: Audio: pcm_s16be, 16000 Hz, stereo, 512 kb/s
+   
+   frame=120 fps=22 q=-0.0 Lsize=N/A time=00:00:04.99 bitrate=N/A speed=0.913x
+   ```
+
+**Stream Specifications Confirmed:**
+- **Video:** H.264 High Profile, 2560x1920 (5MP), 30 fps, YUV420p
+- **Audio:** PCM 16-bit big-endian, 16 kHz stereo, 512 kbps
+- **Performance:** Smooth playback, no dropped frames in 5-second test
+- **Latency:** Subjectively much faster than direct RTSP
+
+**Files Modified:**
+- `update_neolink_configuration.sh`: Updated bind format generation (line ~139)
+- `neolink.toml`: Manual fix applied (to be regenerated by script)
+
+---
+
+## Architecture Validation
+
+### Data Flow Confirmed Working:
+```
+Camera:9000 (Baichuan) → Neolink:8554 (RTSP) → [Ready for FFmpeg integration]
+    ↓                          ↓
+192.168.10.88              localhost:8554
+TCP Discovery              Available paths:
+Logged in ✅                - /REOLINK_OFFICE/main
+H.264 5MP 30fps           - /REOLINK_OFFICE/mainStream
+                          - /REOLINK_TERRACE/main
+                          - /REOLINK_TERRACE/mainStream
+```
+
+### Cameras Integrated:
+1. **REOLINK_OFFICE** (192.168.10.88)
+   - Previously: `stream_type: "LL_HLS"` (direct RTSP)
+   - Now: `stream_type: "NEOLINK"` (Baichuan protocol)
+   - Model: RLC-410-5MP
+   - Firmware: v3.0.0.2356_23062000
+   - Status: ✅ Connected, streaming
+
+2. **REOLINK_TERRACE** (192.168.10.89)
+   - Previously: `stream_type: "LL_HLS"` (direct RTSP)  
+   - Now: `stream_type: "NEOLINK"` (Baichuan protocol)
+   - Model: RLC-410-5MP
+   - Firmware: v3.0.0.2356_23062000
+   - Status: ✅ Connected, streaming
+
+---
+
+## Files Created/Modified
+
+### New Files:
+- `~/0_NVR/neolink/target/release/neolink` (17MB binary)
+- `~/0_NVR/config/neolink.toml` (auto-generated configuration)
+
+### Modified Files:
+- `~/0_NVR/0_MAINTENANCE_SCRIPTS/NEOlink_integration.sh`
+  - Added `check_gstreamer_dependencies()` function
+  - Fixed stdin consumption issue in cargo build
+  - Added libgstrtspserver-1.0-dev to package list
+  
+- `~/0_NVR/update_neolink_configuration.sh`
+  - Removed dangerous pkill command
+  - Fixed directory navigation
+  - Corrected jq query for `.devices` wrapper
+  - Added object type filtering
+  - Changed bind format generation: `bind = "0.0.0.0"` + `bind_port = 8554`
+  
+- `~/0_NVR/config/cameras.json`
+  - REOLINK_OFFICE: Changed `stream_type` from "LL_HLS" to "NEOLINK"
+  - REOLINK_TERRACE: Changed `stream_type` from "LL_HLS" to "NEOLINK"
+
+---
+
+## System Environment
+
+**Hardware:**
+- Dell PowerEdge R730xd
+- 2× Intel Xeon E5-2690 v4 (28 cores total)
+- 128 GB DDR4 ECC RAM
+
+**Software:**
+- OS: Ubuntu 24.04.3 LTS (Noble Numbat)
+- Kernel: 6.8.0-85-generic (pending upgrade to 6.8.0-86)
+- GStreamer: 1.24.x
+- Rust: cargo 1.x (from rustup)
+- Python: 3.x (venv active in ~/0_NVR/venv)
+
+---
+
+## Remaining Steps (Not Started)
+
+### Step 4: Backend Python Integration
+**Pending:** Update Python stream handlers to route NEOLINK cameras to Neolink bridge
+
+**Files to modify:**
+1. `reolink_stream_handler.py`
+   - Check `stream_type` in `build_rtsp_url()`
+   - If "NEOLINK": return `rtsp://localhost:8554/{serial}/mainStream`
+   - If "HLS"/"LL_HLS": use existing direct camera URL
+
+2. `stream_manager.py`
+   - Add "NEOLINK" to valid stream types validation
+   - Ensure NEOLINK cameras still output HLS (for browser)
+
+3. `ffmpeg_params.py`
+   - Verify no changes needed (NEOLINK input → HLS output, same as before)
+
+### Step 5: Frontend JavaScript Integration
+**Pending:** Update browser stream routing
+
+**Files to modify:**
+1. `stream.js`
+   - Add NEOLINK to HLS routing logic (lines ~299, 321, 240)
+   - From frontend perspective: NEOLINK = HLS (no code changes needed)
+   - Update health monitoring to include NEOLINK
+
+### Step 6: Docker Integration
+**Pending:** Package Neolink into unified-nvr container
+
+**Tasks:**
+1. Update `Dockerfile`
+   - Copy neolink binary to `/usr/local/bin/neolink`
+   - Copy neolink.toml to `/app/config/neolink.toml`
+   - Ensure execute permission
+
+2. Update `docker-compose.yml`
+   - Expose port 8554 internally (container network only)
+   - Add environment variables: REOLINK_USERNAME, REOLINK_PASSWORD
+
+3. Add Neolink to process management
+   - Option A: supervisord config
+   - Option B: Docker ENTRYPOINT script (start Neolink in background)
+
+### Step 7: Testing & Validation
+**Pending:** End-to-end integration testing
+
+**Test plan:**
+1. Verify Neolink starts in container
+2. Test RTSP stream from inside container
+3. Verify FFmpeg can read from localhost:8554
+4. Validate HLS output to browser
+5. Measure latency improvement (target: <1.5s)
+6. Monitor for 24-48 hours (stability check)
+
+### Step 8: Production Deployment
+**Pending:** Rollout to production
+
+**Deployment order:**
+1. REOLINK_OFFICE first (guinea pig - indoor, stable)
+2. REOLINK_TERRACE second (outdoor, previous RJ45 issues)
+3. Monitor both for 24-48 hours
+4. Consider expanding to other Reolink cameras if successful
+
+---
+
+## Known Issues & Deferred Items
+
+### Security: Cleartext Passwords in neolink.toml
+**Issue:** Configuration file contains plaintext passwords with special characters
+**Impact:** Medium - file is in ~/0_NVR/config/ (not in Docker image, not in git)
+**Options to investigate:**
+1. Check if Neolink supports environment variable expansion: `password = "${REOLINK_PASSWORD}"`
+2. Use Neolink UID-based authentication (passwordless)
+3. Mount secrets from external file at container runtime
+**Status:** Deferred to future session
+
+### Kernel Upgrade Pending
+**Notice:** System has pending kernel upgrade (6.8.0-85 → 6.8.0-86)
+**Impact:** None on current work
+**Action:** Reboot when convenient (after Docker integration complete)
+
+### Docker Service Restart Deferred
+**Notice:** `needrestart` flagged Docker for restart
+**Impact:** None - will restart on reboot
+**Action:** No immediate action needed
+
+---
+
+## Next Session TODO
+
+1. **Resume at Step 4:** Backend Python Integration
+   - Start with `reolink_stream_handler.py`
+   - Test RTSP URL routing logic
+   - Validate FFmpeg can consume from localhost:8554
+
+2. **Security Review:**
+   - Research Neolink password alternatives
+   - Consider environment variable expansion
+   - Evaluate UID-based auth option
+
+3. **Continue Integration:**
+   - Complete Steps 4-8 from README_neolink_integration_plan.md
+   - Document any additional issues encountered
+   - Update this history file upon completion
+
+---
+
+## References
+
+**Documentation:**
+- Neolink GitHub: https://github.com/QuantumEntangledAndy/neolink
+- Integration Plan: `~/0_NVR/README_neolink_integration_plan.md`
+- Integration Script: `~/0_NVR/0_MAINTENANCE_SCRIPTS/NEOlink_integration.sh`
+- Config Generator: `~/0_NVR/update_neolink_configuration.sh`
+
+**Key Commits/Changes:**
+- NEOlink_integration.sh: Added check_gstreamer_dependencies() function
+- update_neolink_configuration.sh: Fixed jq query, bind format, removed pkill
+- cameras.json: Changed stream_type to "NEOLINK" for two Reolink cameras
+
+**Session End:** October 24, 2025 (ready to resume at Step 4)
+
+---

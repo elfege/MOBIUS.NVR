@@ -4,15 +4,11 @@
 
 set -e
 
-
-
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 cd "$SCRIPT_DIR"
 PROJECT_ROOT=~/0_NVR
 
 . ~/.env.colors
-
-
 
 CAMERAS_JSON="${PROJECT_ROOT}/config/cameras.json"
 MEDIAMTX_YML="${PROJECT_ROOT}/packager/mediamtx.yml"

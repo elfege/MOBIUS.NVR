@@ -50,10 +50,12 @@
 ├── README.md
 ├── requirements.txt
 ├── services/
+│   ├── amcrest_mjpeg_capture_service.py
 │   ├── app_restart_handler.py
 │   ├── camera_base.py
 │   ├── camera_repository.py
 │   ├── credentials/
+│   │   ├── amcrest_credential_provider.py
 │   │   ├── credential_provider.py
 │   │   ├── eufy_credential_provider.py
 │   │   ├── reolink_credential_provider.py
@@ -61,6 +63,8 @@
 │   ├── eufy_service.py
 │   ├── mjpeg_capture_service.py
 │   ├── ptz_validator.py
+│   ├── reolink_mjpeg_capture_service.py
+│   ├── unifi_mjpeg_capture_service.py
 │   ├── unifi_protect_service.py
 │   └── unifi_service_resource_monitor.py
 ├── start_nvr_standalone.sh*
@@ -96,6 +100,7 @@
 ├── streaming/
 │   ├── ffmpeg_params.py
 │   ├── handlers/
+│   │   ├── amcrest_stream_handler.py
 │   │   ├── eufy_stream_handler.py
 │   │   ├── reolink_stream_handler.py
 │   │   └── unifi_stream_handler.py
@@ -116,4 +121,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-23 directories, 94 files
+23 directories, 99 files

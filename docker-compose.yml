@@ -34,6 +34,10 @@ services:
       - USE_PROTECT=${USE_PROTECT}
       - REOLINK_USERNAME=${REOLINK_USERNAME}
       - REOLINK_PASSWORD=${REOLINK_PASSWORD}
+      - REOLINK_API_USER=${REOLINK_API_USER}
+      - REOLINK_API_PASSWORD=${REOLINK_API_PASSWORD}
+      - AMCREST_LOBBY_USERNAME=${AMCREST_LOBBY_USERNAME}
+      - AMCREST_LOBBY_PASSWORD=${AMCREST_LOBBY_PASSWORD}
       - EUFY_CAMERA_T8416P0023352DA9_USERNAME=${EUFY_CAMERA_T8416P0023352DA9_USERNAME}
       - EUFY_CAMERA_T8416P0023352DA9_PASSWORD=${EUFY_CAMERA_T8416P0023352DA9_PASSWORD}
       - EUFY_CAMERA_T8416P0023370398_USERNAME=${EUFY_CAMERA_T8416P0023370398_USERNAME}
@@ -133,6 +137,18 @@ services:
     environment:
     - REOLINK_USERNAME=${REOLINK_USERNAME}
     - REOLINK_PASSWORD=${REOLINK_PASSWORD}
+
+  neolink:
+    build:
+      context: .
+      dockerfile: Dockerfile.neolink
+    container_name: nvr-neolink
+    restart: unless-stopped
+    volumes:
+      - ./neolink/target/release/neolink:/usr/local/bin/neolink:ro
+      - ./config/neolink.toml:/etc/neolink.toml:ro
+    networks:
+      - nvr-net
     
 networks:
   nvr-net:

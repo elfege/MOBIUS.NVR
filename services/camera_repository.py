@@ -33,12 +33,15 @@ class CameraRepository:
         self.unifi_config_file = os.path.join(config_dir, 'unifi_protect.json')
         self.eufy_config_file = os.path.join(config_dir, 'eufy_bridge.json')
         self.reolink_config_file = os.path.join(config_dir, 'reolink.json')
-
+        self.amcrest_config_file = os.path.join(config_dir, 'amcrest.json')
+        
         # Load all configs
         self.cameras_data = self._load_json(self.cameras_file, {})
         self.unifi_config = self._load_json(self.unifi_config_file, {})
         self.eufy_config = self._load_json(self.eufy_config_file, {})
         self.reolink_config = self._load_json(self.reolink_config_file, {})
+        self.amcrest_config = self._load_json(self.amcrest_config_file, {})
+
 
         logger.info(f"Loaded {self.get_camera_count()} cameras from {self.cameras_file}")
 
@@ -177,6 +180,10 @@ class CameraRepository:
         """
         return len(self.get_all_cameras(include_hidden))
 
+    def get_amcrest_config(self) -> Dict:
+        """Get Amcrest configuration"""
+        return self.amcrest_config
+    
     def is_camera_hidden(self, serial: str) -> bool:
         """
         Check if a camera is hidden
@@ -231,4 +238,6 @@ class CameraRepository:
         self.unifi_config = self._load_json(self.unifi_config_file, {})
         self.eufy_config = self._load_json(self.eufy_config_file, {})
         self.reolink_config = self._load_json(self.reolink_config_file, {})
+        self.amcrest_config = self._load_json(self.amcrest_config_file, {})
+
         logger.info("Reloaded all configurations")

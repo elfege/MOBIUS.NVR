@@ -9,6 +9,9 @@ from .handlers.unifi_stream_handler import UniFiStreamHandler
 from .handlers.eufy_stream_handler import EufyStreamHandler
 from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
 from services.credentials.unifi_credential_provider import UniFiCredentialProvider
+from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
+from .handlers.amcrest_stream_handler import AmcrestStreamHandler
+
 from services.credentials.eufy_credential_provider import EufyCredentialProvider
 from services.camera_repository import CameraRepository
 from low_level_handlers.cleanup_handler import kill_ffmpeg
@@ -54,6 +57,8 @@ class StreamManager:
         eufy_cred_provider = EufyCredentialProvider()
         unifi_cred_provider = UniFiCredentialProvider()
         reolink_cred_provider = ReolinkCredentialProvider()
+        amcrest_cred_provider = AmcrestCredentialProvider()
+
 
 
         # Initialize stream handlers for each vendor
@@ -69,6 +74,10 @@ class StreamManager:
             'reolink': ReolinkStreamHandler(
                 reolink_cred_provider,
                 camera_repo.get_reolink_config()
+            ),
+            'amcrest': AmcrestStreamHandler(
+                amcrest_cred_provider,
+                camera_repo.get_amcrest_config()
             )
         }
 
@@ -251,7 +260,7 @@ class StreamManager:
 
                 cam = self.camera_repo.get_camera(camera_serial) if hasattr(self, 'camera_repo') else None
                 st  = (cam or {}).get('stream_type', 'HLS').upper()
-                if st == 'LL_HLS':
+                if st == 'LL_HLS' or st == 'NEOLINK_LL_HLS':
                     path = cam.get('packager_path') or camera_serial
                     return f"/hls/{path}/index.m3u8"
 
@@ -343,6 +352,10 @@ class StreamManager:
             # Protocol branching (RTMP vs HLS)
             protocol = camera.get('stream_type', 'HLS').upper()
             
+            if protocol == 'MJPEG':
+                logger.info(f"Camera {camera_name} uses MJPEG proxy - no FFmpeg needed")
+                return None  # Don't start FFmpeg
+            
             if protocol == 'RTMP':
                 # Spawn FFmpeg for RTMP
                 cmd = ['ffmpeg', '-i', source_url, '-c', 'copy', '-f', 'flv', '-']
@@ -386,7 +399,9 @@ class StreamManager:
                 return f"/api/camera/{camera_serial}/flv"
             
             # ===== LL_HLS publisher path =====
-            if protocol == 'LL_HLS':
+            # if "NEOLINK" then falls to HLS path further below. 
+            # if "NEOLINK_LL_HLS" then falls to this block.
+            if protocol == 'LL_HLS' or protocol == 'NEOLINK_LL_HLS':
                 # Ask the vendor handler to build the publish argv and the play URL
                 argv, play_url = handler._build_ll_hls_publish(camera_config=camera, rtsp_url=source_url)
 
@@ -423,7 +438,7 @@ class StreamManager:
                     import os
                     os.unlink(stderr_file.name)  # Clean up temp file
                     
-                    raise Exception(f"LL-HLS publisher died (code {process.returncode}): {error_output[:200]}")
+                    raise Exception(f"LL-HLS publisher died (code {process.returncode}): {error_output[:3000]}")
                     
                     # Process is running - close the file handle but keep the file for debugging
                     stderr_file.close()
@@ -453,6 +468,7 @@ class StreamManager:
             # ===== end LL_HLS branch =====
 
             else:
+                # NEOLINK FALLS TO THIS BLOCK as it uses the standard HLS path.
                 # HLS path
                 stream_dir = self.hls_dir / camera_serial
                 stream_dir.mkdir(exist_ok=True)
@@ -473,7 +489,7 @@ class StreamManager:
                     camera_config=camera
                 )
                 
-                time.sleep(0.5)
+                time.sleep(2)
                 if process.poll() is not None:
                     raise Exception(f"FFmpeg died immediately")
                 

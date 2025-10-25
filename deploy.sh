@@ -31,17 +31,22 @@ if [ ! -f docker-compose.yml ]; then
 	exit 1
 fi
 
-# Stop and remove containers
-docker compose down &>/dev/null || true
-
-# Remove the old image
-docker rmi 0_nvr-nvr &>/dev/null || true
-
 read -t 10 -r -p "Prune?" prune
 # Clean up unused Docker resources
 if [[ "$prune" =~ ^[yY].*? ]]; then
 	docker system prune -f || true
 fi
+
+start_spinner 20 "$CYAN Cleaning up old Docker containers and images..."
+# Stop and remove containers
+docker compose down &>/dev/null & 
+wait $!
+
+# Remove the old image
+docker rmi 0_nvr-nvr &>/dev/null & 
+wait $!
+stop_spinner
+
 
 get_cameras_credentials >/dev/null
 
@@ -52,8 +57,7 @@ if [ $? -eq 0 ]; then
 	echo ""
 	echo -e "${GREEN}✓ Docker image built successfully${NC}"
 	echo ""
-	echo "To start the container, run:"
-	echo "  ./start.sh"
+	./start.sh
 else
 	echo -e "${RED}✗ Docker build failed${NC}"
 	exit 1

@@ -54,6 +54,12 @@ if [[ -f ~/0_NVR/update_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]
 	stop_spinner
 fi
 
+if [[ -f ~/0_NVR/update_neolink_configuration.sh.sh && -f ~/0_NVR/config/neolink.toml ]]; then
+	start_spinner 20 "$CYAN Updating config/neolink.toml"
+	~/0_NVR/update_neolink_configuration.sh >/dev/null
+	stop_spinner
+fi
+
 # Start the container
 echo ""
 echo "Starting container..."

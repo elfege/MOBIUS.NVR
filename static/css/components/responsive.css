@@ -1,0 +1,36 @@
+/* ============================================================================
+   RESPONSIVE.CSS - Mobile & Tablet Adjustments
+   
+   PURPOSE: Media queries to adapt the grid layout for different screen sizes.
+   ============================================================================ */
+
+/* Phones - keep 2 columns */
+@media (max-width: 480px) {
+    .streams-container {
+        padding: 0.25rem;
+        gap: 0.25rem;
+    }
+
+    /* 2 columns even on tiny screens */
+    .grid-2,
+    .grid-3,
+    .grid-4,
+    .grid-5 {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+/* iPad Mini and similar tablets (portrait or landscape) */
+@media screen and (min-width: 700px) and (max-width: 1100px) {
+    .streams-container {
+        display: grid !important;
+        gap: 0.5rem;
+        grid-template-columns: repeat(3, 1fr) !important;
+        grid-auto-rows: minmax(0, 1fr) !important;
+    }
+
+    .stream-item {
+        min-height: 0;
+        height: 100%;
+    }
+}

@@ -1,0 +1,60 @@
+/* ============================================================================
+   STREAM-CONTROLS.CSS - Stream Control Buttons
+   
+   PURPOSE: Play, stop, and refresh buttons that appear on hover at the bottom
+   of each stream.
+   ============================================================================ */
+
+/* Control panel at bottom of each stream */
+.stream-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
+    opacity: 0;
+    pointer-events: auto;
+    transition: opacity 0.3s ease;
+    z-index: 20;
+}
+
+/* Show controls when hovering over stream item OR controls themselves */
+.stream-item:hover .stream-controls,
+.stream-controls:hover {
+    opacity: 1;
+}
+
+/* Keep controls visible briefly after hover ends */
+.stream-controls:hover {
+    transition-delay: 0.5s;
+}
+
+/* Horizontal row of control buttons */
+.control-row {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+}
+
+/* Individual stream control buttons */
+.stream-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.stream-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}

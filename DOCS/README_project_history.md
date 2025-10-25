@@ -858,7 +858,7 @@ The phantom `/static/streams/` directory creation remains an unresolved technica
 
 ### Single Capture Service Architecture Implementation
 
-- **New Module**: Created `services/mjpeg_capture_service.py` following `stream_manager.py` patterns for architectural consistency
+- **New Module**: Created `services/unifi_mjpeg_capture_service.py` following `stream_manager.py` patterns for architectural consistency
 - **Capture Model**: Single background thread per camera fetches snapshots at 2 FPS regardless of client count
 - **Shared Buffer**: Latest frame stored in memory buffer, served to all connected clients simultaneously
 - **Lifecycle Management**: Automatic start on first client, stop when last client disconnects
@@ -1397,7 +1397,8 @@ elif camera_type == "eufy":
 **2. Frontend Template Fixes (templates/streams.html)**
 
 - **Added Missing Attribute**: `data-stream-type="{{ info.stream_type }}"` now rendered in DOM
-- **Fixed Element Logic**: Changed from `{% if info.type == 'unifi' %}` to `{% if info.stream_type == 'mjpeg_proxy' %}`
+- **Fixed Element Logic**: Changed from `{% if info.type == 'unifi' %}` to `{% if info.stream_type == 'MJPEG' or info.stream_type == 'mjpeg_proxy' %}
+`
 - **Separated CSS**: Extracted all styles into `static/css/streams.css` with proper grid defaults
 
 **3. JavaScript Refactoring (static/js/streaming/stream.js)**
@@ -5424,7 +5425,7 @@ async restartStream(serial, $streamItem) {
             delete videoElement._healthDetach;
         }
 
-        if (streamType === 'HLS' || streamType === 'LL_HLS') {
+        if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
             await this.hlsManager.forceRefreshStream(serial, videoElement);
             this.setStreamStatus($streamItem, 'live', 'Live');
         } else if (streamType === 'mjpeg_proxy' || streamType === 'RTMP') {   // ✅ unified branch
@@ -7416,7 +7417,7 @@ ReferenceError: startInfo is not defined
 
 ```javascript
 async openFullscreen(serial, name, cameraType, streamType) {
-    if (streamType === 'HLS' || streamType === 'LL_HLS') {
+    if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
         const response = await fetch(`/api/stream/start/${serial}`, {...});
         
         // Fetch stream metadata from backend after starting.
@@ -8512,6 +8513,1019 @@ H.264 5MP 30fps           - /REOLINK_OFFICE/mainStream
 - update_neolink_configuration.sh: Fixed jq query, bind format, removed pkill
 - cameras.json: Changed stream_type to "NEOLINK" for two Reolink cameras
 
-**Session End:** October 24, 2025 (ready to resume at Step 4)
+**Session End:** October 23, 2025 @ 19:37 (ready to resume at Step 4)
 
 ---
+
+## October 24, 2025 - Neolink Integration Implementation (Continued)
+
+### Goal
+Integrate Neolink bridge for Reolink cameras to reduce latency from ~2-3s to near real-time (~300ms-1s) using Baichuan protocol (port 9000).
+
+### What We Accomplished
+
+#### 1. Docker Architecture - Neolink as Separate Service ✅
+- Created `Dockerfile.neolink` with GStreamer runtime dependencies
+- Added `neolink` service to `docker-compose.yml`
+- Neolink runs as standalone container on `nvr-net` network
+- Binary mounted from host: `./neolink/target/release/neolink`
+- Config mounted: `./config/neolink.toml`
+
+#### 2. Backend Python Integration ✅
+- Modified `reolink_stream_handler.py`:
+  - Added `_build_NEOlink_url()` method
+  - Routes NEOLINK cameras to `rtsp://neolink:8554/{serial}/mainStream`
+- Modified `stream_manager.py`:
+  - Added NEOLINK to valid stream types (line 321 for health monitoring)
+  - Attempted LL-HLS publisher path (line 389) - **FAILED**
+
+#### 3. Frontend JavaScript Updates ✅
+- Modified `stream.js` (6 locations):
+  - Line 240: Force refresh support
+  - Line 299: Stream start routing
+  - Line 321: Health monitoring attachment
+  - Line 349: Stop stream routing
+  - Line 424: Refresh method
+  - Line 518: Fullscreen rendering
+- Added `|| streamType === 'NEOLINK'` to treat as HLS streams
+
+#### 4. Configuration Updates ✅
+- `cameras.json` for REOLINK_OFFICE and REOLINK_TERRACE:
+  - Set `"stream_type": "NEOLINK"`
+  - Added `"neolink": {"port": 8554}`
+  - Kept LL-HLS player settings for low latency
+
+### Current Status
+
+#### What Works ✅
+- Neolink container running successfully
+- Both cameras connected via Baichuan protocol (port 9000)
+- Streams available at `rtsp://neolink:8554/REOLINK_OFFICE/mainStream`
+- Regular HLS path works (but 2-3s latency - defeats purpose)
+- FFmpeg can manually connect and stream from Neolink
+
+#### What's Broken ❌
+1. **LL-HLS Publisher Path Fails**
+   - Neolink buffer fills up: `Buffer full on vidsrc pausing stream`
+   - FFmpeg dies with exit code 0 or 224
+   - Chain too slow: Camera → Neolink → FFmpeg → MediaMTX → Browser
+
+2. **Latency Not Improved**
+   - Regular HLS with Neolink: 2-3 seconds (same as before)
+   - Need LL-HLS to get ~1 second latency
+   - Original goal was ~300ms-1s
+
+3. **Codec Mystery**
+   - Sometimes Neolink outputs MJPEG instead of H.264
+   - UDP vs TCP transport issues
+
+### Key Files Modified
+- `docker-compose.yml` - Added neolink service
+- `Dockerfile.neolink` - New file with GStreamer deps
+- `reolink_stream_handler.py` - Added `_build_NEOlink_url()`
+- `stream_manager.py` - Added NEOLINK to stream type checks
+- `stream.js` - Added NEOLINK to 6 conditional checks
+- `cameras.json` - Changed stream_type to NEOLINK for 2 cameras
+
+### Critical Issues to Resolve
+
+1. **Neolink Buffer Overflow**
+   - Check Neolink docs for buffer configuration
+   - Happening even with regular HLS now
+   - May need to adjust Neolink settings in config/neolink.toml
+
+2. **Architecture Decision Needed**
+   - Option A: Fix LL-HLS publisher path (complex, may not work)
+   - Option B: **Create generic MJPEG stream proxy** (simpler, potentially lowest latency)
+   - Option C: Abandon Neolink, revert to direct RTSP with LL-HLS (~1s latency)
+
+### Recommended Next Steps
+
+1. **Research Neolink buffer configuration** in official docs
+2. **Consider MJPEG approach**: If Neolink outputs MJPEG, proxy it directly to browser (no transcoding = lowest latency)
+3. **Create new `"MJPEG"` stream type** with generic stream proxy (not snapshot-based like current mjpeg_proxy)
+4. **Test direct MJPEG streaming**: `Camera:9000 → Neolink:8554 (MJPEG) → Browser` (~300ms expected)
+
+### Technical Notes
+- Current nvr container uses hostname `neolink` for DNS resolution
+- Port 8554 used by both Neolink and MediaMTX (different containers, no conflict)
+- Neolink successfully uses Baichuan protocol but buffering issues prevent low-latency playback
+- Frontend already has MJPEG support infrastructure (needs adaptation for continuous streams)
+
+### Revert Instructions (if needed)
+1. Change `stream_type` back to `"LL_HLS"` in cameras.json for REOLINK cameras
+2. Remove neolink service from docker-compose.yml
+3. Remove NEOLINK checks from stream.js (6 lines)
+4. Rebuild containers
+
+---
+
+**Bottom Line**: Neolink integration is 90% complete but hitting buffer/performance issues. The MJPEG direct proxy approach may be the breakthrough solution.
+
+## October 24, 2025 
+### Neolink Integration & Latency Optimization Attempt
+
+---
+
+### SESSION CONTEXT
+
+**Project**: Unified NVR System (Python Flask backend + JavaScript frontend)  
+**Hardware**: Dell PowerEdge R730xd running Proxmox, 12+ cameras (UniFi, Eufy, Reolink)  
+**Primary Goal**: Reduce Reolink camera latency from 2-4s to sub-1s using Neolink bridge
+
+---
+
+### STARTING STATE
+
+#### Camera Setup
+- **2 Reolink RLC-410-5MP cameras**:
+  - REOLINK_OFFICE (192.168.10.88)
+  - REOLINK_TERRACE (192.168.10.89)
+- Using direct RTSP (port 554) with HLS/LL-HLS streaming
+- Baseline latency: 2-4s (HLS), ~1.8s (LL-HLS)
+
+#### Architecture
+```
+Camera:554 (RTSP) → FFmpeg → MediaMTX → HLS → Browser
+```
+
+#### Key Files Structure
+- `app.py` - Flask backend
+- `stream_manager.py` - Core streaming logic
+- `reolink_stream_handler.py` - Reolink-specific handler
+- `stream.js` - Frontend stream management (jQuery-based)
+- `cameras.json` - Camera configuration
+- `docker-compose.yml` - Container orchestration
+
+---
+
+### NEOLINK INTEGRATION ATTEMPT
+
+#### What is Neolink?
+- Open-source RTSP bridge for Reolink cameras
+- Translates proprietary Baichuan protocol (port 9000) to RTSP
+- Claims lower latency (~600ms-1.5s vs 1-2s direct RTSP)
+- Written in Rust, uses GStreamer for RTSP server
+
+#### Implementation Steps Completed
+
+##### 1. Docker Integration ✅
+- Added `neolink` service to `docker-compose.yml` (lines 137-147)
+- Created `Dockerfile.neolink` with GStreamer dependencies
+- Mounted binary: `./neolink/target/release/neolink`
+- Mounted config: `./config/neolink.toml`
+- Container runs on `nvr-net` network
+
+##### 2. Backend Python Changes ✅
+**`reolink_stream_handler.py`**:
+- Added `_build_NEOlink_url()` method (lines 105-126)
+- Returns `rtsp://neolink:8554/{serial}/main`
+- Routes based on `stream_type` configuration
+- No credentials needed (Neolink handles auth)
+
+**`stream_manager.py`**:
+- Added `NEOLINK` to stream type handling (line 456)
+- Added `NEOLINK_LL_HLS` for LL-HLS publisher path (line 391)
+- Falls through to standard HLS path for regular NEOLINK
+
+##### 3. Frontend JavaScript Changes ✅
+**`stream.js`** - Added checks in 6 locations:
+- Line 240: Force refresh support
+- Line 299: Stream start routing
+- Line 321: Health monitoring attachment
+- Line 349: Stop stream routing
+- Line 424: Refresh method
+- Line 518: Fullscreen rendering
+
+##### 4. Configuration Updates ✅
+**`cameras.json`**:
+- Added `"stream_type": "NEOLINK"` for both cameras
+- Added `"neolink": {"port": 8554}` section
+- Kept LL-HLS player settings
+
+**`config/neolink.toml`** (auto-generated):
+- Global: `bind = "0.0.0.0"`, `bind_port = 8554`
+- Per camera: username, password, address (host:9000)
+- `buffer_size = 100` (default)
+- `stream = "mainStream"`
+
+##### 5. Configuration Generator Script ✅
+**`generate_neolink_config.sh`**:
+- Auto-generates `neolink.toml` from `cameras.json`
+- Filters for `stream_type="NEOLINK"`
+- Reads credentials from environment variables
+- Called by `start.sh` during deployment
+
+---
+
+### PROBLEMS ENCOUNTERED
+
+#### Critical Issue: Buffer Overflow with LL-HLS
+```
+[2025-10-24T07:09:44Z INFO neolink::rtsp::factory] Buffer full on vidsrc pausing stream until client consumes frames
+[2025-10-24T07:11:33Z INFO neolink::rtsp::factory] Failed to send to source: App source is closed
+```
+
+**Root Cause**: Chain too slow
+```
+Camera:9000 → Neolink:8554 → FFmpeg → MediaMTX (LL-HLS) → Browser
+```
+
+- Neolink pushes frames at camera rate (30fps)
+- FFmpeg + LL-HLS transcoding can't consume fast enough
+- Neolink's buffer fills (default 100 frames = 3.3s at 30fps)
+- Stream crashes with "App source is closed"
+
+#### Buffer Size Investigation
+- Researched Neolink documentation
+- Found `buffer_size` parameter in config
+- **Misconception clarified**: Reducing buffer size makes problem WORSE
+  - Smaller buffer = faster overflow
+  - Larger buffer = more runway before crash
+  - **Neither solves root cause**: consumption too slow
+
+#### Solutions Attempted
+
+##### Attempt 1: Increase FFmpeg Input Buffer ❌
+Added to `cameras.json` `rtsp_input`:
+```json
+"buffer_size": 20000000,  // 20MB
+"rtsp_transport": "tcp",   // Force TCP
+"max_delay": 5000000
+```
+**Result**: No improvement
+
+##### Attempt 2: Reduce Neolink Buffer ❌
+Changed `buffer_size = 20` in neolink.toml
+**Result**: Failed faster (as expected)
+
+##### Attempt 3: MJPEG Direct Proxy Investigation ❌
+**Research findings**:
+- Neolink outputs H.264/H.265 via RTSP (GStreamer)
+- Neolink does NOT support MJPEG stream output
+- Only has JPEG snapshot capability (discrete, every 2s via MQTT)
+- **Verdict**: NOT FEASIBLE for continuous streaming
+
+---
+
+### FINAL PERFORMANCE RESULTS
+
+#### Comprehensive Latency Testing
+
+| Method | Latency | Status | Notes |
+|--------|---------|--------|-------|
+| Direct RTSP → HLS | 2-4s | ✅ Works | Baseline, acceptable |
+| Direct RTSP → LL-HLS | **1.8s** | ✅ Works | **Best achieved** |
+| Neolink → HLS | 2.8s | ✅ Works | No improvement over direct |
+| Neolink → LL-HLS | FAILS | ❌ Crashes | Buffer overflow |
+
+#### Stream Type Implementation
+Added `NEOLINK_LL_HLS` as dedicated stream type for testing:
+```python
+if protocol == 'LL_HLS' or protocol == 'NEOLINK_LL_HLS':
+    # LL-HLS publisher path
+```
+
+Allows switching between modes in `cameras.json`:
+- `"LL_HLS"` - Direct RTSP with LL-HLS (1.8s) ✅
+- `"NEOLINK"` - Neolink with regular HLS (2.8s)
+- `"NEOLINK_LL_HLS"` - Neolink with LL-HLS (fails)
+- `"HLS"` - Direct RTSP with regular HLS (2-4s)
+
+---
+
+### CONCLUSIONS & ANALYSIS
+
+#### Why Neolink Didn't Help
+1. **Same codec path**: Both use H.264/H.265 → No encoding advantage
+2. **Browser is bottleneck**: HLS.js + software decode = fixed overhead
+3. **Added complexity**: Extra hop (Neolink bridge) without benefit
+4. **LL-HLS incompatible**: Transcoding too slow for Neolink's buffer
+
+#### Latency Breakdown (Why 1.8s is the Floor)
+
+**Browser-based HLS streaming unavoidable delays**:
+1. Camera encoding: ~100ms (GOP/keyframes)
+2. Network transmission: ~50-100ms
+3. **HLS segmentation: ~500ms+** (0.5s segments × 2 buffer minimum)
+4. Browser HLS.js + decode: ~200-300ms
+5. Rendering pipeline: ~50-100ms
+
+**Total minimum**: ~1.5-2.0s
+
+#### Why Native Reolink App is Faster (~300-500ms)
+- Direct Baichuan binary stream (no HLS)
+- Hardware video decode (GPU)
+- Native app buffer control
+- No HTTP/browser overhead
+
+#### Recommendation: **Abandon Neolink, Use Direct LL-HLS**
+
+**Optimal configuration**:
+```json
+"stream_type": "LL_HLS",
+"rtsp_input": {
+  "rtsp_transport": "tcp",
+  "timeout": 5000000,
+  "analyzeduration": 1000000,
+  "probesize": 1000000,
+  "use_wallclock_as_timestamps": 1,
+  "fflags": "nobuffer"
+}
+```
+
+**Achieves**:
+- ✅ 1.8s latency (near-theoretical minimum for browser HLS)
+- ✅ Stable, proven architecture
+- ✅ Simple, maintainable
+- ✅ No buffer overflow issues
+
+---
+
+### NEXT DIRECTION: MJPEG INVESTIGATION
+
+#### User's Final Question
+> "Now the JS client could use mjpeg urls directly. I think REOLINK has an mjpeg api."
+
+#### Context for Next Session
+Reolink cameras (RLC-410-5MP) may support native MJPEG via HTTP API:
+- Direct camera HTTP endpoint (no transcoding)
+- Continuous JPEG stream (multipart/x-mixed-replace)
+- Potentially lower latency than HLS (~500ms-1s possible)
+- Existing frontend has `mjpeg_proxy` infrastructure (`mjpeg-stream.js`)
+
+#### Research Needed
+1. **Check if RLC-410-5MP supports MJPEG natively**
+   - Reolink HTTP API documentation
+   - Test URL format: `http://camera/cgi-bin/api.cgi?...`
+   
+2. **Evaluate existing MJPEG infrastructure**
+   - `unifi_mjpeg_capture_service.py` - Current snapshot-based system
+   - `mjpeg-stream.js` - Frontend MJPEG player
+   - Could be adapted for continuous MJPEG stream?
+
+3. **Architecture comparison**
+   ```
+   Option A (Current): Camera → FFmpeg → HLS → Browser (1.8s)
+   Option B (MJPEG):   Camera → HTTP MJPEG → Browser (~500ms-1s?)
+   ```
+
+#### Files to Review in Next Session
+- `/mnt/project/unifi_mjpeg_capture_service.py` - Current MJPEG implementation
+- `/mnt/project/mjpeg-stream.js` - Frontend MJPEG player
+- Research Reolink HTTP API for MJPEG support
+- Check if direct MJPEG bypasses HLS segmentation delay
+
+---
+
+### TECHNICAL ARTIFACTS
+
+#### Modified Files (Commit-Ready)
+1. `docker-compose.yml` - Neolink service (lines 137-147)
+2. `reolink_stream_handler.py` - `_build_NEOlink_url()` method
+3. `stream_manager.py` - NEOLINK/NEOLINK_LL_HLS handling
+4. `stream.js` - 6 locations with NEOLINK checks
+5. `generate_neolink_config.sh` - Configuration generator
+
+#### Can Be Reverted
+All Neolink changes can be safely removed since:
+- Direct RTSP path still works (original code intact)
+- Stream type switching in cameras.json
+- No breaking changes to other camera types
+
+#### Key Environment Variables
+```bash
+REOLINK_USERNAME=admin
+REOLINK_PASSWORD=<from get_cameras_credentials>
+```
+
+---
+
+### USER PREFERENCES & CONSTRAINTS
+
+#### Development Style
+- **Language**: ES6 + jQuery (NO vanilla JS)
+- **Approach**: Hypothetico-deductive with testing confirmation
+- **Pace**: One step per message, wait for confirmation
+- **NO**: Artifacts (broken, layers overwrite), probabilistic answers, guessing
+
+#### System Constraints
+- Proxmox host, Docker containers
+- MediaMTX for HLS packaging
+- Flask backend (Python)
+- jQuery frontend (explicitly NO vanilla JS)
+- Network disabled for bash_tool in Claude environment
+
+#### Project Files Available
+- Full project in `/mnt/project/`
+- Tree structure in `tree.txt`
+- Project history in `README_project_history.md`
+- All code accessible for reference
+
+---
+
+### STATUS: NEOLINK ABANDONED, MJPEG NEXT
+
+**Current stable state**: Direct RTSP + LL-HLS @ 1.8s latency  
+**Next exploration**: Native MJPEG from Reolink cameras  
+**Goal**: Achieve <1s latency by bypassing HLS segmentation entirely
+
+
+## October 24, 2025: Reolink MJPEG Direct Streaming Implementation
+
+### Summary
+Successfully implemented direct MJPEG streaming from Reolink cameras to browser, bypassing FFmpeg entirely. Achieved sub-second latency (~200-400ms) by polling camera's Snap API and serving multipart/x-mixed-replace stream. Implementation complete but requires optimization for multi-client support.
+
+### Objective
+Reduce Reolink camera streaming latency below the 1.8s achieved with LL-HLS by eliminating FFmpeg transcoding and HLS segmentation overhead.
+
+---
+
+## Architecture Implemented
+
+**Stream Flow:**
+```
+Camera Snap API (HTTP) → Python Generator (Flask) → Browser <img> tag
+Latency: ~200-400ms (vs 1.8s with LL-HLS)
+```
+
+**Key Design Decisions:**
+- Backend polls Reolink's `/cgi-bin/api.cgi?cmd=Snap` endpoint at configurable FPS (default 10)
+- Serves `multipart/x-mixed-replace` MJPEG stream directly to browser
+- Uses `<img>` element instead of `<video>` element
+- No FFmpeg, no HLS segmentation, no transcoding
+
+---
+
+## Files Modified/Created
+
+### Backend Changes
+
+**1. `app.py` - New Flask Route**
+```python
+@app.route('/api/reolink/<camera_id>/stream/mjpeg')
+def api_reolink_stream_mjpeg(camera_id):
+```
+- Polls camera Snap API at configured FPS
+- Builds MJPEG stream with proper boundaries
+- Uses `requests.Session()` for connection reuse
+- Requires new credentials: `REOLINK_API_USER` / `REOLINK_API_PASSWORD`
+
+**Dependencies Added:**
+- `requirements.txt`: Added `requests` library
+
+**2. `stream_manager.py` - MJPEG Skip Logic** (line ~347)
+```python
+if protocol == 'MJPEG':
+    logger.info(f"Camera {camera_name} uses MJPEG snap proxy - skipping FFmpeg stream startup")
+    return None
+```
+- Skips FFmpeg process creation when `stream_type == "MJPEG"`
+- Marks stream as handled by Flask route proxy
+
+### Frontend Changes
+
+**3. `mjpeg-stream.js` - Camera Type Routing** (line 14-23)
+```javascript
+async startStream(cameraId, streamElement, cameraType) {
+    if (cameraType === 'reolink') {
+        mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+    } else if (cameraType === 'unifi') {
+        mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+    }
+```
+- Added `cameraType` parameter (required)
+- Routes to `/api/reolink/` or `/api/unifi/` based on camera type
+- Throws error for unsupported types
+
+**4. `stream.js` - 5 Locations Updated**
+- Line 298: Added `cameraType` parameter to `mjpegManager.startStream()` call
+- Line 297: Added `'MJPEG'` to condition alongside `'mjpeg_proxy'`
+- Line 327: Added `'MJPEG'` to health monitor attachment
+- Line 347: Added `'MJPEG'` to `stopIndividualStream()`
+- Line 428: Added `'MJPEG'` to `restartStream()`
+- Line 573-583: Added camera type detection for fullscreen MJPEG
+
+**5. `streams.html` - Template Update** (line 76)
+```html
+{% if info.stream_type == 'MJPEG' or info.stream_type == 'mjpeg_proxy' %}
+    <img class="stream-video" style="object-fit: cover; width: 100%; height: 100%;" alt="MJPEG Stream">
+{% else %}
+    <video class="stream-video" muted playsinline></video>
+{% endif %}
+```
+- Ensures `'MJPEG'` stream type uses `<img>` element (critical for multipart streams)
+
+### Configuration
+
+**6. `cameras.json` - New Configuration Section**
+```json
+"stream_type": "MJPEG",
+"mjpeg_snap": {
+    "enabled": true,
+    "width": 640,
+    "height": 480,
+    "fps": 10,
+    "timeout_ms": 5000,
+    "snap_type": "sub"
+}
+```
+
+**Parameters:**
+- `enabled`: Toggle MJPEG mode
+- `width`/`height`: JPEG resolution (min 640x480 per Reolink API)
+- `fps`: Polling rate (10 = 100ms interval)
+- `timeout_ms`: HTTP request timeout
+- `snap_type`: "sub" (substream) or "main" (mainstream)
+
+**7. AWS Secrets Manager - New Credentials**
+```bash
+push_secret_to_aws REOLINK_CAMERAS '{"REOLINK_USERNAME":"admin","REOLINK_PASSWORD":"xxx","REOLINK_API_USER":"api-user","REOLINK_API_PASSWORD":"RataMinHa5564"}'
+```
+- Created separate API user due to special characters in main password
+- Main password (`TarTo56))#FatouiiDRtu`) caused URL encoding issues with Reolink API
+- Fallback logic: tries `REOLINK_API_*` first, falls back to `REOLINK_*`
+
+---
+
+## Technical Issues Encountered
+
+### Issue 1: Password URL Encoding
+**Problem:** Main Reolink password contains special characters `))#` that broke API authentication when URL-encoded
+```
+Error: "invalid user", rspCode: -27
+URL: ...&password=TarTo56%29%29%23FatouiiDRtu...
+```
+**Solution:** Created dedicated API user with simple password (`api-user` / `RataMinHa5564`)
+
+### Issue 2: Missing `cameraType` Parameter
+**Error:** `Unsupported camera type for MJPEG: undefined`
+**Root Cause:** `stream.js` wasn't passing `cameraType` to `mjpegManager.startStream()`
+**Fix:** Added third parameter to call (line 298)
+
+### Issue 3: Wrong HTML Element
+**Error:** MJPEG stream failed to load (using `<video>` instead of `<img>`)
+**Root Cause:** `streams.html` only checked for `'mjpeg_proxy'`, not `'MJPEG'`
+**Fix:** Updated Jinja2 condition to include both stream types
+
+### Issue 4: Small Response Size (141 bytes)
+**Symptom:** Backend fetching 141-byte responses instead of 45KB JPEGs
+**Cause:** Invalid credentials causing JSON error response
+**Resolution:** Fixed credentials, confirmed 45KB JPEGs at 10 FPS
+
+---
+
+## Performance Results
+
+**Latency Comparison:**
+| Method | Latency | Status | Notes |
+|--------|---------|--------|-------|
+| Direct RTSP → LL-HLS | 1.8s | ✅ | Previous best |
+| **MJPEG Snap Polling** | **~200-400ms** | ✅ | **New implementation** |
+
+**Bandwidth (640x480 @ 10 FPS):**
+- ~45KB per frame
+- ~450 KB/s per stream
+- ~3.6 Mbps per stream
+
+**Backend Performance:**
+```
+[MJPEG] Frame fetch: HTTP 200, size=45397 bytes (frame 1)
+[MJPEG] Frame fetch: HTTP 200, size=45322 bytes (frame 2)
+[MJPEG] Frame fetch: HTTP 200, size=45251 bytes (frame 3)
+```
+- Consistent frame delivery at 10 FPS
+- Sub-second startup time
+
+---
+
+## Known Issues & Next Steps
+
+### CRITICAL: Multi-Client Problem
+**Current Behavior:** Each browser client creates a separate generator thread
+**Issue:** N clients = N camera connections = resource multiplication
+**Impact:** 
+- Camera overload (Reolink cameras support max 12 simultaneous streams)
+- Server CPU/memory waste
+- Network bandwidth multiplication
+
+**Required Fix:** Implement single-capture, multi-client architecture like `unifi_mjpeg_capture_service.py`
+```python
+# Pattern from UniFi MJPEG implementation:
+class UNIFIMJPEGCaptureService:
+    - Single capture thread per camera
+    - Shared frame buffer
+    - Client count tracking
+    - Automatic cleanup when last client disconnects
+```
+
+**Implementation Plan:**
+1. Create `reolink_unifi_mjpeg_capture_service.py` (similar to UniFi version)
+2. Modify Flask route to use capture service instead of inline generator
+3. Add client connection/disconnection tracking
+4. Implement shared frame buffer with latest frame caching
+
+### Minor Issues
+1. **Debug logging**: Remove excessive print statements before production
+2. **Error handling**: Add retry logic for transient camera failures
+3. **Configuration validation**: Validate FPS limits (Reolink max ~15 FPS for Snap API)
+4. **Credentials fallback**: Document priority order for API credentials
+
+---
+
+## Code Patterns Established
+
+**Frontend Stream Type Detection:**
+```javascript
+if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+    // Use MJPEG manager
+}
+```
+
+**Backend Stream Type Skip:**
+```python
+if protocol == 'MJPEG':
+    return None  # Skip FFmpeg
+```
+
+**Camera Type Routing:**
+```javascript
+if (cameraType === 'reolink') {
+    url = `/api/reolink/${id}/stream/mjpeg`;
+} else if (cameraType === 'unifi') {
+    url = `/api/unifi/${id}/stream/mjpeg`;
+}
+```
+
+---
+
+## Testing Cameras
+- **REOLINK_OFFICE** (192.168.10.88) - RLC-410-5MP - Primary test subject
+- Configuration: 640x480 @ 10 FPS, sub-stream
+
+---
+
+## Dependencies Added
+- `requests` library (Python) - HTTP client for camera API polling
+
+---
+
+**Status:** ✅ Working with sub-second latency  
+**Next Priority:** Implement single-capture multi-client service to prevent resource multiplication  
+**Performance:** Excellent latency, needs optimization for scalability
+
+
+## October 24, 2025 (Afternoon): Reolink MJPEG Single-Capture Multi-Client Implementation
+
+### Summary
+Implemented single-capture, multi-client architecture for Reolink MJPEG streaming to prevent resource multiplication. Successfully deployed separate sub/main stream configurations for grid vs fullscreen modes. Discovered Reolink Snap API has ~1-2 FPS hardware limitation regardless of requested FPS.
+
+### Objective
+Prevent N browser clients from creating N camera connections when viewing Reolink MJPEG streams. Implement quality switching between grid mode (low-res sub stream) and fullscreen mode (higher-res main stream).
+
+---
+
+## Architecture Implemented
+
+**Service Pattern:**
+```
+Single Capture Thread → Shared Frame Buffer → Multiple Client Generators
+- One camera connection regardless of viewer count
+- Automatic cleanup when last client disconnects
+- Thread-safe frame buffer with locking
+```
+
+**Stream Quality Switching:**
+- **Grid mode**: `/api/reolink/<id>/stream/mjpeg` → sub stream (640x480 @ 7 FPS)
+- **Fullscreen**: `/api/reolink/<id>/stream/mjpeg/main` → main stream (1280x720 @ 10 FPS requested)
+
+---
+
+## Files Created/Modified
+
+### New Service File
+**`reolink_mjpeg_capture_service.py`** (renamed from `/services/`)
+- `ReolinkMJPEGCaptureService` class
+- Single capture thread per camera using Snap API polling
+- Client tracking with automatic capture start/stop
+- Shared frame buffer with latest frame caching
+- Follows same pattern as `unifi_mjpeg_capture_service.py`
+
+### Backend Changes
+
+**1. `app.py` - Two New Routes**
+
+**Sub stream route** (line ~788):
+```python
+@app.route('/api/reolink/<camera_id>/stream/mjpeg')
+def api_reolink_stream_mjpeg(camera_id):
+```
+- Extracts `mjpeg_snap['sub']` config
+- Passes flattened config to service with `snap_type: 'sub'`
+- Handles client connection/disconnection via GeneratorExit
+
+**Main stream route** (line ~830):
+```python
+@app.route('/api/reolink/<camera_id>/stream/mjpeg/main')
+def api_reolink_stream_mjpeg_main(camera_id):
+```
+- Extracts `mjpeg_snap['main']` config
+- Uses modified camera_id: `{camera_id}_main` for separate capture process
+- Allows simultaneous sub + main streams if needed
+
+**2. Service Integration**
+- Import added: `from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service`
+- Cleanup registered in `cleanup_handler()` (line 1032)
+
+### Frontend Changes
+
+**3. `stream.js` - Fullscreen Route Update** (line ~578)
+```javascript
+if (cameraType === 'reolink') {
+    mjpegUrl = `/api/reolink/${serial}/stream/mjpeg/main?t=${Date.now()}`;
+}
+```
+- Fullscreen now uses `/main` endpoint
+- Grid view continues using base `/mjpeg` endpoint (sub stream)
+
+### Configuration Structure
+
+**4. `cameras.json` - Nested Sub/Main Config**
+```json
+"mjpeg_snap": {
+  "sub": {
+    "enabled": true,
+    "width": 640,
+    "height": 480,
+    "fps": 7,
+    "timeout_ms": 5000
+  },
+  "main": {
+    "enabled": true,
+    "width": 1280,
+    "height": 720,
+    "fps": 10,
+    "timeout_ms": 8000
+  }
+}
+```
+
+**Key Changes:**
+- Migrated from flat structure to nested `sub`/`main` objects
+- Each stream type has independent resolution and FPS settings
+- Routes extract appropriate config before passing to service
+
+---
+
+## Implementation Details
+
+### Service Config Extraction Pattern
+
+**Problem:** Service expects flat `mjpeg_snap` config but cameras.json has nested structure
+
+**Solution:** Routes flatten config before passing to service:
+
+```python
+# In app.py routes:
+mjpeg_snap = camera.get('mjpeg_snap', {})
+sub_config = mjpeg_snap.get('sub', mjpeg_snap)  # Fallback for old format
+
+camera_with_sub = camera.copy()
+camera_with_sub['mjpeg_snap'] = sub_config
+camera_with_sub['mjpeg_snap']['snap_type'] = 'sub'
+
+reolink_mjpeg_capture_service.add_client(camera_id, camera_with_sub, camera_repo)
+```
+
+### Snap API Parameter Handling
+
+**Width/Height Conditional:**
+```python
+# In reolink_mjpeg_capture_service.py _capture_loop:
+snap_params = {
+    'cmd': 'Snap',
+    'channel': 0,
+    'user': capture_info['username'],
+    'password': capture_info['password']
+}
+
+# Only add width/height if specified (sub stream)
+if capture_info['width'] and capture_info['height']:
+    snap_params['width'] = capture_info['width']
+    snap_params['height'] = capture_info['height']
+```
+
+**Why:** Initially tried omitting width/height for "native resolution" main stream, but Reolink API requires token-based auth without dimensions. Workaround: Always specify dimensions.
+
+---
+
+## Technical Issues Encountered
+
+### Issue 1: "Please login first" Error on Main Stream
+**Symptom:**
+```
+[REOLINK_OFFICE_main] Response too small (146 bytes)
+Error: "please login first", rspCode: -6
+```
+
+**Root Cause:** Reolink Snap API authentication behavior differs based on parameters:
+- **With width/height**: User/password in URL works
+- **Without width/height**: Requires token-based authentication (POST Login → Get Token → Use token in requests)
+
+**Solution:** Always specify width/height dimensions even for main stream instead of implementing token auth.
+
+### Issue 2: Nested Config Structure Mismatch
+**Problem:** Service expected `camera['mjpeg_snap']` to be flat dict with `width`, `height`, `fps`, but cameras.json had nested `sub`/`main` structure.
+
+**Solution:** Routes extract and flatten the appropriate config before passing to service. Service remains agnostic to nesting.
+
+### Issue 3: `camera_with_sub` Not Defined
+**Error:** `NameError: name 'camera_with_sub' is not defined`
+
+**Cause:** Extracted `sub_config` but forgot to create modified camera dict before calling `add_client()`
+
+**Fix:** Added camera copy and config assignment:
+```python
+camera_with_sub = camera.copy()
+camera_with_sub['mjpeg_snap'] = sub_config
+camera_with_sub['mjpeg_snap']['snap_type'] = 'sub'
+```
+
+---
+
+## Performance Results & Limitations
+
+### Sub Stream (Grid Mode)
+**Config:** 640x480 @ 7 FPS requested
+**Actual:** ~7 FPS achieved
+**Frame Size:** ~45 KB per frame
+**Bandwidth:** ~315 KB/s (~2.5 Mbps)
+**Latency:** ~200-400ms
+**Status:** ✅ Works well for grid thumbnails
+
+### Main Stream (Fullscreen Mode)
+**Config:** 1280x720 @ 10 FPS requested
+**Actual:** ~1-2 FPS achieved (hardware limitation)
+**Frame Size:** ~120-150 KB per frame
+**Bandwidth:** ~240 KB/s (~2 Mbps)
+**Latency:** ~200-400ms
+**Status:** ⚠️ Limited by Reolink Snap API hardware/firmware
+
+### Reolink Snap API Limitation Discovery
+**Critical Finding:** The Reolink Snap API has a **hard limit of ~1-2 snapshots per second** regardless of requested FPS. This is a hardware/firmware limitation of the snapshot encoding pipeline, separate from the RTSP streaming pipeline.
+
+**Testing Attempted:**
+- 2560x1920 @ 18 FPS → 1-2 FPS actual (super slow, massive frames)
+- 1920x1080 @ 18 FPS → 1-2 FPS actual
+- 1280x720 @ 10 FPS → 1-2 FPS actual
+
+**Conclusion:** Snap API not suitable for smooth video playback. Best use cases:
+- ✅ Grid view thumbnails (low FPS acceptable)
+- ✅ Periodic monitoring checks in fullscreen
+- ❌ Smooth fullscreen video (use LL-HLS instead)
+
+---
+
+## Alternative: Hybrid HLS/MJPEG Approach (Not Implemented)
+
+For users requiring smooth fullscreen video, a hybrid approach could be implemented:
+
+**Grid mode:** MJPEG Snap (sub) - 640x480 @ 1-2 FPS
+**Fullscreen:** LL-HLS (main) - 1920x1080 @ 15-30 FPS
+
+This would require modifying `stream.js` fullscreen logic to detect Reolink cameras and route to HLS instead of MJPEG:
+
+```javascript
+if (streamType === 'MJPEG' && cameraType === 'reolink') {
+    // Use HLS for Reolink fullscreen (Snap API too slow)
+    const response = await fetch(`/api/stream/start/${serial}`, {
+        method: 'POST',
+        body: JSON.stringify({ type: 'main' })
+    });
+    // ... HLS setup
+}
+```
+
+**Decision:** User opted to keep MJPEG for fullscreen at 1-2 FPS, suitable for security monitoring where smooth motion isn't required.
+
+---
+
+## Code Patterns Established
+
+### Service Client Management
+```python
+# Add client (starts capture if first client)
+reolink_mjpeg_capture_service.add_client(camera_id, camera_config, camera_repo)
+
+# Remove client (stops capture if last client)
+reolink_mjpeg_capture_service.remove_client(camera_id)
+
+# Get latest frame from shared buffer
+frame_data = reolink_mjpeg_capture_service.get_latest_frame(camera_id)
+```
+
+### Route Generator Pattern
+```python
+def generate():
+    try:
+        last_frame_number = -1
+        while True:
+            frame_data = service.get_latest_frame(camera_id)
+            if frame_data and frame_data['frame_number'] != last_frame_number:
+                yield mjpeg_frame(frame_data['data'])
+                last_frame_number = frame_data['frame_number']
+            time.sleep(0.033)  # Check rate faster than capture rate
+    except GeneratorExit:
+        service.remove_client(camera_id)
+```
+
+### Config Fallback Pattern
+```python
+# Support both new nested and old flat config structures
+mjpeg_snap = camera.get('mjpeg_snap', {})
+sub_config = mjpeg_snap.get('sub', mjpeg_snap)  # Falls back to flat if no 'sub' key
+```
+
+---
+
+## Testing Performed
+
+1. **Single client**: Grid + fullscreen → Works, appropriate streams used
+2. **Multiple clients**: 2 browsers on same camera → Single capture thread, 2 client count
+3. **Client disconnect**: Close browser → Client count decrements, capture stops when 0
+4. **Stream switching**: Grid → fullscreen → grid → Proper route selection
+5. **Resolution testing**: Tested 2560x1920, 1920x1080, 1280x720 → All work, all limited to 1-2 FPS
+6. **Config migration**: Old flat format → New nested format → Both supported via fallback
+
+---
+
+## Known Issues & Future Improvements
+
+### Current Limitations
+1. **Snap API FPS ceiling**: Cannot exceed ~1-2 FPS regardless of configuration
+2. **Authentication constraints**: Must specify width/height to use simple user/password auth
+3. **No native resolution**: Cannot request camera's full native resolution without token auth
+
+### Potential Enhancements
+1. **Token-based authentication**: Implement proper Login → Token flow to support native resolution without dimensions
+2. **Hybrid mode toggle**: User preference to switch fullscreen between MJPEG (1-2 FPS) and HLS (15-30 FPS)
+3. **Adaptive FPS**: Detect Snap API limits and auto-adjust config to realistic values
+4. **Frame caching**: Implement stale frame detection with more graceful fallback than current 5s timeout
+
+---
+
+## Status Summary
+
+**Implementation:** ✅ Complete and working
+**Multi-client prevention:** ✅ Verified working
+**Quality switching:** ✅ Sub for grid, main for fullscreen
+**Performance:** ⚠️ Limited by Snap API hardware (~1-2 FPS max)
+**Stability:** ✅ Stable, proper cleanup, no resource leaks
+
+**Recommendation:** Current MJPEG implementation suitable for security monitoring use case where 1-2 FPS in fullscreen is acceptable. For users requiring smooth fullscreen video, implement hybrid HLS/MJPEG approach.
+
+---
+
+## Files Summary
+
+**New:**
+- `reolink_mjpeg_capture_service.py` (377 lines)
+
+**Modified:**
+- `app.py` - Added 2 routes (~75 lines total)
+- `stream.js` - Updated fullscreen URL (1 line)
+- `cameras.json` - Migrated to nested sub/main structure
+
+**Testing Cameras:**
+- REOLINK_OFFICE (192.168.10.88) - RLC-410-5MP
+- REOLINK_TERRACE (192.168.10.89) - RLC-410-5MP
+
+
+## October 24, 2025 (Night Continued) - Amcrest MJPEG Integration
+
+**Implemented Amcrest camera support with MJPEG streaming:**
+
+**Backend Components Added:**
+- `services/credentials/amcrest_credential_provider.py` - Per-camera credentials with generic fallback
+- `services/amcrest_mjpeg_capture_service.py` - Continuous MJPEG stream parser using multipart/x-mixed-replace
+- `streaming/handlers/amcrest_stream_handler.py` - RTSP URL builder for Amcrest cameras
+- Updated `camera_repository.py` - Added `get_amcrest_config()` method
+- Updated `app.py` - Added `/api/amcrest/<camera_id>/stream/mjpeg` routes (sub and main)
+
+**Frontend Updates:**
+- `mjpeg-stream.js` - Added Amcrest camera type support with correct URL routing
+- `stream.js` - Updated fullscreen handler to use substream for both grid and fullscreen (camera doesn't support MJPEG on main stream)
+
+**Key Implementation Details:**
+- Uses HTTP Digest Auth (not Basic Auth) for Amcrest API authentication
+- Continuous stream parsing with JPEG SOI/EOI marker detection
+- Single capture thread serves multiple clients via shared frame buffer
+- Credentials: `{CAMERA_ID}_USERNAME/PASSWORD` with fallback to `AMCREST_USERNAME/PASSWORD`
+- Substream (subtype=1) for both grid and fullscreen views
+- Main stream (subtype=0) MJPEG not supported by this camera model
+
+**Discovered Limitations:**
+- Amcrest cameras don't support resolution parameters in MJPEG API (resolution must be configured in camera web UI)
+- Main stream only available via RTSP/H.264, not MJPEG
+
+**Status:** Fully functional. Grid view and fullscreen both working with substream quality.

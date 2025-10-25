@@ -23,7 +23,7 @@ def stop_all_services(stream_manager,
                       eufy_bridge,
                       unifi_cameras,
                       unifi_resource_monitor,
-                      mjpeg_capture_service
+                      unifi_mjpeg_capture_service
                       ):
     try:
         stream_manager.s = Thread(
@@ -44,7 +44,7 @@ def stop_all_services(stream_manager,
         # stop remaining services
         Thread(target=stop_all_streams, args=(stream_manager,)).start()
         Thread(target=stop_mjpeg_capture, args=(
-            mjpeg_capture_service,)).start()
+            unifi_mjpeg_capture_service,)).start()
         Thread(target=stop_unifiy_cameras_session,
                args=(unifi_cameras,)).start()
     except:
@@ -100,10 +100,10 @@ def stop_resource_monitor(unifi_cameras, unifi_resource_monitor):
     print("✅ unifi_resource_monitor stopped")
 
 
-def stop_mjpeg_capture(mjpeg_capture_service):
+def stop_mjpeg_capture(unifi_mjpeg_capture_service):
     print("[[[[[[stop_mjpeg_capture]]]]]]")
     try:
-        mjpeg_capture_service.cleanup()
+        unifi_mjpeg_capture_service.cleanup()
     except:
         raise Exception
         print(f"Resource monitoring Cleanup error")

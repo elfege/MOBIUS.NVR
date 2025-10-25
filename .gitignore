@@ -28,6 +28,16 @@ __pycache__
 **/streams/
 *stream/
 
+# backup files
+*~.bak
+*.backup
+*.bak~ 
+
+# backup directories
+**/backup/
+**/backups/
+**/archive/
+
 # config files (contain creds)
 **/config/
 

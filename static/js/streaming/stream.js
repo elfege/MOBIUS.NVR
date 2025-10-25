@@ -41,18 +41,18 @@ export class MultiStreamManager {
                 consecutiveBlankNeeded: H.consecutiveBlankNeeded ?? 10,
                 cooldownMs: H.cooldownMs ?? 60000,
                 warmupMs: H.warmupMs ?? 60000,
-                onUnhealthy: async ({ serial, reason, metrics }) => {
-                    console.warn(`[Health] Stream unhealthy: ${serial}, reason: ${reason}`, metrics);
+                onUnhealthy: async ({ cameraId, reason, metrics }) => {
+                    console.warn(`[Health] Stream unhealthy: ${cameraId}, reason: ${reason}`, metrics);
 
-                    const $streamItem = $(`.stream-item[data-camera-serial="${serial}"]`);
+                    const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
                     if (!$streamItem.length) return;
 
                     // Get restart attempt count
-                    const attempts = this.restartAttempts.get(serial) || 0;
+                    const attempts = this.restartAttempts.get(cameraId) || 0;
                     const maxAttempts = 10;
 
                     if (attempts >= maxAttempts) {
-                        console.error(`[Health] ${serial}: Max restart attempts (${maxAttempts}) reached`);
+                        console.error(`[Health] ${cameraId}: Max restart attempts (${maxAttempts}) reached`);
                         this.setStreamStatus($streamItem, 'failed', `Failed after ${maxAttempts} attempts`);
                         return;
                     }
@@ -60,25 +60,25 @@ export class MultiStreamManager {
                     // Exponential backoff: 5s, 10s, 20s, 40s, 60s (max)
                     const delay = Math.min(5000 * Math.pow(2, attempts), 60000);
 
-                    console.log(`[Health] ${serial}: Scheduling restart ${attempts + 1}/${maxAttempts} in ${delay / 1000}s`);
+                    console.log(`[Health] ${cameraId}: Scheduling restart ${attempts + 1}/${maxAttempts} in ${delay / 1000}s`);
                     this.setStreamStatus($streamItem, 'loading', `Retry ${attempts + 1} in ${delay / 1000}s`);
 
                     // Increment counter
-                    this.restartAttempts.set(serial, attempts + 1);
+                    this.restartAttempts.set(cameraId, attempts + 1);
 
                     // Clear existing timer
-                    if (this.restartTimers.has(serial)) {
-                        clearTimeout(this.restartTimers.get(serial));
+                    if (this.restartTimers.has(cameraId)) {
+                        clearTimeout(this.restartTimers.get(cameraId));
                     }
 
                     // Schedule restart
                     const timer = setTimeout(async () => {
-                        this.restartTimers.delete(serial);
-                        console.log(`[Health] ${serial}: Executing restart attempt ${attempts + 1}`);
-                        await this.restartStream(serial, $streamItem);
+                        this.restartTimers.delete(cameraId);
+                        console.log(`[Health] ${cameraId}: Executing restart attempt ${attempts + 1}`);
+                        await this.restartStream(cameraId, $streamItem);
                     }, delay);
 
-                    this.restartTimers.set(serial, timer);
+                    this.restartTimers.set(cameraId, timer);
                 }
             });
             console.log("UI HEALTH CHECK ENABLED");
@@ -176,11 +176,11 @@ export class MultiStreamManager {
             e.stopPropagation(); // Prevent event bubbling
             const $streamItem = $(e.target).closest('.stream-item');
             if ($streamItem.length) {
-                const serial = $streamItem.data('camera-serial');
+                const cameraId = $streamItem.data('camera-serial');
                 const name = $streamItem.data('camera-name');
                 const cameraType = $streamItem.data('camera-type');
                 const streamType = $streamItem.data('stream-type');
-                this.openFullscreen(serial, name, cameraType, streamType);
+                this.openFullscreen(cameraId, name, cameraType, streamType);
             }
         });
 
@@ -197,19 +197,19 @@ export class MultiStreamManager {
         this.$container.on('click', '.start-stream-btn', (e) => {
             e.stopPropagation();
             const $streamItem = $(e.target).closest('.stream-item');
-            const serial = $streamItem.data('camera-serial');
+            const cameraId = $streamItem.data('camera-serial');
             const cameraType = $streamItem.data('camera-type');
             const streamType = $streamItem.data('stream-type');
-            this.startStream(serial, $streamItem, cameraType, streamType);
+            this.startStream(cameraId, $streamItem, cameraType, streamType);
         });
 
         this.$container.on('click', '.stop-stream-btn', (e) => {
             e.stopPropagation();
             const $streamItem = $(e.target).closest('.stream-item');
-            const serial = $streamItem.data('camera-serial');
+            const cameraId = $streamItem.data('camera-serial');
             const cameraType = $streamItem.data('camera-type');
             const streamType = $streamItem.data('stream-type');
-            this.stopIndividualStream(serial, $streamItem, cameraType, streamType);
+            this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
         });
 
         // PTZ control handlers
@@ -229,7 +229,7 @@ export class MultiStreamManager {
         this.$container.on('click', '.refresh-stream-btn', (e) => {
             e.stopPropagation();
             const $streamItem = $(e.target).closest('.stream-item');
-            const serial = $streamItem.data('camera-serial');
+            const cameraId = $streamItem.data('camera-serial');
             const streamType = $streamItem.data('stream-type');
             const videoElement = $streamItem.find('.stream-video')[0];
 
@@ -237,8 +237,8 @@ export class MultiStreamManager {
             // not adding this condition will make the system 
             // create a new rtsp stream while rtmp witll still 
             // be running. 
-            if (streamType === 'HLS' || streamType === 'LL_HLS') {
-                this.hlsManager.forceRefreshStream(serial, videoElement);
+            if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                this.hlsManager.forceRefreshStream(cameraId, videoElement);
             }
         });
 
@@ -267,14 +267,14 @@ export class MultiStreamManager {
         // Start all streams in parallel instead of sequential
         const startPromises = $streamItems.toArray().map(async (item) => {
             const $item = $(item);
-            const serial = $item.data('camera-serial');
+            const cameraId = $item.data('camera-serial');
             const cameraType = $item.data('camera-type');
             const streamType = $item.data('stream-type');
 
             try {
-                await this.startStream(serial, $item, cameraType, streamType);
+                await this.startStream(cameraId, $item, cameraType, streamType);
             } catch (error) {
-                console.error(`Failed to start stream for ${serial}:`, error);
+                console.error(`Failed to start stream for ${cameraId}:`, error);
                 this.setStreamStatus($item, 'error', 'Failed to load');
             }
         });
@@ -283,7 +283,7 @@ export class MultiStreamManager {
         await Promise.allSettled(startPromises);
     }
 
-    async startStream(serial, $streamItem, cameraType, streamType) {
+    async startStream(cameraId, $streamItem, cameraType, streamType) {
         const streamElement = $streamItem.find('.stream-video')[0];
         const $loadingIndicator = $streamItem.find('.loading-indicator');
 
@@ -294,12 +294,13 @@ export class MultiStreamManager {
             let success;
 
             // Use streamType to determine which manager to use
-            if (streamType === 'mjpeg_proxy') {
-                success = await this.mjpegManager.startStream(serial, streamElement);
-            } else if (streamType === 'HLS' || streamType === 'LL_HLS') {
-                success = await this.hlsManager.startStream(serial, streamElement, 'sub');
+            // NOTE: mjpeg_proxy is only for direct access to UNIFI MJPEG streams (when not using Protect)
+            if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+                success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType);
+            } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
             } else if (streamType === 'RTMP') {
-                success = await this.flvManager.startStream(serial, streamElement);
+                success = await this.flvManager.startStream(cameraId, streamElement);
             } else {
                 throw new Error(`Unknown stream type: ${streamType}`);
             }
@@ -310,22 +311,22 @@ export class MultiStreamManager {
                 this.updateStreamButtons($streamItem, true);
 
                 // Reset restart counter on successful start
-                this.restartAttempts.delete(serial);
-                if (this.restartTimers.has(serial)) {
-                    clearTimeout(this.restartTimers.get(serial));
-                    this.restartTimers.delete(serial);
+                this.restartAttempts.delete(cameraId);
+                if (this.restartTimers.has(cameraId)) {
+                    clearTimeout(this.restartTimers.get(cameraId));
+                    this.restartTimers.delete(cameraId);
                 }
 
                 const el = $streamItem.find('.stream-video')[0];
 
-                if (streamType === 'HLS' && this.health) {
-                    const hls = this.hlsManager?.hlsInstances?.get?.(serial) || null;
-                    el._healthDetach = this.health.attachHls(serial, el, hls);
+                if ((streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') && this.health) {
+                    const hls = this.hlsManager?.hlsInstances?.get?.(cameraId) || null;
+                    el._healthDetach = this.health.attachHls(cameraId, el, hls);
                 } else if (streamType === 'RTMP' && this.health) {
-                    const flv = this.flvManager?.flvInstances?.get?.(serial) || null;
-                    el._healthDetach = this.health.attachRTMP(serial, el, flv);
-                } else if (streamType === 'mjpeg_proxy' && this.health) {
-                    el._healthDetach = this.health.attachMjpeg(serial, el);
+                    const flv = this.flvManager?.flvInstances?.get?.(cameraId) || null;
+                    el._healthDetach = this.health.attachRTMP(cameraId, el, flv);
+                } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+                    el._healthDetach = this.health.attachMjpeg(cameraId, el);
                 }
             }
 
@@ -335,21 +336,21 @@ export class MultiStreamManager {
             $loadingIndicator.hide();
             this.setStreamStatus($streamItem, 'error', 'Failed');
             this.updateStreamButtons($streamItem, false);
-            console.error(`Stream start failed for ${serial}:`, error);
+            console.error(`Stream start failed for ${cameraId}:`, error);
         }
     }
 
-    async stopIndividualStream(serial, $streamItem, cameraType, streamType) {
+    async stopIndividualStream(cameraId, $streamItem, cameraType, streamType) {
         try {
             let success;
 
             // Use streamType to determine which manager to use
-            if (streamType === 'mjpeg_proxy') {
-                success = this.mjpegManager.stopStream(serial);
-            } else if (streamType === 'HLS' || streamType === 'LL_HLS') {
-                success = await this.hlsManager.stopStream(serial);
+            if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+                success = this.mjpegManager.stopStream(cameraId);
+            } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                success = await this.hlsManager.stopStream(cameraId);
             } else if (streamType === 'RTMP') {
-                success = this.flvManager.stopStream(serial);
+                success = this.flvManager.stopStream(cameraId);
             }
 
             if (success) {
@@ -362,7 +363,7 @@ export class MultiStreamManager {
 
             }
         } catch (error) {
-            console.error(`Failed to stop stream for ${serial}:`, error);
+            console.error(`Failed to stop stream for ${cameraId}:`, error);
         }
     }
 
@@ -397,7 +398,7 @@ export class MultiStreamManager {
         }
     }
 
-    async restartStream(serial, $streamItem) {
+    async restartStream(cameraId, $streamItem) {
         /** What this does:
 
         - For HLS streams: calls forceRefreshStream() which destroys the HLS.js instance and clears its cache
@@ -406,7 +407,7 @@ export class MultiStreamManager {
         - Properly detaches health monitor before restart to avoid duplicate monitoring
         */
         try {
-            console.log(`[Restart] ${serial}: Beginning restart sequence`);
+            console.log(`[Restart] ${cameraId}: Beginning restart sequence`);
             this.updateStreamButtons($streamItem, true);
             this.setStreamStatus($streamItem, 'loading', 'Restarting...');
 
@@ -421,20 +422,20 @@ export class MultiStreamManager {
             }
 
             // Use the proper refresh method based on stream type
-            if (streamType === 'HLS' || streamType === 'LL_HLS') {
+            if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                 // ← CHANGED: Call forceRefreshStream which destroys HLS.js cache
-                await this.hlsManager.forceRefreshStream(serial, videoElement);
+                await this.hlsManager.forceRefreshStream(cameraId, videoElement);
                 this.setStreamStatus($streamItem, 'live', 'Live');
-            } else if (streamType === 'mjpeg_proxy') {
+            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
                 // MJPEG doesn't have cache issues, just restart normally
-                await this.stopIndividualStream(serial, $streamItem, cameraType, streamType);
+                await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
                 await new Promise(r => setTimeout(r, 1500));
-                await this.startStream(serial, $streamItem, cameraType, streamType);
+                await this.startStream(cameraId, $streamItem, cameraType, streamType);
             } else if (streamType === 'RTMP') {
                 // Fully tear down and recreate the flv.js player
-                this.flvManager.stopStream(serial);
+                this.flvManager.stopStream(cameraId);
                 await new Promise(r => setTimeout(r, 500));
-                const ok = await this.startStream(serial, $streamItem, cameraType, streamType);
+                const ok = await this.startStream(cameraId, $streamItem, cameraType, streamType);
 
                 // Explicitly reconcile UI status for RTMP
                 const el = $streamItem.find('.stream-video')[0];
@@ -449,9 +450,9 @@ export class MultiStreamManager {
                 }
             }
 
-            console.log(`[Restart] ${serial}: Restart complete`);
+            console.log(`[Restart] ${cameraId}: Restart complete`);
         } catch (e) {
-            console.error(`[Restart] ${serial}: Failed`, e);
+            console.error(`[Restart] ${cameraId}: Failed`, e);
             this.setStreamStatus($streamItem, 'error', 'Restart failed');
         }
     }
@@ -509,15 +510,15 @@ export class MultiStreamManager {
         }
     }
 
-    async openFullscreen(serial, name, cameraType, streamType) {
+    async openFullscreen(cameraId, name, cameraType, streamType) {
         try {
             this.$fullscreenTitle.text(name);
             this.$fullscreenOverlay.css('display', 'flex');
 
             // Use streamType to determine fullscreen rendering method
-            if (streamType === 'HLS' || streamType === 'LL_HLS') {
+            if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                 // HLS fullscreen (works for both Eufy and UniFi in HLS mode)
-                const response = await fetch(`/api/stream/start/${serial}`, {
+                const response = await fetch(`/api/stream/start/${cameraId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: 'main' })
@@ -542,14 +543,14 @@ export class MultiStreamManager {
                     playlistUrl = startInfo.stream_url;
                 } else {
                     // Regular HLS: use app-generated playlist
-                    playlistUrl = `/api/streams/${serial}/playlist.m3u8?t=${Date.now()}`;
+                    playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${Date.now()}`;
                 }
 
                 if (Hls.isSupported()) {
                     this.destroyFullscreenHls();
 
                     // Get camera config and build player settings
-                    const cameraConfig = await this.getCameraConfig(serial);
+                    const cameraConfig = await this.getCameraConfig(cameraId);
                     const isLLHLS = cameraConfig?.stream_type === 'LL_HLS';
                     const hlsConfig = this.buildHlsConfig(cameraConfig, isLLHLS);
 
@@ -570,9 +571,20 @@ export class MultiStreamManager {
                     });
                 }
 
-            } else if (streamType === 'mjpeg_proxy') {
-                // MJPEG fullscreen (works for cameras using MJPEG mode)
-                const mjpegUrl = `/api/unifi/${serial}/stream/mjpeg?t=${Date.now()}`;
+            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+                // MJPEG fullscreen - route based on camera type
+                let mjpegUrl;
+                if (cameraType === 'reolink') {
+                    mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg/main?t=${Date.now()}`;
+                } else if (cameraType === 'unifi') {
+                    mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+                } else if (cameraType === 'amcrest') {
+                    // mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg/main?t=${Date.now()}`;
+                    mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;  // Same as grid view for now
+                } else {
+                    throw new Error(`Unsupported camera type for MJPEG fullscreen: ${cameraType}`);
+                }
+
                 this.$fullscreenVideo.hide();
 
                 // Create or reuse img element for MJPEG fullscreen
@@ -593,7 +605,7 @@ export class MultiStreamManager {
                 $mjpegImg.attr('src', mjpegUrl).show();
             } else if (streamType === 'RTMP') {
                 // RTMP fullscreen using FLV.js
-                const response = await fetch(`/api/stream/start/${serial}`, {
+                const response = await fetch(`/api/stream/start/${cameraId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: 'main' })
@@ -603,7 +615,7 @@ export class MultiStreamManager {
 
                 await new Promise(resolve => setTimeout(resolve, 200));
 
-                const flvUrl = `/api/camera/${serial}/flv?t=${Date.now()}`;
+                const flvUrl = `/api/camera/${cameraId}/flv?t=${Date.now()}`;
 
                 if (flvjs.isSupported()) {
                     this.destroyFullscreenFlv(); // Need to add this method

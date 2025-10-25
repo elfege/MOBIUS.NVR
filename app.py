@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import logging
 import socket
 import functools
+import requests
 import subprocess
 import signal
 import atexit
@@ -23,20 +24,21 @@ from flask_wtf.csrf import CSRFProtect
 from wtforms import SelectField, SubmitField
 from wtforms.validators import DataRequired
 
-# New modular imports
+# modular imports
 from services.camera_repository import CameraRepository
 from services.ptz_validator import PTZValidator
 from streaming.stream_manager import StreamManager
 
 from low_level_handlers.process_reaper import install_sigchld_handler
 
-# Legacy imports (keep for PTZ bridge and UniFi services)
 from eufy_bridge import EufyBridge
 from eufy_bridge_watchdog import BridgeWatchdog
 from services.unifi_protect_service import UniFiProtectService
 from services.unifi_service_resource_monitor import UniFiServiceResourceMonitor
 from services.app_restart_handler import AppRestartHandler
-from services.mjpeg_capture_service import mjpeg_capture_service
+from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
+from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
+from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 # Flask app setup
 app = Flask(__name__)
@@ -48,24 +50,14 @@ logger.setLevel(logging.WARNING)
 
 load_dotenv()  # loads .env from the current working directory / project root
 
+TRUE_SET = {"1", "true", "yes", "on"}
+FALSE_SET = {"0", "false", "no", "off"}
+
 print("=" * 80)
 print("🚀 Starting Unified NVR Server - Refactored Architecture")
 print("=" * 80)
 
 # ===== Initialize Core Services =====
-
-
-# try:
-#     # always kill ffmpeg streams upon restart
-#     killf = Thread(target=kill_ffmpeg)
-#     killf.start()
-#     print("Awaiting for old ffmpeg processes to terminate")
-#     killf.join()
-
-# except Exception as e:
-#     print(traceback.print_exc())
-#     print(e)
-
 try:
     print("\n📦 Initializing core services...")
 
@@ -645,7 +637,7 @@ def api_unifi_stream_mjpeg(camera_id):
         camera = unifi_cameras[camera_id]
 
         # Add this client to the capture service
-        if not mjpeg_capture_service.add_client(camera_id, camera):
+        if not unifi_mjpeg_capture_service.add_client(camera_id, camera):
             return "Failed to start capture service", 503
 
         def generate():
@@ -653,7 +645,7 @@ def api_unifi_stream_mjpeg(camera_id):
             try:
                 while True:
                     # Get frame from shared buffer instead of direct camera.get_snapshot()
-                    frame_data = mjpeg_capture_service.get_latest_frame(
+                    frame_data = unifi_mjpeg_capture_service.get_latest_frame(
                         camera_id)
 
                     if frame_data and frame_data['data']:
@@ -674,28 +666,27 @@ def api_unifi_stream_mjpeg(camera_id):
 
             except GeneratorExit:
                 # Client disconnected
-                mjpeg_capture_service.remove_client(camera_id)
+                unifi_mjpeg_capture_service.remove_client(camera_id)
                 logger.info(
                     f"Client disconnected from MJPEG stream {camera_id}")
             except Exception as e:
                 logger.error(f"MJPEG stream error for {camera_id}: {e}")
-                mjpeg_capture_service.remove_client(camera_id)
+                unifi_mjpeg_capture_service.remove_client(camera_id)
 
         return Response(generate(),
                         mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
 
     except Exception as e:
-        mjpeg_capture_service.remove_client(camera_id)
+        unifi_mjpeg_capture_service.remove_client(camera_id)
         return f"Stream error: {e}", 500
 
-# ===== MJPEG Capture Service Status Routes =====
-
+# ===== UNIFI MJPEG Capture Service Status Routes =====
 
 @app.route('/api/status/mjpeg-captures')
 def api_mjpeg_capture_status():
     """Get status of all MJPEG capture processes"""
     try:
-        status = mjpeg_capture_service.get_all_status()
+        status = unifi_mjpeg_capture_service.get_all_status()
         return jsonify({
             'success': True,
             'captures': status,
@@ -709,7 +700,7 @@ def api_mjpeg_capture_status():
 def api_mjpeg_capture_status_single(camera_id):
     """Get status of specific MJPEG capture process"""
     try:
-        status = mjpeg_capture_service.get_status(camera_id)
+        status = unifi_mjpeg_capture_service.get_status(camera_id)
         if status:
             return jsonify({
                 'success': True,
@@ -724,7 +715,6 @@ def api_mjpeg_capture_status_single(camera_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===== UniFi Resource Monitor Routes =====
-
 
 @app.route('/api/status/unifi-monitor')
 def api_unifi_monitor_status():
@@ -771,12 +761,247 @@ def api_recycle_unifi_sessions():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# ===== U.I. based healt monitor env parameters =====
+
+# ===== REOLINK MJPEG Capture Service Status Routes =====
+@app.route('/api/reolink/<camera_id>/stream/mjpeg')
+@csrf.exempt
+def api_reolink_stream_mjpeg_sub(camera_id):
+    """
+    MJPEG stream for Reolink cameras via Snap API polling
+    Uses capture service for single-source, multi-client architecture
+    """
+    logger.info(f"Client requesting Reolink MJPEG stream for {camera_id}")
+    
+    try:
+        # Get camera configuration
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            logger.error(f"Camera {camera_id} not found")
+            return "Camera not found", 404
+        
+        if camera.get('type') != 'reolink':
+            logger.error(f"Camera {camera_id} is not a Reolink camera")
+            return "Not a Reolink camera", 400
+        
+        # # Get MJPEG snap configuration
+        # mjpeg_config = camera.get('mjpeg_snap', {})
+        # if not mjpeg_config.get('enabled', True):
+        #     logger.warning(f"MJPEG snap not enabled for camera {camera_id}")
+        #     return "MJPEG snap not enabled for this camera", 400
+        
+        # Get MJPEG snap configuration
+        mjpeg_config = camera.get('mjpeg_snap', {})
+        sub_config = mjpeg_config.get('sub', mjpeg_config)  # Fall back to old format
+        if not sub_config.get('enabled', True):
+            logger.warning(f"MJPEG snap not enabled for camera {camera_id}")
+            return "MJPEG snap not enabled for this camera", 400
+
+        # CREATE THIS PART:
+        camera_with_sub = camera.copy()
+        camera_with_sub['mjpeg_snap'] = sub_config
+        camera_with_sub['mjpeg_snap']['snap_type'] = 'sub'
+
+        # Add client to capture service (starts capture if first client)
+        if not reolink_mjpeg_capture_service.add_client(camera_id, camera_with_sub, camera_repo):
+            logger.error(f"Failed to add client for Reolink MJPEG stream {camera_id}")
+            return "Failed to start capture", 500
+        
+        def generate():
+            """Generator reads from shared frame buffer"""
+            logger.info(f"[Reolink MJPEG] Client connected to {camera_id}")
+            
+            try:
+                last_frame_number = -1
+                
+                while True:
+                    # Get latest frame from shared buffer
+                    frame_data = reolink_mjpeg_capture_service.get_latest_frame(camera_id)
+                    
+                    if frame_data:
+                        # Only yield if we have a new frame
+                        if frame_data['frame_number'] != last_frame_number:
+                            snapshot = frame_data['data']
+                            last_frame_number = frame_data['frame_number']
+                            
+                            # Yield MJPEG frame
+                            yield (b'--jpgboundary\r\n'
+                                   b'Content-Type: image/jpeg\r\n' +
+                                   f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                                   snapshot + b'\r\n')
+                    
+                    # Small sleep to prevent tight loop
+                    time.sleep(0.033)  # ~30 FPS check rate
+                    
+            except GeneratorExit:
+                # Client disconnected - remove from service
+                logger.info(f"[Reolink MJPEG] Client disconnected from {camera_id}")
+                reolink_mjpeg_capture_service.remove_client(camera_id)
+            except Exception as e:
+                logger.error(f"[Reolink MJPEG] Stream error for {camera_id}: {e}")
+                reolink_mjpeg_capture_service.remove_client(camera_id)
+        
+        return Response(generate(),
+                        mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+    
+    except Exception as e:
+        logger.error(f"Failed to start Reolink MJPEG stream for {camera_id}: {e}")
+        return f"Stream error: {e}", 500
+    
+# ===== U.I. based health monitor env parameters =====
+@app.route('/api/reolink/<camera_id>/stream/mjpeg/main')
+def api_reolink_stream_mjpeg_main(camera_id):
+    """
+    MJPEG main stream for Reolink cameras (fullscreen mode)
+    Uses higher resolution but more bandwidth
+    """
+    logger.info(f"Client requesting Reolink MJPEG MAIN stream for {camera_id}")
+    
+    # Same implementation as sub stream but pass stream_type='main'
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return "Camera not found", 404
+        
+        if camera.get('type') != 'reolink':
+            return "Not a Reolink camera", 400
+        
+        mjpeg_snap = camera.get('mjpeg_snap', {})
+        main_config = mjpeg_snap.get('main', mjpeg_snap.get('sub', mjpeg_snap))
+
+        if not main_config.get('enabled', True):
+            return "MJPEG snap not enabled for this camera", 400
+
+        camera_main = camera.copy()
+        camera_main['mjpeg_snap'] = main_config.copy()
+        camera_main['mjpeg_snap']['snap_type'] = 'main'
+        
+        camera_id_main = f"{camera_id}_main"
+        
+        if not reolink_mjpeg_capture_service.add_client(camera_id_main, camera_main, camera_repo):
+            return "Failed to start capture", 500
+        
+        def generate():
+            try:
+                last_frame_number = -1
+                while True:
+                    frame_data = reolink_mjpeg_capture_service.get_latest_frame(camera_id_main)
+                    if frame_data and frame_data['frame_number'] != last_frame_number:
+                        snapshot = frame_data['data']
+                        last_frame_number = frame_data['frame_number']
+                        yield (b'--jpgboundary\r\n'
+                               b'Content-Type: image/jpeg\r\n' +
+                               f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                               snapshot + b'\r\n')
+                    time.sleep(0.033)
+            except GeneratorExit:
+                reolink_mjpeg_capture_service.remove_client(camera_id_main)
+            except Exception as e:
+                logger.error(f"[Reolink MJPEG MAIN] Error {camera_id}: {e}")
+                reolink_mjpeg_capture_service.remove_client(camera_id_main)
+        
+        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+    except Exception as e:
+        return f"Stream error: {e}", 500
 
 
-TRUE_SET = {"1", "true", "yes", "on"}
-FALSE_SET = {"0", "false", "no", "off"}
+# ===== AMCREST MJPEG Service Routes =====
+@app.route('/api/amcrest/<camera_id>/stream/mjpeg')
+def api_amcrest_stream_mjpeg(camera_id):
+    """MJPEG sub stream for Amcrest cameras (grid mode)"""
+    logger.info(f"Client requesting Amcrest MJPEG stream for {camera_id}")
+    
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return "Camera not found", 404
+        
+        if camera.get('type') != 'amcrest':
+            return "Not an Amcrest camera", 400
+        
+        mjpeg_config = camera.get('mjpeg_snap', {})
+        sub_config = mjpeg_config.get('sub', mjpeg_config)
+        if not sub_config.get('enabled', True):
+            return "MJPEG not enabled", 400
 
+        camera_with_sub = camera.copy()
+        camera_with_sub['mjpeg_snap'] = sub_config
+        camera_with_sub['mjpeg_snap']['snap_type'] = 'sub'
+
+        if not amcrest_mjpeg_capture_service.add_client(camera_id, camera_with_sub, camera_repo):
+            return "Failed to start capture", 500
+        
+        def generate():
+            try:
+                last_frame_number = -1
+                while True:
+                    frame_data = amcrest_mjpeg_capture_service.get_latest_frame(camera_id)
+                    if frame_data and frame_data['frame_number'] != last_frame_number:
+                        snapshot = frame_data['data']
+                        last_frame_number = frame_data['frame_number']
+                        yield (b'--jpgboundary\r\n'
+                               b'Content-Type: image/jpeg\r\n' +
+                               f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                               snapshot + b'\r\n')
+                    time.sleep(0.033)
+            except GeneratorExit:
+                amcrest_mjpeg_capture_service.remove_client(camera_id)
+            except Exception as e:
+                logger.error(f"[Amcrest MJPEG] Error {camera_id}: {e}")
+                amcrest_mjpeg_capture_service.remove_client(camera_id)
+        
+        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+    except Exception as e:
+        return f"Stream error: {e}", 500
+    
+@app.route('/api/amcrest/<camera_id>/stream/mjpeg/main')
+def api_amcrest_stream_mjpeg_main(camera_id):
+    """MJPEG main stream for Amcrest cameras (fullscreen mode)"""
+    logger.info(f"Client requesting Amcrest MJPEG MAIN stream for {camera_id}")
+    
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return "Camera not found", 404
+        
+        if camera.get('type') != 'amcrest':
+            return "Not an Amcrest camera", 400
+        
+        mjpeg_snap = camera.get('mjpeg_snap', {})
+        main_config = mjpeg_snap.get('main', mjpeg_snap.get('sub', mjpeg_snap))
+        if not main_config.get('enabled', True):
+            return "MJPEG not enabled", 400
+
+        camera_main = camera.copy()
+        camera_main['mjpeg_snap'] = main_config.copy()
+        camera_main['mjpeg_snap']['snap_type'] = 'main'
+        
+        camera_id_main = f"{camera_id}_main"
+        
+        if not amcrest_mjpeg_capture_service.add_client(camera_id_main, camera_main, camera_repo):
+            return "Failed to start capture", 500
+        
+        def generate():
+            try:
+                last_frame_number = -1
+                while True:
+                    frame_data = amcrest_mjpeg_capture_service.get_latest_frame(camera_id_main)
+                    if frame_data and frame_data['frame_number'] != last_frame_number:
+                        snapshot = frame_data['data']
+                        last_frame_number = frame_data['frame_number']
+                        yield (b'--jpgboundary\r\n'
+                               b'Content-Type: image/jpeg\r\n' +
+                               f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                               snapshot + b'\r\n')
+                    time.sleep(0.033)
+            except GeneratorExit:
+                amcrest_mjpeg_capture_service.remove_client(camera_id_main)
+            except Exception as e:
+                logger.error(f"[Amcrest MJPEG MAIN] Error {camera_id}: {e}")
+                amcrest_mjpeg_capture_service.remove_client(camera_id_main)
+        
+        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+    except Exception as e:
+        return f"Stream error: {e}", 500
 
 def _get_bool(name: str, default: bool | None = None) -> bool | None:
     """
@@ -917,7 +1142,9 @@ def cleanup_handler(signum=None, frame=None):
                           eufy_bridge,
                           unifi_cameras,
                           unifi_resource_monitor,
-                          mjpeg_capture_service)
+                          unifi_mjpeg_capture_service,
+                          reolink_mjpeg_capture_service,
+                          amcrest_mjpeg_capture_service)
     except Exception as e:
         print(traceback.print_exc())
         print(f"Cleanup error: {e}")

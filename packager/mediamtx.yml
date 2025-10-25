@@ -34,7 +34,5 @@ paths:
     source: publisher
   T8441P12242302AC:
     source: publisher
-  REOLINK_OFFICE:
-    source: publisher
   REOLINK_LAUNDRY:
     source: publisher

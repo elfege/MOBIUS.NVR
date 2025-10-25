@@ -182,6 +182,8 @@ EOF
 			BAICHUAN_PORT=$(echo "$camera_json" | jq -r '.value.neolink.baichuan_port // 9000')
 			RTSP_PATH=$(echo "$camera_json" | jq -r '.value.neolink.rtsp_path // "mainStream"')
 			ENABLED=$(echo "$camera_json" | jq -r '.value.neolink.enabled // true')
+			BUFFER_SIZE=$(echo "$camera_json" | jq -r '.value.neolink.buffer_size // 20')
+
 
 			# Append camera configuration
 			cat >>"$OUTPUT_FILE" <<EOF
@@ -204,6 +206,11 @@ stream = "$RTSP_PATH"
 
 # Enable/disable this camera
 enabled = $ENABLED
+
+# Buffer size (number of frames to buffer)
+# Small (10-20): Lower latency, less resilient to network issues
+# Large (100+): Higher latency, more resilient to network issues  
+buffer_size = $BUFFER_SIZE
 
 # Available RTSP paths after Neolink starts:
 #   rtsp://localhost:8554/$SERIAL/mainStream

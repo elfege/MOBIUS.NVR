@@ -267,7 +267,7 @@ builder = FFmpegHLSParamBuilder(camera_name=camera_name, stream_type=stream_type
 // Use streamType to determine which manager to use
 if (streamType === 'mjpeg_proxy') {
     success = await this.mjpegManager.startStream(serial, streamElement);
-} else if (streamType === 'HLS' || streamType === 'LL_HLS') {
+} else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
     success = await this.hlsManager.startStream(serial, streamElement, 'sub');
 } else if (streamType === 'RTMP') {
     success = await this.flvManager.startStream(serial, streamElement);
@@ -281,7 +281,7 @@ if (streamType === 'mjpeg_proxy') {
 // Use streamType to determine which manager to use
 if (streamType === 'mjpeg_proxy') {
     success = await this.mjpegManager.startStream(serial, streamElement);
-} else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK') {
+} else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
     // NEOLINK cameras output HLS (via Neolink bridge)
     success = await this.hlsManager.startStream(serial, streamElement, 'sub');
 } else if (streamType === 'RTMP') {
@@ -307,12 +307,12 @@ if ((streamType === 'HLS' || streamType === 'NEOLINK') && this.health) {
 
 **Check line 240:**
 ```javascript
-if (streamType === 'HLS' || streamType === 'LL_HLS') {
+if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
 ```
 
 **Update to:**
 ```javascript
-if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK') {
+if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
 ```
 
 ---

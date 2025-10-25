@@ -11,8 +11,20 @@ export class MJPEGStreamManager {
     /**
      * Start MJPEG stream for a camera
      */
-    async startStream(cameraId, streamElement) {
-        const mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+    async startStream(cameraId, streamElement, cameraType) {
+        console.log(`[MJPEG] startStream called: cameraId=${cameraId}, cameraType=${cameraType}`);
+
+        // Build URL based on camera type
+        let mjpegUrl;
+        if (cameraType === 'reolink') {
+            mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        } else if (cameraType === 'unifi') {
+            mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        } else if (cameraType === 'amcrest') {
+            mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        } else {
+            throw new Error(`Unsupported camera type for MJPEG: ${cameraType}`);
+        }
 
         return new Promise((resolve, reject) => {
             const $streamElement = $(streamElement);

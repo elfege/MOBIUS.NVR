@@ -8,6 +8,11 @@
    1. Base styles (reset, layout)
    2. Component styles (specific to least specific)
    3. Responsive overrides (last to ensure they take precedence)
+   
+   ORIGINAL FILES SPLIT:
+   - streams.css → 9 component modules
+   - settings.css → 2 component modules  
+   - header_buttons.css → merged into buttons.css
    ============================================================================ */
 
 /* ============================================================================
@@ -16,17 +21,27 @@
 @import url('base/reset.css');
 
 /* ============================================================================
-   COMPONENT STYLES - UI building blocks
+   LAYOUT COMPONENTS - Grid and container structures
+   ============================================================================ */
+@import url('components/grid-container.css');
+@import url('components/grid-modes.css');
+
+/* ============================================================================
+   UI COMPONENTS - Interactive elements
    ============================================================================ */
 @import url('components/header.css');
 @import url('components/buttons.css');
-@import url('components/grid-container.css');
-@import url('components/grid-modes.css');
 @import url('components/stream-item.css');
 @import url('components/stream-overlay.css');
 @import url('components/stream-controls.css');
 @import url('components/ptz-controls.css');
 @import url('components/fullscreen.css');
+
+/* ============================================================================
+   SETTINGS COMPONENTS
+   ============================================================================ */
+@import url('components/settings-overlay.css');
+@import url('components/settings-controls.css');
 
 /* ============================================================================
    RESPONSIVE OVERRIDES - Must be last for proper cascade

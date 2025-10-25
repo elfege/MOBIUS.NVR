@@ -80,14 +80,13 @@
 │   │   │   ├── grid-modes.css
 │   │   │   ├── header.css
 │   │   │   ├── ptz-controls.css
+│   │   │   ├── reset.css
 │   │   │   ├── responsive.css
+│   │   │   ├── settings-overlay.css
 │   │   │   ├── stream-controls.css
 │   │   │   ├── stream-item.css
 │   │   │   └── stream-overlay.css
-│   │   ├── header_buttons.css
-│   │   ├── main.css
-│   │   ├── settings.css
-│   │   └── style.css
+│   │   └── main.css
 │   └── js/
 │       ├── controllers/
 │       │   └── ptz-controller.js
@@ -135,4 +134,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-25 directories, 111 files
+25 directories, 110 files

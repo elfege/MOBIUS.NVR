@@ -1,26 +1,32 @@
 /* ============================================================================
-   PTZ-CONTROLS.CSS - Pan-Tilt-Zoom Directional Buttons
-   
-   PURPOSE: Directional control pad for cameras with PTZ capabilities and
-   loading indicator for stream initialization.
+   PTZ CONTROLS (Pan-Tilt-Zoom directional buttons)
    ============================================================================ */
 
 .ptz-controls {
     margin-top: 0.5rem;
 }
 
-/* 3x3 Grid layout for directional controls */
+/* 3x3 Grid layout for directional controls
+   Example layout:
+   [    ] [ UP ] [    ]
+   [LEFT] [    ] [RIGHT]
+   [    ] [DOWN] [    ]
+*/
 .ptz-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
+    /* 3 equal columns */
     gap: 0.25rem;
     max-width: 150px;
+    /* Limits PTZ control size */
     margin: 0 auto;
+    /* Centers the PTZ grid */
 }
 
 /* Each PTZ direction button */
 .ptz-btn {
     aspect-ratio: 1;
+    /* Makes buttons square */
     border: none;
     background: rgba(255, 255, 255, 0.15);
     color: white;
@@ -38,15 +44,20 @@
     transform: scale(1.1);
 }
 
+/* Active state when button is pressed */
 .ptz-btn:active {
     background: rgba(255, 255, 255, 0.4);
     transform: scale(0.95);
 }
 
-/* Specific positioning for directional buttons */
+/* Specific positioning for directional buttons using nth-child
+   nth-child(n) selects the nth button in the grid
+*/
 .ptz-btn[data-direction="up"] {
     grid-column: 2;
+    /* Second column */
     grid-row: 1;
+    /* First row */
 }
 
 .ptz-btn[data-direction="left"] {
@@ -62,36 +73,4 @@
 .ptz-btn[data-direction="down"] {
     grid-column: 2;
     grid-row: 3;
-}
-
-/* ============================================================================
-   LOADING INDICATOR
-   ============================================================================ */
-
-.loading-indicator {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-    z-index: 5;
-}
-
-.spinner {
-    width: 40px;
-    height: 40px;
-    border: 4px solid rgba(255, 255, 255, 0.3);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.stream-item.loaded .loading-indicator {
-    display: none;
 }

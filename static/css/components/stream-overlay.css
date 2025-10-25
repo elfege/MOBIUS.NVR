@@ -1,34 +1,127 @@
 /* ============================================================================
-   MAIN.CSS - CSS Module Orchestrator
-   
-   PURPOSE: Central import file for all CSS modules. Ensures correct cascade
-   order for styles throughout the application.
-   
-   IMPORT ORDER MATTERS:
-   1. Base styles (reset, layout)
-   2. Component styles (specific to least specific)
-   3. Responsive overrides (last to ensure they take precedence)
+   STREAM OVERLAY (Title and status indicator)
    ============================================================================ */
 
-/* ============================================================================
-   BASE STYLES - Foundation layer
-   ============================================================================ */
-@import url('base/reset.css');
+/* Positioned absolutely over the video
+   - position: absolute takes element out of normal flow
+   - top: 0; left: 0; right: 0 stretches across top
+   - pointer-events: none allows clicks to pass through to video
+   - background: linear-gradient creates fade effect from dark to transparent
+*/
+.stream-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0) 100%);
+    pointer-events: none;
+    /* Allows clicking through to video element */
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    z-index: 10;
+    /* Above video, below controls */
+}
+
+.stream-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Status indicator section */
+.stream-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Status indicator with animated dot */
+.stream-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 12px;
+}
+
+/* Animated dot icon for different states */
+.stream-indicator i {
+    font-size: 0.5rem;
+}
+
+/* State-specific colors */
+.stream-indicator.live i {
+    color: #28a745;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.stream-indicator.loading i {
+    color: #ffc107;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.stream-indicator.error i {
+    color: #dc3545;
+}
+
+.stream-indicator.stopped i {
+    color: #6c757d;
+}
+
+/* Pulse animation for live/loading states
+   @keyframes defines the animation sequence
+   opacity changes create fade in/out effect
+*/
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
 
 /* ============================================================================
-   COMPONENT STYLES - UI building blocks
+   LOADING INDICATOR
    ============================================================================ */
-@import url('components/header.css');
-@import url('components/buttons.css');
-@import url('components/grid-container.css');
-@import url('components/grid-modes.css');
-@import url('components/stream-item.css');
-@import url('components/stream-overlay.css');
-@import url('components/stream-controls.css');
-@import url('components/ptz-controls.css');
-@import url('components/fullscreen.css');
 
-/* ============================================================================
-   RESPONSIVE OVERRIDES - Must be last for proper cascade
-   ============================================================================ */
-@import url('components/responsive.css');
+/* Spinning loader displayed while stream initializes */
+.loading-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    /* Centers element precisely */
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* The actual spinner animation */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    /* Makes it circular */
+    animation: spin 1s linear infinite;
+}
+
+/* Spin animation - rotates 360 degrees continuously */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Hide spinner when stream is loaded */
+.stream-item.loaded .loading-indicator {
+    display: none;
+}

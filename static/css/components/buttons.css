@@ -1,11 +1,8 @@
 /* ============================================================================
-   BUTTONS.CSS - Button Component Styles
-   
-   PURPOSE: Reusable button styles with color variants for actions throughout
-   the application.
+   BUTTON STYLES
    ============================================================================ */
 
-/* Base button styling */
+/* Base button styling - applies to ALL buttons with .btn class */
 .btn {
     padding: 0.5rem 1rem;
     border: none;
@@ -13,7 +10,9 @@
     font-size: 0.9rem;
     font-weight: 500;
     cursor: pointer;
+    /* Changes cursor to pointer (hand) on hover */
     transition: all 0.3s ease;
+    /* Smooth transition for hover effects */
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -21,24 +20,21 @@
     color: white;
 }
 
+/* Button hover effect - applies when mouse is over button
+   transform: translateY moves element up/down
+   box-shadow creates depth effect
+*/
 .btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
+/* Active state - when button is being clicked */
 .btn:active {
     transform: translateY(0);
 }
 
-/* Icon spacing in buttons */
-.btn i {
-    margin-right: 0.3rem;
-}
-
-/* ============================================================================
-   COLOR VARIANTS
-   ============================================================================ */
-
+/* Color variants - specific colors for different button types */
 .btn-success {
     background: #28a745;
 }
@@ -71,6 +67,31 @@
     background: #0056b3;
 }
 
+
+/* Serious professional button - minimal, focused, no-nonsense */
+.btn-beserious {
+    background: #2d3748;
+    /* Dark slate gray */
+    color: #e2e8f0;
+    /* Light gray text */
+    border: 1px solid #4a5568;
+    /* Subtle border */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.btn-beserious:hover {
+    background: #1a202c;
+    /* Darker on hover */
+    border-color: #2d3748;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.btn-beserious:active {
+    background: #0f131a;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Settings button styling */
 .btn-secondary {
     background: rgba(255, 255, 255, 0.2);
     color: white;
@@ -82,20 +103,30 @@
     border-color: rgba(255, 255, 255, 0.5);
 }
 
-.btn-beserious {
-    background: #2d3748;
-    color: #e2e8f0;
-    border: 1px solid #4a5568;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+/* Icon spacing in buttons */
+.btn i {
+    margin-right: 0.3rem;
 }
 
-.btn-beserious:hover {
-    background: #1a202c;
-    border-color: #2d3748;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+/* ============================================================================
+   HEADER ICON BUTTONS
+   ============================================================================ */
+
+.header-icon-btn {
+    font-size: 20px;
+    color: #ffffff;
+    opacity: 0.7;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.2s;
+    padding: 8px;
+    margin: 0 8px;
 }
 
-.btn-beserious:active {
-    background: #0f131a;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+.header-icon-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.header-icon-btn:active {
+    transform: scale(0.95);
 }

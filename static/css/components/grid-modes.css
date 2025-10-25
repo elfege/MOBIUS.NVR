@@ -1,8 +1,43 @@
+/* Grid layout classes - dynamically applied by JavaScript
+   These determine how many columns based on camera count
+   - repeat(N, 1fr) creates N equal-width columns
+   - 1fr = one "fraction" of available space
+   - grid-auto-rows controls row height
+   - minmax(0, 1fr) allows rows to shrink/grow equally
+*/
+
+/* 1 camera: single full-width column */
+.grid-1 {
+    grid-template-columns: repeat(1, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 2-4 cameras: 2 columns (2x2 grid) */
+.grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 5-9 cameras: 3 columns (3x3 grid) */
+.grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 10-16 cameras: 4 columns (4x4 grid) */
+.grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* 17+ cameras: 5 columns (5x5 grid) */
+.grid-5 {
+    grid-template-columns: repeat(5, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
 /* ============================================================================
-   GRID-MODES.CSS - Grid Layout Mode Variants
-   
-   PURPOSE: Different visual modes for the grid layout (attached/detached).
-   Attached mode provides a professional NVR look with no gaps.
+   GRID LAYOUT MODES
    ============================================================================ */
 
 /* Attached mode - professional NVR look with no gaps */
@@ -14,12 +49,15 @@
     border-radius: 0;
     box-shadow: none;
     border: 1px solid #1a1a1a;
+    /* Subtle divider between streams */
 }
 
 .streams-container.grid-attached .stream-item:hover {
     transform: none;
+    /* No scale effect in attached mode */
     box-shadow: none;
     border-color: #667eea;
+    /* Highlight border on hover instead */
 }
 
 /* Keep rounded corners on outer edges only */
@@ -30,3 +68,6 @@
 .streams-container.grid-attached .stream-item:nth-child(2) {
     border-top-right-radius: 8px;
 }
+
+/* These selectors would need JavaScript to determine last row items */
+/* For now, we'll rely on JavaScript to add specific classes */

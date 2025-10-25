@@ -1,11 +1,11 @@
 /* ============================================================================
-   STREAM-CONTROLS.CSS - Stream Control Buttons
-   
-   PURPOSE: Play, stop, and refresh buttons that appear on hover at the bottom
-   of each stream.
+   STREAM CONTROLS (Play, Stop, Refresh buttons)
    ============================================================================ */
 
-/* Control panel at bottom of each stream */
+/* Control panel at bottom of each stream
+   - Initially hidden (opacity: 0, pointer-events: none)
+   - Appears on hover of parent .stream-item
+*/
 .stream-controls {
     position: absolute;
     bottom: 0;
@@ -13,10 +13,16 @@
     right: 0;
     padding: 0.75rem;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
+
+    /* Hidden by default but ALWAYS interactive */
     opacity: 0;
     pointer-events: auto;
+    /* Always enabled - buttons always work */
+
     transition: opacity 0.3s ease;
+    /* Smooth fade in/out */
     z-index: 20;
+    /* Above overlay */
 }
 
 /* Show controls when hovering over stream item OR controls themselves */
@@ -25,9 +31,11 @@
     opacity: 1;
 }
 
-/* Keep controls visible briefly after hover ends */
+/* IMPORTANT: Keep controls visible briefly after hover ends
+   This gives user time to move mouse to button */
 .stream-controls:hover {
     transition-delay: 0.5s;
+    /* Controls stay visible for 0.5s after mouse leaves */
 }
 
 /* Horizontal row of control buttons */
@@ -35,6 +43,7 @@
     display: flex;
     gap: 0.5rem;
     justify-content: center;
+    /* Centers buttons horizontally */
     margin-bottom: 0.5rem;
 }
 
@@ -52,6 +61,7 @@
     color: white;
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(10px);
+    /* Creates frosted glass effect */
 }
 
 .stream-btn:hover {

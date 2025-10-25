@@ -1,10 +1,8 @@
 /* ============================================================================
-   RESPONSIVE.CSS - Mobile & Tablet Adjustments
-   
-   PURPOSE: Media queries to adapt the grid layout for different screen sizes.
+   RESPONSIVE DESIGN - Mobile/Tablet Adjustments
    ============================================================================ */
 
-/* Phones - keep 2 columns */
+/* phones - keep 2 columns */
 @media (max-width: 480px) {
     .streams-container {
         padding: 0.25rem;

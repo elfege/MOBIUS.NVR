@@ -1,14 +1,12 @@
 /* ============================================================================
-   HEADER.CSS - Fixed Header with Collapsible Mechanism
-   
-   PURPOSE: Top navigation bar with collapsible functionality using CSS-only
-   checkbox hack. No JavaScript required for collapse/expand.
-   ============================================================================ */
-
-/* ============================================================================
    HEADER SECTION
    ============================================================================ */
 
+/* Fixed header at the top - won't scroll away
+   - position: fixed removes element from normal document flow
+   - top: 0 pins it to the top edge
+   - z-index: 1000 ensures it stays above other content (higher = more on top)
+*/
 .header {
     position: fixed;
     top: 0;
@@ -20,11 +18,19 @@
     z-index: 1000;
     display: flex;
     justify-content: space-between;
+    /* Pushes content to edges with space between */
     align-items: center;
+    /* Vertically centers items */
     flex-wrap: wrap;
+    /* Allows wrapping on small screens */
     gap: 1rem;
+    /* Space between wrapped items */
+
+    /* Add smooth transition for collapse animation */
     transform: translateY(0);
+    /* Normal position */
     transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Smooth easing */
 }
 
 .header h1 {
@@ -36,6 +42,7 @@
     margin: 0;
 }
 
+/* Navigation controls - groups buttons together */
 .nav-controls {
     display: flex;
     align-items: center;
@@ -57,70 +64,98 @@
 
 /* ============================================================================
    COLLAPSIBLE HEADER MECHANISM
-   
-   CSS-only toggle using checkbox hack - no JavaScript needed
+
+   HOW THIS WORKS (Pure CSS trick):
+   - Hidden checkbox controls the state (checked = expanded, unchecked = collapsed)
+   - CSS :checked selector changes styles based on checkbox state
+   - Label element acts as the toggle button (clicking label toggles checkbox)
+   - No JavaScript needed for the collapse/expand functionality!
+
+   LEARNING NOTE: This is called the "CSS checkbox hack" - a clever way to
+   create interactive elements without JavaScript by using the natural behavior
+   of form inputs.
    ============================================================================ */
 
+/* Hide the actual checkbox but keep it functional
+   - position: absolute removes it from layout
+   - opacity: 0 makes it invisible
+   - pointer-events: none prevents accidental clicks
+   We need to keep it in the DOM so the :checked selector works
+*/
 .header-toggle-input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
 }
 
+/* The toggle button - always visible at the top
+   - position: fixed keeps it on screen even when header collapses
+   - z-index: 1001 puts it above the header (which is z-index: 1000)
+   - Centered horizontally with left: 50% + transform: translateX(-50%)
+*/
+/* The toggle button - make it much smaller and barely visible */
 .header-toggle-btn {
     position: fixed;
     top: 5px;
     left: 50%;
     transform: translateX(-50%);
+
     background: rgba(0, 0, 0, 0.15);
+    /* Even more transparent */
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    /* More subtle border */
     border-radius: 0 0 8px 8px;
+    /* Smaller radius */
+
     padding: 0.25rem 0.75rem;
+    /* Much smaller padding */
     cursor: pointer;
+
     transition: all 0.3s ease;
+
     z-index: 1001;
+
     display: flex;
     align-items: center;
     justify-content: center;
+
     color: rgba(255, 255, 255, 0.3);
+    /* Very weak opacity - barely visible */
 }
 
+/* Hover effect - becomes visible but still subtle */
 .header-toggle-btn:hover {
     background: rgba(0, 0, 0, 0.4);
     color: rgba(255, 255, 255, 0.8);
+    /* Not fully opaque even on hover */
     transform: translateX(-50%) scale(1.1);
 }
 
+/* Icon inside the toggle button - much smaller */
 .header-toggle-btn i {
     font-size: 0.7rem;
+    /* Much smaller - was 1.2rem */
     transition: transform 0.3s ease;
 }
 
-/* Collapsed state */
-.header-toggle-input:not(:checked) ~ .header {
+/* Rotate icon when header is collapsed (checkbox unchecked)
+   ~ is the "general sibling selector" - selects .header-toggle-btn
+   that comes AFTER the unchecked input
+*/
+/* When header is collapsed, streams take full viewport */
+.header-toggle-input:not(:checked)~.streams-container {
+    margin-top: 15px;
+    /* Much smaller - was 30px */
+    height: calc(100vh - 5px);
+    /* Almost full viewport height */
+}
+
+/* Collapsed state - when checkbox is unchecked
+   The ~ selector means "select .header that comes after unchecked input"
+*/
+.header-toggle-input:not(:checked)~.header {
+    /* Move header up by its own height to hide it
+       We use translateY instead of display:none to keep smooth animation */
     transform: translateY(-100%);
-}
-
-/* ============================================================================
-   HEADER ICON BUTTONS
-   ============================================================================ */
-
-.header-icon-btn {
-    font-size: 20px;
-    color: #ffffff;
-    opacity: 0.7;
-    cursor: pointer;
-    transition: opacity 0.2s, transform 0.2s;
-    padding: 8px;
-    margin: 0 8px;
-}
-
-.header-icon-btn:hover {
-    opacity: 1;
-    transform: scale(1.1);
-}
-
-.header-icon-btn:active {
-    transform: scale(0.95);
 }

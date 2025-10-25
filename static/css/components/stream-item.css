@@ -1,60 +1,117 @@
 /* ============================================================================
-   STREAM-CONTROLS.CSS - Stream Control Buttons
-   
-   PURPOSE: Play, stop, and refresh buttons that appear on hover at the bottom
-   of each stream.
+   INDIVIDUAL STREAM ITEM
    ============================================================================ */
 
-/* Control panel at bottom of each stream */
-.stream-controls {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 0.75rem;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
-    opacity: 0;
-    pointer-events: auto;
-    transition: opacity 0.3s ease;
-    z-index: 20;
+/* Each camera stream container
+   - position: relative allows absolutely positioned children (overlay, controls)
+   - background: dark color shows while video loads
+   - aspect-ratio: 16/9 maintains proper video proportions
+     (This is SET BY JAVASCRIPT, but we provide a fallback)
+   - overflow: hidden keeps content from spilling out
+*/
+.stream-item {
+    position: relative;
+    /* Makes this a positioning context for children */
+    background: #2c2c2c;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+    /* Fallback aspect ratio if JavaScript doesn't set it */
+    aspect-ratio: 16 / 9;
+
+    /* Make sure the item fills its grid cell */
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    /* Allows grid item to shrink below content size */
 }
 
-/* Show controls when hovering over stream item OR controls themselves */
-.stream-item:hover .stream-controls,
-.stream-controls:hover {
+/* Hover effect on stream item */
+.stream-item:hover {
+    transform: scale(1.02);
+    /* Slightly enlarges */
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+}
+
+/* ============================================================================
+   VIDEO/IMAGE ELEMENTS (The actual stream display)
+   ============================================================================ */
+
+/* This is CRITICAL for proper sizing
+   - width: 100% fills container width
+   - height: 100% fills container height
+   - object-fit: cover maintains aspect ratio, crops if needed
+     (like "background-size: cover" but for video/img elements)
+   - display: block removes bottom gap (inline elements have descender space)
+*/
+.stream-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Maintains aspect ratio, fills container */
+    display: block;
+    /* Removes inline element spacing issues */
+    background: #000;
+}
+
+/* ============================================================================
+   STREAM FULLSCREEN BUTTON
+   ============================================================================ */
+
+/* Fullscreen button overlay - visible tap target for mobile */
+.stream-fullscreen-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    width: 44px;
+    /* iOS minimum touch target */
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 25; /* must remain > .stream-controls' z-index */
+    /* Above overlay, below controls */
+    opacity: 0;
+    pointer-events: auto;
+    /* Always clickable */
+    transition: opacity 0.3s ease, background 0.2s ease;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .stream-fullscreen-btn {
     opacity: 1;
 }
 
-/* Keep controls visible briefly after hover ends */
-.stream-controls:hover {
-    transition-delay: 0.5s;
+/* Always visible on touch devices */
+@media (hover: none) {
+    .stream-fullscreen-btn {
+        opacity: 0.7;
+    }
+
+    .stream-fullscreen-btn:active {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.8);
+    }
 }
 
-/* Horizontal row of control buttons */
-.control-row {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: center;
-    margin-bottom: 0.5rem;
+/* Desktop hover effect */
+@media (hover: hover) {
+    .stream-fullscreen-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+    }
 }
 
-/* Individual stream control buttons */
-.stream-btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.3rem;
-    color: white;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(10px);
-}
-
-.stream-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.05);
+.stream-fullscreen-btn i {
+    font-size: 1.1rem;
 }

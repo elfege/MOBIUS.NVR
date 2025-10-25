@@ -71,7 +71,21 @@
 ├── start.sh*
 ├── static/
 │   ├── css/
+│   │   ├── base/
+│   │   │   └── reset.css
+│   │   ├── components/
+│   │   │   ├── buttons.css
+│   │   │   ├── fullscreen.css
+│   │   │   ├── grid-container.css
+│   │   │   ├── grid-modes.css
+│   │   │   ├── header.css
+│   │   │   ├── ptz-controls.css
+│   │   │   ├── responsive.css
+│   │   │   ├── stream-controls.css
+│   │   │   ├── stream-item.css
+│   │   │   └── stream-overlay.css
 │   │   ├── header_buttons.css
+│   │   ├── main.css
 │   │   ├── settings.css
 │   │   └── style.css
 │   └── js/
@@ -121,4 +135,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-23 directories, 99 files
+25 directories, 111 files

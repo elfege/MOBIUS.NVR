@@ -1,0 +1,122 @@
+/* ============================================================================
+   FULLSCREEN.CSS - Fullscreen Overlay & Button
+   
+   PURPOSE: Full-screen modal for viewing a single camera stream in detail,
+   with close button and stream fullscreen trigger button.
+   ============================================================================ */
+
+/* ============================================================================
+   FULLSCREEN OVERLAY
+   ============================================================================ */
+
+.fullscreen-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    padding: 2rem;
+}
+
+.fullscreen-overlay.active {
+    display: flex;
+}
+
+.fullscreen-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.fullscreen-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+.fullscreen-title {
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+    text-align: center;
+}
+
+.fullscreen-video {
+    max-width: 90%;
+    max-height: 80vh;
+    width: auto;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* ============================================================================
+   STREAM FULLSCREEN BUTTON
+   ============================================================================ */
+
+.stream-fullscreen-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 25;
+    opacity: 0;
+    pointer-events: auto;
+    transition: opacity 0.3s ease, background 0.2s ease;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .stream-fullscreen-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .stream-fullscreen-btn {
+        opacity: 0.7;
+    }
+
+    .stream-fullscreen-btn:active {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* Desktop hover effect */
+@media (hover: hover) {
+    .stream-fullscreen-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+    }
+}
+
+.stream-fullscreen-btn i {
+    font-size: 1.1rem;
+}

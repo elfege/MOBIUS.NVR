@@ -1,0 +1,126 @@
+/* ============================================================================
+   HEADER.CSS - Fixed Header with Collapsible Mechanism
+   
+   PURPOSE: Top navigation bar with collapsible functionality using CSS-only
+   checkbox hack. No JavaScript required for collapse/expand.
+   ============================================================================ */
+
+/* ============================================================================
+   HEADER SECTION
+   ============================================================================ */
+
+.header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 1rem 2rem;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    transform: translateY(0);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.header h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+}
+
+.nav-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.global-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+#stream-count {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-weight: 500;
+}
+
+/* ============================================================================
+   COLLAPSIBLE HEADER MECHANISM
+   
+   CSS-only toggle using checkbox hack - no JavaScript needed
+   ============================================================================ */
+
+.header-toggle-input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.header-toggle-btn {
+    position: fixed;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0 0 8px 8px;
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.header-toggle-btn:hover {
+    background: rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 0.8);
+    transform: translateX(-50%) scale(1.1);
+}
+
+.header-toggle-btn i {
+    font-size: 0.7rem;
+    transition: transform 0.3s ease;
+}
+
+/* Collapsed state */
+.header-toggle-input:not(:checked) ~ .header {
+    transform: translateY(-100%);
+}
+
+/* ============================================================================
+   HEADER ICON BUTTONS
+   ============================================================================ */
+
+.header-icon-btn {
+    font-size: 20px;
+    color: #ffffff;
+    opacity: 0.7;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.2s;
+    padding: 8px;
+    margin: 0 8px;
+}
+
+.header-icon-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.header-icon-btn:active {
+    transform: scale(0.95);
+}

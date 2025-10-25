@@ -1,0 +1,32 @@
+/* ============================================================================
+   GRID-MODES.CSS - Grid Layout Mode Variants
+   
+   PURPOSE: Different visual modes for the grid layout (attached/detached).
+   Attached mode provides a professional NVR look with no gaps.
+   ============================================================================ */
+
+/* Attached mode - professional NVR look with no gaps */
+.streams-container.grid-attached {
+    gap: 0;
+}
+
+.streams-container.grid-attached .stream-item {
+    border-radius: 0;
+    box-shadow: none;
+    border: 1px solid #1a1a1a;
+}
+
+.streams-container.grid-attached .stream-item:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: #667eea;
+}
+
+/* Keep rounded corners on outer edges only */
+.streams-container.grid-attached .stream-item:first-child {
+    border-top-left-radius: 8px;
+}
+
+.streams-container.grid-attached .stream-item:nth-child(2) {
+    border-top-right-radius: 8px;
+}

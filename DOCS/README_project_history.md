@@ -1359,9 +1359,9 @@ camera_info['protect_host']  # "192.168.10.3"
 - **Dell Server as Sole NVR**: All camera management now consolidated on Dell PowerEdge R730xd running Proxmox + containerized services
 - **Architecture Simplification**: Eliminated Windows dependency, unified all camera streaming through Flask application
 
-# October 1, 2025: UniFi Protect RTSP/FFmpeg Incompatibility Discovery & Frontend Refactoring
+## October 1, 2025: UniFi Protect RTSP/FFmpeg Incompatibility Discovery & Frontend Refactoring
 
-## RTSP URL Format Discovery
+### RTSP URL Format Discovery
 
 **Key Finding**: UniFi Protect RTSP streams work without authentication on local network:
 
@@ -1369,7 +1369,7 @@ camera_info['protect_host']  # "192.168.10.3"
 - **VLC Success**: Stream plays perfectly in VLC using simple URL
 - **Port Clarification**: Port 7447 (RTSP) works, not 7441 (RTSPS as shown in Protect UI)
 
-## Critical FFmpeg Incompatibility Identified
+### Critical FFmpeg Incompatibility Identified
 
 **Blocker Discovered**: FFmpeg cannot parse UniFi Protect's RTSP stream format
 
@@ -1379,7 +1379,7 @@ camera_info['protect_host']  # "192.168.10.3"
 - **Tested Variations**: TCP transport, UDP transport, with/without credentials - all failed identically
 - **Root Cause**: Protect uses proprietary/non-standard RTSP implementation incompatible with FFmpeg's parser
 
-## Code Architecture Updates Completed
+### Code Architecture Updates Completed
 
 **1. stream_manager.py - UniFi RTSP URL Construction**
 
@@ -1421,7 +1421,7 @@ elif camera_type == "eufy":
 }
 ```
 
-## Technical Challenges & Resolution Status
+### Technical Challenges & Resolution Status
 
 **Resolved**:
 
@@ -1436,7 +1436,7 @@ elif camera_type == "eufy":
 - ❌ G5 Flex cannot use HLS transcoding approach as designed
 - ❌ MJPEG direct access no longer available (camera adopted into Protect)
 
-## Alternative Approaches Identified
+### Alternative Approaches Identified
 
 **Option A: Use Protect's Native HLS Streams**
 
@@ -1455,20 +1455,20 @@ elif camera_type == "eufy":
 - This also fails with same "Invalid data" error
 - Would need Protect's snapshot API instead: `/proxy/protect/api/cameras/{id}/snapshot`
 
-## Current System State
+### Current System State
 
 - **9 Cameras Total**: 1 UniFi (G5 Flex) + 8 Eufy working
 - **Eufy Streams**: All functional using direct RTSP → FFmpeg → HLS transcoding
 - **G5 Flex Status**: Non-functional - FFmpeg cannot process Protect's RTSP
 - **UI**: Frontend properly structured for multiple stream types, awaiting working backend
 
-## Next Steps Required
+### Next Steps Required
 
 1. **Immediate**: Implement Protect snapshot API for MJPEG fallback
 2. **Short-term**: Investigate proxying Protect's native HLS streams (Option A)
 3. **Long-term**: Consider GStreamer migration for Protect camera support
 
-## Files Modified This Session
+### Files Modified This Session
 
 - `stream_manager.py` - UniFi RTSP URL construction logic
 - `templates/streams.html` - Added stream_type attribute, fixed element logic
@@ -1476,7 +1476,7 @@ elif camera_type == "eufy":
 - `static/js/streaming/stream.js` - Refactored for dual parameter support
 - `config/cameras.json` - Changed G5 Flex to ll_hls mode (currently non-functional)
 
-# October 1, 2025 (Continued): UniFi Protect RTSP Integration & FFmpeg Parameter Resolution
+## October 1, 2025 (Continued): UniFi Protect RTSP Integration & FFmpeg Parameter Resolution
 
 ### UniFi Protect RTSP Streaming Successfully Integrated
 
@@ -1551,58 +1551,58 @@ ffmpeg -rtsp_transport tcp -i rtsp://... \
 - Reolink camera integration in new session (separate git branch)
 - Monitor long-term stability of current configuration
 
-# Octover 1, 2025 (Continued - Migration): Refactorization for better modularity
+## Octover 1, 2025 (Continued - Migration): Refactorization for better modularity
 
 see: OCT_2025_Architecture_Refactoring_Migration.md
 
 # 🎯 Complete Architecture Refactoring Summary
 
-## What Was Done
+### What Was Done
 
 This refactoring transforms the monolithic, tightly-coupled NVR codebase into a clean, modular, testable architecture following SOLID principles.
 
 ---
 
-## 📦 Artifacts Created
+### 📦 Artifacts Created
 
-### **1. Configuration Files (3 files)**
+#### **1. Configuration Files (3 files)**
 
 - ✅ `config/unifi_protect.json` - UniFi Protect console settings
 - ✅ `config/eufy_bridge.json` - Eufy bridge and RTSP settings
 - ✅ `config/reolink.json` - Reolink NVR settings (future)
 - ✅ `config/cameras.json` - Cleaned camera configs (no credentials)
 
-### **2. Core Services (4 files)**
+#### **2. Core Services (4 files)**
 
 - ✅ `services/credentials/credential_provider.py` - Abstract interface
 - ✅ `services/credentials/aws_credential_provider.py` - AWS implementation
 - ✅ `services/camera_repository.py` - Data access layer
 - ✅ `services/ptz_validator.py` - Business logic for PTZ
 
-### **3. Stream Handlers (4 files)**
+#### **3. Stream Handlers (4 files)**
 
 - ✅ `streaming/stream_handler.py` - Abstract base class
 - ✅ `streaming/handlers/eufy_stream_handler.py` - Eufy implementation
 - ✅ `streaming/handlers/unifi_stream_handler.py` - UniFi implementation
 - ✅ `streaming/handlers/reolink_stream_handler.py` - Reolink implementation
 
-### **4. Stream Manager (1 file)**
+#### **4. Stream Manager (1 file)**
 
 - ✅ `streaming/stream_manager.py` - Orchestrator using Strategy Pattern
 
-### **5. Updated Application (1 file)**
+#### **5. Updated Application (1 file)**
 
 - ✅ `app.py` - Refactored with dependency injection
 
-### **6. Documentation (2 files)**
+#### **6. Documentation (2 files)**
 
 - ✅ `OCT_2025_Architecture_Refactoring_Migration.md.md` - Step-by-step migration instructions
 
 ---
 
-## 🏗️ Architecture Patterns Applied
+### 🏗️ Architecture Patterns Applied
 
-### **1. Strategy Pattern**
+#### **1. Strategy Pattern**
 
 Each camera vendor has its own stream handler implementing a common interface:
 
@@ -1612,7 +1612,7 @@ rtsp_url = handler.build_rtsp_url(camera, stream_type=stream_type)
 ffmpeg_params = handler.get_ffmpeg_params()
 ```
 
-### **2. Repository Pattern**
+#### **2. Repository Pattern**
 
 Data access separated from business logic:
 
@@ -1621,7 +1621,7 @@ camera_repo = CameraRepository('./config')
 camera = camera_repo.get_camera(serial)
 ```
 
-### **3. Dependency Injection**
+#### **3. Dependency Injection**
 
 Services receive dependencies via constructor:
 
@@ -1632,7 +1632,7 @@ stream_manager = StreamManager(
 )
 ```
 
-### **4. Single Responsibility Principle**
+#### **4. Single Responsibility Principle**
 
 Each class has one reason to change:
 
@@ -1642,9 +1642,9 @@ Each class has one reason to change:
 
 ---
 
-## 🔄 Before vs After
+### 🔄 Before vs After
 
-### **Adding a New Camera Brand**
+#### **Adding a New Camera Brand**
 
 **Before:**
 
@@ -1670,7 +1670,7 @@ class ReolinkStreamHandler(StreamHandler):
 'reolink': ReolinkStreamHandler(credential_provider, reolink_config)
 ```
 
-### **Changing Credential Source**
+#### **Changing Credential Source**
 
 **Before:**
 
@@ -1688,7 +1688,7 @@ credential_provider = VaultCredentialProvider()  # Changed from AWS
 # Everything else works unchanged
 ```
 
-### **Testing**
+#### **Testing**
 
 **Before:**
 
@@ -1708,9 +1708,9 @@ assert rtsp_url == "rtsp://user:pass@192.168.10.84:554/live0"
 
 ---
 
-## 📊 Code Metrics
+### 📊 Code Metrics
 
-### **Lines of Code**
+#### **Lines of Code**
 
 | Component | Before | After | Change |
 |-----------|--------|-------|--------|
@@ -1723,7 +1723,7 @@ assert rtsp_url == "rtsp://user:pass@192.168.10.84:554/live0"
 
 *Fewer total lines with better organization and testability*
 
-### **Cyclomatic Complexity**
+#### **Cyclomatic Complexity**
 
 | Component | Before | After |
 |-----------|--------|-------|
@@ -1735,33 +1735,33 @@ assert rtsp_url == "rtsp://user:pass@192.168.10.84:554/live0"
 
 ---
 
-## 🎯 Key Benefits
+### 🎯 Key Benefits
 
-### **1. Modularity**
+#### **1. Modularity**
 
 - Each vendor in separate file
 - Easy to add/remove vendors
 - Changes isolated to specific files
 
-### **2. Testability**
+#### **2. Testability**
 
 - Mock individual components
 - Unit test each handler
 - Integration test orchestration
 
-### **3. Maintainability**
+#### **3. Maintainability**
 
 - Clear separation of concerns
 - Easy to find and fix bugs
 - Self-documenting code structure
 
-### **4. Scalability**
+#### **4. Scalability**
 
 - Adding vendors is trivial
 - No modification to existing code
 - Parallel development possible
 
-### **5. Security**
+#### **5. Security**
 
 - Centralized credential management
 - Easy to swap credential sources
@@ -1769,9 +1769,9 @@ assert rtsp_url == "rtsp://user:pass@192.168.10.84:554/live0"
 
 ---
 
-## 🔧 Technical Improvements
+### 🔧 Technical Improvements
 
-### **Configuration Management**
+#### **Configuration Management**
 
 **Before:**
 
@@ -1807,7 +1807,7 @@ assert rtsp_url == "rtsp://user:pass@192.168.10.84:554/live0"
 }
 ```
 
-### **Credential Management**
+#### **Credential Management**
 
 **Before:**
 
@@ -1824,7 +1824,7 @@ password = os.getenv('EUFY_CAMERA_T8416P0023352DA9_PASSWORD')
 username, password = credential_provider.get_credentials('eufy', serial)
 ```
 
-### **RTSP URL Construction**
+#### **RTSP URL Construction**
 
 **Before:**
 
@@ -1844,16 +1844,16 @@ rtsp_url = handler.build_rtsp_url(camera, stream_type=stream_type)
 
 ---
 
-## 🚀 Future Enhancements Enabled
+### 🚀 Future Enhancements Enabled
 
-### **Easy Additions**
+#### **Easy Additions**
 
 1. **New Vendors**: Just add handler + config
 2. **New Credential Sources**: Implement CredentialProvider interface
 3. **New Stream Protocols**: Extend handlers
 4. **Advanced Features**: Substreams, recording, motion detection
 
-### **Potential Next Steps**
+#### **Potential Next Steps**
 
 ```python
 # Add database backend
@@ -1875,15 +1875,15 @@ class RecordingStreamHandler(StreamHandler):
 
 ---
 
-## ✅ Migration Checklist
+### ✅ Migration Checklist
 
-### **Pre-Migration**
+#### **Pre-Migration**
 
 - [ ] Backup current working code: `git checkout -b backup_old_arch`
 - [ ] Test current functionality works
 - [ ] Document current AWS secrets structure
 
-### **Migration**
+#### **Migration**
 
 - [ ] Create new branch: `git checkout -b refactor_architecture`
 - [ ] Create new directories: `streaming/`, `services/credentials/`
@@ -1893,7 +1893,7 @@ class RecordingStreamHandler(StreamHandler):
 - [ ] Update Flask routes to use new services
 - [ ] Add `__init__.py` files
 
-### **Testing**
+#### **Testing**
 
 - [ ] Test camera repository loads correctly
 - [ ] Test credential provider retrieves secrets
@@ -1903,7 +1903,7 @@ class RecordingStreamHandler(StreamHandler):
 - [ ] Test web UI displays cameras
 - [ ] Test actual streaming works
 
-### **Post-Migration**
+#### **Post-Migration**
 
 - [ ] Run for 24 hours, monitor logs
 - [ ] Archive old files: `*.py.old`
@@ -1913,7 +1913,7 @@ class RecordingStreamHandler(StreamHandler):
 
 ---
 
-## 📝 Files to Delete After Migration
+### 📝 Files to Delete After Migration
 
 Once migration is verified working:
 
@@ -1929,15 +1929,15 @@ mv stream_manager.py stream_manager.py.deprecated
 
 ---
 
-## 🐛 Known Issues & Workarounds
+### 🐛 Known Issues & Workarounds
 
-### **Issue 1: Device Discovery**
+#### **Issue 1: Device Discovery**
 
 **Status:** Not fully implemented in new architecture
 **Workaround:** Manual camera configuration in cameras.json
 **TODO:** Add DeviceDiscoveryService
 
-### **Issue 2: MJPEG Streams**
+#### **Issue 2: MJPEG Streams**
 
 **Status:** Still uses old UniFiProtectService
 **Workaround:** Works fine for now, not a blocker
@@ -1945,7 +1945,7 @@ mv stream_manager.py stream_manager.py.deprecated
 
 ---
 
-## 📚 Additional Resources
+### 📚 Additional Resources
 
 - **MIGRATION_GUIDE.md** - Step-by-step migration instructions
 - **Design Patterns**: Strategy, Repository, Dependency Injection
@@ -1953,7 +1953,7 @@ mv stream_manager.py stream_manager.py.deprecated
 
 ---
 
-## 🎉 Success Criteria
+### 🎉 Success Criteria
 
 ✅ **Modularity**: Each vendor in separate handler
 ✅ **Testability**: Components testable in isolation
@@ -1965,22 +1965,22 @@ mv stream_manager.py stream_manager.py.deprecated
 
 ---
 
-## 👨‍💻 Developer Notes
+### 👨‍💻 Developer Notes
 
-### **Philosophy**
+#### **Philosophy**
 
 - **Open/Closed Principle**: Open for extension, closed for modification
 - **Dependency Inversion**: Depend on abstractions, not concretions
 - **Single Responsibility**: One reason to change per class
 
-### **Code Quality**
+#### **Code Quality**
 
 - Type hints used throughout
 - Comprehensive docstrings
 - Logging at appropriate levels
 - Error handling with context
 
-### **Best Practices**
+#### **Best Practices**
 
 - Abstract interfaces before implementations
 - Inject dependencies, don't instantiate
@@ -2116,7 +2116,7 @@ Here’s a ready-to-paste continuation for `DOCS/README_project_history.md`, pic
 4. Confirm all routes functional
 5. Begin Reolink integration
 
-# October 2, 2025 (12–2 AM) — Dev reload stabilized, UniFi alias via env, watchdog triage, FFmpeg profiles
+## October 2, 2025 (12–2 AM) — Dev reload stabilized, UniFi alias via env, watchdog triage, FFmpeg profiles
 
 **Summary**
 Resolved startup and dev-reload instability by asserting `streams/` ownership at app init and purging a legacy UniFi stream dir that a sync script kept recreating as root. UniFi G5 Flex now resolves its RTSP alias from env (AWS secrets) when `cameras.json` uses `"PLACEHOLDER"`. Identified that the watchdog was prematurely killing legitimate streams on slow start; temporarily bypassed while we redesign health checks. Trialed FFmpeg profiles for Eufy (LL-HLS transcode vs. copy+Annex-B); will finalize after isolated probes.
@@ -2196,7 +2196,7 @@ With Eufy profile selection, we can stabilize HLS across mixed vendors without o
 
 ---
 
-# October 2, 2025 (morning) — Dev Reload Solid, Env-Token UniFi, Watchdog Grace & Safer Cleanup
+## October 2, 2025 (morning) — Dev Reload Solid, Env-Token UniFi, Watchdog Grace & Safer Cleanup
 
 **Summary**
 Stabilized dev reloads and stream startup by asserting `streams/` ownership on init and excluding a legacy UniFi dir recreated by a sync script. UniFi (G5 Flex) now derives its RTSP alias from env (AWS secrets) when `cameras.json` uses `"PLACEHOLDER"`. The watchdog was killing legit streams during slow starts; introduced a short **grace window** around restarts/cleanups and outlined a single-flight restart path to avoid thrash. Added a resilient HLS cleanup routine; documented container-safe permission practices. Eufy streaming can switch between **transcode** (low-latency with forced keyframes) and **copy+Annex-B** via an env toggle, to avoid black frames on certain feeds.
@@ -2266,7 +2266,7 @@ Stabilized dev reloads and stream startup by asserting `streams/` ownership on i
 
 ---
 
-# October 2, 2025 (Afternoon) — Collapsible Header & Auto-Fullscreen Settings System
+## October 2, 2025 (Afternoon) — Collapsible Header & Auto-Fullscreen Settings System
 
 **Summary**
 Implemented a comprehensive settings system with collapsible header and auto-fullscreen functionality. Refactored all JavaScript to modern ES6+ syntax, created modular jQuery-based settings architecture, and added localStorage persistence for user preferences. Fixed stream control button interaction issues and optimized viewport space usage.
@@ -2484,7 +2484,7 @@ Implemented a comprehensive settings system with collapsible header and auto-ful
 - **Deprecated Interface**: Old `/` PTZ control page archived but preserved for reference
 - **Module Count**: 3 utility/controller modules + 3 streaming modules (6 total active JavaScript modules)
 
-### October 3, 2025 — PTZ & Eufy Bridge Authentication Fixes
+## October 3, 2025 — PTZ & Eufy Bridge Authentication Fixes
 
 **Focus areas:**
 
@@ -2538,18 +2538,18 @@ Implemented a comprehensive settings system with collapsible header and auto-ful
 - Improve ffmpeg lifecycle management (detect & kill zombies reliably).
 - Continue PTZ control testing once bridge authentication is stabilized.
 
-# October 4, 2025 (Afternoon): FFmpeg Process Accumulation Root Cause - Watchdog Restart Storm
+## October 4, 2025 (Afternoon): FFmpeg Process Accumulation Root Cause - Watchdog Restart Storm
 
-## Critical Bug Discovery: Silent Watchdog Restart Loop
+### Critical Bug Discovery: Silent Watchdog Restart Loop
 
-### Problem Manifestation
+#### Problem Manifestation
 
 - **Symptom**: FFmpeg processes accumulating exponentially over time (40+ processes within 42 minutes)
 - **Load Impact**: System load climbing from normal 6-7 to 100+ on 56-core system
 - **Process Pattern**: Continuous spawning of new FFmpeg processes without old ones terminating
 - **Duplicate Streams**: Multiple FFmpeg instances running for same camera (10+ processes for single UniFi camera)
 
-### Diagnostic Process
+#### Diagnostic Process
 
 **Initial Investigation:**
 
@@ -2570,7 +2570,7 @@ elfege 219097 4.7% ... 1:59 ffmpeg -rtsp_transport tcp -timeout 30000000 -analyz
 ... (30+ instances for 9 cameras)
 ```
 
-### Root Cause Identified
+#### Root Cause Identified
 
 **The Watchdog Restart Storm:**
 
@@ -2606,7 +2606,7 @@ elfege 219097 4.7% ... 1:59 ffmpeg -rtsp_transport tcp -timeout 30000000 -analyz
 - Exceptions silently caught in `_watchdog_loop` prevented error visibility
 - Volume of silent failures was overwhelming
 
-### Thread Safety Violation Discovered
+#### Thread Safety Violation Discovered
 
 **Active Streams Dictionary Corruption:**
 
@@ -2624,7 +2624,7 @@ T8416P0023352DA9
 - Python dicts are NOT thread-safe for concurrent modification
 - Causes undefined behavior including apparent "duplicate keys" during iteration
 
-### Fixes Implemented
+#### Fixes Implemented
 
 **1. Process Termination Hardening (`stream_manager.py`):**
 
@@ -2686,7 +2686,7 @@ def kill_ffmpeg():
 
 **Key Learning:** `pkill -0` only matches process names (15 char limit), not full command lines. Must use `pgrep -f` for pattern matching against full command.
 
-### Outstanding Issues to Address
+#### Outstanding Issues to Address
 
 **Next Session Priorities:**
 
@@ -2710,7 +2710,7 @@ def kill_ffmpeg():
    - Fallback to system-wide `pkill` if `os.killpg()` fails
    - Track PID validity before attempting termination
 
-### Environment Configuration
+#### Environment Configuration
 
 ```bash
 ENABLE_WATCHDOG=1  # Currently enabled
@@ -2718,7 +2718,7 @@ EUFY_HLS_MODE=copy  # Low CPU mode
 # FLASK_DEBUG not set (production mode)
 ```
 
-### Technical Lessons Learned
+#### Technical Lessons Learned
 
 - **Silent exception catching is dangerous** - always log caught exceptions
 - **Thread safety matters** - concurrent dictionary modification causes corruption
@@ -2727,13 +2727,13 @@ EUFY_HLS_MODE=copy  # Low CPU mode
 - **Watchdog health checks need tuning** - false positives cause cascading failures
 - **Always verify assumptions** - "impossible" dictionary state revealed threading bug
 
-### Files Modified
+#### Files Modified
 
 - `streaming/stream_manager.py` - Process termination logic hardened
 - `low_level_handlers/cleanup_handler.py` - Fixed `kill_ffmpeg()` to use `pgrep -f`
 - `diagnostics/ffmpeg_process_monitor.py` - Created (process lifecycle tracking tool)
 
-### System Impact
+#### System Impact
 
 - **Before**: 40+ FFmpeg processes, load average 100+, continuous accumulation
 - **After Fix**: TBD - requires testing with hardened termination logic
@@ -2746,9 +2746,7 @@ EUFY_HLS_MODE=copy  # Low CPU mode
 **Next Session:** Monitor process accumulation with fixes, implement remaining hardening
 
 ---
-I'll search for the current README_project_history.md to understand its structure and add both sections properly.Now I'll create the combined section for October 4, 2025 (Afternoon/Evening):
 
----
 
 ## October 4, 2025 (Afternoon): Multi-Resolution Streaming Implementation - Client-Adaptive Video Quality
 
@@ -9529,3 +9527,390 @@ sub_config = mjpeg_snap.get('sub', mjpeg_snap)  # Falls back to flat if no 'sub'
 - Main stream only available via RTSP/H.264, not MJPEG
 
 **Status:** Fully functional. Grid view and fullscreen both working with substream quality.
+
+
+## October 25, 2025 - CSS Modularization & Code Organization
+
+**Implemented comprehensive CSS modularization for better maintainability:**
+
+**Original Monolithic Files Split:**
+- `streams.css` (987 lines) → 9 modular components
+- `settings.css` (323 lines) → 2 modular components  
+- `header_buttons.css` (16 lines) → merged into buttons.css
+
+**New Modular Structure Created:**
+```
+static/css/
+├── main.css (49 lines) - Orchestrator with correct cascade order
+├── base/
+│   └── reset.css (39 lines) - Global reset & body styles
+└── components/
+    ├── buttons.css (132 lines) - All button variants + header icon buttons
+    ├── fullscreen.css (74 lines) - Fullscreen modal overlay
+    ├── grid-container.css (54 lines) - Main streams container
+    ├── grid-modes.css (73 lines) - Grid layouts (1-5) & attached mode
+    ├── header.css (161 lines) - Fixed header & collapsible mechanism
+    ├── ptz-controls.css (76 lines) - PTZ directional controls
+    ├── responsive.css (34 lines) - Mobile & tablet media queries
+    ├── settings-controls.css (166 lines) - Setting toggles, inputs, selects
+    ├── settings-overlay.css (239 lines) - Settings modal structure
+    ├── stream-controls.css (70 lines) - Stream control buttons
+    ├── stream-item.css (117 lines) - Individual stream container + video
+    └── stream-overlay.css (127 lines) - Title, status indicators, loading
+```
+
+**Total: 1,411 lines across 14 files (vs 1,326 original lines)**
+
+**Separation of Concerns:**
+- **Base Layer**: Global resets and body styles
+- **Layout Components**: Grid system and container structures
+- **UI Components**: Header, buttons, streams, PTZ, fullscreen
+- **Settings Components**: Modal panel and form controls
+- **Responsive Layer**: Media queries (must be imported last)
+
+**Key Benefits:**
+- ✅ **Maintainability** - Easy to locate and edit specific components
+- ✅ **Reusability** - Components can be used independently
+- ✅ **Debugging** - Issues isolated to specific modules
+- ✅ **Collaboration** - Multiple developers can work on different modules
+- ✅ **Organization** - Logical grouping of related styles
+- ✅ **Browser Caching** - Individual modules can be cached separately
+
+**Import Order (Critical for Cascade):**
+1. base/reset.css
+2. Layout components (grid-container, grid-modes)
+3. UI components (header, buttons, streams, ptz, fullscreen)
+4. Settings components (overlay, controls)
+5. responsive.css (MUST be last for media queries to override)
+
+**Z-Index Hierarchy Documented:**
+- Header: 1000
+- Header toggle: 1001
+- Fullscreen overlay: 2000
+- Stream controls: 20
+- Stream fullscreen button: 25
+- Settings overlay: 3000 (highest)
+
+**No Breaking Changes:**
+- All original selectors preserved exactly
+- Same visual output as monolithic files
+- All comments and learning notes maintained
+- Single import in HTML: `<link rel="stylesheet" href="css/main.css">`
+
+**Documentation Created:**
+- `CSS_MODULARIZATION_README.md` - Complete technical documentation
+- `FILE_TREE.txt` - Visual structure with line counts
+- Inline comments explaining module purposes and relationships
+
+## October 25-26, 2025 (Night Session)
+
+### MJPEG Fullscreen Implementation
+
+**Problem:** MJPEG streams (Amcrest) didn't fill the screen in fullscreen mode - constrained to 95% viewport with padding.
+
+**Root Cause:** 
+- `fullscreen.css` applied max-width/max-height constraints suitable for HLS video
+- MJPEG uses `<img>` tag (not `<video>`) due to multipart/x-mixed-replace format
+- Inline CSS in `stream.js` was setting `maxWidth: '95%', maxHeight: '95%', objectFit: 'contain'`
+
+**Solution:**
+1. Created `/fullscreen-mjpeg.css` with true fullscreen styling:
+   - `width: 100vw; height: 100vh`
+   - `object-fit: cover` (fills screen, crops to maintain aspect ratio)
+   - Removes padding from overlay with `.mjpeg-active` class
+2. Updated `stream.js`:
+   - Removed inline CSS constraints from MJPEG img creation
+   - Added `.mjpeg-active` class toggle to overlay
+   - Cleanup in `closeFullscreen()`
+3. Added import to `main.css`
+
+**Technical Notes:**
+- HTML5 `<video>` only supports containerized formats (MP4, WebM, HLS)
+- MJPEG (multipart/x-mixed-replace) MUST use `<img>` tag for both continuous streams (Amcrest) and snapshot-based streams (Reolink)
+- `object-fit: cover` chosen over `contain` to eliminate black bars
+
+---
+
+### Amcrest PTZ Control Implementation
+
+**Objective:** Restore PTZ functionality for Amcrest cameras using CGI API.
+
+**Architecture:**
+Created new `services/ptz/` directory with brand-specific handlers:
+```
+services/ptz/
+├── __init__.py
+├── amcrest_ptz_handler.py
+└── ptz_validator.py (moved from services/)
+```
+
+**API Discovery Process:**
+Initial attempt used numeric direction codes (0, 2, 4, 5) - all returned 400 Bad Request.
+
+**Key Finding:** Amcrest uses STRING-based codes, not numeric:
+```python
+DIRECTION_CODES = {
+    'up': 'Up',
+    'down': 'Down', 
+    'left': 'Left',
+    'right': 'Right'
+}
+```
+
+**Working Amcrest PTZ CGI Format:**
+```
+http://{host}/cgi-bin/ptz.cgi?action=start&channel=0&code=Right&arg1=0&arg2=5&arg3=0
+```
+
+**Parameters:**
+- `action`: `start` or `stop`
+- `channel`: `0` (default)
+- `code`: String direction or 'Right' (arbitrary for stop)
+- `arg1`: Vertical speed/steps (0 = default)
+- `arg2`: Horizontal speed (1-8, 5 = medium) **CRITICAL: Must be >0 or camera won't move!**
+- `arg3`: Reserved/unused (always 0)
+
+**Authentication:** HTTP Digest Auth via `requests.HTTPDigestAuth`
+
+**Backend Integration:**
+1. Updated `app.py` PTZ route to dispatch by camera type:
+```python
+if camera_type == 'amcrest':
+    success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
+elif camera_type == 'eufy':
+    success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
+```
+
+2. Added 'stop' to `ptz_validator.py` valid_directions list
+
+**Frontend Integration Challenges:**
+
+**Issue 1:** PTZController not loading
+- **Cause:** Wrong import path in `stream.js` - `ptz-controller.js` is in `controllers/` subdirectory
+- **Fix:** Changed to `import { PTZController } from '../controllers/ptz-controller.js'`
+
+**Issue 2:** Event listeners not firing
+- **Cause:** PTZController.init() never called
+- **Fix:** Moved `setupEventListeners()` and debug logging into constructor
+
+**Issue 3:** Stop command not working
+- **Cause 1:** `this.currentCamera` was null - stop returns immediately
+- **Cause 2:** Backend rejected 'stop' as invalid direction
+- **Fix:** 
+  - Auto-detect camera from clicked button using `.closest('.stream-item')`
+  - Set camera on both mousedown AND mouseup events
+  - Added 'stop' to validator
+
+**Final PTZ Event Flow:**
+1. Mousedown: Detect camera → Set currentCamera → Call startMovement()
+2. Mouseup: Detect camera → Set currentCamera → Call stopMovement()
+3. Frontend: POST to `/api/ptz/{serial}/{direction}`
+4. Backend: Validate → Dispatch to brand handler → Return success
+
+**Testing:**
+```bash
+# All return "OK" and camera moves
+curl --digest -u "admin:password" "http://192.168.10.34/cgi-bin/ptz.cgi?action=start&channel=0&code=Right&arg1=0&arg2=5&arg3=0"
+curl --digest -u "admin:password" "http://192.168.10.34/cgi-bin/ptz.cgi?action=stop&channel=0&code=Right&arg1=0&arg2=0&arg3=0"
+```
+
+---
+
+### Known Issues & Next Steps
+
+**Critical Issues:**
+1. **No PTZ controls in fullscreen mode** - Users can't control camera while viewing fullscreen
+2. **MJPEG fullscreen has no exit mechanism** - Only ESC key works, no visible close button
+
+**Next Steps - ONVIF Integration:**
+
+**Objective:** Implement preset support and unified PTZ control via ONVIF protocol
+
+**Why ONVIF:**
+- Standardized protocol across brands (Amcrest, Reolink, UniFi Protect G4/G5)
+- Built-in preset management: GetPresets(), GotoPreset(), SetPreset()
+- Reduces brand-specific code maintenance
+- Provides capability discovery
+
+**Proposed Architecture:**
+```
+services/onvif/
+├── __init__.py
+├── onvif_client.py              # Core connection/auth wrapper
+├── onvif_discovery.py           # Network discovery service  
+├── onvif_ptz_manager.py         # PTZ ops (presets, move, zoom)
+└── onvif_capability_detector.py # Feature detection per camera
+```
+
+**Library:** `onvif-zeep` (Python 3 compatible ONVIF client)
+
+**ONVIF PTZ Operations:**
+- `GetPresets(ProfileToken)` → List available presets
+- `GotoPreset(ProfileToken, PresetToken, Speed)` → Move to preset
+- `SetPreset(ProfileToken, PresetName)` → Create/update preset
+- `ContinuousMove()`, `AbsoluteMove()`, `RelativeMove()` - Movement APIs
+
+**Implementation Plan:**
+1. Create ONVIFClient base class with connection pooling
+2. Test ONVIF connectivity with existing Amcrest camera
+3. Implement GetPresets API route: `GET /api/ptz/{camera}/presets`
+4. Implement GotoPreset API route: `POST /api/ptz/{camera}/preset/{id}`
+5. Add preset buttons to PTZ UI (grid view)
+6. Fallback: Keep CGI-based handlers for non-ONVIF cameras
+
+**Camera Compatibility Research:**
+- **Amcrest**: Confirmed ONVIF support (IP2M-841B tested in community)
+- **Reolink**: Most PTZ models support ONVIF
+- **UniFi Protect**: G4/G5 PTZ models likely support ONVIF (needs verification)
+- **Eufy**: Unclear - may remain CGI/bridge-based
+
+**Frontend Enhancements Needed:**
+1. Add preset dropdown/buttons in PTZ controls
+2. Implement PTZ overlay in fullscreen mode
+3. Add close button for MJPEG fullscreen (styled icon in corner)
+
+---
+
+### Technical Learnings
+
+**Docker Hot-Reload Issues:**
+- Volume mount `./:/app` should work but had persistent caching issues
+- Nuclear option: `docker-compose down -v && docker system prune -f`
+- Better: Mount specific directories in docker-compose.yml
+
+**Python Output Buffering:**
+- `logger.info()` doesn't show immediately in Docker logs
+- Solution: `print()` with `flush=True` or `PYTHONUNBUFFERED=1` env var
+- Added `PYTHONUNBUFFERED=1` to docker-compose.yml environment
+
+**jQuery Event Delegation:**
+- Direct binding `$('.ptz-btn').on()` can fail if elements re-rendered
+- Solution: Delegate to document `$(document).on('event', '.selector', handler)`
+- More reliable for dynamically generated content
+
+**Amcrest API Quirks:**
+- Camera returns "OK" even with arg2=0, but doesn't move (speed = 0)
+- Channel parameter often 0-indexed (channel 0 = first channel)
+- Some models require channel=1 despite being single-channel
+
+**File Organization:**
+- Always verify paths against tree.txt before coding
+- Modular structure: `services/{feature}/{brand}_handler.py` pattern
+- Keeps brand logic separate, easy to add new vendors
+
+
+## October 26, 2025 (Continued) - PTZ Controls in Fullscreen
+
+### Implementation: Fullscreen PTZ Overlay
+
+**Objective:** Add PTZ controls to fullscreen mode so users can control camera movement while viewing fullscreen.
+
+**Architecture:**
+1. Added PTZ control HTML to fullscreen overlay in `streams.html`
+2. Created `/static/css/components/fullscreen-ptz.css` for overlay styling
+3. Updated `stream.js` openFullscreen() to show/hide PTZ based on camera capabilities
+
+**Key Files Modified:**
+- `streams.html`: Added `#fullscreen-ptz` div with PTZ button grid
+- `static/css/components/fullscreen-ptz.css`: Positioned bottom-right, semi-transparent background
+- `static/css/main.css`: Added import for fullscreen-ptz.css
+- `static/js/streaming/stream.js`: PTZ visibility logic in openFullscreen()
+- `static/js/controllers/ptz-controller.js`: Camera detection logic updated
+
+---
+
+### Issues & Solutions
+
+**Issue 1: PTZ controls not appearing in fullscreen**
+
+**Root Cause:** `getCameraConfig()` returns a Promise but wasn't awaited, so `config?.capabilities` was undefined.
+
+**Solution:**
+```javascript
+// In stream.js openFullscreen()
+const config = await this.getCameraConfig(cameraId);  // Added await
+const hasPTZ = config?.capabilities?.includes('ptz');
+```
+
+**Issue 2: "Camera undefined not found" errors**
+
+**Root Cause:** PTZ event handlers tried to detect camera from `.closest('.stream-item')`, which doesn't exist in fullscreen overlay.
+
+**Solution:** Modified `ptz-controller.js` setupEventListeners() to only auto-detect camera if `this.currentCamera` is not already set:
+```javascript
+if (!this.currentCamera) {
+    const $streamItem = $(event.currentTarget).closest('.stream-item');
+    // ... detect camera from stream-item
+}
+```
+
+In fullscreen, camera is set by `openFullscreen()` before showing controls.
+
+**Issue 3: Slow stop response - camera continues moving after button release**
+
+**Root Cause:** `mouseup` event not firing because button gets disabled during movement.
+
+In `updateButtonStates()`:
+```javascript
+const enabled = this.bridgeReady && this.currentCamera && !this.isExecuting;
+$('.ptz-btn').prop('disabled', !enabled);  // Disables button while isExecuting=true
+```
+
+When user presses button → `isExecuting=true` → button disabled → `mouseup` never fires.
+
+**Solution:** Removed `!this.isExecuting` check from button disable logic:
+```javascript
+updateButtonStates() {
+    const enabled = this.bridgeReady && this.currentCamera;  // Removed !this.isExecuting
+    $('.ptz-btn').prop('disabled', !enabled);
+}
+```
+
+**Side benefit:** `mouseleave` event now provides instant stop when user drags mouse away while holding button, improving UX.
+
+---
+
+### Visual Design
+
+PTZ overlay positioned bottom-right with:
+- Semi-transparent black background: `rgba(0, 0, 0, 0.7)`
+- Backdrop blur for modern glass effect
+- 3x3 grid layout (center empty for visual balance)
+- Larger touch targets (44x44px) vs grid view (smaller)
+- Blue highlight on active movement
+- z-index: 1001 (above video/image at 1000, below close button)
+
+---
+
+### Current Status
+
+**Working:**
+- PTZ controls appear in fullscreen for PTZ-capable cameras (Amcrest, Reolink)
+- Instant stop response on button release or mouse drag-away
+- Movement commands work for both HLS and MJPEG fullscreen modes
+- Visual feedback (button highlights) during movement
+
+**Tested Cameras:**
+- Amcrest LOBBY (MJPEG + PTZ) ✓
+- Reolink LAUNDRY (MJPEG + PTZ) ✓
+
+---
+
+### Technical Notes
+
+**Event Handling Pattern:**
+- Grid view: Auto-detect camera from `.stream-item` on each button press
+- Fullscreen: Camera set once by `openFullscreen()`, reused for all button presses
+- Conditional detection prevents errors in both contexts
+
+**Z-Index Stack:**
+- Video/MJPEG image: 1000
+- PTZ controls: 1001
+- Close button: 1002
+- Ensures proper layering without blocking controls
+
+**CSS Organization:**
+All fullscreen-related CSS in dedicated files:
+- `fullscreen.css` - Base overlay and video
+- `fullscreen-mjpeg.css` - MJPEG-specific styling
+- `fullscreen-ptz.css` - PTZ controls overlay

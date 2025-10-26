@@ -26,7 +26,7 @@ from wtforms.validators import DataRequired
 
 # modular imports
 from services.camera_repository import CameraRepository
-from services.ptz_validator import PTZValidator
+from services.ptz.ptz_validator import PTZValidator
 from streaming.stream_manager import StreamManager
 
 from low_level_handlers.process_reaper import install_sigchld_handler
@@ -39,6 +39,8 @@ from services.app_restart_handler import AppRestartHandler
 from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
 from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
+from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
+
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 # Flask app setup
 app = Flask(__name__)
@@ -274,35 +276,6 @@ def api_bridge_stop():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# ===== PTZ Control Routes =====
-
-
-@app.route('/api/ptz/<camera_serial>/<direction>', methods=['POST'])
-@csrf.exempt
-def api_ptz_move(camera_serial, direction):
-    """Execute PTZ movement"""
-    try:
-        # Validate camera
-        if not ptz_validator.is_ptz_capable(camera_serial):
-            return jsonify({'success': False, 'error': 'Invalid camera or no PTZ capability'}), 400
-
-        # Validate direction
-        if not ptz_validator.validate_ptz_direction(direction):
-            return jsonify({'success': False, 'error': 'Invalid direction'}), 400
-
-        # Execute PTZ command with orientation correction
-        success = eufy_bridge.move_camera(
-            camera_serial, direction, camera_repo)
-
-        return jsonify({
-            'success': success,
-            'camera': camera_serial,
-            'direction': direction,
-            'message': f'Camera moved {direction}' if success else 'Movement failed'
-        })
-
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===== Device Management Routes =====
 
@@ -904,6 +877,10 @@ def api_reolink_stream_mjpeg_main(camera_id):
         return f"Stream error: {e}", 500
 
 
+########################################################-########################################################
+#                                          ⚙️⚙️⚙️⚙️AMCREST ⚙️⚙️⚙️⚙️
+########################################################-########################################################
+
 # ===== AMCREST MJPEG Service Routes =====
 @app.route('/api/amcrest/<camera_id>/stream/mjpeg')
 def api_amcrest_stream_mjpeg(camera_id):
@@ -1002,6 +979,51 @@ def api_amcrest_stream_mjpeg_main(camera_id):
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
     except Exception as e:
         return f"Stream error: {e}", 500
+
+##########################################################-########################################################
+#                                          ⚙️⚙️⚙️⚙️PTZ CONTROLS⚙️⚙️⚙️⚙️
+##########################################################-########################################################
+@app.route('/api/ptz/<camera_serial>/<direction>', methods=['POST'])
+@csrf.exempt
+def api_ptz_move(camera_serial, direction):
+    """Execute PTZ movement"""
+    try:
+        # Validate camera
+        if not ptz_validator.is_ptz_capable(camera_serial):
+            return jsonify({'success': False, 'error': 'Invalid camera or no PTZ capability'}), 400
+
+        # Get camera type to dispatch to correct handler
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+        
+        camera_type = camera.get('type')
+        print(f"[APP.PY] PTZ request for camera: {camera_serial}, type: {camera_type}")
+
+        
+        # Dispatch to appropriate PTZ handler based on camera type
+        if camera_type == 'amcrest':
+            print(f"[APP.PY] Dispatching PTZ to AMCREST handler")
+            success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
+        elif camera_type == 'eufy':
+            print(f"[APP.PY] Dispatching PTZ to EUFY handler")
+            success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
+        else:
+            return jsonify({'success': False, 'error': f'PTZ not supported for camera type: {camera_type}'}), 400
+
+        return jsonify({
+            'success': success,
+            'camera': camera_serial,
+            'direction': direction,
+            'message': f'Camera moved {direction}' if success else 'Movement failed'
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+########################################################-########################################################
+#                                   ⚙️⚙️⚙️⚙️ENVIRONMENT VARIABLE HELPERS⚙️⚙️⚙️⚙️
+########################################################-########################################################
 
 def _get_bool(name: str, default: bool | None = None) -> bool | None:
     """

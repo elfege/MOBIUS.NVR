@@ -3,16 +3,19 @@
  * Orchestrates HLS and MJPEG stream managers for unified camera viewing
  */
 
+import { PTZController } from '../controllers/ptz-controller.js';
 import { FLVStreamManager } from './flv-stream.js';
 import { makeHealthMonitor } from './health.js';
 import { HLSStreamManager } from './hls-stream.js';
 import { MJPEGStreamManager } from './mjpeg-stream.js';
+
 
 export class MultiStreamManager {
     constructor() {
         this.mjpegManager = new MJPEGStreamManager();
         this.hlsManager = new HLSStreamManager();
         this.flvManager = new FLVStreamManager();
+        this.ptzController = new PTZController();
         // Arrow function preserves context
         this.getCameraConfig = (id) => this.hlsManager.getCameraConfig(id);
         this.buildHlsConfig = (config, isLL) => this.hlsManager.buildHlsConfig(config, isLL);
@@ -515,6 +518,24 @@ export class MultiStreamManager {
             this.$fullscreenTitle.text(name);
             this.$fullscreenOverlay.css('display', 'flex');
 
+            // Show/hide PTZ controls based on camera capabilities
+            const config = await this.getCameraConfig(cameraId);
+            console.log('[FULLSCREEN] Camera config:', config);
+            const hasPTZ = config?.capabilities?.includes('ptz');
+            console.log('[FULLSCREEN] Has PTZ:', hasPTZ);
+            const fullScreenPTZ = $('#fullscreen-ptz');
+            console.log('[FULLSCREEN] PTZ element found:', fullScreenPTZ.length);
+
+            if (hasPTZ) {
+                console.log('[FULLSCREEN] Showing PTZ controls');
+                fullScreenPTZ.show();
+                this.ptzController.setCurrentCamera(cameraId, name);
+                this.ptzController.setBridgeReady(true);
+            } else {
+                console.log('[FULLSCREEN] Hiding PTZ controls');
+                fullScreenPTZ.hide();
+            }
+
             // Use streamType to determine fullscreen rendering method
             if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                 // HLS fullscreen (works for both Eufy and UniFi in HLS mode)
@@ -587,20 +608,17 @@ export class MultiStreamManager {
 
                 this.$fullscreenVideo.hide();
 
-                // Create or reuse img element for MJPEG fullscreen
                 let $mjpegImg = $('#fullscreen-mjpeg');
                 if ($mjpegImg.length === 0) {
                     $mjpegImg = $('<img>', {
                         id: 'fullscreen-mjpeg',
-                        class: 'fullscreen-video',
-                        css: {
-                            maxWidth: '95%',
-                            maxHeight: '95%',
-                            objectFit: 'contain'
-                        }
+                        alt: 'Fullscreen MJPEG Stream'
                     });
                     this.$fullscreenOverlay.append($mjpegImg);
                 }
+
+                this.$fullscreenOverlay.addClass('mjpeg-active');
+                $mjpegImg.attr('src', mjpegUrl).show();
 
                 $mjpegImg.attr('src', mjpegUrl).show();
             } else if (streamType === 'RTMP') {
@@ -642,9 +660,11 @@ export class MultiStreamManager {
 
     closeFullscreen() {
         this.$fullscreenOverlay.hide();
+        this.$fullscreenOverlay.removeClass('mjpeg-active');
         this.destroyFullscreenHls();
         this.$fullscreenVideo.attr('src', '').show();
         this.$fullscreenVideo.off('loadedmetadata.fullscreen');
+        $('#fullscreen-ptz').hide();
 
         // Hide MJPEG fullscreen if exists
         const $mjpegImg = $('#fullscreen-mjpeg');

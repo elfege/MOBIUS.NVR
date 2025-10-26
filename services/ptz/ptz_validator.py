@@ -6,7 +6,7 @@ Separated from data access layer
 
 import logging
 from typing import Optional
-from .camera_repository import CameraRepository
+from services.camera_repository import CameraRepository
 
 logger = logging.getLogger(__name__)
 

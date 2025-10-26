@@ -24,6 +24,8 @@ services:
     ports:
       - "127.0.0.1:5000:5000"
     environment:
+      # Python buffering disabled for real-time logging
+      - PYTHONUNBUFFERED=1
       # UniFi Protect Configuration (loaded from host environment)
       - PROTECT_HOST=${PROTECT_HOST:-192.168.10.3}
       - PROTECT_USERNAME=${PROTECT_USERNAME}
@@ -74,21 +76,14 @@ services:
     volumes:
       # Mount Python source code for hot-reloading
       - ./streaming:/app/streaming
+      - ./services:/app/services  
       - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
-
-      # cameras.json: we want to be able to dynamically 
-      # change settings without rebuilding each time. 
       - ./config:/app/config:rw
-
-      # Stream output (ephemeral, cleared on restart)
       - ./streams:/app/streams
-      # app.py 
-      - ./app.py:/app/app.py
-      # html templates
-      - ./templates:/app/templates
-
-      # Logs (persistent for debugging)
-      - ./logs:/app/logs
+      - ./app.py:/app/app.py:ro
+      - ./requirements.txt:/app/requirements.txt:ro
+      - ./templates:/app/templates:ro
+      - ./static:/app/static:ro
 
       # Node modules for Eufy bridge
       - ./node_modules:/app/node_modules:ro

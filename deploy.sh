@@ -11,8 +11,11 @@ SCRIPT_DIR="${SCRIPT_R_PATH%${SCRIPT_NAME}}"
 
 cd "$SCRIPT_DIR" &>/dev/null || true
 
+sudo chown -R "$USER":"$USER" ./ &>/dev/null || true
+
 . ~/.env.colors
 . ~/logger.sh --no-exec &>/dev/null
+. /etc/profile.d/custom-env.sh --no-exec &>/dev/null || true
 
 echo "=========================================="
 echo "  Unified NVR - Docker Image Build"
@@ -37,17 +40,19 @@ if [[ "$prune" =~ ^[yY].*? ]]; then
 	docker system prune -f || true
 fi
 
-start_spinner 20 "$CYAN Cleaning up old Docker containers and images..."
+start_spinner -e "$CYAN Cleaning up containers and images..."
 # Stop and remove containers
-docker compose down &>/dev/null & 
-wait $!
-
+docker compose down &>/dev/null || true
+echo -e "${GREEN}✓ Containers stopped and removed${NC}"
+echo ""
 # Remove the old image
-docker rmi 0_nvr-nvr &>/dev/null & 
-wait $!
-stop_spinner
+docker rmi 0_nvr-nvr &>/dev/null || true
+echo -e "${GREEN}✓ Cleanup complete${NC}"
+echo ""
 
+stop_spinner &>/dev/null || true
 
+echo "Fetching camera credentials..."
 get_cameras_credentials >/dev/null
 
 echo "Building Docker image..."

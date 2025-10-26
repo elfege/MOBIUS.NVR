@@ -1,0 +1,62 @@
+/* Fullscreen PTZ Controls */
+.fullscreen-ptz-controls {
+    position: absolute;
+    bottom: 80px;
+    right: 30px;
+    z-index: 1001;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 12px;
+    padding: 15px;
+    backdrop-filter: blur(10px);
+}
+
+.fullscreen-ptz-controls .ptz-grid {
+    display: grid;
+    grid-template-areas:
+        ". up ."
+        "left . right"
+        ". down .";
+    gap: 8px;
+    width: 140px;
+    height: 140px;
+}
+
+.fullscreen-ptz-controls .ptz-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    font-size: 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    width: 44px;
+    height: 44px;
+}
+
+.fullscreen-ptz-controls .ptz-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: scale(1.05);
+}
+
+.fullscreen-ptz-controls .ptz-btn:active,
+.fullscreen-ptz-controls .ptz-btn.active {
+    background: rgba(0, 123, 255, 0.6);
+    border-color: rgba(0, 123, 255, 0.8);
+}
+
+.fullscreen-ptz-controls .ptz-btn[data-direction="up"] {
+    grid-area: up;
+}
+
+.fullscreen-ptz-controls .ptz-btn[data-direction="down"] {
+    grid-area: down;
+}
+
+.fullscreen-ptz-controls .ptz-btn[data-direction="left"] {
+    grid-area: left;
+}
+
+.fullscreen-ptz-controls .ptz-btn[data-direction="right"] {
+    grid-area: right;
+}

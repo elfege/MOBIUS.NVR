@@ -62,7 +62,9 @@
 │   │   └── unifi_credential_provider.py
 │   ├── eufy_service.py
 │   ├── mjpeg_capture_service.py
-│   ├── ptz_validator.py
+│   ├── ptz/
+│   │   ├── amcrest_ptz_handler.py
+│   │   └── ptz_validator.py
 │   ├── reolink_mjpeg_capture_service.py
 │   ├── unifi_mjpeg_capture_service.py
 │   ├── unifi_protect_service.py
@@ -76,6 +78,8 @@
 │   │   ├── components/
 │   │   │   ├── buttons.css
 │   │   │   ├── fullscreen.css
+│   │   │   ├── fullscreen-mjpeg.css
+│   │   │   ├── fullscreen-ptz.css
 │   │   │   ├── grid-container.css
 │   │   │   ├── grid-modes.css
 │   │   │   ├── header.css
@@ -134,4 +138,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-25 directories, 110 files
+26 directories, 113 files

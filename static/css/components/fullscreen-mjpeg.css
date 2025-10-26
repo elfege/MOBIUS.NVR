@@ -1,0 +1,28 @@
+/* ============================================================================
+   FULLSCREEN MJPEG STYLING
+   ============================================================================ */
+
+/* Full viewport MJPEG image for true fullscreen experience
+   - Unlike HLS/video which benefits from margins, MJPEG snapshots look better
+     filling the entire screen
+   - object-fit: cover ensures the image fills the viewport while maintaining
+     aspect ratio (may crop edges)
+   - position: absolute allows it to overlay properly within the flex container
+*/
+#fullscreen-mjpeg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: cover;
+    border-radius: 0;
+    /* Remove border radius for true fullscreen */
+    box-shadow: none;
+    /* Remove shadow for cleaner look */
+}
+
+/* Ensure the fullscreen overlay removes padding when MJPEG is active */
+.fullscreen-overlay.mjpeg-active {
+    padding: 0;
+}

@@ -4,25 +4,41 @@
  */
 
 export class PTZController {
-    constructor(logger, loadingManager) {
-        this.logger = logger;
-        this.loadingManager = loadingManager;
+    constructor() {
+
         this.currentCamera = null;
         this.bridgeReady = false;
         this.isExecuting = false;
-    }
 
-    init() {
+
         this.setupEventListeners();
         this.updateButtonStates();
-        this.logger.info('PTZ controller initialized');
+
+
+        console.log("#######################################")
+        console.log('########### PTZ controller initialized');
+        console.log("#######################################")
     }
 
+
     setupEventListeners() {
-        // Handle mousedown/touchstart for continuous movement
-        $('.ptz-btn').on('mousedown touchstart', (event) => {
+        $(document).on('mousedown touchstart', '.ptz-btn', (event) => {
             event.preventDefault();
+
+            // Only auto-detect camera if not already set (for grid view)
+            if (!this.currentCamera) {
+                const $streamItem = $(event.currentTarget).closest('.stream-item');
+                const serial = $streamItem.data('camera-serial');
+                const name = $streamItem.data('camera-name');
+                if (serial) {
+                    this.setCurrentCamera(serial, name);
+                    this.setBridgeReady(true);
+                }
+            }
+
             const direction = $(event.currentTarget).data('direction');
+            console.log('[PTZ] Button pressed:', direction, 'for camera:', this.currentCamera?.serial);
+
             if (direction && direction !== '360') {
                 this.startMovement(direction);
             } else if (direction === '360') {
@@ -30,11 +46,25 @@ export class PTZController {
             }
         });
 
-        // Handle mouseup/touchend to stop movement
-        $('.ptz-btn').on('mouseup touchend mouseleave', (event) => {
+        $(document).on('mouseup touchend mouseleave', '.ptz-btn', (event) => {
             event.preventDefault();
+
+            // Only auto-detect camera if not already set (for grid view)
+            if (!this.currentCamera) {
+                const $streamItem = $(event.currentTarget).closest('.stream-item');
+                const serial = $streamItem.data('camera-serial');
+                const name = $streamItem.data('camera-name');
+                if (serial) {
+                    this.setCurrentCamera(serial, name);
+                    this.setBridgeReady(true);
+                }
+            }
+
             const direction = $(event.currentTarget).data('direction');
+            console.log('[PTZ] Button released:', direction, 'for camera:', this.currentCamera?.serial);
+
             if (direction && direction !== '360') {
+                console.log('[PTZ] Stopping movement for direction:', direction);
                 this.stopMovement();
             }
         });
@@ -55,12 +85,12 @@ export class PTZController {
             });
 
             if (!result.success) {
-                this.logger.error(`PTZ start failed: ${result.error}`);
+                console.log(`PTZ start failed: ${result.error}`);
                 this.stopMovement();
             }
 
         } catch (error) {
-            this.logger.error(`PTZ movement failed: ${error.message}`);
+            console.log(`PTZ movement failed: ${error.message}`);
             this.stopMovement();
         }
     }
@@ -68,23 +98,23 @@ export class PTZController {
     async stopMovement() {
         if (!this.currentCamera) return;
 
+        // Update UI immediately (optimistic)
+        this.isExecuting = false;
+        $('.ptz-btn').removeClass('active');
+        this.updateButtonStates();
+
+        console.log('[PTZ] stopMovement() called for:', this.currentCamera.serial);
+
         try {
-            const result = await $.ajax({
+            // Fire and forget - don't block UI on response
+            $.ajax({
                 url: `/api/ptz/${this.currentCamera.serial}/stop`,
                 method: 'POST',
                 contentType: 'application/json'
             });
 
-            if (result.success) {
-                this.logger.success('PTZ movement stopped');
-            }
-
         } catch (error) {
-            this.logger.error(`Failed to stop PTZ: ${error.message}`);
-        } finally {
-            this.isExecuting = false;
-            $('.ptz-btn').removeClass('active');
-            this.updateButtonStates();
+            console.log(`Failed to stop PTZ: ${error.message}`);
         }
     }
 
@@ -103,7 +133,7 @@ export class PTZController {
             });
 
             if (result.success) {
-                this.logger.success(`Camera "${this.currentCamera.name}" executed ${direction}`);
+                console.log(`Camera "${this.currentCamera.name}" executed ${direction}`);
                 this.dispatchPTZEvent(this.currentCamera.name, direction, true);
 
                 // Wait for movement completion
@@ -114,7 +144,7 @@ export class PTZController {
             }
 
         } catch (error) {
-            this.logger.error(`PTZ movement failed: ${error.message}`);
+            console.log(`PTZ movement failed: ${error.message}`);
             this.dispatchPTZEvent(this.currentCamera.name, direction, false);
 
         } finally {
@@ -127,7 +157,7 @@ export class PTZController {
     setCurrentCamera(serial, name) {
         this.currentCamera = { serial, name };
         this.updateButtonStates();
-        this.logger.info(`Camera selected: ${name}`);
+        console.log(`Camera selected: ${name}`);
     }
 
     setBridgeReady(ready) {
@@ -136,7 +166,7 @@ export class PTZController {
     }
 
     updateButtonStates() {
-        const enabled = this.bridgeReady && this.currentCamera && !this.isExecuting;
+        const enabled = this.bridgeReady && this.currentCamera // && !this.isExecuting;=> This disables buttons during movement, which prevents stopping with mouseup!
 
         $('.ptz-btn').prop('disabled', !enabled);
 

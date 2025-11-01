@@ -138,3 +138,5 @@ config/eufy_bridge.json
 
 # scripts
 **/DAMS_flat_copy.sh
+
+claude_rules.md

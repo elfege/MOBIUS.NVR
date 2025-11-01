@@ -1,74 +1,114 @@
 /* ============================================================================
-   FULLSCREEN OVERLAY
+   CSS FULLSCREEN MODE
+   Pure CSS fullscreen without using browser's native fullscreen API
    ============================================================================ */
 
-/* Full-screen modal for viewing single camera
-   - position: fixed covers entire viewport
-   - top/left/right/bottom: 0 stretches to all edges
-   - Initially hidden with display: none
-*/
-.fullscreen-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.95);
-    display: none;
-    /* Hidden by default */
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-    /* Above everything else */
-    padding: 2rem;
+/* Stream item in CSS fullscreen mode */
+.stream-item.css-fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999 !important;
+    background: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    aspect-ratio: unset !important;
 }
 
-/* Show fullscreen when active class is added */
-.fullscreen-overlay.active {
-    display: flex;
+/* Hide all other stream items when one is in fullscreen */
+.streams-container:has(.stream-item.css-fullscreen) .stream-item:not(.css-fullscreen) {
+    display: none !important;
 }
 
-/* Close button in top-right corner */
-.fullscreen-close {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-    background: rgba(255, 255, 255, 0.2);
-    border: none;
-    color: white;
-    font-size: 1.5rem;
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
+/* Video/Image fills the fullscreen container */
+.stream-item.css-fullscreen .stream-video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
 }
 
-.fullscreen-close:hover {
-    background: rgba(255, 255, 255, 0.3);
-    transform: scale(1.1);
+/* Close button for CSS fullscreen */
+.stream-item.css-fullscreen .stream-fullscreen-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 60px !important;
+    height: 60px !important;
+    font-size: 32px !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    border-radius: 50% !important;
+    z-index: 10001 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
-/* Fullscreen video title */
-.fullscreen-title {
-    margin-bottom: 1rem;
-    font-size: 1.5rem;
-    text-align: center;
+.stream-item.css-fullscreen .stream-fullscreen-btn:hover {
+    background: rgba(0, 0, 0, 0.9) !important;
+    transform: scale(1.1) !important;
 }
 
-/* Fullscreen video element
-   - max-width/max-height: 90% leaves margin around video
-   - width/height: auto maintains aspect ratio
-*/
-.fullscreen-video {
-    max-width: 90%;
-    max-height: 80vh;
-    width: auto;
-    height: auto;
-    border-radius: 8px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+/* Change icon from expand to compress when in fullscreen */
+.stream-item.css-fullscreen .stream-fullscreen-btn .fa-expand::before {
+    content: "\f00d" !important; /* Font Awesome times/X icon */
+}
+
+/* Stream overlay (title and status) positioning in fullscreen */
+.stream-item.css-fullscreen .stream-overlay {
+    position: absolute !important;
+    top: 20px !important;
+    left: 20px !important;
+    z-index: 10000 !important;
+}
+
+/* Latency badge positioning in CSS fullscreen - bottom left */
+.stream-item.css-fullscreen .latency-badge {
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 20px !important;
+    top: auto !important;
+    right: auto !important;
+    z-index: 10000 !important;
+    font-size: 16px !important;
+    padding: 6px 12px !important;
+}
+
+/* PTZ controls in CSS fullscreen - bottom right */
+.stream-item.css-fullscreen .ptz-controls {
+    position: absolute !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    z-index: 10000 !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    padding: 12px !important;
+    border-radius: 12px !important;
+}
+
+.stream-item.css-fullscreen .ptz-grid {
+    gap: 8px !important;
+}
+
+.stream-item.css-fullscreen .ptz-btn {
+    width: 50px !important;
+    height: 50px !important;
+    font-size: 20px !important;
+}
+
+/* Hide regular stream controls in fullscreen */
+.stream-item.css-fullscreen .stream-controls {
+    display: none !important;
+}
+
+/* Loading indicator in fullscreen */
+.stream-item.css-fullscreen .loading-indicator {
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    z-index: 10000 !important;
 }

@@ -14,6 +14,13 @@
  * - Singleton pattern for single instance across application
  */
 
+/* IMPORTANT DISTINCTION 
+
+Explanation: We're separating concerns - fullscreen-handler.js handles page-level fullscreen (F11, header button), 
+while stream.js handles camera CSS fullscreen. This prevents conflicts and keeps the code clean.
+
+*/
+
 export class FullscreenHandler {
     constructor() {
         // Module configuration - stored in localStorage
@@ -249,9 +256,6 @@ export class FullscreenHandler {
         }
     }
 
-    /**
-     * Handle fullscreen state changes
-     */
     handleFullscreenChange() {
         const nowFullscreen = this.isFullscreen();
 

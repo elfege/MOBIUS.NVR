@@ -23,12 +23,12 @@ export class MultiStreamManager {
         // Cache jQuery selectors
         this.$container = $('#streams-container');
         this.$streamCount = $('#stream-count');
-        this.$fullscreenOverlay = $('#fullscreen-overlay');
-        this.$fullscreenVideo = $('#fullscreen-video');
-        this.$fullscreenTitle = $('#fullscreen-title');
-        this.$fullscreenClose = $('#fullscreen-close');
+        // this.$fullscreenOverlay = $('#fullscreen-overlay'); // DEPRECATED
+        // this.$fullscreenVideo = $('#fullscreen-video'); // DEPRECATED
+        // this.$fullscreenTitle = $('#fullscreen-title'); // DEPRECATED
+        // this.$fullscreenClose = $('#fullscreen-close'); // DEPRECATED
 
-        this.fullscreenHls = null;
+        // this.fullscreenHls = null;
 
         this.restartAttempts = new Map(); // Track restart attempts per camera
         this.restartTimers = new Map();   // Track pending retry timers
@@ -94,66 +94,82 @@ export class MultiStreamManager {
     }
 
     init() {
+        console.log('========== MultiStreamManager INIT() CALLED ==========');
         this.setupLayout();
         this.setupEventListeners();
-        this.startAllStreams();
         this.updateStreamCount();
 
+        // Start all streams (fire and forget - don't await)
+        console.log('[Init] Starting streams in background...');
+        this.startAllStreams().then(() => {
+            console.log('[Init] All streams completed');
+        }).catch(err => {
+            console.error('[Init] Stream loading error:', err);
+        });
+
+        // Restore fullscreen independently after short delay
+        // Just needs DOM to be ready, doesn't need streams loaded
+        setTimeout(() => {
+            console.log('[Init] Attempting fullscreen restore...');
+            this.restoreFullscreenFromLocalStorage();
+        }, 1000);  // Reduced from 3000ms - just needs DOM ready
     }
 
-    _attachFullscreenLatencyMeter(hls, videoEl) {
-        if (!hls || !videoEl) return;
-        // reuse badge if created
-        if (!videoEl._fsLatencyOverlay) {
-            const badge = document.createElement('div');
-            Object.assign(badge.style, {
-                position: 'absolute',
-                right: '16px',
-                top: '16px',
-                padding: '4px 8px',
-                fontSize: '14px',
-                lineHeight: '18px',
-                background: 'rgba(0,0,0,0.6)',
-                color: '#fff',
-                borderRadius: '8px',
-                fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-                pointerEvents: 'none',
-                zIndex: 20,
-            });
-            // fullscreen overlay is already a flex container; ensure relative
-            const overlay = this.$fullscreenOverlay[0];
-            overlay.style.position = overlay.style.position || 'relative';
-            overlay.appendChild(badge);
-            videoEl._fsLatencyOverlay = badge;
-        }
+    // This method was only used for the custom overlay. 
+    // The latency badge is now managed by hls-stream.js and will automatically appear in native fullscreen mode.Retry
+    // _attachFullscreenLatencyMeter(hls, videoEl) {
+    //     if (!hls || !videoEl) return;
+    //     // reuse badge if created
+    //     if (!videoEl._fsLatencyOverlay) {
+    //         const badge = document.createElement('div');
+    //         Object.assign(badge.style, {
+    //             position: 'absolute',
+    //             right: '16px',
+    //             top: '16px',
+    //             padding: '4px 8px',
+    //             fontSize: '14px',
+    //             lineHeight: '18px',
+    //             background: 'rgba(0,0,0,0.6)',
+    //             color: '#fff',
+    //             borderRadius: '8px',
+    //             fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+    //             pointerEvents: 'none',
+    //             zIndex: 20,
+    //         });
+    //         // fullscreen overlay is already a flex container; ensure relative
+    //         const overlay = this.$fullscreenOverlay[0];
+    //         overlay.style.position = overlay.style.position || 'relative';
+    //         overlay.appendChild(badge);
+    //         videoEl._fsLatencyOverlay = badge;
+    //     }
 
-        const overlay = videoEl._fsLatencyOverlay;
-        videoEl._fsLastPdtMs = null;
+    //     const overlay = videoEl._fsLatencyOverlay;
+    //     videoEl._fsLastPdtMs = null;
 
-        const onFrag = (_, data) => {
-            const pdt = data?.frag?.programDateTime;
-            if (pdt != null) {
-                videoEl._fsLastPdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
-            }
-        };
+    //     const onFrag = (_, data) => {
+    //         const pdt = data?.frag?.programDateTime;
+    //         if (pdt != null) {
+    //             videoEl._fsLastPdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
+    //         }
+    //     };
 
-        hls.on(Hls.Events.FRAG_CHANGED, onFrag);
+    //     hls.on(Hls.Events.FRAG_CHANGED, onFrag);
 
-        if (videoEl._fsLatencyTimer) clearInterval(videoEl._fsLatencyTimer);
-        videoEl._fsLatencyTimer = setInterval(() => {
-            if (!videoEl._fsLastPdtMs) return;
-            const s = ((Date.now() - videoEl._fsLastPdtMs) / 1000).toFixed(1);
-            overlay.textContent = `${s}s`;
-            overlay.style.display = '';
-        }, 250);
+    //     if (videoEl._fsLatencyTimer) clearInterval(videoEl._fsLatencyTimer);
+    //     videoEl._fsLatencyTimer = setInterval(() => {
+    //         if (!videoEl._fsLastPdtMs) return;
+    //         const s = ((Date.now() - videoEl._fsLastPdtMs) / 1000).toFixed(1);
+    //         overlay.textContent = `${s}s`;
+    //         overlay.style.display = '';
+    //     }, 250);
 
-        videoEl._fsLatencyDetach = () => {
-            hls.off(Hls.Events.FRAG_CHANGED, onFrag);
-            if (videoEl._fsLatencyTimer) { clearInterval(videoEl._fsLatencyTimer); videoEl._fsLatencyTimer = null; }
-            if (videoEl._fsLatencyOverlay) { videoEl._fsLatencyOverlay.textContent = ''; }
-            videoEl._fsLastPdtMs = null;
-        };
-    }
+    //     videoEl._fsLatencyDetach = () => {
+    //         hls.off(Hls.Events.FRAG_CHANGED, onFrag);
+    //         if (videoEl._fsLatencyTimer) { clearInterval(videoEl._fsLatencyTimer); videoEl._fsLatencyTimer = null; }
+    //         if (videoEl._fsLatencyOverlay) { videoEl._fsLatencyOverlay.textContent = ''; }
+    //         videoEl._fsLastPdtMs = null;
+    //     };
+    // }
 
     setupLayout() {
         const $streamItems = this.$container.find('.stream-item');
@@ -174,16 +190,76 @@ export class MultiStreamManager {
     }
 
     setupEventListeners() {
-        // Fullscreen button click handler
-        this.$container.on('click', '.stream-fullscreen-btn', (e) => {
-            e.stopPropagation(); // Prevent event bubbling
-            const $streamItem = $(e.target).closest('.stream-item');
-            if ($streamItem.length) {
-                const cameraId = $streamItem.data('camera-serial');
-                const name = $streamItem.data('camera-name');
-                const cameraType = $streamItem.data('camera-type');
-                const streamType = $streamItem.data('stream-type');
-                this.openFullscreen(cameraId, name, cameraType, streamType);
+        // Fullscreen button click handler - uses event namespace for clean binding
+        // IMPORTANT: Ensure only ONE MultiStreamManager instance exists. This class auto-instantiates
+        // at the bottom of this file via $(document).ready(). Do NOT create additional instances in
+        // HTML inline scripts or other modules.
+        // 
+        // To verify single instance: console.log($._data($('#streams-container')[0], 'events'))
+        // should show only ONE handler per selector.
+        // 
+        // HISTORICAL NOTE: Previously used .off() as safety net to remove duplicate handlers:
+        // this.$container.off('click.fullscreen', '.stream-fullscreen-btn');
+        // This was masking the root cause (duplicate instantiation in streams.html inline scripts).
+        // Now fixed - module handles its own instantiation, HTML just imports it.
+
+        // Add single handler with namespace
+        this.$container.on('click.fullscreen', '.stream-fullscreen-btn', async (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+
+            // // Global lock to prevent ANY instance from processing simultaneously
+            // if (window._fullscreenLocked) {
+            //     console.log('[Fullscreen] BLOCKED - global lock active');
+            //     return;
+            // }
+
+            // Simple debounce - ignore rapid clicks
+            if (this._fullscreenProcessing) {
+                console.log('[Fullscreen] Processing - ignoring rapid click');
+                return;
+            }
+
+            this._fullscreenProcessing = true;
+
+            window._fullscreenLocked = true;
+            console.log('[Fullscreen] Lock acquired');
+
+            try {
+                // Check current state
+                const isCurrentlyFullscreen = $('.stream-item.css-fullscreen').length > 0;
+                console.log(`[Fullscreen] Button clicked - state: ${isCurrentlyFullscreen ? 'FULLSCREEN' : 'GRID'}`);
+
+                if (isCurrentlyFullscreen) {
+                    // Exit
+                    await this.closeFullscreen();
+                    console.log('[Fullscreen] Exit complete');
+                } else {
+                    // Enter
+                    const $streamItem = $(e.target).closest('.stream-item');
+                    if (!$streamItem.length) return;
+
+                    const cameraId = $streamItem.data('camera-serial');
+                    const name = $streamItem.data('camera-name');
+                    const cameraType = $streamItem.data('camera-type');
+                    const streamType = $streamItem.data('stream-type');
+
+                    await this.openFullscreen(cameraId, name, cameraType, streamType);
+                    console.log('[Fullscreen] Enter complete');
+                }
+
+            } catch (error) {
+                console.error('[Fullscreen] Toggle error:', error);
+            } finally {
+                // // Release lock after 1 second delay
+                // setTimeout(() => {
+                //     window._fullscreenLocked = false;
+                //     console.log('[Fullscreen] Lock released');
+                // }, 1000);
+                // Release processing flag
+                setTimeout(() => {
+                    this._fullscreenProcessing = false;
+                }, 300);  // Shorter delay since no race conditions
             }
         });
 
@@ -245,45 +321,44 @@ export class MultiStreamManager {
             }
         });
 
-        // Fullscreen close handlers
-        this.$fullscreenClose.on('click', () => {
-            this.closeFullscreen();
-        });
-
-        this.$fullscreenOverlay.on('click', (e) => {
-            if ($(e.target).is(this.$fullscreenOverlay)) {
-                this.closeFullscreen();
-            }
-        });
-
-        // Escape key to close fullscreen
+        // ESC key to exit CSS fullscreen
         $(document).on('keydown', (e) => {
-            if (e.key === 'Escape' && this.$fullscreenOverlay.css('display') === 'flex') {
-                this.closeFullscreen();
+            if (e.key === 'Escape') {
+                const $fullscreenItem = $('.stream-item.css-fullscreen');
+                if ($fullscreenItem.length > 0) {
+                    console.log('[Fullscreen] ESC key pressed, exiting fullscreen');
+                    this.closeFullscreen();
+                }
             }
         });
     }
 
     async startAllStreams() {
+        console.log('[StartAll] Beginning startAllStreams...');
         const $streamItems = this.$container.find('.stream-item');
+        console.log(`[StartAll] Found ${$streamItems.length} stream items`);
 
         // Start all streams in parallel instead of sequential
-        const startPromises = $streamItems.toArray().map(async (item) => {
+        const startPromises = $streamItems.toArray().map(async (item, index) => {
             const $item = $(item);
             const cameraId = $item.data('camera-serial');
             const cameraType = $item.data('camera-type');
             const streamType = $item.data('stream-type');
 
+            console.log(`[StartAll] Starting stream ${index + 1}/${$streamItems.length}: ${cameraId}`);
+
             try {
                 await this.startStream(cameraId, $item, cameraType, streamType);
+                console.log(`[StartAll] ✓ Stream ${index + 1} started: ${cameraId}`);
             } catch (error) {
-                console.error(`Failed to start stream for ${cameraId}:`, error);
+                console.error(`[StartAll] ✗ Stream ${index + 1} failed: ${cameraId}`, error);
                 this.setStreamStatus($item, 'error', 'Failed to load');
             }
         });
 
-        // Wait for all to complete
+        console.log(`[StartAll] Waiting for ${startPromises.length} promises...`);
         await Promise.allSettled(startPromises);
+        console.log('[StartAll] ✓✓✓ ALL STREAMS COMPLETE ✓✓✓');
     }
 
     async startStream(cameraId, $streamItem, cameraType, streamType) {
@@ -515,173 +590,169 @@ export class MultiStreamManager {
 
     async openFullscreen(cameraId, name, cameraType, streamType) {
         try {
-            this.$fullscreenTitle.text(name);
-            this.$fullscreenOverlay.css('display', 'flex');
-
-            // Show/hide PTZ controls based on camera capabilities
-            const config = await this.getCameraConfig(cameraId);
-            console.log('[FULLSCREEN] Camera config:', config);
-            const hasPTZ = config?.capabilities?.includes('ptz');
-            console.log('[FULLSCREEN] Has PTZ:', hasPTZ);
-            const fullScreenPTZ = $('#fullscreen-ptz');
-            console.log('[FULLSCREEN] PTZ element found:', fullScreenPTZ.length);
-
-            if (hasPTZ) {
-                console.log('[FULLSCREEN] Showing PTZ controls');
-                fullScreenPTZ.show();
-                this.ptzController.setCurrentCamera(cameraId, name);
-                this.ptzController.setBridgeReady(true);
-            } else {
-                console.log('[FULLSCREEN] Hiding PTZ controls');
-                fullScreenPTZ.hide();
+            // Prevent opening if already in fullscreen
+            if ($('.stream-item.css-fullscreen').length > 0) {
+                console.log('[Fullscreen] Already in fullscreen mode, ignoring');
+                return;
             }
 
-            // Use streamType to determine fullscreen rendering method
-            if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
-                // HLS fullscreen (works for both Eufy and UniFi in HLS mode)
-                const response = await fetch(`/api/stream/start/${cameraId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'main' })
-                });
+            console.log(`[Fullscreen] Opening CSS fullscreen for camera: ${name} (${cameraId})`);
 
-                if (!response.ok) throw new Error('Failed to start fullscreen stream');
+            // Find the stream-item element for this camera
+            const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
 
-                // Fetch stream metadata from backend after starting the stream.
-                // Returns: { protocol: 'll_hls'|'hls'|'rtmp', stream_url: '/hls/...' or '/api/streams/...', camera_name: '...' }
-                // This tells us what the backend ACTUALLY started (vs what's configured in cameras.json)
-                // Used to determine the correct playlist URL and verify the stream type matches expectations.
-                const startInfo = await response.json().catch(() => ({}));
+            if ($streamItem.length === 0) {
+                throw new Error(`Stream item not found for camera: ${cameraId}`);
+            }
 
-                // Wait briefly for playlist to appear (keep very small to avoid startup lag)
-                await new Promise(resolve => setTimeout(resolve, 200));
+            // Apply CSS fullscreen class IMMEDIATELY
+            $streamItem.addClass('css-fullscreen');
+            localStorage.setItem('fullscreenCameraSerial', cameraId);
+            console.log('[Fullscreen] CSS fullscreen activated immediately');
 
-                // Choose playlist URL based on stream type
+            // Pause (not stop) all other streams
+            this.pausedStreams = [];
+            const $allStreamItems = $('.stream-item');
 
-                let playlistUrl;
-                if (typeof startInfo?.stream_url === 'string' && startInfo.stream_url.startsWith('/hls/')) {
-                    // LL-HLS: use MediaMTX URL from backend
-                    playlistUrl = startInfo.stream_url;
-                } else {
-                    // Regular HLS: use app-generated playlist
-                    playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${Date.now()}`;
+            for (let i = 0; i < $allStreamItems.length; i++) {
+                const $item = $($allStreamItems[i]);
+                const id = $item.data('camera-serial');
+
+                if (id === cameraId) continue; // Skip the fullscreen camera
+
+                const $video = $item.find('.stream-video');
+                const videoEl = $video[0];
+                const streamType = $item.data('stream-type');
+
+                // Pause HLS streams using HLS.js API
+                if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                    const hls = this.hlsManager.hlsInstances.get(id);
+                    if (hls && videoEl) {
+                        console.log(`[Fullscreen] Pausing HLS stream: ${id}`);
+                        hls.stopLoad(); // Stop fetching segments
+                        videoEl.pause(); // Stop video decoder
+                        this.pausedStreams.push({ id, type: 'HLS' });
+                    }
+                }
+                // Pause RTMP streams
+                else if (streamType === 'RTMP') {
+                    if (videoEl) {
+                        console.log(`[Fullscreen] Pausing RTMP stream: ${id}`);
+                        videoEl.pause();
+                        this.pausedStreams.push({ id, type: 'RTMP' });
+                    }
+                }
+                // Pause MJPEG by stopping image updates
+                else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+                    const imgEl = $video[0];
+                    if (imgEl && imgEl.src) {
+                        console.log(`[Fullscreen] Pausing MJPEG stream: ${id}`);
+                        imgEl._pausedSrc = imgEl.src; // Store src
+                        imgEl.src = ''; // Clear to stop fetching
+                        this.pausedStreams.push({ id, type: 'MJPEG' });
+                    }
+                }
+            }
+
+            console.log(`[Fullscreen] Paused ${this.pausedStreams.length} streams (still alive, no backend impact)`);
+
+        } catch (error) {
+            console.error('[Fullscreen] Failed to open fullscreen:', error);
+        }
+    }
+
+    async closeFullscreen() {
+        try {
+            console.log('[Fullscreen] Closing CSS fullscreen...');
+
+            // Find the fullscreen stream item
+            const $fullscreenItem = $('.stream-item.css-fullscreen');
+
+            if ($fullscreenItem.length === 0) {
+                console.log('[Fullscreen] No fullscreen stream found');
+                return;
+            }
+
+            // Remove CSS fullscreen class
+            $fullscreenItem.removeClass('css-fullscreen');
+            console.log('[Fullscreen] CSS fullscreen class removed');
+
+            // Clear localStorage
+            localStorage.removeItem('fullscreenCameraSerial');
+            console.log('[Fullscreen] Cleared localStorage');
+
+            // Resume previously paused streams
+            if (this.pausedStreams && this.pausedStreams.length > 0) {
+                console.log(`[Fullscreen] Resuming ${this.pausedStreams.length} paused streams...`);
+
+                for (const stream of this.pausedStreams) {
+                    const $item = $(`.stream-item[data-camera-serial="${stream.id}"]`);
+                    if (!$item.length) continue;
+
+                    const $video = $item.find('.stream-video');
+                    const videoEl = $video[0];
+
+                    if (stream.type === 'HLS') {
+                        const hls = this.hlsManager.hlsInstances.get(stream.id);
+                        if (hls && videoEl) {
+                            console.log(`[Fullscreen] Resuming HLS stream: ${stream.id}`);
+                            hls.startLoad(); // Resume fetching segments
+                            videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
+                        }
+                    }
+                    else if (stream.type === 'RTMP') {
+                        if (videoEl) {
+                            console.log(`[Fullscreen] Resuming RTMP stream: ${stream.id}`);
+                            videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
+                        }
+                    }
+                    else if (stream.type === 'MJPEG') {
+                        const imgEl = $video[0];
+                        if (imgEl && imgEl._pausedSrc) {
+                            console.log(`[Fullscreen] Resuming MJPEG stream: ${stream.id}`);
+                            imgEl.src = imgEl._pausedSrc; // Restore src to resume fetching
+                            delete imgEl._pausedSrc;
+                        }
+                    }
                 }
 
-                if (Hls.isSupported()) {
-                    this.destroyFullscreenHls();
-
-                    // Get camera config and build player settings
-                    const cameraConfig = await this.getCameraConfig(cameraId);
-                    const isLLHLS = cameraConfig?.stream_type === 'LL_HLS';
-                    const hlsConfig = this.buildHlsConfig(cameraConfig, isLLHLS);
-
-                    this.fullscreenHls = new Hls(hlsConfig);
-                    this.fullscreenHls.loadSource(playlistUrl);
-                    this.fullscreenHls.attachMedia(this.$fullscreenVideo[0]);
-                    this._attachFullscreenLatencyMeter(this.fullscreenHls, this.$fullscreenVideo[0]);
-
-                    this.fullscreenHls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        this.$fullscreenVideo[0].play().catch(() => { });
-                    });
-
-                } else if (this.$fullscreenVideo[0].canPlayType('application/vnd.apple.mpegurl')) {
-                    // Native HLS support (Safari)
-                    this.$fullscreenVideo.attr('src', playlistUrl);
-                    this.$fullscreenVideo.on('loadedmetadata.fullscreen', () => {
-                        this.$fullscreenVideo[0].play().catch(() => { });
-                    });
-                }
-
-            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
-                // MJPEG fullscreen - route based on camera type
-                let mjpegUrl;
-                if (cameraType === 'reolink') {
-                    mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg/main?t=${Date.now()}`;
-                } else if (cameraType === 'unifi') {
-                    mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
-                } else if (cameraType === 'amcrest') {
-                    // mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg/main?t=${Date.now()}`;
-                    mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;  // Same as grid view for now
-                } else {
-                    throw new Error(`Unsupported camera type for MJPEG fullscreen: ${cameraType}`);
-                }
-
-                this.$fullscreenVideo.hide();
-
-                let $mjpegImg = $('#fullscreen-mjpeg');
-                if ($mjpegImg.length === 0) {
-                    $mjpegImg = $('<img>', {
-                        id: 'fullscreen-mjpeg',
-                        alt: 'Fullscreen MJPEG Stream'
-                    });
-                    this.$fullscreenOverlay.append($mjpegImg);
-                }
-
-                this.$fullscreenOverlay.addClass('mjpeg-active');
-                $mjpegImg.attr('src', mjpegUrl).show();
-
-                $mjpegImg.attr('src', mjpegUrl).show();
-            } else if (streamType === 'RTMP') {
-                // RTMP fullscreen using FLV.js
-                const response = await fetch(`/api/stream/start/${cameraId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'main' })
-                });
-
-                if (!response.ok) throw new Error('Failed to start fullscreen stream');
-
-                await new Promise(resolve => setTimeout(resolve, 200));
-
-                const flvUrl = `/api/camera/${cameraId}/flv?t=${Date.now()}`;
-
-                if (flvjs.isSupported()) {
-                    this.destroyFullscreenFlv(); // Need to add this method
-
-                    this.fullscreenFlv = flvjs.createPlayer({
-                        type: 'flv',
-                        url: flvUrl,
-                        isLive: true,
-                        hasAudio: false
-                    });
-
-                    this.fullscreenFlv.attachMediaElement(this.$fullscreenVideo[0]);
-                    this.fullscreenFlv.load();
-                    this.fullscreenFlv.play().catch(() => { });
-                }
-
+                this.pausedStreams = [];
+                console.log('[Fullscreen] All streams resumed');
             }
 
         } catch (error) {
-            console.error('Failed to open fullscreen:', error);
-            this.closeFullscreen();
+            console.error('[Fullscreen] Error closing fullscreen:', error);
         }
     }
 
-    closeFullscreen() {
-        this.$fullscreenOverlay.hide();
-        this.$fullscreenOverlay.removeClass('mjpeg-active');
-        this.destroyFullscreenHls();
-        this.$fullscreenVideo.attr('src', '').show();
-        this.$fullscreenVideo.off('loadedmetadata.fullscreen');
-        $('#fullscreen-ptz').hide();
+    async restoreFullscreenFromLocalStorage() {
+        const savedCameraId = localStorage.getItem('fullscreenCameraSerial');
 
-        // Hide MJPEG fullscreen if exists
-        const $mjpegImg = $('#fullscreen-mjpeg');
-        if ($mjpegImg.length) {
-            $mjpegImg.attr('src', '').hide();
+        if (!savedCameraId) {
+            console.log('[Fullscreen] No saved fullscreen camera found');
+            return;
         }
-    }
 
-    destroyFullscreenHls() {
-        if (this.fullscreenHls) {
-            if (this.$fullscreenVideo[0]?._fsLatencyDetach) {
-                this.$fullscreenVideo[0]._fsLatencyDetach();
-                delete this.$fullscreenVideo[0]._fsLatencyDetach;
-            }
-            this.fullscreenHls.destroy();
-            this.fullscreenHls = null;
+        console.log(`[Fullscreen] Found saved camera in localStorage: ${savedCameraId}`);
+        console.log('[Fullscreen] Restoring CSS fullscreen (no user interaction required)...');
+
+        // Find the stream-item
+        const $streamItem = $(`.stream-item[data-camera-serial="${savedCameraId}"]`);
+
+        if ($streamItem.length === 0) {
+            console.warn(`[Fullscreen] Saved camera ${savedCameraId} not found in DOM`);
+            localStorage.removeItem('fullscreenCameraSerial');
+            return;
         }
+
+        const name = $streamItem.data('camera-name');
+        const cameraType = $streamItem.data('camera-type');
+        const streamType = $streamItem.data('stream-type');
+
+        // Restore CSS fullscreen immediately (no user gesture needed!)
+        await this.openFullscreen(savedCameraId, name, cameraType, streamType);
+
+        console.log('[Fullscreen] CSS fullscreen restored successfully');
     }
 
     updateStreamCount() {

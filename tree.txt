@@ -7,6 +7,7 @@
 │   ├── test_office_cam.sh*
 │   └── test.sh*
 ├── app.py
+├── app_structure.txt
 ├── bootstrap.json
 ├── config/
 │   ├── backups/
@@ -62,6 +63,8 @@
 │   │   └── unifi_credential_provider.py
 │   ├── eufy_service.py
 │   ├── mjpeg_capture_service.py
+│   ├── onvif/
+│   │   └── onvif_client.py
 │   ├── ptz/
 │   │   ├── amcrest_ptz_handler.py
 │   │   └── ptz_validator.py
@@ -135,7 +138,8 @@
 │   ├── test_ll_hls.sh*
 │   ├── test_LL_HLS.sh*
 │   └── test_SIMPLE_HLS.sh*
+├── tree.md
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-26 directories, 113 files
+27 directories, 116 files

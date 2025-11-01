@@ -27,3 +27,4 @@ WTForms==3.2.1
 python-dotenv
 websockets
 requests
+onvif-zeep

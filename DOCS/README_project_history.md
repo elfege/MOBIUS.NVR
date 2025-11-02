@@ -10518,30 +10518,35 @@ Completed ONVIF protocol integration for PTZ camera control and preset managemen
 ### Issues Resolved
 
 **1. Camera Selection Bug (Frontend)**
+
 - PTZ controller only detected camera on first click, never updated when switching cameras
 - `if (!this.currentCamera)` guard prevented camera updates
 - Fixed by always detecting camera from clicked button's parent stream-item
 - Now properly supports multi-camera PTZ control in grid view
 
 **2. Credential Provider Integration (Backend)**
+
 - ONVIF handler attempted to access `camera_config['username']` directly
 - Camera configs don't store credentials - they're fetched via provider pattern
 - Updated all 5 ONVIF methods to use `_get_credentials()` with AmcrestCredentialProvider/ReolinkCredentialProvider
 - Methods fixed: `move_camera()`, `get_presets()`, `goto_preset()`, `set_preset()`, `remove_preset()`
 
 **3. WSDL Path Configuration**
+
 - ONVIF library looking for WSDL files in `/etc/onvif/wsdl/` (incorrect)
 - Files actually located at `/usr/local/lib/python3.11/site-packages/wsdl/`
 - Updated `ONVIFClient.WSDL_DIR` constant to correct path
 - Added `no_cache=True` parameter to prevent permission errors on `/home/appuser` writes
 
 **4. ONVIF Port Configuration**
+
 - Amcrest cameras use standard ONVIF port 80
 - Reolink cameras use port 8000
 - Added `onvif_port` field to camera configs with fallback to `DEFAULT_PORT = 80`
 - Port properly passed through credential provider → ONVIF client chain
 
 **5. SOAP Type Creation Issues**
+
 - Initial approach used `ptz_service.create_type('PTZSpeed')` which failed
 - `PTZSpeed`, `Vector2D`, `Vector1D` are schema types, not service types
 - Switched to dictionary-based approach: `{'PanTilt': {'x': speed, 'y': speed}}`
@@ -10550,6 +10555,7 @@ Completed ONVIF protocol integration for PTZ camera control and preset managemen
 ### Architecture
 
 **PTZ Request Flow:**
+
 ```
 Frontend (ptz-controller.js)
     ↓
@@ -10561,6 +10567,7 @@ CGI Handler → Credential Provider → HTTP Request → Camera
 ```
 
 **Vendor-Specific Behavior:**
+
 - **Amcrest**: ONVIF first, CGI fallback (ONVIF works but has 2-3s latency)
 - **Reolink**: ONVIF only (no CGI handler implemented)
 - **Eufy**: Bridge protocol (no ONVIF support)
@@ -10568,19 +10575,23 @@ CGI Handler → Credential Provider → HTTP Request → Camera
 ### Files Modified
 
 **Backend:**
+
 - `services/onvif/onvif_ptz_handler.py` - All 5 methods updated for credential providers + dictionary velocity
 - `services/onvif/onvif_client.py` - Fixed WSDL_DIR path, added no_cache, reordered parameters
 - `app.py` - ONVIF-first routing with CGI fallback for Amcrest
 
 **Frontend:**
+
 - `static/js/controllers/ptz-controller.js` - Fixed camera detection logic in mousedown/mouseup handlers
 
 **Config:**
+
 - `config/cameras.json` - Added `"onvif_port": 8000` for Reolink cameras
 
 ### Performance Characteristics
 
 **ONVIF vs CGI:**
+
 - ONVIF latency: 2-3 seconds (normal for protocol overhead)
 - CGI latency: <500ms (direct HTTP, faster but Amcrest-only)
 - ONVIF advantage: Standardized preset management across vendors
@@ -10608,6 +10619,7 @@ CGI Handler → Credential Provider → HTTP Request → Camera
 ### Technical Notes
 
 **Why Dictionary Approach for SOAP Types:**
+
 ```python
 # ❌ FAILS - Can't create schema types via service
 request.Velocity = ptz_service.create_type('PTZSpeed')  
@@ -10617,6 +10629,7 @@ request.Velocity = {'PanTilt': {'x': 0.5, 'y': 0.5}}
 ```
 
 **WSDL Location Discovery:**
+
 ```bash
 # Find onvif package location
 python3 -c "import onvif; print(onvif.__file__)"
@@ -10634,3 +10647,30 @@ python3 -c "from onvif import ONVIFCamera; help(ONVIFCamera.__init__)"
 - Cleaner architecture separating credential management from PTZ logic
 - Foundation for adding more ONVIF-compatible camera brands
 - Grid view PTZ now properly switches between cameras
+
+## November 2, 2025 (Continued) - Fullscreen PTZ Controls Fix
+
+### Issue
+
+PTZ controls disappeared in fullscreen mode after CSS fullscreen refactoring. Controls worked in grid view but were hidden when entering fullscreen.
+
+### Root Cause
+
+In `fullscreen.css`, the rule `.stream-item.css-fullscreen .stream-controls { display: none !important; }` was hiding the entire `.stream-controls` container, which includes:
+
+- `.control-row` (play/stop/refresh buttons)
+- `.ptz-controls` (PTZ directional buttons and presets)
+
+The CSS had proper PTZ positioning rules (lines 82-100) but the parent container was hidden.
+
+### Fix
+
+Commented out the blanket hide rule in `fullscreen.css` line 103-105. All controls now remain visible in fullscreen mode:
+
+- Play/stop/refresh buttons (useful for stream management)
+- PTZ controls (positioned bottom-right with dark overlay background)
+- Preset dropdown (when expanded)
+
+### Impact
+
+PTZ controls now work in fullscreen for both HLS and MJPEG streams. Camera control maintained across grid ↔ fullscreen transitions without losing selected camera context.

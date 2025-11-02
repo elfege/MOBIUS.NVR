@@ -26,16 +26,18 @@ class ONVIFClient:
     
     # ONVIF default ports
     DEFAULT_PORT = 80
-    WSDL_DIR = '/etc/onvif/wsdl/'  # Default WSDL directory for onvif-zeep
+    # WSDL_DIR = '/etc/onvif/wsdl/'  # Default WSDL directory for onvif-zeep
+    WSDL_DIR = '/usr/local/lib/python3.11/site-packages/wsdl/'  # Default WSDL directory for onvif-zeep
+
     
     @classmethod
     def get_camera(cls, 
-                   host: str, 
-                   port: int,
-                   username: str, 
-                   password: str,
-                   camera_serial: str,
-                   wsdl_dir: Optional[str] = None) -> Optional[ONVIFCamera]:
+                host: str, 
+                username: str, 
+                password: str,
+                camera_serial: str,
+                port: int = DEFAULT_PORT,
+                wsdl_dir: Optional[str] = None) -> Optional[ONVIFCamera]:
         """
         Get or create ONVIF camera connection (with connection pooling)
         
@@ -66,7 +68,8 @@ class ONVIFClient:
                 port=port,
                 user=username,
                 passwd=password,
-                wsdl_dir=wsdl
+                wsdl_dir=wsdl,
+                no_cache=True  # Disable caching to avoid write permission issues
             )
             
             # Test connection by getting device information

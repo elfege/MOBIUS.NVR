@@ -38,6 +38,8 @@
 @import url('components/fullscreen.css');
 @import url('components/fullscreen-mjpeg.css');
 @import url('components/fullscreen-ptz.css');
+@import url('components/ptz-presets.css');
+
 
 /* ============================================================================
    SETTINGS COMPONENTS
@@ -49,3 +51,5 @@
    RESPONSIVE OVERRIDES - Must be last for proper cascade
    ============================================================================ */
 @import url('components/responsive.css');
+
+

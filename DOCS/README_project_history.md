@@ -10409,3 +10409,102 @@ $(document).ready(() => {
 **After:** Seamless fullscreen persistence across reloads. Single-click enter/exit. Significant performance improvement when viewing single camera. Professional app-like experience.
 
 ---
+
+## November 1, 2025 (Continued) - Frontend-Only Stream Stop Operations
+
+### Context
+
+Critical architectural improvement to enable proper **multi-user streaming support**. Previously, stopping streams involved backend `/api/stream/stop/` calls which created fundamental problems:
+
+1. **Killed streams for ALL users** - When User A stopped viewing a camera, it would terminate the backend FFmpeg stream that User B (or C, D...) was still actively watching
+2. **Created race conditions** - Multiple users starting/stopping the same camera simultaneously would conflict, causing unpredictable behavior
+3. **Violated separation of concerns** - Individual client UI actions (stop viewing) should not control shared backend resources (FFmpeg processes)
+
+**The correct multi-user architecture:**
+
+- **Backend streams** = Shared resources managed by watchdog processes, stay alive as long as ANY user needs them
+- **Frontend playback** = Individual per-user player instances that can start/stop independently without affecting others
+- **Watchdog cleanup** = Backend automatically terminates streams when truly no longer needed (no active clients for timeout period)
+
+**Additional benefits:**
+
+- Reduced network overhead (eliminated unnecessary API calls)
+- Improved UI responsiveness (immediate client-side stop vs network round-trip)
+- Fault tolerance (works even if backend is slow/unresponsive)
+
+### Changes Implemented
+
+#### **hls-stream.js** - Three methods refactored
+
+1. **stopStream(cameraId)**
+   - **Removed**: `fetch('/api/stream/stop/${cameraId}')`
+   - **Now**: Client-side only with `hls.stopLoad()` + `videoEl.pause()`
+   - No longer async, returns synchronously
+   - Maintains latency overlay cleanup
+
+2. **stopAllStreams()**
+   - **Removed**: `fetch('/api/streams/stop-all')`
+   - **Now**: Loops through all active streams calling `stopLoad()` + `pause()`
+   - No longer async, returns synchronously
+   - Includes latency detach cleanup for all streams
+
+3. **forceRefreshStream(cameraId, videoElement)**
+   - **Removed**: Backend stop API call (`/api/stream/stop/`)
+   - **Removed**: Status polling loop waiting for backend to report stream down
+   - **Removed**: Redundant explicit start call (was calling start twice)
+   - **Simplified flow**: Client teardown → call `startStream()` (which handles backend start + reattach)
+   - Reduced from ~70 lines to ~30 lines
+
+#### **stream_refresh.js**
+
+- Found to be inactive (`// NOT CURRENTLY IN USE` comment)
+- No changes required
+
+### Technical Pattern
+
+**Stop Operation Pattern (client-side only):**
+
+```javascript
+// HLS streams
+hls.stopLoad();           // Stop fetching segments
+videoEl.pause();          // Stop video decoder
+hls.destroy();            // Cleanup HLS instance
+
+// MJPEG streams
+imgEl.src = '';           // Clear source stops fetching
+
+// FLV streams
+flvPlayer.destroy();      // Destroys player instance
+```
+
+### Files Already Using This Pattern
+
+- `mjpeg-stream.js` - Always been client-side only
+- `flv-stream.js` - Always been client-side only
+- `stream.js` - Uses `hls.stopLoad()` + `pause()` pattern in fullscreen logic
+
+### Rationale
+
+1. **Backend Independence**: Streams auto-cleanup via watchdog processes; explicit stop calls unnecessary
+2. **Performance**: Immediate client-side stop vs waiting for network round-trip
+3. **Reliability**: Works even if backend is slow/unresponsive
+4. **Consistency**: All stream types now follow same client-only pattern
+5. **Simplicity**: Reduced code complexity, removed redundant operations
+
+### Impact
+
+- **Start operations**: Unchanged - still call `/api/stream/start/`
+- **Backend behavior**: Watchdog processes continue managing stream lifecycle
+- **User experience**: Streams stop immediately on UI interaction
+- **Network traffic**: Reduced by eliminating stop API calls
+
+### Related Files Modified
+
+- `static/js/streaming/hls-stream.js` (path: `/home/elfege/0_NVR/static/js/streaming/hls-stream.js`)
+
+### Notes
+
+- This is an architectural improvement, not a bug fix
+- No behavioral change from user perspective - streams still stop properly
+- Backend streams naturally timeout/cleanup via existing watchdog mechanisms
+- Pattern already existed in `stream.js` fullscreen handler - now applied consistently across all managers

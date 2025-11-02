@@ -40,8 +40,10 @@ from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
 from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
 from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
+from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
+
 # Flask app setup
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '-secret-key-change-this'
@@ -986,28 +988,44 @@ def api_amcrest_stream_mjpeg_main(camera_id):
 @app.route('/api/ptz/<camera_serial>/<direction>', methods=['POST'])
 @csrf.exempt
 def api_ptz_move(camera_serial, direction):
-    """Execute PTZ movement"""
+    """Execute PTZ movement with ONVIF priority"""
     try:
         # Validate camera
         if not ptz_validator.is_ptz_capable(camera_serial):
             return jsonify({'success': False, 'error': 'Invalid camera or no PTZ capability'}), 400
 
-        # Get camera type to dispatch to correct handler
+        # Get camera config
         camera = camera_repo.get_camera(camera_serial)
         if not camera:
             return jsonify({'success': False, 'error': 'Camera not found'}), 404
         
         camera_type = camera.get('type')
-        print(f"[APP.PY] PTZ request for camera: {camera_serial}, type: {camera_type}")
+        print(f"[APP.PY] PTZ request for camera: {camera_serial}, type: {camera_type}, direction: {direction}")
 
+        success = False
+        message = ""
         
-        # Dispatch to appropriate PTZ handler based on camera type
-        if camera_type == 'amcrest':
-            print(f"[APP.PY] Dispatching PTZ to AMCREST handler")
-            success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
+        # Try ONVIF first for Amcrest and Reolink (priority)
+        if camera_type in ['amcrest', 'reolink']:
+            print(f"[APP.PY] Attempting ONVIF PTZ for {camera_type} camera")
+            success, message = ONVIFPTZHandler.move_camera(
+                camera_serial=camera_serial,
+                direction=direction,
+                camera_config=camera
+            )
+            
+            # If ONVIF fails, fall back to brand-specific handler
+            if not success and camera_type == 'amcrest':
+                print(f"[APP.PY] ONVIF failed, falling back to Amcrest CGI handler")
+                success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
+                message = f'Camera moved {direction} via CGI' if success else 'Movement failed'
+        
+        # Eufy uses bridge (no ONVIF support)
         elif camera_type == 'eufy':
             print(f"[APP.PY] Dispatching PTZ to EUFY handler")
             success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
+            message = f'Camera moved {direction}' if success else 'Movement failed'
+        
         else:
             return jsonify({'success': False, 'error': f'PTZ not supported for camera type: {camera_type}'}), 400
 
@@ -1015,10 +1033,111 @@ def api_ptz_move(camera_serial, direction):
             'success': success,
             'camera': camera_serial,
             'direction': direction,
-            'message': f'Camera moved {direction}' if success else 'Movement failed'
+            'message': message
         })
 
     except Exception as e:
+        logger.error(f"PTZ API error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ptz/<camera_serial>/presets', methods=['GET'])
+def api_ptz_get_presets(camera_serial):
+    """Get list of PTZ presets for camera"""
+    try:
+        # Validate camera
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+        
+        camera_type = camera.get('type')
+        
+        # Only Amcrest and Reolink support ONVIF presets
+        if camera_type not in ['amcrest', 'reolink']:
+            return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
+        
+        # Get presets via ONVIF
+        success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera)
+        
+        if not success:
+            return jsonify({'success': False, 'error': 'Failed to retrieve presets', 'presets': []}), 500
+        
+        return jsonify({
+            'success': True,
+            'camera': camera_serial,
+            'presets': presets
+        })
+        
+    except Exception as e:
+        logger.error(f"Get presets API error: {e}")
+        return jsonify({'success': False, 'error': str(e), 'presets': []}), 500
+
+
+@app.route('/api/ptz/<camera_serial>/preset/<preset_token>', methods=['POST'])
+@csrf.exempt
+def api_ptz_goto_preset(camera_serial, preset_token):
+    """Move camera to preset position"""
+    try:
+        # Validate camera
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+        
+        camera_type = camera.get('type')
+        
+        # Only Amcrest and Reolink support ONVIF presets
+        if camera_type not in ['amcrest', 'reolink']:
+            return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
+        
+        # Execute goto preset
+        success, message = ONVIFPTZHandler.goto_preset(camera_serial, preset_token, camera)
+        
+        return jsonify({
+            'success': success,
+            'camera': camera_serial,
+            'preset': preset_token,
+            'message': message
+        })
+        
+    except Exception as e:
+        logger.error(f"Goto preset API error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/ptz/<camera_serial>/preset', methods=['POST'])
+@csrf.exempt
+def api_ptz_set_preset(camera_serial):
+    """Save current position as preset"""
+    try:
+        # Get preset name from request
+        data = request.get_json()
+        preset_name = data.get('name')
+        
+        if not preset_name:
+            return jsonify({'success': False, 'error': 'Preset name required'}), 400
+        
+        # Validate camera
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+        
+        camera_type = camera.get('type')
+        
+        # Only Amcrest and Reolink support ONVIF presets
+        if camera_type not in ['amcrest', 'reolink']:
+            return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
+        
+        # Set preset
+        success, message = ONVIFPTZHandler.set_preset(camera_serial, preset_name, camera)
+        
+        return jsonify({
+            'success': success,
+            'camera': camera_serial,
+            'preset_name': preset_name,
+            'message': message
+        })
+        
+    except Exception as e:
+        logger.error(f"Set preset API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
     
 ########################################################-########################################################

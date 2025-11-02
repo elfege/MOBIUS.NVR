@@ -10508,3 +10508,129 @@ flvPlayer.destroy();      // Destroys player instance
 - No behavioral change from user perspective - streams still stop properly
 - Backend streams naturally timeout/cleanup via existing watchdog mechanisms
 - Pattern already existed in `stream.js` fullscreen handler - now applied consistently across all managers
+
+## November 2, 2025 - ONVIF PTZ Implementation
+
+### Context
+
+Completed ONVIF protocol integration for PTZ camera control and preset management. Previously relied on vendor-specific CGI APIs (Amcrest) which limited flexibility. ONVIF provides standardized control across camera vendors with full preset support.
+
+### Issues Resolved
+
+**1. Camera Selection Bug (Frontend)**
+- PTZ controller only detected camera on first click, never updated when switching cameras
+- `if (!this.currentCamera)` guard prevented camera updates
+- Fixed by always detecting camera from clicked button's parent stream-item
+- Now properly supports multi-camera PTZ control in grid view
+
+**2. Credential Provider Integration (Backend)**
+- ONVIF handler attempted to access `camera_config['username']` directly
+- Camera configs don't store credentials - they're fetched via provider pattern
+- Updated all 5 ONVIF methods to use `_get_credentials()` with AmcrestCredentialProvider/ReolinkCredentialProvider
+- Methods fixed: `move_camera()`, `get_presets()`, `goto_preset()`, `set_preset()`, `remove_preset()`
+
+**3. WSDL Path Configuration**
+- ONVIF library looking for WSDL files in `/etc/onvif/wsdl/` (incorrect)
+- Files actually located at `/usr/local/lib/python3.11/site-packages/wsdl/`
+- Updated `ONVIFClient.WSDL_DIR` constant to correct path
+- Added `no_cache=True` parameter to prevent permission errors on `/home/appuser` writes
+
+**4. ONVIF Port Configuration**
+- Amcrest cameras use standard ONVIF port 80
+- Reolink cameras use port 8000
+- Added `onvif_port` field to camera configs with fallback to `DEFAULT_PORT = 80`
+- Port properly passed through credential provider → ONVIF client chain
+
+**5. SOAP Type Creation Issues**
+- Initial approach used `ptz_service.create_type('PTZSpeed')` which failed
+- `PTZSpeed`, `Vector2D`, `Vector1D` are schema types, not service types
+- Switched to dictionary-based approach: `{'PanTilt': {'x': speed, 'y': speed}}`
+- Zeep library auto-converts Python dicts to proper SOAP complex types
+
+### Architecture
+
+**PTZ Request Flow:**
+```
+Frontend (ptz-controller.js)
+    ↓
+Flask API (/api/ptz/<serial>/<direction>)
+    ↓
+ONVIF Handler (priority) → Credential Provider → ONVIF Client → Camera
+    ↓ (fallback for Amcrest)
+CGI Handler → Credential Provider → HTTP Request → Camera
+```
+
+**Vendor-Specific Behavior:**
+- **Amcrest**: ONVIF first, CGI fallback (ONVIF works but has 2-3s latency)
+- **Reolink**: ONVIF only (no CGI handler implemented)
+- **Eufy**: Bridge protocol (no ONVIF support)
+
+### Files Modified
+
+**Backend:**
+- `services/onvif/onvif_ptz_handler.py` - All 5 methods updated for credential providers + dictionary velocity
+- `services/onvif/onvif_client.py` - Fixed WSDL_DIR path, added no_cache, reordered parameters
+- `app.py` - ONVIF-first routing with CGI fallback for Amcrest
+
+**Frontend:**
+- `static/js/controllers/ptz-controller.js` - Fixed camera detection logic in mousedown/mouseup handlers
+
+**Config:**
+- `config/cameras.json` - Added `"onvif_port": 8000` for Reolink cameras
+
+### Performance Characteristics
+
+**ONVIF vs CGI:**
+- ONVIF latency: 2-3 seconds (normal for protocol overhead)
+- CGI latency: <500ms (direct HTTP, faster but Amcrest-only)
+- ONVIF advantage: Standardized preset management across vendors
+- CGI advantage: Speed (but no preset support)
+
+**Decision**: Keep ONVIF-first for consistency, CGI fallback provides speed when needed
+
+### Testing Results
+
+- ✅ Amcrest LOBBY PTZ via ONVIF working (movement + presets)
+- ✅ Reolink LAUNDRY PTZ via ONVIF working (movement + presets)  
+- ✅ Camera switching in grid view working
+- ✅ Stop commands working (button release)
+- ✅ Preset loading/execution working
+- ✅ Credential providers initializing correctly
+- ✅ Volume mounts reflecting code changes without rebuild
+
+### Known Limitations
+
+- ONVIF has 2-3 second latency (protocol characteristic, not a bug)
+- Preset UI shows loading delay while fetching from camera
+- No Reolink CGI fallback implemented (ONVIF-only for now)
+- UniFi cameras don't support ONVIF as servers (excluded from implementation)
+
+### Technical Notes
+
+**Why Dictionary Approach for SOAP Types:**
+```python
+# ❌ FAILS - Can't create schema types via service
+request.Velocity = ptz_service.create_type('PTZSpeed')  
+
+# ✅ WORKS - Zeep auto-converts dicts to SOAP types  
+request.Velocity = {'PanTilt': {'x': 0.5, 'y': 0.5}}
+```
+
+**WSDL Location Discovery:**
+```bash
+# Find onvif package location
+python3 -c "import onvif; print(onvif.__file__)"
+# /usr/local/lib/python3.11/site-packages/onvif/__init__.py
+
+# Check default wsdl_dir parameter
+python3 -c "from onvif import ONVIFCamera; help(ONVIFCamera.__init__)"
+# wsdl_dir='/usr/local/lib/python3.11/site-packages/wsdl'
+```
+
+### Impact
+
+- Standardized PTZ control across Amcrest and Reolink cameras
+- Full preset management capability (load, goto, create, delete)
+- Cleaner architecture separating credential management from PTZ logic
+- Foundation for adding more ONVIF-compatible camera brands
+- Grid view PTZ now properly switches between cameras

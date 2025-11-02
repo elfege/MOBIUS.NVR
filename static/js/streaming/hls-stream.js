@@ -77,14 +77,15 @@ export class HLSStreamManager {
      * Force refresh a stream by destroying and recreating the HLS instance
      */
     async forceRefreshStream(cameraId, videoElement) {
-        // 0) Remember current type (default to 'sub') before we clear the map
+        // 0) Remember current type before clearing map
         const current = this.activeStreams.get(cameraId);
         const streamType = current?.type ?? 'sub';
 
-        // 1) Client-side teardown (no renames)
+        // 1) Client-side teardown
         try {
             const existingHls = this.hlsInstances.get(cameraId);
             if (existingHls) {
+                existingHls.stopLoad(); // Stop fetching
                 existingHls.destroy();
                 this.hlsInstances.delete(cameraId);
             }
@@ -95,6 +96,7 @@ export class HLSStreamManager {
         const stream = this.activeStreams.get(cameraId);
         if (stream && stream.element) {
             try {
+                stream.element.pause(); // Stop decoder
                 stream.element.src = '';
                 stream.element.load?.();
             } catch (e) {
@@ -103,49 +105,7 @@ export class HLSStreamManager {
             this.activeStreams.delete(cameraId);
         }
 
-        // 2) Tell backend to STOP (use singular /api/stream/*)
-        try {
-            const res = await fetch(`/api/stream/stop/${encodeURIComponent(cameraId)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            if (!res.ok) console.warn(`[forceRefreshStream] stop returned ${res.status} for ${cameraId}`);
-        } catch (e) {
-            console.warn(`[forceRefreshStream] stop failed for ${cameraId}:`, e);
-        }
-
-        // 3) Poll /status until backend reports fully down to avoid “already active”
-        const deadline = Date.now() + 5000; // up to 5s
-        while (Date.now() < deadline) {
-            try {
-                const r = await fetch(`/api/stream/status/${encodeURIComponent(cameraId)}`);
-                if (r.ok) {
-                    const s = await r.json();
-                    if (!s.is_streaming) break;
-                }
-            } catch (_) { /* ignore transient errors */ }
-            await new Promise(r => setTimeout(r, 200));
-        }
-
-        // 4) Small grace so ffmpeg releases sockets
-        await new Promise(r => setTimeout(r, 250));
-
-        // 5) START on backend (singular /api/stream/*); then reattach via  existing API
-        try {
-            const startRes = await fetch(`/api/stream/start/${encodeURIComponent(cameraId)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: streamType, reason: 'force-refresh' })
-            });
-            if (!startRes.ok) {
-                console.warn(`[forceRefreshStream] start returned ${startRes.status} for ${cameraId}`);
-            }
-        } catch (e) {
-            console.warn(`[forceRefreshStream] start failed for ${cameraId}:`, e);
-        }
-
-        // 6) Give the new playlist a moment, then reattach (HLS/MJPEG/RTMP handled by  startStream)
-        await new Promise(r => setTimeout(r, 500));
+        // 2) Restart stream via startStream (handles backend + frontend)
         return await this.startStream(cameraId, videoElement, streamType);
     }
 
@@ -262,22 +222,21 @@ export class HLSStreamManager {
     /**
      * Stop HLS stream for a camera
      */
-    async stopStream(cameraId) {
+    stopStream(cameraId) {
         try {
-            const response = await fetch(`/api/stream/stop/${cameraId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-
+            // Client-side cleanup only - no backend stop call needed
             const hls = this.hlsInstances.get(cameraId);
             if (hls) {
+                hls.stopLoad(); // Stop fetching segments
                 hls.destroy();
                 this.hlsInstances.delete(cameraId);
             }
 
             const stream = this.activeStreams.get(cameraId);
-            if (stream) {
+            if (stream && stream.element) {
+                stream.element.pause(); // Stop video decoder
                 stream.element.src = '';
+
                 if (stream.element._latencyDetach) {
                     stream.element._latencyDetach();
                     delete stream.element._latencyDetach;
@@ -286,12 +245,12 @@ export class HLSStreamManager {
                 this.activeStreams.delete(cameraId);
             }
 
-            return response.ok;
+            return true;
 
         } catch (error) {
             console.error(`Failed to stop HLS stream for ${cameraId}:`, error);
 
-            // Cleanup local state even if API call fails
+            // Force cleanup even on error
             const hls = this.hlsInstances.get(cameraId);
             if (hls) {
                 hls.destroy();
@@ -313,20 +272,28 @@ export class HLSStreamManager {
     /**
      * Stop all active HLS streams
      */
-    async stopAllStreams() {
+    stopAllStreams() {
         try {
-            await fetch('/api/streams/stop-all', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
+            // Client-side cleanup only - no backend stop call needed
 
-            // Cleanup all HLS instances
-            this.hlsInstances.forEach(hls => hls.destroy());
+            // Stop and destroy all HLS instances
+            this.hlsInstances.forEach(hls => {
+                hls.stopLoad(); // Stop fetching segments
+                hls.destroy();
+            });
             this.hlsInstances.clear();
 
-            // Clear all video elements
+            // Pause and clear all video elements
             this.activeStreams.forEach(stream => {
-                stream.element.src = '';
+                if (stream.element) {
+                    stream.element.pause(); // Stop video decoder
+                    stream.element.src = '';
+
+                    if (stream.element._latencyDetach) {
+                        stream.element._latencyDetach();
+                        delete stream.element._latencyDetach;
+                    }
+                }
             });
             this.activeStreams.clear();
 
@@ -335,7 +302,7 @@ export class HLSStreamManager {
         } catch (error) {
             console.error('Failed to stop all HLS streams:', error);
 
-            // Force cleanup even if API fails
+            // Force cleanup even on error
             this.hlsInstances.forEach(hls => hls.destroy());
             this.hlsInstances.clear();
             this.activeStreams.clear();

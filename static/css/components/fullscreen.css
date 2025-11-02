@@ -100,9 +100,9 @@
 }
 
 /* Hide regular stream controls in fullscreen */
-.stream-item.css-fullscreen .stream-controls {
+/* .stream-item.css-fullscreen .stream-controls {
     display: none !important;
-}
+} */
 
 /* Loading indicator in fullscreen */
 .stream-item.css-fullscreen .loading-indicator {

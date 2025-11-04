@@ -52,9 +52,10 @@ export class MultiStreamManager {
 
                     // Get restart attempt count
                     const attempts = this.restartAttempts.get(cameraId) || 0;
-                    const maxAttempts = 10;
+                    const maxAttempts = H.maxAttempts ?? 10;  // 0 = infinite
 
-                    if (attempts >= maxAttempts) {
+                    // Check if max attempts reached (skip check if maxAttempts is 0)
+                    if (maxAttempts > 0 && attempts >= maxAttempts) {
                         console.error(`[Health] ${cameraId}: Max restart attempts (${maxAttempts}) reached`);
                         this.setStreamStatus($streamItem, 'failed', `Failed after ${maxAttempts} attempts`);
                         return;
@@ -395,26 +396,17 @@ export class MultiStreamManager {
                     this.restartTimers.delete(cameraId);
                 }
 
-                const el = $streamItem.find('.stream-video')[0];
-
-                if ((streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') && this.health) {
-                    const hls = this.hlsManager?.hlsInstances?.get?.(cameraId) || null;
-                    el._healthDetach = this.health.attachHls(cameraId, el, hls);
-                } else if (streamType === 'RTMP' && this.health) {
-                    const flv = this.flvManager?.flvInstances?.get?.(cameraId) || null;
-                    el._healthDetach = this.health.attachRTMP(cameraId, el, flv);
-                } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
-                    el._healthDetach = this.health.attachMjpeg(cameraId, el);
-                }
+                // Attach health monitor (refactored)
+                this.attachHealthMonitor(cameraId, $streamItem, streamType);
             }
-
-
-
         } catch (error) {
             $loadingIndicator.hide();
             this.setStreamStatus($streamItem, 'error', 'Failed');
             this.updateStreamButtons($streamItem, false);
             console.error(`Stream start failed for ${cameraId}:`, error);
+
+            // CRITICAL: Attach health monitor even on initial failure so it can retry
+            this.attachHealthMonitor(cameraId, $streamItem, streamType);
         }
     }
 
@@ -476,14 +468,32 @@ export class MultiStreamManager {
         }
     }
 
+    /**
+     * Restart a stream that has become unhealthy or frozen
+     * 
+     * This method is typically called by the health monitor when a stream is detected
+     * as stale (no new frames) or displaying a black screen. It handles the complete
+     * restart lifecycle:
+     * 
+     * 1. Detaches health monitor to prevent duplicate monitoring during restart
+     * 2. Dispatches to stream-type-specific restart method (HLS/MJPEG/RTMP)
+     * 3. Updates UI status to 'live' on success
+     * 4. Reattaches health monitor (whether success or failure)
+     * 
+     * The health monitor is ALWAYS reattached after restart (success or failure) to
+     * ensure continuous monitoring and automatic retry attempts. Without reattachment,
+     * a failed restart would leave the stream permanently stuck with no recovery path.
+     * 
+     * @param {string} cameraId - Camera serial number (e.g., 'T8416P0023352DA9')
+     * @param {jQuery} $streamItem - jQuery-wrapped DOM element for the stream container
+     * 
+     * @throws {Error} Caught internally - errors logged but health monitor reattached
+     * 
+     * @example
+     * // Called automatically by health monitor
+     * await this.restartStream('REOLINK_LAUNDRY', $('.stream-item[data-camera-serial="REOLINK_LAUNDRY"]'));
+     */
     async restartStream(cameraId, $streamItem) {
-        /** What this does:
-
-        - For HLS streams: calls forceRefreshStream() which destroys the HLS.js instance and clears its cache
-        - This fixes the "media sequence mismatch" error by forcing HLS.js to reload everything fresh
-        - For MJPEG streams: keeps the old stop+start logic (no cache to worry about)
-        - Properly detaches health monitor before restart to avoid duplicate monitoring
-        */
         try {
             console.log(`[Restart] ${cameraId}: Beginning restart sequence`);
             this.updateStreamButtons($streamItem, true);
@@ -499,39 +509,93 @@ export class MultiStreamManager {
                 delete videoElement._healthDetach;
             }
 
-            // Use the proper refresh method based on stream type
+            // Dispatch to appropriate restart method
             if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
-                // ← CHANGED: Call forceRefreshStream which destroys HLS.js cache
-                await this.hlsManager.forceRefreshStream(cameraId, videoElement);
-                this.setStreamStatus($streamItem, 'live', 'Live');
+                await this.restartHLSStream(cameraId, videoElement);
             } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
-                // MJPEG doesn't have cache issues, just restart normally
-                await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
-                await new Promise(r => setTimeout(r, 1500));
-                await this.startStream(cameraId, $streamItem, cameraType, streamType);
+                await this.restartMJPEGStream(cameraId, $streamItem, cameraType, streamType);
             } else if (streamType === 'RTMP') {
-                // Fully tear down and recreate the flv.js player
-                this.flvManager.stopStream(cameraId);
-                await new Promise(r => setTimeout(r, 500));
-                const ok = await this.startStream(cameraId, $streamItem, cameraType, streamType);
-
-                // Explicitly reconcile UI status for RTMP
-                const el = $streamItem.find('.stream-video')[0];
-                // Give the element a brief moment to attach and begin
-                await new Promise(r => setTimeout(r, 800));
-
-                if (ok && el && el.readyState >= 2 && !el.paused) {
-                    this.setStreamStatus($streamItem, 'live', 'Live');
-                } else if (ok) {
-                    // Fallback: start succeeded, but element not “playing” yet; still clear failure
-                    this.setStreamStatus($streamItem, 'loading', 'Buffering…');
-                }
+                await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
             }
 
+            // Success: update status and reattach health
+            this.setStreamStatus($streamItem, 'live', 'Live');
+            this.attachHealthMonitor(cameraId, $streamItem, streamType);
+
             console.log(`[Restart] ${cameraId}: Restart complete`);
+
         } catch (e) {
             console.error(`[Restart] ${cameraId}: Failed`, e);
             this.setStreamStatus($streamItem, 'error', 'Restart failed');
+
+            // Reattach health even on failure so it can retry
+            this.attachHealthMonitor(cameraId, $streamItem, streamType);
+        }
+    }
+
+    /**
+ * Restart HLS/LL-HLS stream by destroying and recreating HLS.js instance
+ */
+    async restartHLSStream(cameraId, videoElement) {
+        await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+    }
+
+    /**
+     * Restart MJPEG stream by stopping and restarting
+     */
+    async restartMJPEGStream(cameraId, $streamItem, cameraType, streamType) {
+        await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+        await new Promise(r => setTimeout(r, 1500));
+        await this.startStream(cameraId, $streamItem, cameraType, streamType);
+    }
+
+    /**
+     * Restart RTMP stream by destroying and recreating FLV player
+     */
+    async restartRTMPStream(cameraId, $streamItem, cameraType, streamType) {
+        this.flvManager.stopStream(cameraId);
+        await new Promise(r => setTimeout(r, 500));
+        const success = await this.startStream(cameraId, $streamItem, cameraType, streamType);
+
+        // Give element time to start playing
+        await new Promise(r => setTimeout(r, 800));
+
+        const el = $streamItem.find('.stream-video')[0];
+        if (success && el && el.readyState >= 2 && !el.paused) {
+            return true;
+        } else if (success) {
+            this.setStreamStatus($streamItem, 'loading', 'Buffering…');
+            return false;
+        }
+        return false;
+    }
+
+    /**
+     * Attach health monitor to a stream element
+     * Centralizes health attachment logic to avoid repetition
+     */
+    attachHealthMonitor(cameraId, $streamItem, streamType) {
+        if (!this.health) {
+            console.log(`[Health] Monitoring disabled for ${cameraId}`);
+            return;
+        }
+
+        const el = $streamItem.find('.stream-video')[0];
+        if (!el) {
+            console.warn(`[Health] No video element found for ${cameraId}`);
+            return;
+        }
+
+        console.log(`[Health] Attaching monitor for ${cameraId} (${streamType})`);
+
+        if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+            const hls = this.hlsManager?.hlsInstances?.get?.(cameraId) || null;
+            el._healthDetach = this.health.attachHls(cameraId, el, hls);
+        } else if (streamType === 'RTMP') {
+            const flv = this.flvManager?.flvInstances?.get?.(cameraId) || null;
+            el._healthDetach = this.health.attachRTMP(cameraId, el, flv);
+        } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+            el._healthDetach = this.health.attachMjpeg(cameraId, el);
         }
     }
 
@@ -631,6 +695,13 @@ export class MultiStreamManager {
                         console.log(`[Fullscreen] Pausing HLS stream: ${id}`);
                         hls.stopLoad(); // Stop fetching segments
                         videoEl.pause(); // Stop video decoder
+
+                        // Detach health monitor for paused stream
+                        if (videoEl._healthDetach) {
+                            videoEl._healthDetach();
+                            delete videoEl._healthDetach;
+                        }
+
                         this.pausedStreams.push({ id, type: 'HLS' });
                     }
                 }
@@ -639,6 +710,13 @@ export class MultiStreamManager {
                     if (videoEl) {
                         console.log(`[Fullscreen] Pausing RTMP stream: ${id}`);
                         videoEl.pause();
+
+                        // Detach health monitor for paused stream
+                        if (videoEl._healthDetach) {
+                            videoEl._healthDetach();
+                            delete videoEl._healthDetach;
+                        }
+
                         this.pausedStreams.push({ id, type: 'RTMP' });
                     }
                 }
@@ -649,6 +727,13 @@ export class MultiStreamManager {
                         console.log(`[Fullscreen] Pausing MJPEG stream: ${id}`);
                         imgEl._pausedSrc = imgEl.src; // Store src
                         imgEl.src = ''; // Clear to stop fetching
+
+                        // Detach health monitor for paused stream
+                        if (imgEl._healthDetach) {
+                            imgEl._healthDetach();
+                            delete imgEl._healthDetach;
+                        }
+
                         this.pausedStreams.push({ id, type: 'MJPEG' });
                     }
                 }
@@ -691,6 +776,7 @@ export class MultiStreamManager {
 
                     const $video = $item.find('.stream-video');
                     const videoEl = $video[0];
+                    const streamType = $item.data('stream-type');
 
                     if (stream.type === 'HLS') {
                         const hls = this.hlsManager.hlsInstances.get(stream.id);
@@ -698,12 +784,18 @@ export class MultiStreamManager {
                             console.log(`[Fullscreen] Resuming HLS stream: ${stream.id}`);
                             hls.startLoad(); // Resume fetching segments
                             videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
+
+                            // Reattach health monitor
+                            this.attachHealthMonitor(stream.id, $item, streamType);
                         }
                     }
                     else if (stream.type === 'RTMP') {
                         if (videoEl) {
                             console.log(`[Fullscreen] Resuming RTMP stream: ${stream.id}`);
                             videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
+
+                            // Reattach health monitor
+                            this.attachHealthMonitor(stream.id, $item, streamType);
                         }
                     }
                     else if (stream.type === 'MJPEG') {
@@ -712,6 +804,9 @@ export class MultiStreamManager {
                             console.log(`[Fullscreen] Resuming MJPEG stream: ${stream.id}`);
                             imgEl.src = imgEl._pausedSrc; // Restore src to resume fetching
                             delete imgEl._pausedSrc;
+
+                            // Reattach health monitor
+                            this.attachHealthMonitor(stream.id, $item, streamType);
                         }
                     }
                 }

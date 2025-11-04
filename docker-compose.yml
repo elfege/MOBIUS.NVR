@@ -58,6 +58,9 @@ services:
       - EUFY_CAMERA_T8441P122428038A_PASSWORD=${EUFY_CAMERA_T8441P122428038A_PASSWORD}
       - EUFY_CAMERA_T821451024233587_USERNAME=${EUFY_CAMERA_T821451024233587_USERNAME}
       - EUFY_CAMERA_T821451024233587_PASSWORD=${EUFY_CAMERA_T821451024233587_PASSWORD}
+      - EUFY_BRIDGE_USERNAME=${EUFY_BRIDGE_USERNAME}
+      - EUFY_BRIDGE_PASSWORD=${EUFY_BRIDGE_PASSWORD}
+      - TRUSTED_DEVICE_NAME=${TRUSTED_DEVICE_NAME:-EufyBridge}
 
       - ENABLE_WATCHDOG=${ENABLE_WATCHDOG}
 
@@ -75,21 +78,26 @@ services:
 
     volumes:
       # Mount Python source code for hot-reloading
-      - ./streaming:/app/streaming
-      - ./services:/app/services  
-      - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
-      - ./config:/app/config:rw
-      - ./streams:/app/streams
-      - ./app.py:/app/app.py:ro
-      - ./requirements.txt:/app/requirements.txt:ro
-      - ./templates:/app/templates:ro
-      - ./static:/app/static:ro
+      - ./:/app
+      # - ./streaming:/app/streaming
+      # - ./services:/app/services  
+      # - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
+      # - ./config:/app/config:rw
+      # - ./streams:/app/streams
+      # - ./app.py:/app/app.py:ro
+      # - ./requirements.txt:/app/requirements.txt:ro
+      # - ./templates:/app/templates:ro
+      # - ./static:/app/static:ro
 
-      # Node modules for Eufy bridge
-      - ./node_modules:/app/node_modules:ro
+      # # Node modules for Eufy bridge
+      # - ./node_modules:/app/node_modules:ro
 
-      # static for fast ui editting/testing
-      - ./static:/app/static
+      # # static for fast ui editting/testing
+      # - ./static:/app/static
+      # - ./persistent.json:/app/persistent.json
+      
+      # - ./eufy_bridge_data:/app/.eufy-security-ws  # Persist auth tokens
+
 
     restart: unless-stopped
 

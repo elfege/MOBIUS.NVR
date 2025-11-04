@@ -51,7 +51,8 @@ class EufyBridge:
             self.process = subprocess.Popen(
                 f"bash eufy_bridge.sh {self.port}",
                 shell=True,
-                stdout=subprocess.DEVNULL,
+                # stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True
             )
@@ -93,7 +94,7 @@ class EufyBridge:
             
         try:
             for line in iter(self.process.stdout.readline, ''):
-                if "Push notification connection successfully established" in line:
+                if "Eufy Security server listening" in line or "server listening" in line:
                     self.ready_event.set()
                     break
                 # Fix: Add null check before calling poll()
@@ -192,7 +193,8 @@ class EufyBridge:
             asyncio.set_event_loop(loop)
             try:
                 return loop.run_until_complete(
-                    self._execute_ptz_command_with_stop(camera_serial, corrected_direction)
+                    # self._execute_ptz_command_with_stop(camera_serial, corrected_direction)
+                    self._execute_ptz_command(camera_serial, corrected_direction)
                 )
             finally:
                 loop.close()
@@ -204,7 +206,7 @@ class EufyBridge:
     def _correct_direction(self, camera_serial, direction, device_manager):
         """Correct direction based on camera orientation"""
         try:
-            camera_info = device_manager.get_camera_info(camera_serial)
+            camera_info = device_manager.get_camera(camera_serial)
             if not camera_info:
                 logger.warning(f"Warning: No camera info found for {camera_serial}")
                 return direction

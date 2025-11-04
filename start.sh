@@ -1,7 +1,7 @@
 #!/bin/bash
 # start.sh - Start Unified NVR container with credentials
 
-set -e
+# set -e
 
 deactivate &>/dev/null || true
 
@@ -43,7 +43,7 @@ fi
 set -a
 . ~/0_NVR/.env
 start_spinner 20 "$BLUE Exporting Cameras Credentials..."
-get_cameras_credentials >/dev/null
+get_cameras_credentials # >/dev/null
 sleep 1
 stop_spinner
 set +a

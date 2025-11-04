@@ -10674,3 +10674,517 @@ Commented out the blanket hide rule in `fullscreen.css` line 103-105. All contro
 ### Impact
 
 PTZ controls now work in fullscreen for both HLS and MJPEG streams. Camera control maintained across grid ↔ fullscreen transitions without losing selected camera context.
+
+---
+
+## November 3, 2025 - UI Health Monitor Bug Fixes & Architecture Improvements
+
+### Context
+
+Comprehensive investigation and fix of UI health monitoring system failures. Health monitor was failing to detect and recover from stale/frozen streams due to multiple critical bugs in the restart and attachment lifecycle. Cameras would get stuck in "Restart failed" state with no automatic recovery, requiring manual user intervention.
+
+### Issues Discovered
+
+**1. Inconsistent Naming: `serial` vs `cameraId`**
+
+**Root Cause:**
+During initial health monitor fixes, parameter name was changed from `cameraId` to `serial` in multiple locations, but this was inconsistent with the rest of the codebase which universally uses `cameraId` as the camera identifier.
+
+```javascript
+// health.js passes 'serial'
+await this.opts.onUnhealthy({ serial, reason, metrics });
+
+// stream.js expects 'cameraId'
+onUnhealthy: async ({ cameraId, reason, metrics }) => { ... }
+
+// openFullscreen() uses undefined 'serial'
+const $streamItem = $(`.stream-item[data-camera-serial="${serial}"]`); // ReferenceError!
+```
+
+**Impact:**
+- Fullscreen functionality completely broken (ReferenceError: serial is not defined)
+- Confusion between camera identifiers throughout codebase
+- Three separate locations using inconsistent parameter names
+
+**2. Parameter Name Mismatch in Health Callback (Original Bug)**
+
+**2. Parameter Name Mismatch in Health Callback (Original Bug)**
+
+**Root Cause:**
+```javascript
+// health.js:108 - initially passed just 'serial'
+await this.opts.onUnhealthy({ serial, reason, metrics });
+
+// stream.js:47 - expected 'cameraId' but got undefined
+onUnhealthy: async ({ cameraId, reason, metrics }) => {
+    // cameraId was undefined because health.js passed 'serial'
+}
+```
+
+- Health monitor passed `serial` but callback destructured `cameraId`
+- Result: `cameraId = undefined` in all callback code
+- jQuery selector `$(`.stream-item[data-camera-serial="undefined"]`)` found nothing
+- Restart never executed despite health detection working
+
+**Initial incorrect fix attempted:** Changed callback to use `serial` everywhere, but this broke other code
+**Correct fix:** Changed health.js to pass `{ cameraId: serial, ... }` so callback receives correct parameter name
+
+**3. MJPEG Health Attachment Missing Null Check**
+
+```javascript
+// Line ~404 - HLS and RTMP check this.health
+} else if (streamType === 'RTMP' && this.health) { ... }
+
+// MJPEG branch missing check
+} else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+    el._healthDetach = this.health.attachMjpeg(cameraId, el); // Fails if this.health is null
+}
+```
+
+- Attempted to call `.attachMjpeg()` on `null` when health monitoring disabled
+- Silent failure in try-catch block left MJPEG cameras unmonitored
+
+**4. Health Monitor Never Reattached After Failed Restart**
+
+**Flow:**
+```
+Health detects stale → schedules restart
+    ↓
+restartStream() called → DETACHES health monitor
+    ↓
+forceRefreshStream() throws network error
+    ↓
+Catch block sets status to 'Restart failed'
+    ↓
+Health monitor NEVER REATTACHES ❌
+    ↓
+Camera stuck forever - no more retries possible
+```
+
+- Health detachment on line 497 was correct (prevents duplicate monitoring)
+- Reattachment only happened in `startStream()` success path
+- When `forceRefreshStream()` failed in `restartStream()`, error caught before reattachment
+- Attempt counter persisted in Map but no mechanism to trigger next attempt
+
+**5. Health Monitor Never Attached After Initial Startup Failure**
+
+- `startStream()` catch block set status to 'error' but didn't attach health
+- Cameras failing on page load (e.g., offline backend) stuck permanently
+- No automatic retry mechanism for initial failures
+
+**6. Health Monitor Not Reattached After Successful Restart**
+
+```javascript
+// restartStream() for HLS - line ~503
+await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+this.setStreamStatus($streamItem, 'live', 'Live');
+// Missing: health reattachment!
+```
+
+- Status updated to 'Live' but health monitor never reattached
+- Stream played correctly but had no ongoing monitoring
+- If stream froze again, no detection/recovery possible
+
+**7. Health Monitors Not Detached During Fullscreen**
+
+**Root Cause:**
+When entering fullscreen mode, streams are paused (client-side only) but health monitors remain attached:
+
+```javascript
+// openFullscreen() - pauses streams
+hls.stopLoad();  // Stop fetching
+videoEl.pause(); // Stop decoder
+// BUT: Health monitor still sampling frames every 6 seconds!
+```
+
+**What happens:**
+```
+Enter fullscreen → Pause 11 background cameras
+    ↓
+6 seconds later: Health detects all 11 as STALE (no new frames)
+    ↓
+Health schedules restart for all 11 cameras
+    ↓
+Unwanted restart attempts on intentionally paused streams!
+    ↓
+Fullscreen camera working fine but system trying to "fix" paused cameras
+```
+
+**Impact:**
+- Health monitor falsely detects intentionally paused streams as unhealthy
+- Triggers restart attempts on 11 cameras every time user enters fullscreen
+- Wastes resources and logs with false positive detections
+- Could cause background streams to restart unnecessarily when exiting fullscreen
+
+**8. Code Duplication for Health Attachment**
+
+Health attachment logic repeated in 3 locations (~12 lines each):
+- `startStream()` success block
+- `restartStream()` success block  
+- `restartStream()` catch block (after fixes)
+
+Violated DRY principle, increased maintenance burden.
+
+### Fixes Implemented
+
+**1. Naming Consistency: `cameraId` Throughout**
+
+**health.js fix:**
+```javascript
+// Changed from passing 'serial' to passing 'cameraId'
+await this.opts.onUnhealthy({ cameraId: serial, reason, metrics });
+```
+
+**stream.js openFullscreen() fix:**
+```javascript
+// Changed from undefined 'serial' to 'cameraId'
+const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
+```
+
+**stream.js attachHealthMonitor() fix:**
+```javascript
+// Changed parameter from 'serial' to 'cameraId'
+attachHealthMonitor(cameraId, $streamItem, streamType) {
+    console.log(`[Health] Monitoring disabled for ${cameraId}`);
+    // ... all references use 'cameraId'
+}
+```
+
+**2. Parameter Name Consistency in Health Callback**
+
+**2. Parameter Name Consistency in Health Callback**
+
+Ensured all references in `onUnhealthy` callback use `cameraId` consistently (13 total references):
+```javascript
+onUnhealthy: async ({ cameraId, reason, metrics }) => {
+    console.warn(`[Health] Stream unhealthy: ${cameraId}, reason: ${reason}`, metrics);
+    const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
+    const attempts = this.restartAttempts.get(cameraId) || 0;
+    // ... all 13 references use 'cameraId'
+    this.restartAttempts.set(cameraId, attempts + 1);
+    await this.restartStream(cameraId, $streamItem);
+}
+```
+
+**Note:** The naming convention is `cameraId` throughout `stream.js`, while `health.js` internally uses `serial` but passes it as `cameraId: serial` to maintain consistency with the rest of the codebase.
+
+**3. MJPEG Null Check Added**
+
+```javascript
+} else if ((streamType === 'MJPEG' || streamType === 'mjpeg_proxy') && this.health) {
+    el._healthDetach = this.health.attachMjpeg(cameraId, el);
+}
+```
+
+**4. Extracted Reusable `attachHealthMonitor()` Method**
+
+New centralized method for health attachment:
+```javascript
+/**
+ * Attach health monitor to a stream element
+ * Centralizes health attachment logic to avoid repetition
+ */
+attachHealthMonitor(serial, $streamItem, streamType) {
+    if (!this.health) {
+        console.log(`[Health] Monitoring disabled for ${serial}`);
+        return;
+    }
+
+    const el = $streamItem.find('.stream-video')[0];
+    if (!el) {
+        console.warn(`[Health] No video element found for ${serial}`);
+        return;
+    }
+
+    console.log(`[Health] Attaching monitor for ${serial} (${streamType})`);
+
+    if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+        const hls = this.hlsManager?.hlsInstances?.get?.(serial) || null;
+        el._healthDetach = this.health.attachHls(serial, el, hls);
+    } else if (streamType === 'RTMP') {
+        const flv = this.flvManager?.flvInstances?.get?.(serial) || null;
+        el._healthDetach = this.health.attachRTMP(serial, el, flv);
+    } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+        el._healthDetach = this.health.attachMjpeg(serial, el);
+    }
+}
+```
+
+**5. Health Reattachment in All Restart Paths**
+
+**startStream() catch block:**
+```javascript
+} catch (error) {
+    $loadingIndicator.hide();
+    this.setStreamStatus($streamItem, 'error', 'Failed');
+    this.updateStreamButtons($streamItem, false);
+    console.error(`Stream start failed for ${cameraId}:`, error);
+    
+    // Attach health even on initial failure
+    this.attachHealthMonitor(cameraId, $streamItem, streamType);
+}
+```
+
+**restartStream() catch block:**
+```javascript
+} catch (e) {
+    console.error(`[Restart] ${serial}: Failed`, e);
+    this.setStreamStatus($streamItem, 'error', 'Restart failed');
+    
+    // Reattach health even on failure so it can retry
+    this.attachHealthMonitor(serial, $streamItem, streamType);
+}
+```
+
+**restartStream() success paths:**
+```javascript
+// After HLS restart
+await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+this.setStreamStatus($streamItem, 'live', 'Live');
+this.attachHealthMonitor(cameraId, $streamItem, streamType); // NEW
+
+// After RTMP restart  
+if (ok && el && el.readyState >= 2 && !el.paused) {
+    this.setStreamStatus($streamItem, 'live', 'Live');
+    this.attachHealthMonitor(cameraId, $streamItem, streamType); // NEW
+}
+
+// MJPEG restart calls startStream() which already attaches health
+```
+
+**6. Health Monitor Detach/Reattach During Fullscreen**
+
+**openFullscreen() - detach health for paused streams:**
+```javascript
+// After pausing each stream type
+if (hls && videoEl) {
+    hls.stopLoad();
+    videoEl.pause();
+    
+    // Detach health monitor for paused stream
+    if (videoEl._healthDetach) {
+        videoEl._healthDetach();
+        delete videoEl._healthDetach;
+    }
+    
+    this.pausedStreams.push({ id, type: 'HLS' });
+}
+// Same pattern for RTMP and MJPEG
+```
+
+**closeFullscreen() - reattach health for resumed streams:**
+```javascript
+// After resuming each stream type
+if (hls && videoEl) {
+    hls.startLoad();
+    videoEl.play().catch(e => console.log(`Play blocked: ${e}`));
+    
+    // Reattach health monitor
+    this.attachHealthMonitor(stream.id, $item, streamType);
+}
+// Same pattern for RTMP and MJPEG
+```
+
+**Benefits:**
+- Prevents false STALE detections on intentionally paused streams
+- No unnecessary restart attempts during fullscreen viewing
+- Clean resource management (health monitors only active for playing streams)
+- Fullscreen camera maintains continuous health monitoring
+
+**7. Stream-Specific Restart Methods Extracted**
+
+Created dedicated methods for cleaner separation:
+```javascript
+async restartHLSStream(cameraId, videoElement)
+async restartMJPEGStream(cameraId, $streamItem, cameraType, streamType)  
+async restartRTMPStream(cameraId, $streamItem, cameraType, streamType)
+```
+
+**8. Enhanced Documentation**
+
+Added comprehensive JSDoc to `restartStream()`:
+```javascript
+/**
+ * Restart a stream that has become unhealthy or frozen
+ * 
+ * This method is typically called by the health monitor when a stream is detected
+ * as stale (no new frames) or displaying a black screen. It handles the complete
+ * restart lifecycle:
+ * 
+ * 1. Detaches health monitor to prevent duplicate monitoring during restart
+ * 2. Dispatches to stream-type-specific restart method (HLS/MJPEG/RTMP)
+ * 3. Updates UI status to 'live' on success
+ * 4. Reattaches health monitor (whether success or failure)
+ * 
+ * The health monitor is ALWAYS reattached after restart (success or failure) to
+ * ensure continuous monitoring and automatic retry attempts.
+ */
+```
+
+**9. Configurable Max Restart Attempts**
+
+**Added:** `UI_HEALTH_MAX_ATTEMPTS` configuration option in `cameras.json`:
+
+```json
+"ui_health_global_settings": {
+  "UI_HEALTH_MAX_ATTEMPTS": 10  // 0 = infinite (not recommended)
+}
+```
+
+**Implementation:**
+```javascript
+const maxAttempts = H.maxAttempts ?? 10;  // Default to 10
+
+// Check if max attempts reached (skip check if maxAttempts is 0)
+if (maxAttempts > 0 && attempts >= maxAttempts) {
+    console.error(`[Health] ${cameraId}: Max restart attempts (${maxAttempts}) reached`);
+    this.setStreamStatus($streamItem, 'failed', `Failed after ${maxAttempts} attempts`);
+    return;
+}
+```
+
+**Behavior:**
+- `UI_HEALTH_MAX_ATTEMPTS: 10` → Stops after 10 restart attempts (recommended)
+- `UI_HEALTH_MAX_ATTEMPTS: 0` → Infinite attempts with ~120s intervals after attempt 5 (60s cooldown + 60s exponential backoff cap)
+- Not specified → Defaults to 10 attempts
+
+**Rationale:** Allows operators to choose between eventual failure acknowledgment (safer) vs persistent retry (for cameras with intermittent connectivity). The 0 (infinite) option useful for cameras that experience long outages but eventually recover (e.g., power cycling, network maintenance).
+
+### Architecture Pattern: Health Monitor Lifecycle
+
+**Correct Flow:**
+```
+Stream starts → Health attaches
+    ↓
+Health detects issue → Schedules restart
+    ↓
+restartStream() begins → Detaches health (prevent duplicates)
+    ↓
+Attempt restart (may succeed or fail)
+    ↓
+ALWAYS reattach health (success or failure)
+    ↓
+If failed: Health detects again → Next retry with exponential backoff
+    ↓
+Continues up to 10 attempts
+```
+
+**Key Principle:** Health monitor must ALWAYS reattach after restart, regardless of outcome. This ensures continuous monitoring and automatic recovery attempts.
+
+### Files Modified
+
+**Backend:** None (all fixes frontend)
+
+**Frontend:**
+- `static/js/streaming/health.js` - Changed callback parameter from `serial` to `cameraId: serial` for consistency
+- `static/js/streaming/stream.js` - All health attachment, restart, and fullscreen logic
+  - Fixed naming consistency (`serial` → `cameraId` in 3 locations)
+  - Fixed parameter names in health callback (13 locations)
+  - Added `attachHealthMonitor()` method
+  - Added health reattachment in catch blocks
+  - Added health reattachment in success paths
+  - Added health detach/reattach in fullscreen operations (6 locations)
+  - Extracted stream-specific restart methods
+  - Enhanced documentation
+  - Added configurable max attempts with infinite option support
+
+**Config:**
+- `config/cameras.json` - Added `UI_HEALTH_MAX_ATTEMPTS` to `ui_health_global_settings` (default: 10, 0 = infinite)
+
+### Testing Results
+
+✅ **All streams get health monitoring on startup:**
+```
+[Health] Attaching monitor for REOLINK_LAUNDRY (LL_HLS)
+[Health] Attached monitor for T8416P0023370398
+[Health] Attaching monitor for AMCREST_LOBBY (MJPEG)
+```
+
+✅ **Health detection working across all stream types:**
+```
+[Health] T8416P0023370398: STALE - No new frames for 6.0s
+[Health] Stream unhealthy: T8416P0023370398, reason: stale
+```
+
+✅ **Automatic restart with proper exponential backoff:**
+```
+[Health] T8416P0023370398: Scheduling restart 1/10 in 5s
+[Health] T8416P0023370398: Executing restart attempt 1
+[Health] T8416P0023370398: Scheduling restart 2/10 in 10s
+[Health] T8416P0023370398: Scheduling restart 3/10 in 20s
+```
+
+✅ **Health reattaches after restart (success or failure):**
+```
+[Restart] T8416P0023370398: Beginning restart sequence
+[Health] Detached monitor for T8416P0023370398
+[Health] Attaching monitor for T8416P0023370398 (LL_HLS)
+[Health] Attached monitor for T8416P0023370398
+[Restart] T8416P0023370398: Restart complete
+```
+
+✅ **Multiple cameras can restart independently:**
+```
+[Health] T8441P12242302AC: STALE - No new frames for 6.0s
+[Health] Stream unhealthy: T8441P12242302AC, reason: stale
+[Health] T8441P12242302AC: Scheduling restart 1/10 in 5s
+[Health] T8441P12242302AC: Executing restart attempt 1
+[Restart] T8441P12242302AC: Restart complete
+```
+
+✅ **Cameras no longer stuck in permanent failure states**
+✅ **MJPEG cameras properly monitored**
+✅ **Initial startup failures get automatic retry**
+✅ **Status updates correctly to "Live" after successful restart**
+✅ **Fullscreen functionality restored (naming consistency fix)**
+✅ **Health monitors properly detach during fullscreen**
+✅ **No false STALE warnings for paused background streams**
+✅ **Health monitors reattach when exiting fullscreen**
+
+### Impact
+
+**Reliability Improvements:**
+- Cameras now self-heal from transient network issues
+- No manual intervention required for frozen/stale streams
+- Exponential backoff prevents overwhelming failed backends
+- System continues attempting recovery for up to 10 tries
+- Fullscreen mode doesn't trigger false health alerts
+- Resource-efficient health monitoring (only active streams monitored)
+
+**Code Quality:**
+- Reduced duplication (12 lines × 3 locations → single method)
+- Consistent health attachment across all code paths
+- Better separation of concerns with dedicated restart methods
+- Comprehensive documentation for maintenance
+- Naming consistency throughout codebase (`cameraId` universally used)
+- Clean fullscreen lifecycle management
+
+**User Experience:**
+- Streams automatically recover from freezes
+- Clear status indicators ("Restarting...", "Restart failed")
+- Reduced need for manual refresh button clicks
+- System handles transient failures gracefully
+- Fullscreen mode works without errors
+- No performance degradation from unnecessary health checks on paused streams
+
+### Known Limitations
+
+- Backend stream lifecycle still managed by server watchdog (no UI control)
+- Health monitor cannot distinguish between camera offline vs network issues
+- Max restart attempts configurable (default 10) - set to 0 for infinite with ~120s intervals
+- Exponential backoff maxes at 60s scheduled delay + 60s cooldown = ~120s between attempts
+- Health monitoring paused during fullscreen (by design - prevents false positives)
+
+### Related Notes
+
+**Naming Convention:** The codebase universally uses `cameraId` as the camera identifier throughout all modules. This corresponds to the camera's serial number in most cases, but is consistently referred to as `cameraId` in code for clarity. The term "serial" should only appear in data attributes (`data-camera-serial`) and when interfacing with the health.js internal implementation.
+
+**Debugging Process:** Initial fix attempt incorrectly changed callback parameters to use `serial` instead of `cameraId`, which caused `ReferenceError: serial is not defined` throughout the callback body. The correct solution was to have health.js pass `{ cameraId: serial, reason, metrics }` while keeping all references in stream.js as `cameraId`. This maintains naming consistency across the codebase.
+
+**Hardware Issue Identified:** Camera T8416P0023370398 (Kids Room) frequently drops connection despite being 2m from UAP. Suspected hardware defect rather than software issue, as identical models work fine. Camera locked to single UAP in UniFi to prevent roaming issues, but still experiences periodic disconnects requiring power cycle. During testing, this camera required 3 automatic restart attempts before successfully reconnecting, demonstrating the exponential backoff system working correctly (5s, 10s, 20s delays).
+
+**No Backend Stop API Calls:** Verified UI never makes `/api/stream/stop/` calls. All "stop" operations are client-side only (HLS.js `stopLoad()`/`destroy()`, MJPEG `img.src = ''`, FLV `destroy()`). This prevents multiple UI clients from interfering with each other's streams.
+
+**Fullscreen Performance:** During fullscreen viewing, only the active camera maintains health monitoring. Background streams are paused and their health monitors detached to conserve resources and prevent false alerts. Health monitors automatically reattach when exiting fullscreen.
+
+**Retry Timing Mechanics:** Health monitoring uses two separate timing mechanisms: (1) Exponential backoff for scheduled restart delays (5s, 10s, 20s, 40s, 60s max), and (2) 60-second cooldown period after each `onUnhealthy` trigger. For persistently failed cameras, the combined effect results in ~120-second intervals between restart attempts once exponential backoff reaches the cap (attempt 5+). This prevents overwhelming both the client and backend while still providing reasonable recovery attempts.

@@ -4,16 +4,12 @@
 │   ├── make_self_signed_tls.sh*
 │   ├── monitor.sh*
 │   ├── NEOlink_integration.sh*
-│   ├── test_office_cam.sh*
-│   └── test.sh*
+│   └── test_office_cam.sh*
 ├── app.py
 ├── app_structure.txt
 ├── bootstrap.json
+├── claude_rules.md
 ├── config/
-│   ├── backups/
-│   │   ├── backup/
-│   │   │   └── cameras_good_config_Oct_13_2025.json
-│   │   └── cameras_good_config_Oct_13_2025.json
 │   ├── cameras_good_config_Oct_13_2025.json
 │   ├── cameras.json
 │   ├── cameras_json_notes.json
@@ -27,14 +23,14 @@
 │   ├── API/
 │   │   └── analysis_01.md
 │   ├── aspect_ratios.md
-│   ├── DOCS/
-│   │   └── API/
-│   │       └── analysis_01.md
+│   ├── DIAGRAMS/
+│   │   └── health_monitor_architecture_NOV_3_2025.html
 │   ├── ffmpeg_settings.md
 │   ├── OCT_2025_Architecture_Refactoring_Migration.md
 │   ├── README_Docker_Deployment_Guide.md
 │   ├── README_project_history.md
-│   └── README_UniFi_Protect_Implementation_Checklist.md
+│   ├── README_UniFi_Protect_Implementation_Checklist.md
+│   └── UNIFI_ONVF.md
 ├── eufy_bridge.py
 ├── eufy_bridge.sh*
 ├── eufy_bridge_watchdog.py
@@ -64,7 +60,8 @@
 │   ├── eufy_service.py
 │   ├── mjpeg_capture_service.py
 │   ├── onvif/
-│   │   └── onvif_client.py
+│   │   ├── onvif_client.py
+│   │   └── onvif_ptz_handler.py
 │   ├── ptz/
 │   │   ├── amcrest_ptz_handler.py
 │   │   └── ptz_validator.py
@@ -87,6 +84,7 @@
 │   │   │   ├── grid-modes.css
 │   │   │   ├── header.css
 │   │   │   ├── ptz-controls.css
+│   │   │   ├── ptz-presets.css
 │   │   │   ├── reset.css
 │   │   │   ├── responsive.css
 │   │   │   ├── settings-overlay.css
@@ -105,12 +103,8 @@
 │       │   ├── flv-stream.js
 │       │   ├── health.js
 │       │   ├── hls-stream.js
-│       │   ├── hls-stream-legacy.js
 │       │   ├── mjpeg-stream.js
-│       │   ├── mjpeg-stream-legacy.js
-│       │   ├── stream.js
-│       │   ├── stream-legacy.js
-│       │   └── stream_refresh.js
+│       │   └── stream.js
 │       └── utils/
 │           ├── loading-manager.js
 │           ├── logger.js
@@ -142,4 +136,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-27 directories, 116 files
+24 directories, 113 files

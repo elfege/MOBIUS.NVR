@@ -105,7 +105,7 @@ export class HealthMonitor {
     t.coolingUntil = now + this.opts.cooldownMs;
 
     try {
-      await this.opts.onUnhealthy({ serial, reason, metrics });
+      await this.opts.onUnhealthy({ cameraId: serial, reason, metrics });
     } catch (e) {
       console.error(`[Health] Error in onUnhealthy callback:`, e);
     }

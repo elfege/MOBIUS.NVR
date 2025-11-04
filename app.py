@@ -90,8 +90,10 @@ try:
 
     # Eufy bridge for PTZ control
     eufy_bridge = EufyBridge()
-    bridge_watchdog = BridgeWatchdog(eufy_bridge)
     print("✅ Eufy bridge initialized")
+    
+    # bridge_watchdog = BridgeWatchdog(eufy_bridge)
+    # print("✅ Eufy bridge_watchdog initialized")
 
     print("\n✅ All core services initialized successfully!\n")
 

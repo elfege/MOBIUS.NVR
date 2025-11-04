@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     nodejs \
     npm \
+    jq \
     procps \
     && rm -rf /var/lib/apt/lists/*
 

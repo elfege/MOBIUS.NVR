@@ -23,22 +23,20 @@ export class MultiStreamManager {
         // Cache jQuery selectors
         this.$container = $('#streams-container');
         this.$streamCount = $('#stream-count');
-        // this.$fullscreenOverlay = $('#fullscreen-overlay'); // DEPRECATED
-        // this.$fullscreenVideo = $('#fullscreen-video'); // DEPRECATED
-        // this.$fullscreenTitle = $('#fullscreen-title'); // DEPRECATED
-        // this.$fullscreenClose = $('#fullscreen-close'); // DEPRECATED
 
-        // this.fullscreenHls = null;
 
         this.restartAttempts = new Map(); // Track restart attempts per camera
         this.restartTimers = new Map();   // Track pending retry timers
+        this.recentFailures = new Map();  // Track failure history for escalating recovery
 
         const H = window.UI_HEALTH || {};
         console.log(`UI HEALTH ENV: ${JSON.stringify(H)}`)
         // Only create health monitor if enabled
         if (H.uiHealthEnabled) {
             this.health = makeHealthMonitor({
-                blankThreshold: H.blankThreshold || { avg: 12, std: 5 },
+                blankThreshold: (H.blankAvg != null && H.blankStd != null)
+                    ? { avg: H.blankAvg, std: H.blankStd }  // cameras.json flat format
+                    : (H.blankThreshold || { avg: 12, std: 5 }),  // .env nested format or default
                 sampleIntervalMs: H.sampleIntervalMs ?? 6000,
                 staleAfterMs: H.staleAfterMs ?? 20000,
                 consecutiveBlankNeeded: H.consecutiveBlankNeeded ?? 10,
@@ -49,6 +47,10 @@ export class MultiStreamManager {
 
                     const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
                     if (!$streamItem.length) return;
+
+                    // Get camera metadata for nuclear recovery
+                    const cameraType = $streamItem.data('camera-type');
+                    const streamType = $streamItem.data('stream-type');
 
                     // Get restart attempt count
                     const attempts = this.restartAttempts.get(cameraId) || 0;
@@ -61,11 +63,29 @@ export class MultiStreamManager {
                         return;
                     }
 
+                    // Track failure history for escalating recovery
+                    const now = Date.now();
+                    const history = this.recentFailures.get(cameraId) || {
+                        timestamps: [],
+                        lastMethod: null
+                    };
+
+                    // Clean old failures (>60s ago)
+                    history.timestamps = history.timestamps.filter(t => now - t < 60000);
+                    history.timestamps.push(now);
+
+                    // Determine recovery method: first 3 tries = refresh, then nuclear
+                    const recentFailureCount = history.timestamps.length;
+                    const method = (recentFailureCount <= 3) ? 'refresh' : 'nuclear';
+                    history.lastMethod = method;
+                    this.recentFailures.set(cameraId, history);
+
                     // Exponential backoff: 5s, 10s, 20s, 40s, 60s (max)
                     const delay = Math.min(5000 * Math.pow(2, attempts), 60000);
 
-                    console.log(`[Health] ${cameraId}: Scheduling restart ${attempts + 1}/${maxAttempts} in ${delay / 1000}s`);
-                    this.setStreamStatus($streamItem, 'loading', `Retry ${attempts + 1} in ${delay / 1000}s`);
+                    const methodLabel = method === 'refresh' ? 'Refresh' : 'Nuclear Stop+Start';
+                    console.log(`[Health] ${cameraId}: Scheduling ${methodLabel} restart ${attempts + 1}/${maxAttempts > 0 ? maxAttempts : '∞'} in ${delay / 1000}s (failures in 60s: ${recentFailureCount})`);
+                    this.setStreamStatus($streamItem, 'loading', `${methodLabel} retry ${attempts + 1} in ${delay / 1000}s`);
 
                     // Increment counter
                     this.restartAttempts.set(cameraId, attempts + 1);
@@ -75,11 +95,38 @@ export class MultiStreamManager {
                         clearTimeout(this.restartTimers.get(cameraId));
                     }
 
-                    // Schedule restart
+                    // Schedule restart with appropriate method
                     const timer = setTimeout(async () => {
                         this.restartTimers.delete(cameraId);
-                        console.log(`[Health] ${cameraId}: Executing restart attempt ${attempts + 1}`);
-                        await this.restartStream(cameraId, $streamItem);
+                        console.log(`[Health] ${cameraId}: Executing ${methodLabel} attempt ${attempts + 1}`);
+
+                        if (method === 'refresh') {
+                            // Standard refresh - works for transient issues
+                            await this.restartStream(cameraId, $streamItem);
+                        } else {
+                            // Nuclear option - forces backend to restart FFmpeg
+                            console.log(`[Health] ${cameraId}: Nuclear recovery - forcing UI stop+start cycle`);
+
+                            // Step 1: UI stop (client-side only, no backend call)
+                            await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+
+                            // Step 2: Wait for backend to notice stream is gone
+                            await new Promise(r => setTimeout(r, 3000));
+
+                            // Step 3: UI start (forces backend to create new FFmpeg)
+                            this.setStreamStatus($streamItem, 'loading', 'Nuclear restart...');
+                            const success = await this.startStream(cameraId, $streamItem, cameraType, streamType);
+
+                            if (success) {
+                                // Success path already handled in startStream
+                                console.log(`[Health] ${cameraId}: Nuclear restart succeeded`);
+                                // Clear failure history on success
+                                this.recentFailures.delete(cameraId);
+                                this.restartAttempts.delete(cameraId);
+                            } else {
+                                console.error(`[Health] ${cameraId}: Nuclear restart failed`);
+                            }
+                        }
                     }, delay);
 
                     this.restartTimers.set(cameraId, timer);
@@ -518,6 +565,8 @@ export class MultiStreamManager {
                 await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
             }
 
+
+
             // Success: update status and reattach health
             this.setStreamStatus($streamItem, 'live', 'Live');
             this.attachHealthMonitor(cameraId, $streamItem, streamType);
@@ -537,7 +586,10 @@ export class MultiStreamManager {
  * Restart HLS/LL-HLS stream by destroying and recreating HLS.js instance
  */
     async restartHLSStream(cameraId, videoElement) {
-        await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+        // always hit the refresh method twice to force recreating a dead ffmpeg stream
+        this.hlsManager.forceRefreshStream(cameraId, videoElement);
+        await new Promise(r => setTimeout(r, 3000))
+        this.hlsManager.forceRefreshStream(cameraId, videoElement);
     }
 
     /**

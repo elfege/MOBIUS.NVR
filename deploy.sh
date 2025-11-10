@@ -1,7 +1,7 @@
 #!/bin/bash
 # deploy.sh - Build Docker image for Unified NVR
 
-set -e
+# set -e
 
 deactivate &>/dev/null || true
 
@@ -14,7 +14,7 @@ cd "$SCRIPT_DIR" &>/dev/null || true
 sudo chown -R "$USER":"$USER" ./ &>/dev/null || true
 
 . ~/.env.colors
-. ~/logger.sh --no-exec &>/dev/null
+. ~/logger.sh --no-exec &>/dev/null || true
 . /etc/profile.d/custom-env.sh --no-exec &>/dev/null || true
 
 echo "=========================================="
@@ -40,9 +40,10 @@ if [[ "$prune" =~ ^[yY].*? ]]; then
 	docker system prune -f || true
 fi
 
-start_spinner -e "$CYAN Cleaning up containers and images..."
+start_spinner "" "$CYAN Cleaning up containers and images..."
 # Stop and remove containers
 docker compose down &>/dev/null || true
+
 echo -e "${GREEN}✓ Containers stopped and removed${NC}"
 echo ""
 # Remove the old image

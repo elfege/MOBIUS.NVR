@@ -33,6 +33,7 @@ services:
       - CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS=${CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS}
       - PROTECT_PORT=${PROTECT_PORT}
       - USE_EUFY_BRIDGE=${USE_EUFY_BRIDGE}
+      - USE_EUFY_BRIDGE_WATCHDOG=${USE_EUFY_BRIDGE_WATCHDOG}
       - USE_PROTECT=${USE_PROTECT}
       - REOLINK_USERNAME=${REOLINK_USERNAME}
       - REOLINK_PASSWORD=${REOLINK_PASSWORD}
@@ -58,6 +59,9 @@ services:
       - EUFY_CAMERA_T8441P122428038A_PASSWORD=${EUFY_CAMERA_T8441P122428038A_PASSWORD}
       - EUFY_CAMERA_T821451024233587_USERNAME=${EUFY_CAMERA_T821451024233587_USERNAME}
       - EUFY_CAMERA_T821451024233587_PASSWORD=${EUFY_CAMERA_T821451024233587_PASSWORD}
+      - EUFY_BRIDGE_USERNAME=${EUFY_BRIDGE_USERNAME}
+      - EUFY_BRIDGE_PASSWORD=${EUFY_BRIDGE_PASSWORD}
+      - TRUSTED_DEVICE_NAME=${TRUSTED_DEVICE_NAME:-EufyBridge}
 
       - ENABLE_WATCHDOG=${ENABLE_WATCHDOG}
 
@@ -73,23 +77,32 @@ services:
       - HLS_SEGMENT_TIME=${HLS_SEGMENT_TIME:-4}
       - HLS_MAX_SEGMENTS=${HLS_MAX_SEGMENTS:-6}
 
+      # HOST IP
+      - LOCAL_HOST_IP=${LOCAL_HOST_IP:-192.168.10.20}
+
     volumes:
       # Mount Python source code for hot-reloading
-      - ./streaming:/app/streaming
-      - ./services:/app/services  
-      - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
-      - ./config:/app/config:rw
-      - ./streams:/app/streams
-      - ./app.py:/app/app.py:ro
-      - ./requirements.txt:/app/requirements.txt:ro
-      - ./templates:/app/templates:ro
-      - ./static:/app/static:ro
+      - ./:/app
+      # - ./streaming:/app/streaming
+      # - ./services:/app/services  
+      # - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
+      # - ./config:/app/config:rw
+      # - ./streams:/app/streams
+      # - ./app.py:/app/app.py:ro
+      # - ./requirements.txt:/app/requirements.txt:ro
+      # - ./templates:/app/templates:ro
+      # - ./static:/app/static:ro
 
-      # Node modules for Eufy bridge
-      - ./node_modules:/app/node_modules:ro
+      # # Node modules for Eufy bridge
+      # - ./node_modules:/app/node_modules:ro
 
-      # static for fast ui editting/testing
-      - ./static:/app/static
+      # # static for fast ui editting/testing
+      # - ./static:/app/static
+
+      # Persist auth tokens
+      # - ./persistent.json:/app/persistent.json
+      
+
 
     restart: unless-stopped
 

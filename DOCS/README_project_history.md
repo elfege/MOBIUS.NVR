@@ -11188,3 +11188,409 @@ Continues up to 10 attempts
 **Fullscreen Performance:** During fullscreen viewing, only the active camera maintains health monitoring. Background streams are paused and their health monitors detached to conserve resources and prevent false alerts. Health monitors automatically reattach when exiting fullscreen.
 
 **Retry Timing Mechanics:** Health monitoring uses two separate timing mechanisms: (1) Exponential backoff for scheduled restart delays (5s, 10s, 20s, 40s, 60s max), and (2) 60-second cooldown period after each `onUnhealthy` trigger. For persistently failed cameras, the combined effect results in ~120-second intervals between restart attempts once exponential backoff reaches the cap (attempt 5+). This prevents overwhelming both the client and backend while still providing reasonable recovery attempts.
+
+---
+
+## November 8, 2025 - UI Health Monitor: Infinite Retry Fix & Escalating Recovery Strategy
+
+### Problem Statement
+
+**Issue #1: Infinite Retry Configuration Not Working**
+
+Despite setting `UI_HEALTH_MAX_ATTEMPTS: 0` in `cameras.json` (line 2122) to enable infinite retry attempts, cameras were still showing "Failed after 10 attempts" status. Investigation revealed a configuration mapping gap preventing the setting from reaching the frontend.
+
+**Issue #2: Health Monitor Restart Failures vs Manual Success**
+
+Health monitor automatic restarts were consistently failing for certain cameras, yet manual refresh (clicking the refresh button) would immediately fix the same streams. This indicated a fundamental difference between the automatic and manual recovery paths that went beyond simple timing issues.
+
+### Root Cause Analysis
+
+**Configuration Issue:**
+
+The `_ui_health_from_env()` function in `app.py` (lines 1427-1469) was mapping all UI health settings from `cameras.json` to the frontend EXCEPT `UI_HEALTH_MAX_ATTEMPTS`:
+
+```python
+key_mapping = {
+    'UI_HEALTH_ENABLED': 'uiHealthEnabled',
+    'UI_HEALTH_SAMPLE_INTERVAL_MS': 'sampleIntervalMs',
+    # ... 6 other mappings ...
+    # ❌ MISSING: 'UI_HEALTH_MAX_ATTEMPTS': 'maxAttempts'
+}
+```
+
+Result: Frontend `stream.js` line 55 always defaulted to 10:
+```javascript
+const maxAttempts = H.maxAttempts ?? 10;  // Always 10, never 0
+```
+
+**Recovery Failure Root Cause:**
+
+Through systematic debugging using browser console diagnostics, logs revealed the actual failure sequence:
+
+1. Health monitor detects frozen stream (STALE - no new frames for 6s)
+2. Triggers `forceRefreshStream()` → calls backend `/api/stream/start/T8416P0023370398`
+3. **Backend responds:** `"Stream already active for T8416P0023370398"` (doesn't verify FFmpeg health)
+4. Frontend tries to load playlist: `/api/streams/T8416P0023370398/playlist.m3u8`
+5. **HLS fatal error:** `manifestLoadError` - 404 Not Found
+6. Reason: Backend FFmpeg process is frozen/dead but still tracked as "active"
+7. MediaMTX hasn't generated new HLS segments → playlist doesn't exist
+8. Frontend marks as failed, reattaches health monitor
+9. Cycle repeats until max attempts reached
+
+**Why Manual Refresh Works:**
+
+Manual refresh clicked later (after multiple failures) works because:
+- Backend watchdog has killed the dead FFmpeg process (inconsistent timing)
+- Manual "Play" button forces backend to create NEW FFmpeg process regardless of "already active" state
+- Fresh FFmpeg connects to camera → MediaMTX generates segments → playlist exists
+
+**Key Insight:** The health monitor was performing identical operations to manual refresh, but the backend's "already active" check was preventing actual FFmpeg restart. The solution required forcing a client-side "stop" to clear the stale backend state before attempting restart.
+
+### Solution: Escalating Recovery Strategy
+
+Implemented a two-tier recovery system that starts gentle (fast refresh) and escalates to aggressive (nuclear stop+start) based on recent failure history.
+
+**Architecture:**
+
+**Tier 1: Standard Refresh (Attempts 1-3)**
+- Uses existing `forceRefreshStream()` path
+- Works for transient issues (brief network glitches, temporary camera hangs)
+- Fast recovery - minimal disruption
+- If backend FFmpeg is healthy, this succeeds immediately
+
+**Tier 2: Nuclear Recovery (Attempts 4+)**
+- Forces complete client-side teardown: `stopIndividualStream()`
+- 3-second wait for backend state to clear
+- Fresh start: `startStream()` forces backend to create new FFmpeg process
+- Works for stuck backend state where FFmpeg is dead but tracked as "active"
+
+**Failure Tracking Logic:**
+
+```javascript
+// Track failures in 60-second sliding window
+this.recentFailures = new Map(); // { cameraId: { timestamps: [], lastMethod: null } }
+
+// On each unhealthy detection:
+const history = this.recentFailures.get(cameraId) || { timestamps: [], lastMethod: null };
+history.timestamps = history.timestamps.filter(t => now - t < 60000); // Clean old
+history.timestamps.push(now);
+
+// Escalation decision:
+const recentFailureCount = history.timestamps.length;
+const method = (recentFailureCount <= 3) ? 'refresh' : 'nuclear';
+```
+
+**Recovery Method Selection:**
+
+| Failure Count (60s window) | Method | Action | Use Case |
+|---|---|---|---|
+| 1-3 | `refresh` | `forceRefreshStream()` | Transient issues |
+| 4+ | `nuclear` | UI stop → 3s wait → UI start | Stuck backend state |
+
+**Success Detection:**
+- Nuclear recovery that succeeds clears failure history immediately
+- Prevents unnecessary escalation on next issue
+- Each camera tracked independently
+
+### Implementation Details
+
+**Backend Configuration Fix (`app.py`):**
+
+Added `UI_HEALTH_MAX_ATTEMPTS` to three locations:
+
+1. **Default settings initialization (line ~1433):**
+```python
+settings = {
+    # ... existing settings ...
+    'maxAttempts': _get_int("UI_HEALTH_MAX_ATTEMPTS", 10),  # NEW
+}
+```
+
+2. **Key mapping for cameras.json override (line ~1459):**
+```python
+key_mapping = {
+    # ... existing mappings ...
+    'UI_HEALTH_MAX_ATTEMPTS': 'maxAttempts'  # NEW
+}
+```
+
+3. **Nested blankThreshold handling:** Also fixed to properly flatten `blankAvg` and `blankStd` from cameras.json into frontend-compatible format.
+
+**Frontend Escalating Recovery (`stream.js`):**
+
+1. **Added failure tracking Map (line ~35):**
+```javascript
+this.recentFailures = new Map();  // Track failure history for escalating recovery
+```
+
+2. **Rewrote `onUnhealthy` callback (lines 47-86) with escalation logic:**
+   - Maintains 60-second sliding window of failure timestamps per camera
+   - Determines method based on recent failure count
+   - Logs recovery method and failure count for debugging
+   - Implements nuclear recovery path with proper sequencing
+   - Clears failure history on successful nuclear restart
+
+**Nuclear Recovery Sequence:**
+
+```javascript
+if (method === 'nuclear') {
+    console.log(`[Health] ${cameraId}: Nuclear recovery - forcing UI stop+start cycle`);
+    
+    // Step 1: UI stop (client-side cleanup)
+    await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+    
+    // Step 2: Wait for backend to notice stream is gone
+    await new Promise(r => setTimeout(r, 3000));
+    
+    // Step 3: UI start (forces backend to create new FFmpeg)
+    const success = await this.startStream(cameraId, $streamItem, cameraType, streamType);
+    
+    if (success) {
+        // Clear failure history on success
+        this.recentFailures.delete(cameraId);
+        this.restartAttempts.delete(cameraId);
+    }
+}
+```
+
+### Enhanced Logging
+
+**Before:**
+```
+[Health] T8416P0023370398: Scheduling restart 1/10 in 5s
+```
+
+**After:**
+```
+[Health] T8416P0023370398: Scheduling Refresh restart 1/∞ in 5s (failures in 60s: 1)
+[Health] T8416P0023370398: Executing Refresh attempt 1
+[Health] T8416P0023370398: Scheduling Nuclear Stop+Start restart 4/∞ in 20s (failures in 60s: 4)
+[Health] T8416P0023370398: Nuclear recovery - forcing UI stop+start cycle
+[Health] T8416P0023370398: Nuclear restart succeeded
+```
+
+New logging provides:
+- Recovery method being used (Refresh vs Nuclear)
+- Infinite symbol (∞) when `maxAttempts = 0`
+- Recent failure count for debugging escalation logic
+- Clear indication of nuclear recovery activation
+- Success/failure status of nuclear attempts
+
+### Files Modified
+
+**Backend:**
+- `app.py` - `_ui_health_from_env()` function
+  - Added `maxAttempts` to default settings dict
+  - Added `UI_HEALTH_MAX_ATTEMPTS` to key_mapping
+  - Fixed blankThreshold flattening for cameras.json compatibility
+
+**Frontend:**
+- `stream.js` - MultiStreamManager constructor
+  - Added `this.recentFailures` Map for failure tracking
+  - Rewrote `onUnhealthy` callback with escalating recovery logic
+  - Added nuclear recovery implementation
+  - Enhanced logging with method labels and failure counts
+
+**Config:**
+- `cameras.json` - Already had `UI_HEALTH_MAX_ATTEMPTS: 0` in `ui_health_global_settings` (line 2122)
+- Setting now properly propagates to frontend
+
+### Testing & Validation
+
+**Test Environment:** Camera T8416P0023370398 (Kids Room) - known to have intermittent connection issues
+
+**Scenario 1: Configuration Fix Verification**
+```javascript
+// Browser console
+console.log('UI_HEALTH config:', window.UI_HEALTH);
+// Result: { maxAttempts: 0, ... } ✅ (previously undefined)
+```
+
+**Scenario 2: Standard Refresh Success (Transient Issue)**
+```
+[Health] T8416P0023370398: STALE - No new frames for 6.0s
+[Health] Stream unhealthy: T8416P0023370398, reason: stale
+[Health] T8416P0023370398: Scheduling Refresh restart 1/∞ in 5s (failures in 60s: 1)
+[Health] T8416P0023370398: Executing Refresh attempt 1
+[Restart] T8416P0023370398: Beginning restart sequence
+[Restart] T8416P0023370398: Restart complete
+✅ Stream recovered via standard refresh
+```
+
+**Scenario 3: Nuclear Recovery Activation (Backend Stuck State)**
+```
+[Health] T8416P0023370398: STALE - No new frames for 6.0s
+[Health] T8416P0023370398: Scheduling Refresh restart 1/∞ in 5s (failures in 60s: 1)
+[Health] T8416P0023370398: Executing Refresh attempt 1
+HLS fatal error: manifestLoadError (404)
+[Restart] T8416P0023370398: Failed
+
+[Health] T8416P0023370398: STALE - No new frames for 6.0s
+[Health] T8416P0023370398: Scheduling Refresh restart 2/∞ in 10s (failures in 60s: 2)
+[Restart] T8416P0023370398: Failed
+
+[Health] T8416P0023370398: Scheduling Refresh restart 3/∞ in 20s (failures in 60s: 3)
+[Restart] T8416P0023370398: Failed
+
+[Health] T8416P0023370398: Scheduling Nuclear Stop+Start restart 4/∞ in 40s (failures in 60s: 4)
+[Health] T8416P0023370398: Executing Nuclear Stop+Start attempt 4
+[Health] T8416P0023370398: Nuclear recovery - forcing UI stop+start cycle
+unified-nvr   | Nuclear cleanup for T8416P0023370398 - killing all FFmpeg processes
+nvr-packager  | [HLS] [muxer T8416P0023370398] created automatically
+[Health] T8416P0023370398: Nuclear restart succeeded
+✅ Stream recovered via nuclear recovery after 3 refresh failures
+```
+
+**Scenario 4: Manual Refresh Comparison**
+- Manual refresh button click on failed stream: **Immediate success** (uses same `forceRefreshStream()`)
+- Confirmed health monitor restart failures were NOT due to method difference
+- Root cause confirmed: Backend "already active" state blocking FFmpeg restart
+
+**Video Element State Diagnostics:**
+
+Frozen stream showing "Stopped" status revealed:
+```javascript
+paused: false
+readyState: 2 (HAVE_ENOUGH_DATA)
+networkState: 2 (LOADING)
+currentTime: 90.971284 (advancing)
+```
+
+This disconnect between video element state ("I'm playing!") and actual frozen frame confirmed the issue was backend FFmpeg death, not frontend player state.
+
+### Impact
+
+**Reliability Improvements:**
+- ✅ Infinite retry mode now works correctly (`maxAttempts: 0` honored)
+- ✅ Health monitor can recover from stuck backend FFmpeg processes
+- ✅ Two-tier recovery minimizes disruption while maximizing success rate
+- ✅ Fast recovery for transient issues (3 attempts at refresh)
+- ✅ Aggressive recovery for persistent backend problems (nuclear after 4th failure)
+- ✅ Per-camera independent tracking prevents cascade failures
+- ✅ 60-second failure window prevents permanent escalation state
+
+**Diagnostic Improvements:**
+- Clear logging of recovery method selection rationale
+- Failure count visibility for debugging escalation logic
+- Nuclear recovery activation explicitly logged
+- Backend FFmpeg restart visibility (from backend logs)
+- Success/failure tracking per recovery attempt
+
+**User Experience:**
+- Cameras with intermittent issues now self-recover reliably
+- "Failed after 10 attempts" only occurs when configured (not hardcoded)
+- Nuclear recovery eliminates need for manual "Stop → Play → Refresh" sequence
+- Status messages indicate recovery method: "Refresh retry" vs "Nuclear Stop+Start retry"
+- Reduced manual intervention for stuck streams
+
+### Known Limitations & Future Improvements
+
+**Current Limitations:**
+
+1. **Backend "Already Active" Check:** Backend `/api/stream/start/` still doesn't verify FFmpeg health before returning "already active". Relies on nuclear recovery to force restart.
+
+2. **Escalation Timer:** 60-second window for failure tracking is hardcoded. Could be configurable.
+
+3. **Nuclear Recovery Delay:** 3-second wait between stop and start is arbitrary. Could be optimized based on backend cleanup time.
+
+4. **No FFmpeg Health Endpoint:** Frontend has no way to query if backend FFmpeg is actually running/healthy. Relies on HLS 404 errors as proxy.
+
+**Potential Future Enhancements:**
+
+1. **Smart Backend Start Endpoint:** 
+   - Add FFmpeg process health check to `/api/stream/start/`
+   - Return "restarting" status when killing dead process
+   - Only return "already active" when verified healthy
+
+2. **Configurable Escalation:**
+   ```json
+   "ui_health_global_settings": {
+     "UI_HEALTH_ESCALATION_THRESHOLD": 3,  // Attempts before nuclear
+     "UI_HEALTH_FAILURE_WINDOW_MS": 60000, // Sliding window
+     "UI_HEALTH_NUCLEAR_DELAY_MS": 3000    // Stop→Start gap
+   }
+   ```
+
+3. **Backend Health API:**
+   - `GET /api/stream/health/{camera_id}` returns FFmpeg status
+   - Frontend can use for smarter escalation decisions
+   - Avoid 404 errors as primary health signal
+
+4. **Adaptive Delays:**
+   - Monitor successful nuclear recovery timing
+   - Adjust 3s delay based on actual backend cleanup time
+   - Per-camera tuning for hardware variations
+
+### Debugging Notes
+
+**Investigation Process:**
+
+1. Initial hypothesis: Manual refresh provides autoplay permission (user gesture) → **REJECTED** (both paths identical)
+
+2. Second hypothesis: Double-restart (Stop+Play+Refresh) gives backend time → **REJECTED** (timing already handled)
+
+3. Third hypothesis: Video element in bad state after failed restart → **REJECTED** (element reported healthy state)
+
+4. Fourth hypothesis: Manual refresh resets element state differently → **REJECTED** (same `forceRefreshStream()` code)
+
+5. **Final hypothesis (CORRECT):** Backend returns "already active" for dead FFmpeg → Health restart gets 404 → Manual Play forces new FFmpeg
+
+**Key Insight:** The problem was not frontend code differences but backend state management. Health monitor couldn't force backend to recognize FFmpeg was dead. Solution required client-side "stop" to clear backend tracking before attempting restart.
+
+**Hypothetico-Deductive Method Applied:**
+- Systematic elimination of variables (autoplay, timing, element state, code paths)
+- Browser console diagnostics (video element state inspection)
+- Log analysis (backend "already active" vs FFmpeg startup logs)
+- Comparative testing (manual vs automatic paths)
+- Root cause identification through elimination
+
+**Camera T8416P0023370398 Ongoing Issues:**
+
+This camera (Kids Room) continues to exhibit hardware/network instability:
+- Frequent disconnects despite proximity to UAP (2m away)
+- Other identical Eufy T8416 models work reliably
+- Suspected corroded network connector or WiFi module defect
+- Locked to single UAP to prevent roaming issues
+- Requires periodic power cycle for permanent fix
+
+The escalating recovery strategy successfully handles this camera's intermittent failures, proving the system works for real-world problematic hardware.
+
+### Related Architectural Notes
+
+**Why UI Can't Call Backend Stop:**
+
+As documented earlier (line 11186), UI deliberately avoids `/api/stream/stop/` calls. This is critical for multi-client architecture - multiple browsers viewing the same camera must not interfere with each other. 
+
+The nuclear recovery's "stop" is **client-side only** (destroys HLS.js, clears video src), then the subsequent "start" forces backend to create new FFmpeg because the client no longer appears to be consuming the stream.
+
+**Backend Watchdog Interaction:**
+
+Backend has a watchdog process that monitors FFmpeg health, but timing is inconsistent. Sometimes it catches dead processes before health monitor triggers, sometimes after. The nuclear recovery complements (not replaces) backend watchdog by providing frontend-initiated forced restart capability.
+
+**Stream State Synchronization:**
+
+```
+Frontend State:     Backend State:        MediaMTX State:
+video.playing  -->  FFmpeg running   -->  HLS segments
+    |                    |                      |
+    v                    v                      v
+Health detects      "already active"     No new segments
+frozen frame        (stale tracking)     (FFmpeg dead)
+    |                    |                      |
+    v                    v                      v
+Refresh fails  <--  Returns success <-- 404 on playlist
+    |
+    v
+Nuclear stop clears frontend state
+    |
+    v
+Nuclear start forces backend cleanup
+    |
+    v
+Backend kills dead FFmpeg, starts fresh
+    |
+    v
+Success
+```
+
+The disconnect between "already active" backend state and actual FFmpeg death required the nuclear recovery's explicit state clearing to force backend to recognize the problem.

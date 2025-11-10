@@ -39,6 +39,11 @@ class BridgeWatchdog:
             self.monitor_thread.join(timeout=5)
             
     def _monitor_loop(self):
+        # CRITICAL: Give bridge time to start before first check
+        logger.info("Watchdog waiting 15 seconds for bridge startup...")
+        time.sleep(120)
+        logger.info("Watchdog monitoring started")
+        
         while self.monitoring:
             try:
                 if not self.bridge.is_running() or not self.bridge.is_ready():

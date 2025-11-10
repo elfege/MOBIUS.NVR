@@ -33,6 +33,7 @@ services:
       - CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS=${CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS}
       - PROTECT_PORT=${PROTECT_PORT}
       - USE_EUFY_BRIDGE=${USE_EUFY_BRIDGE}
+      - USE_EUFY_BRIDGE_WATCHDOG=${USE_EUFY_BRIDGE_WATCHDOG}
       - USE_PROTECT=${USE_PROTECT}
       - REOLINK_USERNAME=${REOLINK_USERNAME}
       - REOLINK_PASSWORD=${REOLINK_PASSWORD}
@@ -76,6 +77,9 @@ services:
       - HLS_SEGMENT_TIME=${HLS_SEGMENT_TIME:-4}
       - HLS_MAX_SEGMENTS=${HLS_MAX_SEGMENTS:-6}
 
+      # HOST IP
+      - LOCAL_HOST_IP=${LOCAL_HOST_IP:-192.168.10.20}
+
     volumes:
       # Mount Python source code for hot-reloading
       - ./:/app
@@ -94,9 +98,10 @@ services:
 
       # # static for fast ui editting/testing
       # - ./static:/app/static
+
+      # Persist auth tokens
       # - ./persistent.json:/app/persistent.json
       
-      # - ./eufy_bridge_data:/app/.eufy-security-ws  # Persist auth tokens
 
 
     restart: unless-stopped

@@ -18,7 +18,7 @@ import time
 import traceback
 from threading import Thread
 
-from flask import Flask, render_template, jsonify, request, Response, redirect
+from flask import Flask, render_template, jsonify, request, Response, redirect, send_file
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from wtforms import SelectField, SubmitField
@@ -31,8 +31,9 @@ from streaming.stream_manager import StreamManager
 
 from low_level_handlers.process_reaper import install_sigchld_handler
 
-from eufy_bridge import EufyBridge
-from eufy_bridge_watchdog import BridgeWatchdog
+from services.eufy.eufy_bridge import EufyBridge
+from services.eufy.eufy_bridge_client import submit_captcha_sync, submit_2fa_sync, check_status_sync
+from services.eufy.eufy_bridge_watchdog import BridgeWatchdog
 from services.unifi_protect_service import UniFiProtectService
 from services.unifi_service_resource_monitor import UniFiServiceResourceMonitor
 from services.app_restart_handler import AppRestartHandler
@@ -76,7 +77,6 @@ try:
     print("✅ PTZ validator initialized")
 
 
-
     # Stream manager (creates credential providers internally)
     stream_manager = StreamManager(camera_repo=camera_repo)
     # remove any pre-existing stream segments and playlists.
@@ -92,8 +92,10 @@ try:
     eufy_bridge = EufyBridge()
     print("✅ Eufy bridge initialized")
     
-    # bridge_watchdog = BridgeWatchdog(eufy_bridge)
-    # print("✅ Eufy bridge_watchdog initialized")
+    bridge_watchdog = BridgeWatchdog(eufy_bridge)
+    
+    if os.getenv('USE_EUFY_BRIDGE_WATCHDOG', False).lower() in ['1', 'true']:
+        print("✅ Eufy bridge_watchdog initialized")
 
     print("\n✅ All core services initialized successfully!\n")
 
@@ -101,20 +103,6 @@ except Exception as e:
     print(f"\n❌ Failed to initialize services: {e}")
     print(traceback.print_exc())
     exit(1)
-
-# ===== Initialize UniFi Cameras (MJPEG fallback) =====
-
-unifi_cameras = {}
-try:
-    print("🔵 Loading UniFi cameras...")
-    for camera_id, config in camera_repo.get_cameras_by_type('unifi').items():
-        config['id'] = camera_id
-        unifi_cameras[camera_id] = UniFiProtectService(config)
-        print(f"  ✅ {config['name']}")
-except Exception as e:
-    print(f"⚠️  UniFi camera initialization warning: {e}")
-
-# ===== Auto-start Bridge and Streams =====
 
 
 def wait_for_bridge_ready(timeout=5):
@@ -127,7 +115,7 @@ def wait_for_bridge_ready(timeout=5):
             time.sleep(0.25)
     return False
 
-
+# ===== Auto-start Eufy Bridge =====
 try:
     print("\n🌉 Starting Eufy bridge...")
     if os.getenv('USE_EUFY_BRIDGE', False).lower() in ['1', 'true']:
@@ -136,9 +124,15 @@ try:
             if wait_for_bridge_ready():
                 print("✅ Bridge started successfully")
 
+    if os.getenv('USE_EUFY_BRIDGE_WATCHDOG', False).lower() in ['1', 'true']:
         bridge_watchdog.start_monitoring()
         print("✅ Bridge watchdog started")
+        
+except Exception as e:
+    print(f"⚠️  Bridge startup warning: {e}")
 
+# ===== Auto-start Streams =====
+try:
     print("\n🎬 Auto-starting camera streams...")
     for serial, camera in camera_repo.get_streaming_cameras().items():
         try:
@@ -150,10 +144,22 @@ try:
             print(f"  ⚠️  Failed to start {camera['name']}: {e}")
 
 except Exception as e:
-    print(f"⚠️  Bridge/streaming startup warning: {e}")
+    print(f"⚠️  streaming startup warning: {e}")
+
+
+# ===== Initialize UniFi Cameras (MJPEG fallback) =====
+unifi_cameras = {}
+try:
+    print("🔵 Loading UniFi cameras...")
+    for camera_id, config in camera_repo.get_cameras_by_type('unifi').items():
+        config['id'] = camera_id
+        unifi_cameras[camera_id] = UniFiProtectService(config)
+        print(f"  ✅ {config['name']}")
+except Exception as e:
+    print(f"⚠️  UniFi camera initialization warning: {e}")
+
 
 # ===== Initialize Monitoring Services =====
-
 try:
     restart_handler = AppRestartHandler(stream_manager, bridge_watchdog, eufy_bridge)
 
@@ -173,14 +179,12 @@ print("🎉 Server ready!")
 print("=" * 80 + "\n")
 
 # ===== Flask Forms =====
-
 class PTZControlForm(FlaskForm):
     """Form for PTZ camera selection"""
     camera = SelectField('Camera', validators=[DataRequired()])
     submit = SubmitField('Select Camera')
 
 # ===== Main UI Routes =====
-
 @app.route('/')
 def index():
     """Redirect to streams page (main interface)"""
@@ -200,7 +204,6 @@ def streams_page():
         return f"Error loading streams page: {e}", 500
 
 # ===== Status Routes =====
-
 @app.route('/api/status')
 def api_status():
     """Get system status"""
@@ -229,7 +232,6 @@ def api_status():
         }
     })
 
-
 @app.route('/api/cameras')
 def api_cameras():
     """Get list of available cameras"""
@@ -255,8 +257,6 @@ def api_camera_detail(camera_id):
         return jsonify({'error': str(e)}), 500
 
 # ===== Bridge Control Routes =====
-
-
 @app.route('/api/bridge/start', methods=['POST'])
 @csrf.exempt
 def api_bridge_start():
@@ -270,7 +270,6 @@ def api_bridge_start():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/bridge/stop', methods=['POST'])
 @csrf.exempt
 def api_bridge_stop():
@@ -281,10 +280,7 @@ def api_bridge_stop():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 # ===== Device Management Routes =====
-
-
 @app.route('/api/devices/refresh', methods=['POST'])
 @csrf.exempt
 def api_refresh_devices():
@@ -303,7 +299,6 @@ def api_refresh_devices():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===== Streaming Routes =====
-
 # RTMP
 @app.route('/api/camera/<camera_serial>/flv')
 @csrf.exempt
@@ -401,7 +396,6 @@ def api_stream_start(camera_serial):
             'camera_serial': camera_serial
         }), 500
 
-
 @app.route('/api/stream/stop/<camera_serial>', methods=['POST'])
 @csrf.exempt
 def api_stream_stop(camera_serial):
@@ -431,7 +425,6 @@ def api_stream_stop(camera_serial):
             'camera_serial': camera_serial
         }), 500
 
-
 @app.route('/api/stream/status/<camera_serial>')
 def api_stream_status(camera_serial):
     """Get stream status for camera"""
@@ -454,7 +447,6 @@ def api_stream_status(camera_serial):
             'camera_serial': camera_serial
         }), 500
 
-
 @app.route('/api/streams')
 def api_streams():
     """Get all active streams"""
@@ -468,12 +460,10 @@ def api_streams():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/streams/active')
 def api_active_streams():
     """Get all active streams (alias)"""
     return api_streams()
-
 
 @app.route('/api/streams/stop-all', methods=['POST'])
 @csrf.exempt
@@ -488,9 +478,10 @@ def api_streams_stop_all():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+########################################################-########################################################
+#                                           ⚙️⚙️⚙️⚙️ HLS ⚙️⚙️⚙️⚙️
+########################################################-########################################################
 # ===== HLS Playlist and Segment Serving =====
-
-
 @app.route('/api/streams/<camera_serial>/playlist.m3u8')
 def serve_playlist(camera_serial):
     """Serve HLS playlist for camera"""
@@ -517,7 +508,6 @@ def serve_playlist(camera_serial):
         )
     except Exception as e:
         return f"Error serving playlist: {e}", 500
-
 
 @app.route('/api/streams/<camera_serial>/<segment>')
 def serve_segment(camera_serial, segment):
@@ -562,9 +552,11 @@ def serve_segment(camera_serial, segment):
         )
     except Exception as e:
         return f"Error serving segment: {e}", 500
+
+########################################################-########################################################
+#                                           ⚙️⚙️⚙️⚙️ UNIFI ⚙️⚙️⚙️⚙️
+########################################################-########################################################
 # ===== UniFi Camera Routes =====
-
-
 @app.route('/api/unifi/cameras')
 def api_unifi_cameras():
     """Get list of UniFi cameras"""
@@ -581,7 +573,6 @@ def api_unifi_cameras():
         return jsonify({'success': True, 'cameras': cameras})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/unifi/<camera_id>/snapshot')
 def api_unifi_snapshot(camera_id):
@@ -600,7 +591,6 @@ def api_unifi_snapshot(camera_id):
 
     except Exception as e:
         return f"Snapshot error: {e}", 500
-
 
 @app.route('/api/unifi/<camera_id>/stream/mjpeg')
 def api_unifi_stream_mjpeg(camera_id):
@@ -659,7 +649,6 @@ def api_unifi_stream_mjpeg(camera_id):
         return f"Stream error: {e}", 500
 
 # ===== UNIFI MJPEG Capture Service Status Routes =====
-
 @app.route('/api/status/mjpeg-captures')
 def api_mjpeg_capture_status():
     """Get status of all MJPEG capture processes"""
@@ -672,7 +661,6 @@ def api_mjpeg_capture_status():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/status/mjpeg-captures/<camera_id>')
 def api_mjpeg_capture_status_single(camera_id):
@@ -693,7 +681,6 @@ def api_mjpeg_capture_status_single(camera_id):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===== UniFi Resource Monitor Routes =====
-
 @app.route('/api/status/unifi-monitor')
 def api_unifi_monitor_status():
     """Get UniFi resource monitor status"""
@@ -705,7 +692,6 @@ def api_unifi_monitor_status():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/status/unifi-monitor/summary')
 def api_unifi_monitor_summary():
     """Get brief UniFi resource monitor summary"""
@@ -716,7 +702,6 @@ def api_unifi_monitor_summary():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/maintenance/recycle-unifi-sessions', methods=['POST'])
 @csrf.exempt
@@ -739,8 +724,9 @@ def api_recycle_unifi_sessions():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-# ===== REOLINK MJPEG Capture Service Status Routes =====
+########################################################-########################################################
+#                                          ⚙️⚙️⚙️⚙️ REOLINK ⚙️⚙️⚙️⚙️
+########################################################-########################################################
 @app.route('/api/reolink/<camera_id>/stream/mjpeg')
 @csrf.exempt
 def api_reolink_stream_mjpeg_sub(camera_id):
@@ -824,8 +810,7 @@ def api_reolink_stream_mjpeg_sub(camera_id):
     except Exception as e:
         logger.error(f"Failed to start Reolink MJPEG stream for {camera_id}: {e}")
         return f"Stream error: {e}", 500
-    
-# ===== U.I. based health monitor env parameters =====
+
 @app.route('/api/reolink/<camera_id>/stream/mjpeg/main')
 def api_reolink_stream_mjpeg_main(camera_id):
     """
@@ -881,7 +866,249 @@ def api_reolink_stream_mjpeg_main(camera_id):
     except Exception as e:
         return f"Stream error: {e}", 500
 
+########################################################-########################################################
+#                                ⚙️⚙️⚙️⚙️ EUFY BRIDGE AUTHENTICATION ROUTES ⚙️⚙️⚙️⚙️
+########################################################-########################################################
+@app.route('/eufy-auth')
+@csrf.exempt
+def eufy_auth_page():
+    """
+    Serve Eufy authentication page for captcha and 2FA submission
+    """
+    return render_template('eufy_auth.html')
 
+@app.route('/api/eufy-auth/captcha', methods=['POST'])
+@csrf.exempt
+def submit_eufy_captcha():
+    """
+    Submit captcha code to Eufy bridge
+    
+    Expected JSON body:
+    {
+        "captcha_code": "1234"
+    }
+    
+    Returns:
+    {
+        "success": true/false,
+        "message": "...",
+        "next_step": "2fa" (if successful)
+    }
+    """
+    try:
+        data = request.get_json()
+        captcha_code = data.get('captcha_code', '').strip()
+        
+        if not captcha_code:
+            return jsonify({
+                'success': False,
+                'message': 'Captcha code is required'
+            }), 400
+        
+        # Validate format - alphanumeric, 4 characters
+        if len(captcha_code) != 4 or not captcha_code.isalnum():
+            return jsonify({
+                'success': False,
+                'message': 'Captcha code must be exactly 4 alphanumeric characters'
+            }), 400
+        
+        # Submit to bridge
+        logger.info(f"Submitting captcha code: {captcha_code}")
+        success = submit_captcha_sync(captcha_code)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Captcha verified! Check your email for 2FA code.',
+                'next_step': '2fa'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid captcha code. Please try again.'
+            }), 400
+            
+    except ValueError as e:
+        logger.error(f"Captcha validation error: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 400
+        
+    except Exception as e:
+        logger.error(f"Error submitting captcha: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to submit captcha. Bridge may not be running.'
+        }), 500
+
+@app.route('/api/eufy-auth/2fa', methods=['POST'])
+@csrf.exempt
+def submit_eufy_2fa():
+    """
+    Submit 2FA verification code to Eufy bridge
+    
+    Expected JSON body:
+    {
+        "verify_code": "123456"
+    }
+    
+    Returns:
+    {
+        "success": true/false,
+        "message": "...",
+        "authenticated": true (if successful)
+    }
+    """
+    try:
+        data = request.get_json()
+        verify_code = data.get('verify_code', '').strip()
+        
+        if not verify_code:
+            return jsonify({
+                'success': False,
+                'message': '2FA code is required'
+            }), 400
+        
+        # Validate format
+        if len(verify_code) != 6 or not verify_code.isdigit():
+            return jsonify({
+                'success': False,
+                'message': '2FA code must be exactly 6 digits'
+            }), 400
+        
+        # Submit to bridge
+        logger.info(f"Submitting 2FA code: {verify_code}")
+        success = submit_2fa_sync(verify_code)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Authentication successful! Bridge is now connected.',
+                'authenticated': True
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid 2FA code. Please check your email and try again.'
+            }), 400
+            
+    except ValueError as e:
+        logger.error(f"2FA validation error: {e}")
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 400
+        
+    except Exception as e:
+        logger.error(f"Error submitting 2FA: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to submit 2FA code. Bridge may not be running.'
+        }), 500
+
+@app.route('/api/eufy-auth/status')
+@csrf.exempt
+def eufy_auth_status():
+    """
+    Check Eufy bridge authentication status
+    
+    Returns:
+    {
+        "connected": true/false,
+        "status": "connected" | "disconnected" | "error",
+        "message": "..."
+    }
+    """
+    try:
+        status = check_status_sync()
+        
+        if status.get('connected'):
+            message = 'Bridge is connected and authenticated'
+        elif status.get('status') == 'error':
+            message = f"Error checking status: {status.get('error', 'Unknown error')}"
+        else:
+            message = 'Bridge is not connected. Authentication required.'
+        
+        return jsonify({
+            'connected': status.get('connected', False),
+            'status': status.get('status', 'unknown'),
+            'message': message
+        })
+        
+    except Exception as e:
+        logger.error(f"Error checking auth status: {e}")
+        return jsonify({
+            'connected': False,
+            'status': 'error',
+            'message': f'Failed to check status: {str(e)}'
+        }), 500
+
+@app.route('/api/eufy-auth/captcha-image')
+@csrf.exempt
+def eufy_captcha_image():
+    """
+    Serve the current captcha image
+    
+    Returns: PNG image or 404 if not available
+    """
+    captcha_path = os.path.join(app.static_folder, 'eufy_captcha.png')
+    
+    if os.path.exists(captcha_path):
+        return send_file(captcha_path, mimetype='image/png')
+    else:
+        return jsonify({
+            'error': 'No captcha image available'
+        }), 404
+
+@app.route('/api/eufy-auth/refresh-captcha', methods=['POST'])
+@csrf.exempt
+def refresh_eufy_captcha():
+    """Request a new captcha from the bridge"""
+    try:
+        import time
+        import asyncio
+        import websockets
+        import json
+        
+        async def request_captcha():
+            """Send invalid captcha to trigger new one"""
+            try:
+                async with websockets.connect('ws://127.0.0.1:3000', open_timeout=5) as ws:
+                    # Set API schema
+                    await ws.send(json.dumps({
+                        "messageId": "schema",
+                        "command": "set_api_schema",
+                        "schemaVersion": 21
+                    }))
+                    await ws.recv()
+                    
+                    # Send invalid captcha to trigger new one
+                    await ws.send(json.dumps({
+                        "messageId": "refresh_captcha",
+                        "command": "driver.set_captcha",
+                        "captchaCode": "0000"
+                    }))
+                    
+                    await asyncio.sleep(0.5)
+                return True
+            except Exception as e:
+                logger.error(f"Failed to request new captcha: {e}")
+                return False
+        
+        success = asyncio.run(request_captcha())
+        time.sleep(1)
+        
+        return jsonify({
+            'success': success,
+            'message': 'New captcha requested' if success else 'Failed to request captcha',
+            'timestamp': int(time.time() * 1000)
+        })
+            
+    except Exception as e:
+        logger.error(f"Error refreshing captcha: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    
 ########################################################-########################################################
 #                                          ⚙️⚙️⚙️⚙️AMCREST ⚙️⚙️⚙️⚙️
 ########################################################-########################################################
@@ -985,9 +1212,9 @@ def api_amcrest_stream_mjpeg_main(camera_id):
     except Exception as e:
         return f"Stream error: {e}", 500
 
-##########################################################-########################################################
+########################################################-########################################################
 #                                          ⚙️⚙️⚙️⚙️PTZ CONTROLS⚙️⚙️⚙️⚙️
-##########################################################-########################################################
+########################################################-########################################################
 @app.route('/api/ptz/<camera_serial>/<direction>', methods=['POST'])
 @csrf.exempt
 def api_ptz_move(camera_serial, direction):
@@ -1074,7 +1301,6 @@ def api_ptz_get_presets(camera_serial):
         logger.error(f"Get presets API error: {e}")
         return jsonify({'success': False, 'error': str(e), 'presets': []}), 500
 
-
 @app.route('/api/ptz/<camera_serial>/preset/<preset_token>', methods=['POST'])
 @csrf.exempt
 def api_ptz_goto_preset(camera_serial, preset_token):
@@ -1104,7 +1330,6 @@ def api_ptz_goto_preset(camera_serial, preset_token):
     except Exception as e:
         logger.error(f"Goto preset API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/ptz/<camera_serial>/preset', methods=['POST'])
 @csrf.exempt
@@ -1142,7 +1367,7 @@ def api_ptz_set_preset(camera_serial):
     except Exception as e:
         logger.error(f"Set preset API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
-    
+
 ########################################################-########################################################
 #                                   ⚙️⚙️⚙️⚙️ENVIRONMENT VARIABLE HELPERS⚙️⚙️⚙️⚙️
 ########################################################-########################################################
@@ -1163,7 +1388,6 @@ def _get_bool(name: str, default: bool | None = None) -> bool | None:
     # Fallback: treat any non-empty string as True
     return default if default is not None else None
 
-
 def _get_int(name: str, default: int) -> int:
     val = os.getenv(name)
     if val is None or val == "":
@@ -1172,7 +1396,6 @@ def _get_int(name: str, default: int) -> int:
         return int(val)
     except Exception:
         return default
-
 
 def _resolve_ui_vs_watchdog():
     """
@@ -1201,31 +1424,30 @@ def _resolve_ui_vs_watchdog():
 
     return ui_enabled, wd_enabled
 
-
 def _ui_health_from_env():
     """
     Build UI health settings dict from environment variables AND cameras.json global settings.
     Priority: cameras.json > .env
     """
-    # Start with .env defaults
+    # Start with .env defaults (KEEP THIS - provides fallbacks)
     settings = {
-        'uiHealthEnabled': _get_bool("UI_HEALTH_ENABLED", True),  # ← CHANGED
+        'uiHealthEnabled': _get_bool("UI_HEALTH_ENABLED", True),
         'sampleIntervalMs': _get_int("UI_HEALTH_SAMPLE_INTERVAL_MS", 2000),
         'staleAfterMs': _get_int("UI_HEALTH_STALE_AFTER_MS", 20000),
         'consecutiveBlankNeeded': _get_int("UI_HEALTH_CONSECUTIVE_BLANK_NEEDED", 10),
         'cooldownMs': _get_int("UI_HEALTH_COOLDOWN_MS", 30000),
         'warmupMs': _get_int("UI_HEALTH_WARMUP_MS", 60000),
+        'maxAttempts': _get_int("UI_HEALTH_MAX_ATTEMPTS", 10),  # NEW
         'blankThreshold': {
             'avg': _get_int("UI_HEALTH_BLANK_AVG", 12),
             'std': _get_int("UI_HEALTH_BLANK_STD", 5)
         }
     }
     
-    # Override with cameras.json global settings if they exist
+    # Override with cameras.json (this flattens blankThreshold)
     try:
         global_settings = camera_repo.cameras_data.get('ui_health_global_settings', {})
         if global_settings:
-            # Map cameras.json keys (uppercase) to settings keys (camelCase)
             key_mapping = {
                 'UI_HEALTH_ENABLED': 'uiHealthEnabled',
                 'UI_HEALTH_SAMPLE_INTERVAL_MS': 'sampleIntervalMs',
@@ -1233,8 +1455,9 @@ def _ui_health_from_env():
                 'UI_HEALTH_CONSECUTIVE_BLANK_NEEDED': 'consecutiveBlankNeeded',
                 'UI_HEALTH_COOLDOWN_MS': 'cooldownMs',
                 'UI_HEALTH_WARMUP_MS': 'warmupMs',
-                'UI_HEALTH_BLANK_AVG': 'blankAvg',
-                'UI_HEALTH_BLANK_STD': 'blankStd'
+                'UI_HEALTH_BLANK_AVG': 'blankAvg',  # Flattens from nested
+                'UI_HEALTH_BLANK_STD': 'blankStd',  # Flattens from nested
+                'UI_HEALTH_MAX_ATTEMPTS': 'maxAttempts'  # NEW
             }
             
             for json_key, settings_key in key_mapping.items():
@@ -1247,7 +1470,6 @@ def _ui_health_from_env():
     return settings
 
 # ===== Cleanup Handlers =====
-
 ######################### -#########################
 #        🧹🧼🧽🪣🫧CLEANUP🧹🧼🧽🪣🫧
 ######################### -#########################
@@ -1299,7 +1521,6 @@ def cleanup_handler(signum=None, frame=None):
     if signum:
         exit(0)
 
-
 # Register zombie reaper BEFORE other signal handlers
 signal.signal(signal.SIGCHLD, reap_zombies)
 print("✅ Zombie process reaper installed")
@@ -1317,9 +1538,7 @@ signal.signal(signal.SIGTERM, cleanup_handler)
 # Triggered by Ctrl+Z in the terminal (SIGTSTP → normally suspends, but here we repurpose it to nuke everything at once)
 signal.signal(signal.SIGTSTP, functools.partial(kill_all, eufy_bridge))
 
-
 # ===== Run Server =====
-
 if __name__ == '__main__':
     # Get server IP
     local_ip = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

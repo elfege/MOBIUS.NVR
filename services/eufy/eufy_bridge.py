@@ -25,6 +25,7 @@ class EufyBridge:
         self.process = None
         self.ready_event = Event()
         self._running = False
+        self.script_path = "./services/eufy/eufy_bridge.sh"
         
         # PTZ direction mapping
         self.directions = {
@@ -42,22 +43,38 @@ class EufyBridge:
             return True
             
         try:
+            
+            print("########### KILL eufy-security-server ###########")
             # Kill any existing bridge process
             subprocess.run(f"pkill -f 'eufy-security-server.*port {self.port}'", 
                          shell=True, stderr=subprocess.DEVNULL)
             time.sleep(1)
             
+            
+            print("########### Starting bridge process ###########")
             # Start bridge process
             self.process = subprocess.Popen(
-                f"bash eufy_bridge.sh {self.port}",
+                f"bash {self.script_path} {self.port}",
                 shell=True,
-                # stdout=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True
             )
             
-            self._running = True
+            # Give it a moment to start
+            time.sleep(2)
+            
+            # CHECK IF STILL ALIVE
+            if self.process.poll() is not None:
+                # Process died! Get the output
+                output = self.process.stdout.read()
+                print(f"❌ BRIDGE CRASHED IMMEDIATELY!")
+                print(f"Exit code: {self.process.returncode}")
+                print(f"Output:\n{output}")
+                return False
+            
+            print("########### BRIDGE PROCESS STARTED ###########")
+            self.is_started = True
             
             # Start monitoring thread
             monitor_thread = Thread(target=self._monitor_bridge, daemon=True)

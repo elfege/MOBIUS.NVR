@@ -1,0 +1,112 @@
+/* Auth notification banner - top-left corner */
+.eufy-auth-notification {
+    position: fixed;
+    top: 80px;
+    left: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+    z-index: 9999;
+    max-width: 400px;
+    animation: slideInLeft 0.5s ease-out;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.eufy-auth-notification.fade-out {
+    animation: fadeOutLeft 1s ease-out forwards;
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes fadeOutLeft {
+    to {
+        opacity: 0;
+        transform: translateX(-100px);
+    }
+}
+
+.eufy-auth-notification-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.eufy-auth-notification-header i {
+    margin-right: 10px;
+    font-size: 1.2em;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.7;
+        transform: scale(1.1);
+    }
+}
+
+.eufy-auth-notification-body {
+    font-size: 0.9em;
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+
+.eufy-auth-notification-link {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 5px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.eufy-auth-notification-link:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 10px rgba(255, 255, 255, 0.2);
+}
+
+.eufy-auth-notification-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2em;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+    padding: 5px;
+}
+
+.eufy-auth-notification-close:hover {
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    .eufy-auth-notification {
+        left: 10px;
+        right: 10px;
+        max-width: none;
+        top: 60px;
+    }
+}

@@ -54,7 +54,7 @@ echo ""
 stop_spinner &>/dev/null || true
 
 echo "Fetching camera credentials..."
-get_cameras_credentials >/dev/null
+pull_nvr_secrets >/dev/null
 
 echo "Building Docker image..."
 docker compose build

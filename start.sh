@@ -42,9 +42,8 @@ fi
 # export credentials
 set -a
 . ~/0_NVR/.env
-start_spinner 20 "$BLUE Exporting Cameras Credentials..."
-pull_nvr_secrets # >/dev/null
-sleep 1
+start_spinner 20 "$BLUE Exporting Secrets..."
+pull_nvr_secrets >/dev/null
 
 # Detect and export host IP
 export LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)

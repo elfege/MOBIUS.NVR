@@ -46,7 +46,6 @@ start_spinner 20 "$BLUE Exporting Cameras Credentials..."
 pull_nvr_secrets # >/dev/null
 sleep 1
 
-
 # Detect and export host IP
 export LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
 stop_spinner

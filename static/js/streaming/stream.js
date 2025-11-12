@@ -564,7 +564,7 @@ export class MultiStreamManager {
             } else if (streamType === 'RTMP') {
                 await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
             }
-
+            
 
 
             // Success: update status and reattach health
@@ -586,10 +586,7 @@ export class MultiStreamManager {
  * Restart HLS/LL-HLS stream by destroying and recreating HLS.js instance
  */
     async restartHLSStream(cameraId, videoElement) {
-        // always hit the refresh method twice to force recreating a dead ffmpeg stream
-        this.hlsManager.forceRefreshStream(cameraId, videoElement);
-        await new Promise(r => setTimeout(r, 3000))
-        this.hlsManager.forceRefreshStream(cameraId, videoElement);
+        await this.hlsManager.forceRefreshStream(cameraId, videoElement);
     }
 
     /**

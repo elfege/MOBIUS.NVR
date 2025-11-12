@@ -43,7 +43,7 @@ fi
 set -a
 . ~/0_NVR/.env
 start_spinner 20 "$BLUE Exporting Cameras Credentials..."
-get_cameras_credentials # >/dev/null
+pull_nvr_secrets # >/dev/null
 sleep 1
 
 # Detect and export host IP

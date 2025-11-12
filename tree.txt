@@ -1,12 +1,16 @@
 /home/elfege/0_NVR/
 ├── 0_MAINTENANCE_SCRIPTS/
 │   ├── diagnose_ffmpeg.sh*
+│   ├── eufy_security_ws.sh
 │   ├── make_self_signed_tls.sh*
+│   ├── monitor_eufy_bridge.sh*
 │   ├── monitor.sh*
 │   ├── NEOlink_integration.sh*
 │   └── test_office_cam.sh*
 ├── app.py
 ├── app_structure.txt
+├── ARCHIVE/
+│   └── eufy_service.py
 ├── bootstrap.json
 ├── claude_rules.md
 ├── config/
@@ -25,12 +29,20 @@
 │   ├── aspect_ratios.md
 │   ├── DIAGRAMS/
 │   │   └── health_monitor_architecture_NOV_3_2025.html
+│   ├── DOCS/
+│   │   └── API/
+│   │       └── analysis_01.md
+│   ├── EUFY_BRIDGE_DOC/
+│   │   └── README_eufy_security.md
 │   ├── ffmpeg_settings.md
 │   ├── OCT_2025_Architecture_Refactoring_Migration.md
 │   ├── README_Docker_Deployment_Guide.md
+│   ├── README_Motion_Detection_Recording_Architecture.md
 │   ├── README_project_history.md
 │   ├── README_UniFi_Protect_Implementation_Checklist.md
+│   ├── README_VCA_ASSESSMENT.md
 │   └── UNIFI_ONVF.md
+├── eufy_bridge_client_verbose.py
 ├── eufy_bridge.py
 ├── eufy_bridge.sh*
 ├── eufy_bridge_watchdog.py
@@ -57,10 +69,19 @@
 │   │   ├── eufy_credential_provider.py
 │   │   ├── reolink_credential_provider.py
 │   │   └── unifi_credential_provider.py
+│   ├── eufy/
+│   │   ├── eufy_bridge_client.py
+│   │   ├── eufy_bridge_client_verbose.py
+│   │   ├── eufy_bridge_login.sh
+│   │   ├── eufy_bridge.py
+│   │   ├── eufy_bridge.sh
+│   │   ├── eufy_bridge_watchdog.py
+│   │   └── __init__.py
 │   ├── eufy_service.py
 │   ├── mjpeg_capture_service.py
 │   ├── onvif/
 │   │   ├── onvif_client.py
+│   │   ├── onvif_ptz_capabilities.py
 │   │   └── onvif_ptz_handler.py
 │   ├── ptz/
 │   │   ├── amcrest_ptz_handler.py
@@ -77,6 +98,7 @@
 │   │   │   └── reset.css
 │   │   ├── components/
 │   │   │   ├── buttons.css
+│   │   │   ├── eufy-auth-notifier.css
 │   │   │   ├── fullscreen.css
 │   │   │   ├── fullscreen-mjpeg.css
 │   │   │   ├── fullscreen-ptz.css
@@ -103,9 +125,13 @@
 │       │   ├── flv-stream.js
 │       │   ├── health.js
 │       │   ├── hls-stream.js
+│       │   ├── hls-stream-legacy.js
 │       │   ├── mjpeg-stream.js
-│       │   └── stream.js
+│       │   ├── mjpeg-stream-legacy.js
+│       │   ├── stream.js
+│       │   └── stream_refresh.js
 │       └── utils/
+│           ├── eufy-auth-notifier.js
 │           ├── loading-manager.js
 │           ├── logger.js
 │           └── old_ios_checker.js
@@ -121,7 +147,8 @@
 │   ├── stream_handler.py
 │   └── stream_manager.py
 ├── templates/
-│   └── error.html
+│   ├── error.html
+│   └── eufy_auth.html
 ├── TESTS/
 │   ├── test_ffmpeg_parameters.py
 │   ├── test_ffmpeg.py
@@ -136,4 +163,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-24 directories, 113 files
+29 directories, 135 files

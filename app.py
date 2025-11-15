@@ -100,6 +100,22 @@ try:
         print(f"⚠️  Recording service initialization failed: {e}")
         recording_service = None
     
+    # # Auto-start continuous recordings based on settings 
+    # try: 
+    #     recording_config = RecordingConfig('./config/recording_settings.json')
+
+    #     print("🎬 Starting continuous recordings...")
+    #     for camera_id in [cam for cam in camera_repo.cameras.keys()]:
+    #         if recording_config.is_recording_enabled(camera_id, 'continuous'):
+    #             camera_name = camera_repo.get_camera(camera_id).get('name', camera_id)
+    #             if recording_service.start_continuous_recording(camera_id):
+    #                 print(f"  ✅ Started continuous recording: {camera_name}")
+    #             else:
+    #                 print(f"  ⚠️  Failed to start continuous: {camera_name}")
+    # except Exception as e:
+    #     print(f"  ❌ Error starting continuous for {camera_id}: {e}")
+    
+    
     install_sigchld_handler()
 
     # Eufy bridge for PTZ control

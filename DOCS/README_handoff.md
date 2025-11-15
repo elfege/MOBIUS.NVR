@@ -9,11 +9,13 @@
 ## Quick Status
 
 ✅ **Working:**
+
 - Settings modal saves/loads correctly
 - Manual recording button works for RTSP/MediaMTX cameras
 - Flask API routes functional
 
 ❌ **Not Working:**
+
 - MJPEG service recording (shows warning)
 - Continuous recording (enabled but doesn't auto-start)
 - Snapshots (enabled but doesn't capture)
@@ -28,6 +30,7 @@
 **File:** `~/0_NVR/services/recording/storage_manager.py`
 
 **Current code (~line 45):**
+
 ```python
 def generate_recording_path(self, camera_id: str, recording_type: str = "motion") -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -39,6 +42,7 @@ def generate_recording_path(self, camera_id: str, recording_type: str = "motion"
 ```
 
 **Fix needed:**
+
 ```python
 def generate_recording_path(self, camera_id: str, recording_type: str = "motion") -> Path:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -58,6 +62,7 @@ def generate_recording_path(self, camera_id: str, recording_type: str = "motion"
 ```
 
 **Also add in `__init__`:**
+
 ```python
 self.manual_path = self.base_path / 'manual'
 self.manual_path.mkdir(parents=True, exist_ok=True)
@@ -70,6 +75,7 @@ self.manual_path.mkdir(parents=True, exist_ok=True)
 **File:** `~/0_NVR/services/recording/recording_service.py`
 
 **Add before starting any recording:**
+
 ```python
 def _check_recording_conflict(self, camera_id: str, recording_type: str) -> bool:
     """
@@ -91,6 +97,7 @@ def _check_recording_conflict(self, camera_id: str, recording_type: str) -> bool
 ```
 
 **Use in start methods:**
+
 ```python
 def start_manual_recording(self, camera_id: str, duration: int = 30):
     # Add after camera validation
@@ -108,6 +115,7 @@ def start_manual_recording(self, camera_id: str, duration: int = 30):
 **File:** `~/0_NVR/services/recording/recording_service.py`
 
 **Current (line ~260):**
+
 ```python
 def _start_mjpeg_recording(self, camera_id: str, output_path: Path, duration: int) -> bool:
     logger.warning(f"MJPEG service recording not yet implemented for {camera_id}")
@@ -115,6 +123,7 @@ def _start_mjpeg_recording(self, camera_id: str, output_path: Path, duration: in
 ```
 
 **Implementation needed:**
+
 ```python
 def _start_mjpeg_recording(self, camera_id: str, output_path: Path, duration: int) -> bool:
     """Record from MJPEG capture service buffer"""
@@ -157,6 +166,7 @@ def _start_mjpeg_recording(self, camera_id: str, output_path: Path, duration: in
 **File:** `~/0_NVR/app.py`
 
 **Current initialization (~line 94):**
+
 ```python
 # Recording service
 try:
@@ -171,6 +181,7 @@ except Exception as e:
 ```
 
 **Add after initialization:**
+
 ```python
 # Auto-start continuous recordings
 if recording_service:
@@ -288,11 +299,13 @@ class SnapshotService:
 ### Recording Type Priorities
 
 When multiple recording types are active for same camera:
+
 1. **Manual** - Highest priority (user override)
 2. **Motion** - Event-triggered
 3. **Continuous** - Background 24/7
 
 **Conflict Resolution:**
+
 - Allow manual + continuous simultaneously (different dirs)
 - Block manual if manual already active
 - Block motion if motion already active
@@ -313,6 +326,7 @@ def _resolve_auto_source(self, stream_type: str) -> str:
 ```
 
 **Fix options:**
+
 1. Implement MJPEG service recording (preferred)
 2. Change MJPEG auto → 'rtsp' instead of 'mjpeg_service'
 3. Remove 'auto' as recommended, require explicit selection
@@ -324,12 +338,14 @@ def _resolve_auto_source(self, stream_type: str) -> str:
 After implementing fixes above:
 
 ### Manual Recording
+
 - [ ] Click record button on RTSP camera (should work)
 - [ ] Click record button on MJPEG camera (should work after fix #3)
 - [ ] Try recording same camera twice (should block after fix #2)
 - [ ] Check `/mnt/sdc/NVR_Recent/manual` has files (after fix #1)
 
 ### Continuous Recording
+
 - [ ] Enable 24/7 for a camera in settings
 - [ ] Restart Flask app
 - [ ] Check `/mnt/sdc/NVR_Recent/continuous` for files
@@ -337,12 +353,14 @@ After implementing fixes above:
 - [ ] Wait for segment duration, verify new file created
 
 ### Snapshots
+
 - [ ] Enable snapshots for a camera (1s interval for testing)
 - [ ] Restart Flask app  
 - [ ] Check `/mnt/sdc/NVR_Recent/snapshots` for JPEGs
 - [ ] Verify interval timing (should appear every 1s)
 
 ### Settings Persistence
+
 - [ ] Change settings, save, reload page - verify settings persist
 - [ ] Disable continuous, restart - verify recording stops
 - [ ] Enable ONVIF detection - verify option available/grayed correctly
@@ -352,24 +370,29 @@ After implementing fixes above:
 ## File Locations Reference
 
 **Configuration:**
+
 - Settings storage: `~/0_NVR/config/recording_settings.json`
 - Config loader: `~/0_NVR/config/recording_config_loader.py`
 
 **Services:**
+
 - Recording service: `~/0_NVR/services/recording/recording_service.py`
 - Storage manager: `~/0_NVR/services/recording/storage_manager.py`
 - Snapshot service: `~/0_NVR/services/snapshot_service.py` (to be created)
 
 **Frontend:**
+
 - Modal CSS: `~/0_NVR/static/css/components/recording-modal.css`
 - Controllers: `~/0_NVR/static/js/controllers/`
 - Forms: `~/0_NVR/static/js/forms/`
 - Modals: `~/0_NVR/static/js/modals/`
 
 **Flask:**
+
 - API routes: `~/0_NVR/app.py` (lines ~1382-1500)
 
 **Storage:**
+
 - Motion: `/mnt/sdc/NVR_Recent/motion/`
 - Continuous: `/mnt/sdc/NVR_Recent/continuous/`
 - Snapshots: `/mnt/sdc/NVR_Recent/snapshots/`
@@ -390,6 +413,7 @@ After implementing fixes above:
 ## Next Session Goals
 
 **MVP (Minimum Viable Product):**
+
 1. ✅ Manual recording works for all cameras
 2. ✅ Continuous recording auto-starts and rotates segments
 3. ✅ Snapshots capture at configured intervals
@@ -397,6 +421,7 @@ After implementing fixes above:
 5. ⚠️ Motion detection (ONVIF/FFmpeg) - can remain skeleton for now
 
 **Post-MVP:**
+
 - Complete ONVIF event listener
 - Complete FFmpeg motion detector
 - Add UI status indicators (recording active, motion detection active)

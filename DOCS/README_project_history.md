@@ -10702,6 +10702,7 @@ const $streamItem = $(`.stream-item[data-camera-serial="${serial}"]`); // Refere
 ```
 
 **Impact:**
+
 - Fullscreen functionality completely broken (ReferenceError: serial is not defined)
 - Confusion between camera identifiers throughout codebase
 - Three separate locations using inconsistent parameter names
@@ -10711,6 +10712,7 @@ const $streamItem = $(`.stream-item[data-camera-serial="${serial}"]`); // Refere
 **2. Parameter Name Mismatch in Health Callback (Original Bug)**
 
 **Root Cause:**
+
 ```javascript
 // health.js:108 - initially passed just 'serial'
 await this.opts.onUnhealthy({ serial, reason, metrics });
@@ -10747,6 +10749,7 @@ onUnhealthy: async ({ cameraId, reason, metrics }) => {
 **4. Health Monitor Never Reattached After Failed Restart**
 
 **Flow:**
+
 ```
 Health detects stale → schedules restart
     ↓
@@ -10798,6 +10801,7 @@ videoEl.pause(); // Stop decoder
 ```
 
 **What happens:**
+
 ```
 Enter fullscreen → Pause 11 background cameras
     ↓
@@ -10811,6 +10815,7 @@ Fullscreen camera working fine but system trying to "fix" paused cameras
 ```
 
 **Impact:**
+
 - Health monitor falsely detects intentionally paused streams as unhealthy
 - Triggers restart attempts on 11 cameras every time user enters fullscreen
 - Wastes resources and logs with false positive detections
@@ -10819,6 +10824,7 @@ Fullscreen camera working fine but system trying to "fix" paused cameras
 **8. Code Duplication for Health Attachment**
 
 Health attachment logic repeated in 3 locations (~12 lines each):
+
 - `startStream()` success block
 - `restartStream()` success block  
 - `restartStream()` catch block (after fixes)
@@ -10830,18 +10836,21 @@ Violated DRY principle, increased maintenance burden.
 **1. Naming Consistency: `cameraId` Throughout**
 
 **health.js fix:**
+
 ```javascript
 // Changed from passing 'serial' to passing 'cameraId'
 await this.opts.onUnhealthy({ cameraId: serial, reason, metrics });
 ```
 
 **stream.js openFullscreen() fix:**
+
 ```javascript
 // Changed from undefined 'serial' to 'cameraId'
 const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
 ```
 
 **stream.js attachHealthMonitor() fix:**
+
 ```javascript
 // Changed parameter from 'serial' to 'cameraId'
 attachHealthMonitor(cameraId, $streamItem, streamType) {
@@ -10855,6 +10864,7 @@ attachHealthMonitor(cameraId, $streamItem, streamType) {
 **2. Parameter Name Consistency in Health Callback**
 
 Ensured all references in `onUnhealthy` callback use `cameraId` consistently (13 total references):
+
 ```javascript
 onUnhealthy: async ({ cameraId, reason, metrics }) => {
     console.warn(`[Health] Stream unhealthy: ${cameraId}, reason: ${reason}`, metrics);
@@ -10879,6 +10889,7 @@ onUnhealthy: async ({ cameraId, reason, metrics }) => {
 **4. Extracted Reusable `attachHealthMonitor()` Method**
 
 New centralized method for health attachment:
+
 ```javascript
 /**
  * Attach health monitor to a stream element
@@ -10913,6 +10924,7 @@ attachHealthMonitor(serial, $streamItem, streamType) {
 **5. Health Reattachment in All Restart Paths**
 
 **startStream() catch block:**
+
 ```javascript
 } catch (error) {
     $loadingIndicator.hide();
@@ -10926,6 +10938,7 @@ attachHealthMonitor(serial, $streamItem, streamType) {
 ```
 
 **restartStream() catch block:**
+
 ```javascript
 } catch (e) {
     console.error(`[Restart] ${serial}: Failed`, e);
@@ -10937,6 +10950,7 @@ attachHealthMonitor(serial, $streamItem, streamType) {
 ```
 
 **restartStream() success paths:**
+
 ```javascript
 // After HLS restart
 await this.hlsManager.forceRefreshStream(cameraId, videoElement);
@@ -10955,6 +10969,7 @@ if (ok && el && el.readyState >= 2 && !el.paused) {
 **6. Health Monitor Detach/Reattach During Fullscreen**
 
 **openFullscreen() - detach health for paused streams:**
+
 ```javascript
 // After pausing each stream type
 if (hls && videoEl) {
@@ -10973,6 +10988,7 @@ if (hls && videoEl) {
 ```
 
 **closeFullscreen() - reattach health for resumed streams:**
+
 ```javascript
 // After resuming each stream type
 if (hls && videoEl) {
@@ -10986,6 +11002,7 @@ if (hls && videoEl) {
 ```
 
 **Benefits:**
+
 - Prevents false STALE detections on intentionally paused streams
 - No unnecessary restart attempts during fullscreen viewing
 - Clean resource management (health monitors only active for playing streams)
@@ -10994,6 +11011,7 @@ if (hls && videoEl) {
 **7. Stream-Specific Restart Methods Extracted**
 
 Created dedicated methods for cleaner separation:
+
 ```javascript
 async restartHLSStream(cameraId, videoElement)
 async restartMJPEGStream(cameraId, $streamItem, cameraType, streamType)  
@@ -11003,6 +11021,7 @@ async restartRTMPStream(cameraId, $streamItem, cameraType, streamType)
 **8. Enhanced Documentation**
 
 Added comprehensive JSDoc to `restartStream()`:
+
 ```javascript
 /**
  * Restart a stream that has become unhealthy or frozen
@@ -11032,6 +11051,7 @@ Added comprehensive JSDoc to `restartStream()`:
 ```
 
 **Implementation:**
+
 ```javascript
 const maxAttempts = H.maxAttempts ?? 10;  // Default to 10
 
@@ -11044,6 +11064,7 @@ if (maxAttempts > 0 && attempts >= maxAttempts) {
 ```
 
 **Behavior:**
+
 - `UI_HEALTH_MAX_ATTEMPTS: 10` → Stops after 10 restart attempts (recommended)
 - `UI_HEALTH_MAX_ATTEMPTS: 0` → Infinite attempts with ~120s intervals after attempt 5 (60s cooldown + 60s exponential backoff cap)
 - Not specified → Defaults to 10 attempts
@@ -11053,6 +11074,7 @@ if (maxAttempts > 0 && attempts >= maxAttempts) {
 ### Architecture Pattern: Health Monitor Lifecycle
 
 **Correct Flow:**
+
 ```
 Stream starts → Health attaches
     ↓
@@ -11076,6 +11098,7 @@ Continues up to 10 attempts
 **Backend:** None (all fixes frontend)
 
 **Frontend:**
+
 - `static/js/streaming/health.js` - Changed callback parameter from `serial` to `cameraId: serial` for consistency
 - `static/js/streaming/stream.js` - All health attachment, restart, and fullscreen logic
   - Fixed naming consistency (`serial` → `cameraId` in 3 locations)
@@ -11089,11 +11112,13 @@ Continues up to 10 attempts
   - Added configurable max attempts with infinite option support
 
 **Config:**
+
 - `config/cameras.json` - Added `UI_HEALTH_MAX_ATTEMPTS` to `ui_health_global_settings` (default: 10, 0 = infinite)
 
 ### Testing Results
 
 ✅ **All streams get health monitoring on startup:**
+
 ```
 [Health] Attaching monitor for REOLINK_LAUNDRY (LL_HLS)
 [Health] Attached monitor for T8416P0023370398
@@ -11101,12 +11126,14 @@ Continues up to 10 attempts
 ```
 
 ✅ **Health detection working across all stream types:**
+
 ```
 [Health] T8416P0023370398: STALE - No new frames for 6.0s
 [Health] Stream unhealthy: T8416P0023370398, reason: stale
 ```
 
 ✅ **Automatic restart with proper exponential backoff:**
+
 ```
 [Health] T8416P0023370398: Scheduling restart 1/10 in 5s
 [Health] T8416P0023370398: Executing restart attempt 1
@@ -11115,6 +11142,7 @@ Continues up to 10 attempts
 ```
 
 ✅ **Health reattaches after restart (success or failure):**
+
 ```
 [Restart] T8416P0023370398: Beginning restart sequence
 [Health] Detached monitor for T8416P0023370398
@@ -11124,6 +11152,7 @@ Continues up to 10 attempts
 ```
 
 ✅ **Multiple cameras can restart independently:**
+
 ```
 [Health] T8441P12242302AC: STALE - No new frames for 6.0s
 [Health] Stream unhealthy: T8441P12242302AC, reason: stale
@@ -11144,6 +11173,7 @@ Continues up to 10 attempts
 ### Impact
 
 **Reliability Improvements:**
+
 - Cameras now self-heal from transient network issues
 - No manual intervention required for frozen/stale streams
 - Exponential backoff prevents overwhelming failed backends
@@ -11152,6 +11182,7 @@ Continues up to 10 attempts
 - Resource-efficient health monitoring (only active streams monitored)
 
 **Code Quality:**
+
 - Reduced duplication (12 lines × 3 locations → single method)
 - Consistent health attachment across all code paths
 - Better separation of concerns with dedicated restart methods
@@ -11160,6 +11191,7 @@ Continues up to 10 attempts
 - Clean fullscreen lifecycle management
 
 **User Experience:**
+
 - Streams automatically recover from freezes
 - Clear status indicators ("Restarting...", "Restart failed")
 - Reduced need for manual refresh button clicks
@@ -11219,6 +11251,7 @@ key_mapping = {
 ```
 
 Result: Frontend `stream.js` line 55 always defaulted to 10:
+
 ```javascript
 const maxAttempts = H.maxAttempts ?? 10;  // Always 10, never 0
 ```
@@ -11240,6 +11273,7 @@ Through systematic debugging using browser console diagnostics, logs revealed th
 **Why Manual Refresh Works:**
 
 Manual refresh clicked later (after multiple failures) works because:
+
 - Backend watchdog has killed the dead FFmpeg process (inconsistent timing)
 - Manual "Play" button forces backend to create NEW FFmpeg process regardless of "already active" state
 - Fresh FFmpeg connects to camera → MediaMTX generates segments → playlist exists
@@ -11253,12 +11287,14 @@ Implemented a two-tier recovery system that starts gentle (fast refresh) and esc
 **Architecture:**
 
 **Tier 1: Standard Refresh (Attempts 1-3)**
+
 - Uses existing `forceRefreshStream()` path
 - Works for transient issues (brief network glitches, temporary camera hangs)
 - Fast recovery - minimal disruption
 - If backend FFmpeg is healthy, this succeeds immediately
 
 **Tier 2: Nuclear Recovery (Attempts 4+)**
+
 - Forces complete client-side teardown: `stopIndividualStream()`
 - 3-second wait for backend state to clear
 - Fresh start: `startStream()` forces backend to create new FFmpeg process
@@ -11288,6 +11324,7 @@ const method = (recentFailureCount <= 3) ? 'refresh' : 'nuclear';
 | 4+ | `nuclear` | UI stop → 3s wait → UI start | Stuck backend state |
 
 **Success Detection:**
+
 - Nuclear recovery that succeeds clears failure history immediately
 - Prevents unnecessary escalation on next issue
 - Each camera tracked independently
@@ -11299,6 +11336,7 @@ const method = (recentFailureCount <= 3) ? 'refresh' : 'nuclear';
 Added `UI_HEALTH_MAX_ATTEMPTS` to three locations:
 
 1. **Default settings initialization (line ~1433):**
+
 ```python
 settings = {
     # ... existing settings ...
@@ -11307,6 +11345,7 @@ settings = {
 ```
 
 2. **Key mapping for cameras.json override (line ~1459):**
+
 ```python
 key_mapping = {
     # ... existing mappings ...
@@ -11319,6 +11358,7 @@ key_mapping = {
 **Frontend Escalating Recovery (`stream.js`):**
 
 1. **Added failure tracking Map (line ~35):**
+
 ```javascript
 this.recentFailures = new Map();  // Track failure history for escalating recovery
 ```
@@ -11356,11 +11396,13 @@ if (method === 'nuclear') {
 ### Enhanced Logging
 
 **Before:**
+
 ```
 [Health] T8416P0023370398: Scheduling restart 1/10 in 5s
 ```
 
 **After:**
+
 ```
 [Health] T8416P0023370398: Scheduling Refresh restart 1/∞ in 5s (failures in 60s: 1)
 [Health] T8416P0023370398: Executing Refresh attempt 1
@@ -11370,6 +11412,7 @@ if (method === 'nuclear') {
 ```
 
 New logging provides:
+
 - Recovery method being used (Refresh vs Nuclear)
 - Infinite symbol (∞) when `maxAttempts = 0`
 - Recent failure count for debugging escalation logic
@@ -11379,12 +11422,14 @@ New logging provides:
 ### Files Modified
 
 **Backend:**
+
 - `app.py` - `_ui_health_from_env()` function
   - Added `maxAttempts` to default settings dict
   - Added `UI_HEALTH_MAX_ATTEMPTS` to key_mapping
   - Fixed blankThreshold flattening for cameras.json compatibility
 
 **Frontend:**
+
 - `stream.js` - MultiStreamManager constructor
   - Added `this.recentFailures` Map for failure tracking
   - Rewrote `onUnhealthy` callback with escalating recovery logic
@@ -11392,6 +11437,7 @@ New logging provides:
   - Enhanced logging with method labels and failure counts
 
 **Config:**
+
 - `cameras.json` - Already had `UI_HEALTH_MAX_ATTEMPTS: 0` in `ui_health_global_settings` (line 2122)
 - Setting now properly propagates to frontend
 
@@ -11400,6 +11446,7 @@ New logging provides:
 **Test Environment:** Camera T8416P0023370398 (Kids Room) - known to have intermittent connection issues
 
 **Scenario 1: Configuration Fix Verification**
+
 ```javascript
 // Browser console
 console.log('UI_HEALTH config:', window.UI_HEALTH);
@@ -11407,6 +11454,7 @@ console.log('UI_HEALTH config:', window.UI_HEALTH);
 ```
 
 **Scenario 2: Standard Refresh Success (Transient Issue)**
+
 ```
 [Health] T8416P0023370398: STALE - No new frames for 6.0s
 [Health] Stream unhealthy: T8416P0023370398, reason: stale
@@ -11418,6 +11466,7 @@ console.log('UI_HEALTH config:', window.UI_HEALTH);
 ```
 
 **Scenario 3: Nuclear Recovery Activation (Backend Stuck State)**
+
 ```
 [Health] T8416P0023370398: STALE - No new frames for 6.0s
 [Health] T8416P0023370398: Scheduling Refresh restart 1/∞ in 5s (failures in 60s: 1)
@@ -11442,6 +11491,7 @@ nvr-packager  | [HLS] [muxer T8416P0023370398] created automatically
 ```
 
 **Scenario 4: Manual Refresh Comparison**
+
 - Manual refresh button click on failed stream: **Immediate success** (uses same `forceRefreshStream()`)
 - Confirmed health monitor restart failures were NOT due to method difference
 - Root cause confirmed: Backend "already active" state blocking FFmpeg restart
@@ -11449,6 +11499,7 @@ nvr-packager  | [HLS] [muxer T8416P0023370398] created automatically
 **Video Element State Diagnostics:**
 
 Frozen stream showing "Stopped" status revealed:
+
 ```javascript
 paused: false
 readyState: 2 (HAVE_ENOUGH_DATA)
@@ -11461,6 +11512,7 @@ This disconnect between video element state ("I'm playing!") and actual frozen f
 ### Impact
 
 **Reliability Improvements:**
+
 - ✅ Infinite retry mode now works correctly (`maxAttempts: 0` honored)
 - ✅ Health monitor can recover from stuck backend FFmpeg processes
 - ✅ Two-tier recovery minimizes disruption while maximizing success rate
@@ -11470,6 +11522,7 @@ This disconnect between video element state ("I'm playing!") and actual frozen f
 - ✅ 60-second failure window prevents permanent escalation state
 
 **Diagnostic Improvements:**
+
 - Clear logging of recovery method selection rationale
 - Failure count visibility for debugging escalation logic
 - Nuclear recovery activation explicitly logged
@@ -11477,6 +11530,7 @@ This disconnect between video element state ("I'm playing!") and actual frozen f
 - Success/failure tracking per recovery attempt
 
 **User Experience:**
+
 - Cameras with intermittent issues now self-recover reliably
 - "Failed after 10 attempts" only occurs when configured (not hardcoded)
 - Nuclear recovery eliminates need for manual "Stop → Play → Refresh" sequence
@@ -11497,12 +11551,13 @@ This disconnect between video element state ("I'm playing!") and actual frozen f
 
 **Potential Future Enhancements:**
 
-1. **Smart Backend Start Endpoint:** 
+1. **Smart Backend Start Endpoint:**
    - Add FFmpeg process health check to `/api/stream/start/`
    - Return "restarting" status when killing dead process
    - Only return "already active" when verified healthy
 
 2. **Configurable Escalation:**
+
    ```json
    "ui_health_global_settings": {
      "UI_HEALTH_ESCALATION_THRESHOLD": 3,  // Attempts before nuclear
@@ -11538,6 +11593,7 @@ This disconnect between video element state ("I'm playing!") and actual frozen f
 **Key Insight:** The problem was not frontend code differences but backend state management. Health monitor couldn't force backend to recognize FFmpeg was dead. Solution required client-side "stop" to clear backend tracking before attempting restart.
 
 **Hypothetico-Deductive Method Applied:**
+
 - Systematic elimination of variables (autoplay, timing, element state, code paths)
 - Browser console diagnostics (video element state inspection)
 - Log analysis (backend "already active" vs FFmpeg startup logs)
@@ -11547,6 +11603,7 @@ This disconnect between video element state ("I'm playing!") and actual frozen f
 **Camera T8416P0023370398 Ongoing Issues:**
 
 This camera (Kids Room) continues to exhibit hardware/network instability:
+
 - Frequent disconnects despite proximity to UAP (2m away)
 - Other identical Eufy T8416 models work reliably
 - Suspected corroded network connector or WiFi module defect
@@ -11559,7 +11616,7 @@ The escalating recovery strategy successfully handles this camera's intermittent
 
 **Why UI Can't Call Backend Stop:**
 
-As documented earlier (line 11186), UI deliberately avoids `/api/stream/stop/` calls. This is critical for multi-client architecture - multiple browsers viewing the same camera must not interfere with each other. 
+As documented earlier (line 11186), UI deliberately avoids `/api/stream/stop/` calls. This is critical for multi-client architecture - multiple browsers viewing the same camera must not interfere with each other.
 
 The nuclear recovery's "stop" is **client-side only** (destroys HLS.js, clears video src), then the subsequent "start" forces backend to create new FFmpeg because the client no longer appears to be consuming the stream.
 
@@ -11594,3 +11651,268 @@ Success
 ```
 
 The disconnect between "already active" backend state and actual FFmpeg death required the nuclear recovery's explicit state clearing to force backend to recognize the problem.
+
+---
+
+## Session: November 15, 2025 - Recording UI Implementation (Partial)
+
+**Objective:** Implement camera recording settings modal and manual recording controls.
+
+**Status:** Partially Complete
+
+- ✅ Settings modal UI functional
+- ✅ Manual recording button works for RTSP cameras
+- ⚠️ MJPEG service recording not implemented
+- ❌ Continuous recording auto-start not implemented
+- ❌ Snapshot service not implemented
+- ❌ Motion detection (ONVIF/FFmpeg) still skeleton
+
+### What Was Implemented
+
+**1. Recording Settings Modal (COMPLETE)**
+
+Files created:
+
+- `static/css/components/recording-modal.css` - Professional modal styling
+- `static/js/controllers/recording-controller.js` - API client
+- `static/js/forms/recording-settings-form.js` - Form generation with validation
+- `static/js/modals/camera-settings-modal.js` - Modal orchestration
+
+Functionality:
+
+- Gear icon on each camera tile opens settings modal
+- Three-section form: Motion Recording, Continuous Recording, Snapshots
+- ONVIF detection method automatically disabled for non-ONVIF cameras
+- Settings persist to `config/recording_settings.json`
+- Client and server-side validation
+- Uses `/api/cameras/<id>` to fetch camera capabilities dynamically
+
+**2. Manual Recording Controls (WORKS FOR RTSP)**
+
+Files created:
+
+- `static/js/controllers/recording-controls.js` - Recording button logic
+
+Functionality:
+
+- Red circle button on each camera tile
+- Toggle start/stop with visual feedback (pulsing animation)
+- Duration counter displays elapsed time (MM:SS)
+- Toast notifications for success/error
+- Multi-camera simultaneous recording supported
+- Auto-sync with server every 30 seconds
+
+Backend method added:
+
+- `RecordingService.start_manual_recording()` - Separate from motion recording
+- Uses 'manual' recording type (not 'motion')
+- No motion-enabled check (user override)
+- Currently uses 'motion' directory temporarily (see Known Issues)
+
+**3. Flask API Routes (COMPLETE)**
+
+Added to app.py:
+
+- `GET/POST /api/recording/settings/<camera_id>` - Get/update settings
+- `POST /api/recording/start/<camera_id>` - Start manual recording
+- `POST /api/recording/stop/<recording_id>` - Stop recording
+- `GET /api/recording/active` - List active recordings
+
+**4. Configuration Methods Added**
+
+Added to `config/recording_config_loader.py`:
+
+- `get_camera_settings()` - Returns UI-friendly merged settings
+- `update_camera_settings()` - Saves camera-specific overrides
+
+### Known Issues & Technical Debt
+
+**Critical Issues:**
+
+1. **MJPEG Service Recording Not Implemented**
+   - Cameras using `recording_source: mjpeg_service` fail to record
+   - Shows warning: "MJPEG service recording not yet implemented"
+   - Affects AMCREST_LOBBY when set to 'auto' or 'mjpeg_service'
+   - **Workaround:** Set recording_source to 'rtsp' or 'mediamtx'
+
+2. **'auto' Recording Source Selection Flawed**
+   - Marked as "recommended" but can select unavailable services
+   - Resolution logic in `recording_config_loader.py._resolve_auto_source()`:
+     - LL_HLS/HLS → 'mediamtx'
+     - MJPEG → 'mjpeg_service' (not implemented!)
+     - Other → 'rtsp'
+   - **Issue:** User selects "auto", gets MJPEG service, recording fails
+   - **Fix needed:** Either implement MJPEG recording or change auto resolution
+
+3. **Manual Recording Directory Missing**
+   - StorageManager only supports: 'motion', 'continuous', 'snapshot'
+   - `start_manual_recording()` uses 'motion' as temporary workaround
+   - **Problem:** Race condition risk when motion detection triggers while manual recording active
+   - **Fix needed:** Add 'manual' to StorageManager.generate_recording_path()
+   - **Must implement:** One recording per camera per type enforcement
+
+4. **No Continuous Recording Auto-Start**
+   - Settings saved but no service reads them
+   - `RecordingService.start_continuous_recording()` method created but not integrated
+   - **Missing:** Auto-start logic in app.py initialization
+   - **Result:** 24/7 recording enabled but nothing happens
+
+5. **No Snapshot Service**
+   - Settings saved but no implementation
+   - **Missing:** Periodic snapshot capture service
+   - **Missing:** Timer-based JPEG grab from streams
+
+6. **Motion Detection Still Skeleton**
+   - ONVIF event listener framework exists but doesn't subscribe to events
+   - FFmpeg motion detector framework exists but doesn't run scene detection
+   - **Missing:** Event parsing, FFmpeg output parsing, debouncing
+   - **Missing:** Auto-start based on camera settings
+
+### Architecture Decisions Made
+
+**Recording Type Hierarchy:**
+
+- `manual` - User-initiated via UI button (no settings check)
+- `motion` - Event-triggered by ONVIF/FFmpeg (checks motion_recording.enabled)
+- `continuous` - 24/7 recording (checks continuous_recording.enabled)
+- `snapshot` - Periodic JPEG capture (checks snapshots.enabled)
+
+**Recording Source Resolution:**
+
+- User can override via settings: 'auto', 'mediamtx', 'rtsp', 'mjpeg_service'
+- 'auto' resolves based on camera stream_type => doesn't work. 
+- Each source type requires different FFmpeg handling => And there's a logic in place for this: so look it up carefully. 
+
+**Settings Storage:**
+
+- Global defaults in `recording_settings.json`
+- Per-camera overrides merged at runtime
+- No duplication - only overrides stored per-camera
+
+### Code Quality Issues (Lessons Learned)
+
+**Problem:** Multiple implementation errors requiring fixes:
+
+1. Initial code used non-existent `start_manual_recording()` method
+2. Flask routes called wrong method name
+3. JavaScript assumed fake `window.CAMERAS_DATA` variable
+4. Recording service initialized incorrectly (wrong parameter)
+5. Used 'manual' recording type that StorageManager doesn't support
+
+**Root Cause:** Code written without reading existing implementations first
+
+**RULE VIOLATION:** Failed to follow RULE 7 (read files before modifying)
+
+**Lesson:** Always use `view` tool to read actual method signatures, class init parameters, and supported values before writing integration code.
+
+### Testing Results
+
+**Working:**
+
+- Settings modal opens and saves correctly for all cameras
+- ONVIF detection method properly disabled for non-ONVIF cameras
+- Manual recording works for:
+  - Eufy cameras (recording_source: mediamtx)
+  - Reolink cameras (recording_source: rtsp)
+  - Amcrest cameras (recording_source: rtsp)
+
+**Not Working:**
+
+- Manual recording fails for AMCREST_LOBBY when recording_source: auto (selects mjpeg_service)
+- Continuous recording doesn't auto-start despite being enabled
+- Snapshots don't capture despite being enabled
+- Motion detection doesn't trigger recordings
+
+**Evidence:**
+
+```bash
+# Settings saved but no recordings created
+ls -l /mnt/sdc/NVR_Recent/continuous  # Empty
+ls -l /mnt/sdc/NVR_Recent/snapshots   # Empty
+
+# Manual recordings work (when source is RTSP/MediaMTX)
+ls -l /mnt/sdc/NVR_Recent/motion
+# Shows files: AMCREST_LOBBY_20251115_065939.mp4 etc
+```
+
+### Next Session Priorities
+
+**High Priority (Required for MVP):**
+
+1. **Fix StorageManager for Manual Recordings**
+   - Add 'manual' recording type support
+   - Create `/mnt/sdc/NVR_Recent/manual` directory
+   - Update `generate_recording_path()` method
+
+2. **Implement Race Condition Prevention**
+   - One active recording per camera per type enforcement
+   - Check `active_recordings` before starting new recording
+   - Return error if camera already recording in that category
+   - UI recording button must update its status to active (red blink) if: 
+      - Manual recording got triggered by another client
+      - Recording started due to motion detection
+      - Recording set to continuous 24/7
+
+3. **Implement MJPEG Service Recording**
+   - Complete `_start_mjpeg_recording()` implementation
+   - Tap MJPEG capture service buffers
+   - Fix 'auto' source selection for MJPEG cameras
+
+4. **Auto-Start Continuous Recording**
+   - Read settings on app initialization
+   - Call `start_continuous_recording()` for enabled cameras
+   - Handle segment rotation (restart after duration)
+
+5. **Implement Snapshot Service**
+   - Timer-based periodic capture
+   - JPEG extraction from streams
+   - Storage quota management
+
+**Medium Priority:**
+
+6. **Complete ONVIF Event Listener**
+   - Use existing `onvif_client.py` for event subscription
+   - Parse ONVIF NotificationProducer responses
+   - Trigger `start_motion_recording()` on events
+
+7. **Complete FFmpeg Motion Detector**
+   - Implement scene detection filter
+   - Parse FFmpeg output for motion events
+   - Configurable sensitivity per camera
+
+8. **Add UI Status Indicators**
+   - Show active continuous recording status
+   - Show motion detection method active/inactive
+   - Display snapshot capture status
+
+### Files Delivered to User
+
+**Code Files (7):**
+
+1. `recording-modal.css`
+2. `recording-controller.js`
+3. `recording-controls.js`
+4. `recording-settings-form.js`
+5. `camera-settings-modal.js`
+6. `onvif_event_listener.py` (skeleton)
+7. `ffmpeg_motion_detector.py` (skeleton)
+
+**Documentation (4):**
+
+1. Complete implementation handoff document
+2. Quick reference for manual edits
+3. Executive summary
+4. File tree and installation guide
+
+**Manual Edits Required (3 files):**
+
+1. `templates/streams.html` - Buttons, modal HTML, script imports
+2. `app.py` - Imports, initialization, API routes
+3. `config/recording_config_loader.py` - Two new methods
+
+**Methods Added to RecordingService:**
+
+1. `start_manual_recording()` - User-initiated recording
+2. `start_continuous_recording()` - 24/7 recording (needs auto-start integration)
+
+Phew... 

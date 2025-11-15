@@ -167,6 +167,28 @@ CREATE POLICY "Allow read for nvr_anon" ON motion_events
     TO nvr_anon
     USING (true);
 
+-- ============================================
+-- Recording Service Permissions
+-- ============================================
+-- RecordingService uses PostgREST unauthenticated (nvr_anon role)
+-- Grant write permissions for recordings table
+
+-- Grant table permissions
+GRANT INSERT, UPDATE ON recordings TO nvr_anon;
+
+-- Grant sequence permissions (for auto-increment ID)
+GRANT USAGE, SELECT ON SEQUENCE recordings_id_seq TO nvr_anon;
+
+-- Create RLS policy allowing nvr_anon to insert/update
+CREATE POLICY "Allow insert/update for nvr_anon" 
+ON recordings 
+FOR ALL 
+TO nvr_anon 
+USING (true) 
+WITH CHECK (true);
+
+-- Note: nvr_anon already has SELECT via existing read policy
+
 -- =============================================================================
 -- INITIALIZATION COMPLETE
 -- =============================================================================

@@ -104,28 +104,7 @@ export class MultiStreamManager {
                             // Standard refresh - works for transient issues
                             await this.restartStream(cameraId, $streamItem);
                         } else {
-                            // Nuclear option - forces backend to restart FFmpeg
-                            console.log(`[Health] ${cameraId}: Nuclear recovery - forcing UI stop+start cycle`);
-
-                            // Step 1: UI stop (client-side only, no backend call)
-                            await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
-
-                            // Step 2: Wait for backend to notice stream is gone
-                            await new Promise(r => setTimeout(r, 3000));
-
-                            // Step 3: UI start (forces backend to create new FFmpeg)
-                            this.setStreamStatus($streamItem, 'loading', 'Nuclear restart...');
-                            const success = await this.startStream(cameraId, $streamItem, cameraType, streamType);
-
-                            if (success) {
-                                // Success path already handled in startStream
-                                console.log(`[Health] ${cameraId}: Nuclear restart succeeded`);
-                                // Clear failure history on success
-                                this.recentFailures.delete(cameraId);
-                                this.restartAttempts.delete(cameraId);
-                            } else {
-                                console.error(`[Health] ${cameraId}: Nuclear restart failed`);
-                            }
+                            await this.nuclear(cameraId, streamItem, cameraType, streamType)
                         }
                     }, delay);
 
@@ -163,61 +142,30 @@ export class MultiStreamManager {
         }, 1000);  // Reduced from 3000ms - just needs DOM ready
     }
 
-    // This method was only used for the custom overlay. 
-    // The latency badge is now managed by hls-stream.js and will automatically appear in native fullscreen mode.Retry
-    // _attachFullscreenLatencyMeter(hls, videoEl) {
-    //     if (!hls || !videoEl) return;
-    //     // reuse badge if created
-    //     if (!videoEl._fsLatencyOverlay) {
-    //         const badge = document.createElement('div');
-    //         Object.assign(badge.style, {
-    //             position: 'absolute',
-    //             right: '16px',
-    //             top: '16px',
-    //             padding: '4px 8px',
-    //             fontSize: '14px',
-    //             lineHeight: '18px',
-    //             background: 'rgba(0,0,0,0.6)',
-    //             color: '#fff',
-    //             borderRadius: '8px',
-    //             fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-    //             pointerEvents: 'none',
-    //             zIndex: 20,
-    //         });
-    //         // fullscreen overlay is already a flex container; ensure relative
-    //         const overlay = this.$fullscreenOverlay[0];
-    //         overlay.style.position = overlay.style.position || 'relative';
-    //         overlay.appendChild(badge);
-    //         videoEl._fsLatencyOverlay = badge;
-    //     }
+    async nuclear(cameraId, streamItem, cameraType, streamType) {
+        // Nuclear option - forces backend to restart FFmpeg
+        console.log(`[Health] ${cameraId}: Nuclear recovery - forcing UI stop+start cycle`);
 
-    //     const overlay = videoEl._fsLatencyOverlay;
-    //     videoEl._fsLastPdtMs = null;
+        // Step 1: UI stop (client-side only, no backend call)
+        await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
 
-    //     const onFrag = (_, data) => {
-    //         const pdt = data?.frag?.programDateTime;
-    //         if (pdt != null) {
-    //             videoEl._fsLastPdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
-    //         }
-    //     };
+        // Step 2: Wait for backend to notice stream is gone
+        await new Promise(r => setTimeout(r, 3000));
 
-    //     hls.on(Hls.Events.FRAG_CHANGED, onFrag);
+        // Step 3: UI start (forces backend to create new FFmpeg)
+        this.setStreamStatus($streamItem, 'loading', 'Nuclear restart...');
+        const success = await this.startStream(cameraId, $streamItem, cameraType, streamType);
 
-    //     if (videoEl._fsLatencyTimer) clearInterval(videoEl._fsLatencyTimer);
-    //     videoEl._fsLatencyTimer = setInterval(() => {
-    //         if (!videoEl._fsLastPdtMs) return;
-    //         const s = ((Date.now() - videoEl._fsLastPdtMs) / 1000).toFixed(1);
-    //         overlay.textContent = `${s}s`;
-    //         overlay.style.display = '';
-    //     }, 250);
-
-    //     videoEl._fsLatencyDetach = () => {
-    //         hls.off(Hls.Events.FRAG_CHANGED, onFrag);
-    //         if (videoEl._fsLatencyTimer) { clearInterval(videoEl._fsLatencyTimer); videoEl._fsLatencyTimer = null; }
-    //         if (videoEl._fsLatencyOverlay) { videoEl._fsLatencyOverlay.textContent = ''; }
-    //         videoEl._fsLastPdtMs = null;
-    //     };
-    // }
+        if (success) {
+            // Success path already handled in startStream
+            console.log(`[Health] ${cameraId}: Nuclear restart succeeded`);
+            // Clear failure history on success
+            this.recentFailures.delete(cameraId);
+            this.restartAttempts.delete(cameraId);
+        } else {
+            console.error(`[Health] ${cameraId}: Nuclear restart failed`);
+        }
+    }
 
     setupLayout() {
         const $streamItems = this.$container.find('.stream-item');
@@ -564,7 +512,7 @@ export class MultiStreamManager {
             } else if (streamType === 'RTMP') {
                 await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
             }
-            
+
 
 
             // Success: update status and reattach health
@@ -576,6 +524,9 @@ export class MultiStreamManager {
         } catch (e) {
             console.error(`[Restart] ${cameraId}: Failed`, e);
             this.setStreamStatus($streamItem, 'error', 'Restart failed');
+            // const cameraType = $streamItem.data('camera-type');
+            // const streamType = $streamItem.data('stream-type');
+            // await this.nuclear(cameraId, streamItem, cameraType, streamType)
 
             // Reattach health even on failure so it can retry
             this.attachHealthMonitor(cameraId, $streamItem, streamType);

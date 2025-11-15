@@ -89,6 +89,11 @@ services:
       - POSTGREST_URL=http://postgrest:3001
 
     volumes:
+      # recording volumes
+      - /mnt/sdc/NVR_Recent/motion:/recordings/motion
+      - /mnt/sdc/NVR_Recent/continuous:/recordings/continuous
+      - /mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots
+
       # Mount Python source code for hot-reloading
       - ./:/app
       # - ./streaming:/app/streaming
@@ -110,8 +115,6 @@ services:
       # Persist auth tokens
       # - ./persistent.json:/app/persistent.json
       
-
-
     restart: unless-stopped
 
     depends_on:

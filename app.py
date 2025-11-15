@@ -42,8 +42,11 @@ from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
 from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
 from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
+from services.recording.recording_service import RecordingService
+from config.recording_config_loader import RecordingConfig
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
+
 
 # Flask app setup
 app = Flask(__name__)
@@ -85,6 +88,17 @@ try:
     stream_manager._ensure_streams_directory_ownership()
     # stream_manager._remove_recreate_stream_dir() # DEPRECATED but keep so we remember this.
     print("✅ Stream manager initialized")
+    
+    # Recording service
+    try:
+        recording_service = RecordingService(
+            camera_repo,
+            config_path='./config/recording_settings.json'
+        )
+        print("✅ Recording service initialized")
+    except Exception as e:
+        print(f"⚠️  Recording service initialization failed: {e}")
+        recording_service = None
     
     install_sigchld_handler()
 
@@ -1368,6 +1382,133 @@ def api_ptz_set_preset(camera_serial):
         logger.error(f"Set preset API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+########################################################
+#           📹 RECORDING API ROUTES 📹
+########################################################
+
+@app.route('/api/recording/settings/<camera_id>', methods=['GET', 'POST'])
+@csrf.exempt
+def api_recording_settings(camera_id):
+    """Get or update recording settings for a camera"""
+    if not recording_service:
+        return jsonify({'error': 'Recording service not available'}), 503
+    
+    try:
+        if request.method == 'GET':
+            camera = camera_repo.get_camera(camera_id)
+            if not camera:
+                return jsonify({'error': 'Camera not found'}), 404
+            
+            settings = recording_service.config.get_camera_settings(camera_id)
+            
+            return jsonify({
+                'camera_id': camera_id,
+                'camera_name': camera.get('name', camera_id),
+                'settings': settings
+            })
+        
+        else:  # POST
+            data = request.get_json()
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            recording_service.config.update_camera_settings(camera_id, data)
+            recording_service.config.reload()
+            
+            return jsonify({
+                'success': True,
+                'camera_id': camera_id,
+                'message': 'Settings updated successfully'
+            })
+    
+    except Exception as e:
+        logger.error(f"Recording settings API error for {camera_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/recording/start/<camera_id>', methods=['POST'])
+@csrf.exempt
+def api_recording_start(camera_id):
+    """Start manual recording for a camera"""
+    if not recording_service:
+        return jsonify({'error': 'Recording service not available'}), 503
+    
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return jsonify({'error': 'Camera not found'}), 404
+        
+        data = request.get_json() or {}
+        duration = data.get('duration', 30)  # Default 30 seconds if not specified
+        
+        # Use start_motion_recording for manual recordings too
+        recording_id = recording_service.start_manual_recording(camera_id, duration=duration)
+        
+        if not recording_id:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to start recording'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'recording_id': recording_id,
+            'camera_id': camera_id,
+            'duration': duration,
+            'message': 'Recording started'
+        })
+    
+    except Exception as e:
+        logger.error(f"Start recording API error for {camera_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/recording/stop/<recording_id>', methods=['POST'])
+@csrf.exempt
+def api_recording_stop(recording_id):
+    """Stop an active recording by recording ID"""
+    if not recording_service:
+        return jsonify({'error': 'Recording service not available'}), 503
+    
+    try:
+        success = recording_service.stop_recording(recording_id)
+        
+        if not success:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to stop recording or recording not found'
+            }), 404
+        
+        return jsonify({
+            'success': True,
+            'recording_id': recording_id,
+            'message': 'Recording stopped'
+        })
+    
+    except Exception as e:
+        logger.error(f"Stop recording API error for {recording_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/recording/active', methods=['GET'])
+def api_recording_active():
+    """Get list of all currently active recordings"""
+    if not recording_service:
+        return jsonify({'error': 'Recording service not available'}), 503
+    
+    try:
+        active_recordings = recording_service.get_active_recordings()
+        
+        return jsonify({
+            'success': True,
+            'count': len(active_recordings),
+            'recordings': active_recordings
+        })
+    
+    except Exception as e:
+        logger.error(f"Get active recordings API error: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 ########################################################-########################################################
 #                                   ⚙️⚙️⚙️⚙️ENVIRONMENT VARIABLE HELPERS⚙️⚙️⚙️⚙️
 ########################################################-########################################################

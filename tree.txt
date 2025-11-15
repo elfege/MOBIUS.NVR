@@ -53,6 +53,8 @@
 ├── package.json
 ├── package-lock.json
 ├── persistent.json
+├── psql/
+│   └── init-db.sql
 ├── PTZ_Discovery.py
 ├── ptz_pan_right.py
 ├── ptz_server.py
@@ -163,4 +165,4 @@
 ├── tree.txt
 └── update_mediamtx_paths.sh*
 
-29 directories, 135 files
+30 directories, 136 files

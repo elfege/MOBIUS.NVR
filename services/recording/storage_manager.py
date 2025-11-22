@@ -43,6 +43,7 @@ class StorageManager:
         self.motion_path = self.base_path / "motion"
         self.continuous_path = self.base_path / "continuous"
         self.snapshots_path = self.base_path / "snapshots"
+        self.manual_path = self.base_path / "manual"
         
         # Verify directories exist
         self._verify_directories()
@@ -52,7 +53,7 @@ class StorageManager:
     
     def _verify_directories(self):
         """Verify all storage directories exist and are writable."""
-        for path in [self.motion_path, self.continuous_path, self.snapshots_path]:
+        for path in [self.motion_path, self.continuous_path, self.snapshots_path, self.manual_path]:
             if not path.exists():
                 logger.error(f"Storage directory does not exist: {path}")
                 raise FileNotFoundError(f"Storage directory missing: {path}")
@@ -90,6 +91,8 @@ class StorageManager:
                 return self.motion_path / filename
             elif recording_type == "continuous":
                 return self.continuous_path / filename
+            elif recording_type == "manual":
+                return self.manual_path / filename
             else:
                 raise ValueError(f"Unknown recording type: {recording_type}")
     
@@ -107,7 +110,8 @@ class StorageManager:
         tier_mapping = {
             "motion": ("motion_max_mb", self.motion_path),
             "continuous": ("continuous_max_mb", self.continuous_path),
-            "snapshots": ("snapshots_max_mb", self.snapshots_path)
+            "snapshots": ("snapshots_max_mb", self.snapshots_path),
+            "manual": ("manual_max_mb", self.manual_path)
         }
         
         for tier_name, (limit_key, path) in tier_mapping.items():
@@ -174,6 +178,9 @@ class StorageManager:
         elif recording_type == "snapshots":
             max_age_days = camera_cfg.get('snapshots', {}).get('max_age_days', 14)
             target_path = self.snapshots_path
+        elif recording_type == "manual":
+            max_age_days = camera_cfg.get('manual_recording', {}).get('max_age_days', 30)
+            target_path = self.manual_path
         else:
             raise ValueError(f"Unknown recording type: {recording_type}")
         
@@ -218,6 +225,9 @@ class StorageManager:
         elif recording_type == "snapshots":
             target_path = self.snapshots_path
             pattern = "*.jpg"
+        elif recording_type == "manual":
+            target_path = self.manual_path
+            pattern = "*.mp4"
         else:
             raise ValueError(f"Unknown recording type: {recording_type}")
         

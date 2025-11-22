@@ -17,13 +17,15 @@ export class RecordingSettingsForm {
      * @param {string} cameraId - Camera ID
      * @param {Object} settings - Current settings
      * @param {Object} cameraCapabilities - Camera capabilities array
+     * @param {string} cameraType - Camera type (reolink, amcrest, eufy, unifi)
      * @returns {string} - Form HTML
      */
-    generateForm(cameraId, settings, cameraCapabilities = []) {
+    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null) {
         this.currentCameraId = cameraId;
         this.currentSettings = settings;
         
         const hasOnvif = cameraCapabilities.includes('ONVIF');
+        const isReolink = cameraType && cameraType.toLowerCase() === 'reolink';
         
         return `
             <form id="recording-settings-form" class="recording-settings-form">
@@ -52,6 +54,9 @@ export class RecordingSettingsForm {
                                 <option value="onvif" ${settings.motion_recording?.detection_method === 'onvif' ? 'selected' : ''} ${!hasOnvif ? 'disabled' : ''}>
                                     ONVIF Events ${!hasOnvif ? '(Not Supported)' : ''}
                                 </option>
+                                <option value="baichuan" ${settings.motion_recording?.detection_method === 'baichuan' ? 'selected' : ''} ${!isReolink ? 'disabled' : ''}>
+                                    Baichuan (Reolink Native) ${!isReolink ? '(Reolink Only)' : ''}
+                                </option>
                                 <option value="ffmpeg" ${settings.motion_recording?.detection_method === 'ffmpeg' ? 'selected' : ''}>
                                     FFmpeg Video Analysis
                                 </option>
@@ -59,7 +64,8 @@ export class RecordingSettingsForm {
                                     Disabled
                                 </option>
                             </select>
-                            ${!hasOnvif ? '<span class="form-description" style="color: #e74c3c;">⚠️ Camera does not support ONVIF</span>' : ''}
+                            ${!hasOnvif ? '<span class="form-description" style="color: #e74c3c;">ℹ️ Camera does not support ONVIF</span>' : ''}
+                            ${isReolink ? '<span class="form-description" style="color: #27ae60;">✅ Baichuan protocol available for real-time motion events</span>' : ''}
                         </div>
                         
                         <div class="recording-form-group">

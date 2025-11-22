@@ -8,6 +8,7 @@ Subscribes to ONVIF motion detection events and triggers recordings.
 import logging
 import threading
 import time
+from datetime import timedelta
 from typing import Dict, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -17,12 +18,8 @@ class ONVIFEventListener:
     """
     Listens for ONVIF motion detection events from cameras.
     
-    Status: SKELETON IMPLEMENTATION
-    TODO:
-    - Implement actual ONVIF event subscription using onvif_client.py
-    - Parse ONVIF event XML/SOAP responses
-    - Handle event renewals and reconnections
-    - Implement proper error handling and retry logic
+    Uses PullPoint subscription to receive motion events from ONVIF-capable
+    cameras and triggers motion recordings via RecordingService.
     """
     
     def __init__(self, camera_repository, recording_service):
@@ -103,29 +100,86 @@ class ONVIFEventListener:
         self.active_listeners.clear()
         logger.info("Stopped all ONVIF listeners")
     
-    
     def _listen_loop(self, camera_id: str, camera: Dict):
-        """
-        Main event listening loop for a camera.
+        """Main event listening loop for a camera."""
+        from datetime import timedelta
         
-        Args:
-            camera_id: Camera identifier
-            camera: Camera configuration
-        """
         logger.info(f"ONVIF listener loop started for {camera_id}")
         
-        # TODO: Implement actual ONVIF event subscription
-        # This is a PLACEHOLDER implementation
-        
         try:
+            # Get ONVIF connection
+            from services.onvif.onvif_client import ONVIFClient
+            
+            # Get credentials
+            camera_type = camera.get('type', '').lower()
+            
+            if camera_type == 'amcrest':
+                from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
+                cred_provider = AmcrestCredentialProvider()
+            elif camera_type == 'reolink':
+                from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
+                cred_provider = ReolinkCredentialProvider()
+            elif camera_type == 'unifi':
+                from services.credentials.unifi_credential_provider import UniFiCredentialProvider
+                cred_provider = UniFiCredentialProvider()
+            else:
+                logger.error(f"Unsupported camera type for ONVIF: {camera_type}")
+                return
+            
+            credentials = cred_provider.get_credentials(camera_id)
+            
+            if isinstance(credentials, tuple):
+                username, password = credentials
+            else:
+                username = credentials.get('username')
+                password = credentials.get('password')
+            
+            onvif_cam = ONVIFClient.get_camera(
+                host=camera.get('host'),
+                username=username,
+                password=password,
+                camera_serial=camera_id
+            )
+            
+            if not onvif_cam:
+                logger.error(f"Failed to connect to ONVIF camera: {camera_id}")
+                return
+            
+            # Create event service
+            event_service = onvif_cam.create_events_service()
+            
+            # Create PullPoint subscription
+            subscription_response = event_service.CreatePullPointSubscription()
+            subscription_address = subscription_response.SubscriptionReference.Address._value_1
+            
+            logger.info(f"ONVIF subscription created for {camera_id}")
+            
+            # Create pullpoint service using event_service.zeep_client (not onvif_cam.zeep_client)
+            pullpoint_service = event_service.zeep_client.create_service(
+                '{http://www.onvif.org/ver10/events/wsdl}PullPointSubscriptionBinding',
+                subscription_address
+            )
+            
+            # Poll for events
             while camera_id in self.active_listeners and not self._stop_event.is_set():
-                # TODO: Poll/wait for ONVIF events
-                # For now, just sleep to prevent CPU spinning
-                time.sleep(5)
-                
-                # PLACEHOLDER: Simulate event detection (remove in real implementation)
-                # if random.random() < 0.01:  # 1% chance per check
-                #     self._handle_motion_event(camera_id)
+                try:
+                    messages = pullpoint_service.PullMessages(
+                        Timeout=timedelta(seconds=5),
+                        MessageLimit=10
+                    )
+                    
+                    if hasattr(messages, 'NotificationMessage') and messages.NotificationMessage:
+                        for msg in messages.NotificationMessage:
+                            # Get topic
+                            topic = msg.Topic._value_1 if hasattr(msg.Topic, '_value_1') else None
+                            
+                            if topic and ('Motion' in str(topic) or 'MotionAlarm' in str(topic)):
+                                logger.info(f"Motion detected via ONVIF: {camera_id}, Topic: {topic}")
+                                self._handle_motion_event(camera_id)
+                    
+                except Exception as e:
+                    logger.error(f"Event pull error for {camera_id}: {e}")
+                    time.sleep(5)
         
         except Exception as e:
             logger.error(f"ONVIF listener error for {camera_id}: {e}")
@@ -133,8 +187,37 @@ class ONVIFEventListener:
             if camera_id in self.active_listeners:
                 self.active_listeners.pop(camera_id)
             logger.info(f"ONVIF listener loop ended for {camera_id}")
-    
-    
+
+
+    def _is_motion_event(self, message) -> bool:
+        """Check if message is a motion event."""
+        try:
+            # Topic is an object with _value_1 attribute
+            topic = str(message.Topic._value_1) if hasattr(message.Topic, '_value_1') else str(message.Topic)
+            logger.info(f"[DEBUG] Parsed topic: {topic}")
+            return 'Motion' in topic or 'MotionAlarm' in topic
+        except Exception as e:
+            logger.error(f"Error parsing topic: {e}")
+            return False
+
+
+    def _parse_motion_state(self, message) -> bool:
+        """Parse motion state from event message."""
+        try:
+            # Motion state is in Message.Data.SimpleItem
+            if hasattr(message, 'Message') and hasattr(message.Message, '_value_1'):
+                msg_data = message.Message._value_1
+                # Look for SimpleItem elements
+                for child in msg_data:
+                    if hasattr(child, 'Name') and child.Name == 'State':
+                        state_value = str(child.Value).lower()
+                        logger.info(f"[DEBUG] State value: {state_value}")
+                        return state_value == 'true'
+            return False
+        except Exception as e:
+            logger.error(f"Error parsing motion state: {e}")
+            return False
+          
     def _handle_motion_event(self, camera_id: str):
         """
         Handle motion detection event.

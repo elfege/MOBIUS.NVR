@@ -75,14 +75,16 @@ export class CameraSettingsModal {
 
             // Fetch camera data from API to get capabilities
             let capabilities = [];
+            let cameraType = null;
             try {
                 const response = await axios.get(`/api/cameras/${cameraId}`);
                 capabilities = response.data.capabilities || [];
+                cameraType = response.data.type || null;
             } catch (error) {
                 console.error(`Failed to load camera data for ${cameraId}:`, error);
             }
             
-            await this.show(cameraId, cameraName, capabilities);
+            await this.show(cameraId, cameraName, capabilities, cameraType);
         });
     }
 
@@ -91,11 +93,13 @@ export class CameraSettingsModal {
      * @param {string} cameraId - Camera ID
      * @param {string} cameraName - Camera display name
      * @param {Array} capabilities - Camera capabilities
+     * @param {string} cameraType - Camera type (reolink, amcrest, eufy, unifi)
      */
-    async show(cameraId, cameraName, capabilities = []) {
+    async show(cameraId, cameraName, capabilities = [], cameraType = null) {
         this.currentCameraId = cameraId;
         this.currentCameraName = cameraName;
         this.cameraCapabilities = capabilities;
+        this.cameraType = cameraType;
         
         // Update modal title
         this.$modal.find('#modal-camera-name').text(cameraName);
@@ -116,7 +120,7 @@ export class CameraSettingsModal {
             const settings = await this.controller.getSettings(cameraId);
             
             // Generate and insert form
-            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities);
+            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType);
             this.$modalBody.html(formHtml);
             
             // Attach form events

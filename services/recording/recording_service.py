@@ -29,7 +29,6 @@ class RecordingService:
     Recording Sources:
     - mediamtx: Tap existing MediaMTX RTSP output (LL_HLS/HLS cameras)
     - rtsp: Direct camera RTSP connection
-    - mjpeg_service: Tap MJPEG capture service buffer
     
     Supports:
     - Motion-triggered recording (event-based)
@@ -73,7 +72,7 @@ class RecordingService:
         
         Returns:
             Tuple of (source_url, source_type)
-            source_type: 'mediamtx' | 'rtsp' | 'mjpeg_service'
+            source_type: 'mediamtx' | 'rtsp'
         
         Raises:
             ValueError: If camera not found or invalid configuration
@@ -102,11 +101,7 @@ class RecordingService:
             handler = self._get_camera_handler(camera)
             rtsp_url = handler.build_rtsp_url(camera, stream_type='main')
             return (rtsp_url, 'rtsp')
-        
-        elif recording_source == 'mjpeg_service':
-            # Tap MJPEG capture service
-            return (f"mjpeg_service://{camera_id}", 'mjpeg_service')
-        
+                
         else:
             raise ValueError(f"Unknown recording source: {recording_source}")
         
@@ -184,38 +179,32 @@ class RecordingService:
             logger.info(f"  Duration: {duration}s")
             logger.info(f"  Output: {recording_path.name}")
             
-            # Build FFmpeg command based on source type
-            if source_type == 'mjpeg_service':
-                # MJPEG service requires special handling
-                success = self._start_mjpeg_recording(camera_id, recording_path, duration)
-                if not success:
-                    return None
-            else:
-                # RTSP sources (mediamtx or direct camera)
-                ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
-                
-                # Start FFmpeg process
-                process = subprocess.Popen(
-                    ffmpeg_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    stdin=subprocess.DEVNULL
-                )
-                
-                # Store recording metadata
-                with self.recording_lock:
-                    self.active_recordings[recording_id] = {
-                        'camera_id': camera_id,
-                        'camera_name': camera_name,
-                        'recording_path': str(recording_path),
-                        'source_url': source_url,
-                        'source_type': source_type,
-                        'process': process,
-                        'start_time': time.time(),
-                        'duration': duration,
-                        'event_id': event_id,
-                        'recording_type': 'motion'
-                    }
+
+            # RTSP sources (mediamtx or direct camera)
+            ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
+            
+            # Start FFmpeg process
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL
+            )
+            
+            # Store recording metadata
+            with self.recording_lock:
+                self.active_recordings[recording_id] = {
+                    'camera_id': camera_id,
+                    'camera_name': camera_name,
+                    'recording_path': str(recording_path),
+                    'source_url': source_url,
+                    'source_type': source_type,
+                    'process': process,
+                    'start_time': time.time(),
+                    'duration': duration,
+                    'event_id': event_id,
+                    'recording_type': 'motion'
+                }
             
             # Store metadata in database
             self._store_recording_metadata(recording_id, camera_id, 'motion', event_id)
@@ -252,8 +241,8 @@ class RecordingService:
             
             camera_name = camera.get('name', camera_id)
             
-            # Generate recording path using motion as this is an event, after all... 
-            recording_path = self.storage.generate_recording_path(camera_id, 'motion')
+            # Generate recording path 
+            recording_path = self.storage.generate_recording_path(camera_id, 'manual')
             recording_id = recording_path.stem
             
             # Get recording source
@@ -264,37 +253,31 @@ class RecordingService:
             logger.info(f"  Duration: {duration}s")
             logger.info(f"  Output: {recording_path.name}")
             
-            # Build FFmpeg command based on source type
-            if source_type == 'mjpeg_service':
-                success = self._start_mjpeg_recording(camera_id, recording_path, duration)
-                if not success:
-                    return None
-            else:
-                # RTSP sources (mediamtx or direct camera)
-                ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
-                
-                # Start FFmpeg process
-                process = subprocess.Popen(
-                    ffmpeg_cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    stdin=subprocess.DEVNULL
-                )
-                
-                # Store recording metadata
-                with self.recording_lock:
-                    self.active_recordings[recording_id] = {
-                        'camera_id': camera_id,
-                        'camera_name': camera_name,
-                        'recording_path': str(recording_path),
-                        'source_url': source_url,
-                        'source_type': source_type,
-                        'process': process,
-                        'start_time': time.time(),
-                        'duration': duration,
-                        'event_id': None,
-                        'recording_type': 'manual'
-                    }
+            # RTSP sources (mediamtx or direct camera)
+            ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
+            
+            # Start FFmpeg process
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL
+            )
+            
+            # Store recording metadata
+            with self.recording_lock:
+                self.active_recordings[recording_id] = {
+                    'camera_id': camera_id,
+                    'camera_name': camera_name,
+                    'recording_path': str(recording_path),
+                    'source_url': source_url,
+                    'source_type': source_type,
+                    'process': process,
+                    'start_time': time.time(),
+                    'duration': duration,
+                    'event_id': None,
+                    'recording_type': 'manual'
+                }
             
             # Store metadata in database
             self._store_recording_metadata(recording_id, camera_id, 'manual', event_id=None)
@@ -331,30 +314,84 @@ class RecordingService:
         
         return cmd
     
-    def _start_mjpeg_recording(self, camera_id: str, output_path: Path, duration: int) -> bool:
+    def start_continuous_recording(self, camera_id: str) -> Optional[str]:
         """
-        Start recording from MJPEG capture service.
+        Start continuous 24/7 recording for camera.
         
-        This is more complex as we need to read JPEG frames from the service
-        and pipe them to FFmpeg for MP4 muxing.
+        Uses configured segment duration and auto-restarts when segment completes.
         
         Args:
             camera_id: Camera identifier
-            output_path: Output file path
-            duration: Recording duration in seconds
         
         Returns:
-            True if started successfully
+            Recording ID if successful, None if failed
         """
-        # TODO: Implement MJPEG service recording
-        # This requires:
-        # 1. Determine if camera uses reolink or amcrest service
-        # 2. Start thread to read frames from service buffer
-        # 3. Pipe frames to FFmpeg with -f image2pipe
-        # 4. Handle timing and duration
+        try:
+            # Check if continuous recording is enabled
+            if not self.config.is_recording_enabled(camera_id, 'continuous'):
+                logger.info(f"Continuous recording disabled for {camera_id}")
+                return None
+            
+            # Get camera configuration
+            camera = self.camera_repo.get_camera(camera_id)
+            if not camera:
+                logger.error(f"Camera not found: {camera_id}")
+                return None
+            
+            camera_name = camera.get('name', camera_id)
+            
+            # Get segment duration from config
+            camera_cfg = self.config.get_camera_config(camera_id)
+            segment_duration = camera_cfg.get('continuous_recording', {}).get('segment_duration_sec', 3600)
+            
+            # Generate recording path
+            recording_path = self.storage.generate_recording_path(camera_id, 'continuous')
+            recording_id = recording_path.stem
+            
+            # Get recording source
+            source_url, source_type = self._get_recording_source_url(camera_id)
+            
+            logger.info(f"Starting CONTINUOUS recording for {camera_name} ({camera_id})")
+            logger.info(f"  Source: {source_type}")
+            logger.info(f"  Segment duration: {segment_duration}s")
+            logger.info(f"  Output: {recording_path.name}")
+            
+            # Build FFmpeg command
+            ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, segment_duration)
+            
+            # Start FFmpeg process
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL
+            )
+            
+            # Store recording metadata with auto_restart flag
+            with self.recording_lock:
+                self.active_recordings[recording_id] = {
+                    'camera_id': camera_id,
+                    'camera_name': camera_name,
+                    'recording_path': str(recording_path),
+                    'source_url': source_url,
+                    'source_type': source_type,
+                    'process': process,
+                    'start_time': time.time(),
+                    'duration': segment_duration,
+                    'event_id': None,
+                    'recording_type': 'continuous',
+                    'auto_restart': True  # Flag for auto-restart on completion
+                }
+            
+            # Store metadata in database
+            self._store_recording_metadata(recording_id, camera_id, 'continuous', event_id=None)
+            
+            logger.info(f"Continuous recording started: {recording_id}")
+            return recording_id
         
-        logger.warning(f"MJPEG service recording not yet implemented for {camera_id}")
-        return False
+        except Exception as e:
+            logger.error(f"Failed to start continuous recording for {camera_id}: {e}")
+            return None
     
     def stop_recording(self, recording_id: str, graceful: bool = True) -> bool:
         """
@@ -406,6 +443,48 @@ class RecordingService:
                 logger.error(f"Failed to stop recording {recording_id}: {e}")
                 return False
     
+    def cleanup_finished_recordings(self) -> int:
+        """
+        Clean up metadata for finished recording processes.
+        Auto-restarts continuous recordings when segment completes.
+        
+        Returns:
+            Number of finished recordings cleaned up
+        """
+        with self.recording_lock:
+            finished_ids = []
+            
+            for recording_id, metadata in self.active_recordings.items():
+                process = metadata.get('process')
+                
+                # Check if process has finished
+                if process and process.poll() is not None:
+                    # Check for auto-restart BEFORE cleanup
+                    if metadata.get('auto_restart', False):
+                        camera_id = metadata['camera_id']
+                        logger.info(f"Continuous recording segment completed: {recording_id}")
+                        logger.info(f"Auto-restarting next segment for {camera_id}")
+                        
+                        # Start new segment (this will create new recording_id)
+                        self.start_continuous_recording(camera_id)
+                    
+                    finished_ids.append(recording_id)
+                    
+                    # Update metadata
+                    metadata['end_time'] = time.time()
+                    metadata['status'] = 'completed' if process.returncode == 0 else 'failed'
+                    
+                    # Update database
+                    self._update_recording_metadata(recording_id, metadata['status'])
+                    
+                    logger.info(f"Recording finished: {recording_id} (status: {metadata['status']})")
+            
+            # Remove from active recordings
+            for recording_id in finished_ids:
+                del self.active_recordings[recording_id]
+            
+            return len(finished_ids)
+        
     def get_active_recordings(self) -> List[Dict]:
         """
         Get list of currently active recording processes.

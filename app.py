@@ -44,6 +44,10 @@ from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
 from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
 from services.recording.recording_service import RecordingService
 from config.recording_config_loader import RecordingConfig
+from services.recording.snapshot_service import SnapshotService
+from services.onvif.onvif_event_listener import ONVIFEventListener
+from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
+from services.motion.reolink_motion_service import create_reolink_motion_service
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -99,7 +103,143 @@ try:
     except Exception as e:
         print(f"⚠️  Recording service initialization failed: {e}")
         recording_service = None
-      
+        
+        
+    # Reolink motion detection service (Baichuan protocol)
+    reolink_motion_service = None
+    if recording_service:
+        try:
+            reolink_creds = ReolinkCredentialProvider(use_api_credentials=True)
+            recording_config = RecordingConfig(config_path='./config/recording_settings.json')
+            
+            reolink_motion_service = create_reolink_motion_service(
+                camera_repo,
+                recording_service,
+                recording_config,
+                reolink_creds
+            )
+            print("✅ Reolink motion service initialized")
+        except Exception as e:
+            print(f"⚠️  Reolink motion service initialization failed: {e}")
+            reolink_motion_service = None
+    
+    # Snapshot service
+    try:
+        snapshot_service = SnapshotService(
+            camera_repo,
+            recording_service.storage,  # Reuse storage manager
+            recording_service.config     # Reuse recording config
+        )
+        print("✅ Snapshot service initialized")
+    except Exception as e:
+        print(f"⚠️  Snapshot service initialization failed: {e}")
+        snapshot_service = None
+        
+    onvif_listener=None
+    # ONVIF event listener for motion detection
+    # try:
+    #     onvif_listener = ONVIFEventListener(camera_repo, recording_service)
+    #     print("✅ ONVIF event listener initialized")
+    # except Exception as e:
+    #     print(f"⚠️  ONVIF event listener initialization failed: {e}")
+    #     onvif_listener = None
+        
+    # Kill any orphaned FFmpeg recording processes from previous runs
+    if recording_service:
+        print("🧹 Cleaning up orphaned recording processes...")
+        try:
+            import subprocess
+            
+            # Find FFmpeg processes writing to /recordings/continuous/
+            result = subprocess.run(
+                ['pgrep', '-f', 'ffmpeg.*recordings/continuous'],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0 and result.stdout.strip():
+                pids = result.stdout.strip().split('\n')
+                for pid in pids:
+                    try:
+                        subprocess.run(['kill', '-9', pid], check=False)
+                        print(f"  ✅ Killed orphaned FFmpeg process: {pid}")
+                    except Exception as e:
+                        print(f"  ⚠️  Could not kill process {pid}: {e}")
+            else:
+                print("  ✅ No orphaned processes found")
+                
+        except Exception as e:
+            print(f"  ⚠️  Error cleaning orphaned processes: {e}")
+        
+    # Auto-start continuous recordings
+    if recording_service:
+        print("🎬 Auto-starting enabled recordings...")
+        
+        for camera_id in camera_repo.get_all_cameras().keys():
+            try:
+                camera = camera_repo.get_camera(camera_id)
+                camera_name = camera.get('name', camera_id)
+                
+                # Start continuous recording if enabled
+                if recording_service.config.is_recording_enabled(camera_id, 'continuous'):
+                    if recording_service.start_continuous_recording(camera_id):
+                        print(f"  ✅ Continuous: {camera_name}")
+                    else:
+                        print(f"  ❌ Failed continuous: {camera_name}")
+                
+                # Start ONVIF motion detection if enabled
+                if onvif_listener and recording_service.config.is_recording_enabled(camera_id, 'motion'):
+                    camera_cfg = recording_service.config.get_camera_config(camera_id)
+                    detection_method = camera_cfg.get('motion_recording', {}).get('detection_method', 'onvif')
+                    
+                    if detection_method == 'onvif':
+                        # Check if camera has ONVIF capability
+                        if 'ONVIF' in camera.get('capabilities', []):
+                            if onvif_listener.start_listener(camera_id):
+                                print(f"  ✅ ONVIF Motion: {camera_name}")
+                            else:
+                                print(f"  ❌ Failed ONVIF Motion: {camera_name}")
+                        else:
+                            print(f"  ⚠️  ONVIF not available for {camera_name}, configure detection_method='ffmpeg' instead")
+                            
+                # Start snapshots if enabled
+                if snapshot_service and snapshot_service.config.is_recording_enabled(camera_id, 'snapshots'):
+                    if snapshot_service.start_snapshots(camera_id):
+                        print(f"  ✅ Snapshots: {camera_name}")
+                    else:
+                        print(f"  ❌ Failed snapshots: {camera_name}")
+                
+            except Exception as e:
+                print(f"  ❌ Error starting services for {camera_id}: {e}")
+                
+    
+    # Background thread to monitor recording completions and auto-restart
+    if recording_service:
+        def recording_monitor_loop():
+            """Background thread to cleanup finished recordings and auto-restart continuous"""
+            import time
+            
+            while True:
+                try:
+                    time.sleep(10)  # Check every 10 seconds
+                    
+                    if recording_service:
+                        cleaned = recording_service.cleanup_finished_recordings()
+                        if cleaned > 0:
+                            logger.debug(f"Recording monitor cleaned {cleaned} finished recordings")
+                            
+                except Exception as e:
+                    logger.error(f"Recording monitor error: {e}")
+                    time.sleep(30)  # Back off on error
+        
+        monitor_thread = Thread(target=recording_monitor_loop, daemon=True, name="RecordingMonitor")
+        monitor_thread.start()
+        print("✅ Recording monitor thread started")
+    
+    
+    
+    
+
     
     install_sigchld_handler()
 
@@ -161,6 +301,14 @@ try:
 except Exception as e:
     print(f"⚠️  streaming startup warning: {e}")
 
+# ===== Auto-start Reolink Motion Detection =====
+if reolink_motion_service:
+    try:
+        print("\n🏃 Starting Reolink motion detection service...")
+        reolink_motion_service.start()
+        print("✅ Reolink motion detection started")
+    except Exception as e:
+        print(f"⚠️  Reolink motion detection startup warning: {e}")
 
 # ===== Initialize UniFi Cameras (MJPEG fallback) =====
 unifi_cameras = {}

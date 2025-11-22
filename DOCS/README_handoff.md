@@ -8,13 +8,13 @@
 
 ## Quick Status
 
-✅ **Working:**
+âœ… **Working:**
 
 - Settings modal saves/loads correctly
 - Manual recording button works for RTSP/MediaMTX cameras
 - Flask API routes functional
 
-❌ **Not Working:**
+âŒ **Not Working:**
 
 - MJPEG service recording (shows warning)
 - Continuous recording (enabled but doesn't auto-start)
@@ -174,9 +174,9 @@ try:
         camera_repo,
         config_path='./config/recording_settings.json'
     )
-    print("✅ Recording service initialized")
+    print("âœ… Recording service initialized")
 except Exception as e:
-    print(f"⚠️  Recording service initialization failed: {e}")
+    print(f"âš ï¸  Recording service initialization failed: {e}")
     recording_service = None
 ```
 
@@ -185,7 +185,7 @@ except Exception as e:
 ```python
 # Auto-start continuous recordings
 if recording_service:
-    print("🎬 Auto-starting enabled recordings...")
+    print("ðŸŽ¬ Auto-starting enabled recordings...")
     
     for camera_id in camera_repo.cameras.keys():
         try:
@@ -195,15 +195,15 @@ if recording_service:
             # Start continuous recording if enabled
             if recording_service.config.is_recording_enabled(camera_id, 'continuous'):
                 if recording_service.start_continuous_recording(camera_id):
-                    print(f"  ✅ Continuous: {camera_name}")
+                    print(f"  âœ… Continuous: {camera_name}")
                 else:
-                    print(f"  ❌ Failed continuous: {camera_name}")
+                    print(f"  âŒ Failed continuous: {camera_name}")
             
             # TODO: Start motion detection if enabled
             # TODO: Start snapshot service if enabled
             
         except Exception as e:
-            print(f"  ❌ Error starting services for {camera_id}: {e}")
+            print(f"  âŒ Error starting services for {camera_id}: {e}")
 ```
 
 ---
@@ -318,17 +318,17 @@ When multiple recording types are active for same camera:
 ```python
 def _resolve_auto_source(self, stream_type: str) -> str:
     if stream_type in ['LL_HLS', 'HLS']:
-        return 'mediamtx'  # ✅ Works
+        return 'mediamtx'  # âœ… Works
     elif stream_type == 'MJPEG':
-        return 'mjpeg_service'  # ❌ Not implemented!
+        return 'mjpeg_service'  # âŒ Not implemented!
     else:
-        return 'rtsp'  # ✅ Works
+        return 'rtsp'  # âœ… Works
 ```
 
 **Fix options:**
 
 1. Implement MJPEG service recording (preferred)
-2. Change MJPEG auto → 'rtsp' instead of 'mjpeg_service'
+2. Change MJPEG auto â†’ 'rtsp' instead of 'mjpeg_service'
 3. Remove 'auto' as recommended, require explicit selection
 
 ---
@@ -414,11 +414,11 @@ After implementing fixes above:
 
 **MVP (Minimum Viable Product):**
 
-1. ✅ Manual recording works for all cameras
-2. ✅ Continuous recording auto-starts and rotates segments
-3. ✅ Snapshots capture at configured intervals
-4. ✅ Race conditions prevented
-5. ⚠️ Motion detection (ONVIF/FFmpeg) - can remain skeleton for now
+1. âœ… Manual recording works for all cameras
+2. âœ… Continuous recording auto-starts and rotates segments
+3. âœ… Snapshots capture at configured intervals
+4. âœ… Race conditions prevented
+5. âš ï¸ Motion detection (ONVIF/FFmpeg) - can remain skeleton for now
 
 **Post-MVP:**
 
@@ -427,6 +427,229 @@ After implementing fixes above:
 - Add UI status indicators (recording active, motion detection active)
 - Implement storage quota management
 - Add recording playback UI
+
+---
+
+## Session Log - November 15, 2025 (Continued)
+
+**Chat ID:** Current session (continuation from 6e6180ff-1ae7-4d53-ba45-88cb1eb77771)
+
+### Completed
+
+**Fix #1: StorageManager 'manual' Recording Type** ✅
+
+- Added `manual_path` to StorageManager.**init**
+- Updated `_verify_directories()` to include manual_path
+- Updated `generate_recording_path()` to handle 'manual' type
+- Updated `get_storage_stats()` tier_mapping
+- Updated `cleanup_old_recordings()` manual case
+- Updated `cleanup_all_cameras()` manual case
+- Updated RecordingService.start_manual_recording() to use 'manual' type (line 256)
+- Docker volume mapping confirmed: `/mnt/sdc/NVR_Recent/manual:/recordings/manual`
+
+**Fix #2: Race Condition Prevention** ⏭️ SKIPPED
+
+- **Decision:** Allow parallel motion + manual recordings
+- **Rationale:** Separate storage prevents conflicts; timeline feature will exclude manual recordings
+- **Future:** Consider m2m database design for timeline references
+
+**Fix #3: MJPEG Service Recording** ✅ REMOVED
+
+- **Decision:** MJPEG service for live streaming only (sub-second latency)
+- **Removed:** `_start_mjpeg_recording()` method from recording_service.py
+- **Removed:** mjpeg_service handling in start_motion_recording() and start_manual_recording()
+- **Removed:** mjpeg_service option from recording-settings-form.js UI
+- **Updated:** recording_config_loader.py auto-resolution - MJPEG cameras now use 'rtsp'
+- **Updated:** Documentation to reflect only 'mediamtx' and 'rtsp' source types
+- **Result:** Simpler codebase, ~50 lines removed, no functionality lost
+
+**Fix #4: Auto-Start Continuous Recording** ✅ COMPLETE
+
+- **Created:** `start_continuous_recording()` method in recording_service.py
+  - Uses configured segment duration from camera settings
+  - Stores with 'continuous' recording type
+  - Sets `auto_restart: True` flag for monitoring thread
+- **Added:** Auto-start logic in app.py initialization
+  - Iterates through all cameras via `camera_repo.get_all_cameras()`
+  - Starts continuous recording for cameras with `continuous_recording.enabled = true`
+- **Added:** Orphaned process cleanup on Flask startup
+  - Kills any FFmpeg processes from previous runs (prevents duplicate recordings)
+  - Uses `pgrep -f 'ffmpeg.*recordings/continuous'` + `kill -9`
+- **Modified:** `cleanup_finished_recordings()` with auto-restart logic
+  - Checks `auto_restart` flag when segment completes
+  - Automatically starts next segment for continuous recordings
+- **Added:** Background monitoring thread in app.py
+  - Runs `cleanup_finished_recordings()` every 10 seconds
+  - Daemon thread (exits with main app)
+  - Error handling with 30s backoff
+- **Result:** 24/7 continuous recording with automatic segment rotation working
+
+**Fix #5: Snapshot Service** ✅ COMPLETE
+
+- **Created:** `~/0_NVR/services/recording/snapshot_service.py`
+  - Timer-based periodic JPEG capture (not continuous loop)
+  - FFmpeg `-frames:v 1` for single frame extraction
+  - Uses sub-stream for efficiency
+  - Auto-schedules next capture after each snapshot
+  - Configurable interval per camera
+- **Methods:**
+  - `start_snapshots()` - Initialize periodic capture for camera
+  - `stop_snapshots()` - Cancel scheduled captures
+  - `_capture_snapshot()` - FFmpeg single-frame extraction
+  - `_schedule_next_snapshot()` - Timer-based scheduling
+  - `_get_snapshot_source_url()` - RTSP URL resolution (MediaMTX or direct)
+  - `get_active_snapshots()` - Status reporting
+- **Integration in app.py:**
+  - Initialized with camera_repo, storage_manager, recording_config
+  - Auto-starts for cameras with `snapshots.enabled = true`
+  - Reuses StorageManager for path generation
+- **Bug Fix:** Added 'snapshots' case to `recording_config_loader.py:is_recording_enabled()`
+  - Was returning False for all snapshot checks (line 203)
+  - Added `elif recording_type == 'snapshots': return camera_cfg.get('snapshots', {}).get('enabled', False)`
+- **Result:** Periodic JPEG snapshots working at configured intervals
+
+### Remaining Fixes
+
+- **Fix #6:** Motion detection/recording implementation **IN PROGRESS**
+
+## **Fix #6 Status: Motion Detection - Critical Findings**
+
+### **CRITICAL DISCOVERY: Reolink Cameras Use Proprietary Event System**
+
+**ONVIF PullMessages does NOT deliver motion change events on Reolink cameras**, even though:
+
+- ✅ ONVIF connection works (port 8000 for Reolink, port 80 for Amcrest)
+- ✅ CreatePullPointSubscription succeeds
+- ✅ PullMessages API call works
+- ✅ Camera advertises motion topics in GetEventProperties
+- ✅ Motion detection enabled in camera settings (sensitivity: Low, 24/7)
+
+**What Actually Happens:**
+
+- PullMessages only returns `PropertyOperation="Initialized"` messages with `IsMotion: false` or `State: false`
+- NO motion change events fire when moving extensively in front of camera
+- Both `tns1:VideoSource/MotionAlarm` (State) and `tns1:RuleEngine/CellMotionDetector/Motion` (IsMotion) topics tested - neither delivers change events
+
+**Root Cause:**
+Reolink cameras use their proprietary **"Baichuan" TCP push event protocol** instead of ONVIF events for motion detection.
+
+**Evidence:**
+
+- Official Reolink-authorized Python library: `reolink_aio` (<https://github.com/starkillerOG/reolink_aio>)
+- Working pattern: `host.baichuan.register_callback()` + `await host.baichuan.subscribe_events()`
+- Home Assistant ONVIF integration has documented Reolink motion event issues (GitHub issue #42784)
+
+### **Tested Configurations (ipython):**
+
+**Working ONVIF connection:**
+
+```python
+from onvif import ONVIFCamera
+from datetime import timedelta
+
+mycam = ONVIFCamera('192.168.10.88', 8000, 'admin', password, '/usr/local/lib/python3.11/site-packages/wsdl/', no_cache=True)
+event_service = mycam.create_events_service()
+
+# Subscription with topic filter
+sub = event_service.CreatePullPointSubscription({
+    'Filter': {
+        'TopicExpression': {
+            '_value_1': 'tns1:VideoSource/MotionAlarm',
+            'Dialect': 'http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet'
+        }
+    }
+})
+
+# Correct pullpoint service creation
+pullpoint = event_service.zeep_client.create_service(
+    '{http://www.onvif.org/ver10/events/wsdl}PullPointSubscriptionBinding',
+    sub.SubscriptionReference.Address._value_1
+)
+
+# Poll for messages
+messages = pullpoint.PullMessages(Timeout=timedelta(seconds=2), MessageLimit=10)
+```
+
+**Result:** Only initialization messages, no motion events despite extensive movement
+
+### **Recommended Solution: FFmpeg Motion Detector**
+
+**Why FFmpeg instead of ONVIF:**
+
+1. **Universal** - works with ALL camera types (Reolink, Amcrest, Eufy, UniFi)
+2. **Reliable** - doesn't depend on vendor-specific event implementations
+3. **Already scaffolded** - `ffmpeg_motion_detector.py` exists as skeleton
+4. **CPU efficient** - FFmpeg scene detection filter is lightweight
+
+**Implementation:**
+
+- File: `~/0_NVR/services/motion/ffmpeg_motion_detector.py`
+- Method: Use FFmpeg's `select` filter with scene change detection
+- Config: Sensitivity threshold per camera in `recording_settings.json`
+- Trigger: Call `recording_service.start_motion_recording()` on threshold exceeded
+
+**FFmpeg command pattern:**
+
+```bash
+ffmpeg -i rtsp://camera -vf "select='gt(scene,0.3)',metadata=print:file=-" -f null -
+```
+
+Parse output for scene change scores, trigger recording when > threshold.
+
+### **Alternative: Reolink Native API (Future Enhancement)**
+
+For Reolink-specific optimization, consider `reolink-aio` library:
+
+```python
+from reolink_aio.api import Host
+
+host = Host('192.168.10.88', 'admin', password)
+await host.get_host_data()
+host.baichuan.register_callback("motion_detector", motion_callback)
+await host.baichuan.subscribe_events()
+```
+
+**Pros:** Native motion events, lower latency
+**Cons:** Vendor-specific, async library, additional dependency
+
+### **Files Modified:**
+
+- `~/0_NVR/services/onvif/onvif_event_listener.py` - Multiple iterations testing (needs cleanup or deletion)
+- `~/0_NVR/config/recording_config_loader.py` - Added 'snapshots' case to `is_recording_enabled()`
+- `~/0_NVR/app.py` - Added ONVIF listener initialization (currently non-functional for Reolink)
+
+### **What Works:**
+
+- ✅ `recording_service.start_motion_recording()` exists and functional
+- ✅ Motion recording metadata storage (PostgreSQL)
+- ✅ Auto-start framework in app.py
+- ✅ Camera configuration with `detection_method: "onvif"` or `"ffmpeg"`
+
+### **Next Steps:**
+
+1. **Implement FFmpeg motion detector** (priority - universal solution)
+2. Clean up/remove non-functional ONVIF listener code for Reolink
+3. Test ONVIF with Amcrest cameras (may work correctly)
+4. Consider Reolink native API as future enhancement
+
+### **Token Budget:**
+
+~84k remaining - recommend continuing in new chat for FFmpeg implementation
+
+### Architecture Notes
+
+**Manual Recordings Strategy:**
+
+- Stored in separate `/recordings/manual/` directory
+- Can run parallel with motion detection recordings
+- Excluded from timeline UI (future: "My Recordings" feature)
+- Database: Consider m2m approach for cross-referencing
+
+**Long-term Storage:**
+
+- Volume mappings defined in docker-compose.yml
+- Archiving logic not yet implemented
+- Storage tiers: /recordings/ (recent) → /recordings/STORAGE/ (archive)
 
 ---
 

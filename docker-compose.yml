@@ -90,9 +90,18 @@ services:
 
     volumes:
       # recording volumes
+
+      # RECENT RECORDINGS
       - /mnt/sdc/NVR_Recent/motion:/recordings/motion
       - /mnt/sdc/NVR_Recent/continuous:/recordings/continuous
       - /mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots
+      - /mnt/sdc/NVR_Recent/manual:/recordings/manual
+
+      # LONG TERM STORAGE
+      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion
+      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous:/recordings/STORAGE/continuous
+      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual:/recordings/STORAGE/manual
+      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots:/recordings/STORAGE/snapshots
 
       # Mount Python source code for hot-reloading
       - ./:/app

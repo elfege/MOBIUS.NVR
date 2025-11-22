@@ -28,3 +28,4 @@ python-dotenv
 websockets
 requests
 onvif-zeep
+reolink_aio 

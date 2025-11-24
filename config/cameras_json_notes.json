@@ -1,0 +1,451 @@
+{
+    "__notes": {
+        "summary": "LL-HLS via MediaMTX packager; target ~1–2s latency",
+        "architecture": {
+            "flow": {
+                "LL_HLS": "Camera RTSP → FFmpeg Publisher (unified-nvr) → MediaMTX Packager → NGINX Edge → Browser (hls.js)",
+                "HLS": "Camera RTSP → FFmpeg Transcoder (unified-nvr) → NGINX Edge → Browser (hls.js)",
+                "RTMP": "Camera RTSP → FFmpeg Transcoder (unified-nvr) → NGINX Edge → Browser (flv.js)",
+                "mjpeg_proxy": "Camera (RTSP snapshots or HTTP) → Python Proxy (unified-nvr) → NGINX Edge → Browser (<img>)"
+            },
+            "why_ll_hls_uses_publisher": "Camera native GOP (typically 4-5s) would force MediaMTX to create equally long segments = high latency. We transcode to controlled GOP (0.5-1s) so MediaMTX can create sub-2s latency LL-HLS with 200ms partials. Other stream types transcode directly to final format.",
+            "protocols": {
+                "input": {
+                    "RTSP_UDP": "Lower latency, tolerates some packet loss, preferred for local network",
+                    "RTSP_TCP": "Higher latency but guaranteed delivery, use if UDP shows corruption errors",
+                    "HTTP": "For MJPEG snapshot URLs (UniFi cameras)"
+                },
+                "output": {
+                    "LL_HLS": "RTSP/TCP or RTSP/UDP to MediaMTX (TCP stable but adds latency, UDP lower latency but may freeze)",
+                    "HLS": "Direct file write to /app/streams/ (no network protocol)",
+                    "RTMP": "Direct file write to /app/streams/ (no network protocol)",
+                    "mjpeg_proxy": "HTTP response to browser (no intermediate storage)"
+                }
+            }
+        },
+        "name": "e.g. CAM OFFICE - Human-readable camera name displayed in UI",
+        "model": "e.g. RLC-410-5MP - Camera model number for reference/troubleshooting",
+        "type": "e.g. reolink - Vendor type, determines which handler class processes this camera (ReolinkService, UniFiProtectService, EufyService)",
+        "serial": "e.g. REOLINK_OFFICE - Unique identifier used as key in active_streams dict, DOM data attributes, API endpoints",
+        "host": "e.g. 192.168.10.88 - Camera IP address on local network",
+        "mac": "e.g. ec:71:db:3e:93:f5 - MAC address for network troubleshooting/DHCP reservations",
+        "capabilities": {
+            "description": "Array of camera features",
+            "streaming": "Camera supports video streaming",
+            "ptz": "Camera has Pan-Tilt-Zoom controls (not present on this model)",
+            "audio": "Camera has audio (not explicitly listed but available via RTSP)"
+        },
+        "stream_type": {
+            "description": "Determines which streaming pipeline to use",
+            "LL_HLS": "Use MediaMTX packager for Low-Latency HLS (this camera)",
+            "HLS": "Use app-generated HLS via FFmpeg (most cameras)",
+            "RTMP": "Use RTMP/FLV stream with flv.js player",
+            "mjpeg_proxy": "Use MJPEG snapshot proxy (UniFi cameras)"
+        },
+        "packager_path": {
+            "description": "REOLINK_OFFICE - Stream identifier in MediaMTX",
+            "must_match": "ll_hls.publisher.path - These must be identical",
+            "url_impact": "Determines manifest URL: /hls/{packager_path}/index.m3u8"
+        },
+        "player_settings": {
+            "description": "Browser video player configuration (protocol-specific)",
+            "hls_js": {
+                "description": "Configuration for hls.js library (used by HLS and LL_HLS streams)",
+                "applies_to": "stream_type: HLS or LL_HLS",
+                "ignored_by": "RTMP (uses flv.js) and mjpeg_proxy (uses <img> tag)",
+                "enableWorker": {
+                    "value": true,
+                    "description": "Run demuxing in Web Worker (separate thread)",
+                    "true": "Better performance, offloads parsing from main thread",
+                    "false": "All processing on main thread, may cause UI jank on weak devices",
+                    "recommendation": "Always true unless debugging worker-related issues"
+                },
+                "lowLatencyMode": {
+                    "value": true,
+                    "description": "Enable Low-Latency HLS features",
+                    "true": "Requests playlist updates via blocking requests (_HLS_msn, _HLS_part params), processes partial segments",
+                    "false": "Standard HLS - polls playlist every few seconds, waits for complete segments",
+                    "critical": "Must be true for LL_HLS stream_type. Can be false for regular HLS stream_type."
+                },
+                "liveSyncDurationCount": {
+                    "value": 1,
+                    "description": "How many segments behind live edge to target",
+                    "calculation": "liveSyncDurationCount × segment_duration = latency offset",
+                    "tradeoff": "Lower = less latency but more buffering risk. Higher = more latency but smoother playback.",
+                    "ll_hls_recommended": "1 (aggressive, minimum latency)",
+                    "regular_hls_recommended": "2-3 (safer, prevents rebuffering)"
+                },
+                "liveMaxLatencyDurationCount": {
+                    "value": 2,
+                    "description": "Maximum allowed latency before speed adjustment kicks in (in segments)",
+                    "calculation": "liveMaxLatencyDurationCount × segment_duration = max allowed drift",
+                    "behavior": "If player falls more than max drift behind live, playback rate increases (up to maxLiveSyncPlaybackRate) to catch up",
+                    "tradeoff": "Lower = aggressive catchup (may cause audio pitch changes). Higher = accepts more delay before correction.",
+                    "ll_hls_recommended": "2-3",
+                    "regular_hls_recommended": "4-5"
+                },
+                "maxLiveSyncPlaybackRate": {
+                    "value": 1.5,
+                    "description": "Maximum playback speed multiplier for catching up to live edge",
+                    "1.5": "Play at 150% speed (1.5x) when behind - noticeable but acceptable",
+                    "alternatives": "1.2 (subtle, slower catchup), 2.0 (aggressive, obvious speedup)",
+                    "caveat": "Higher values cause audio pitch changes (chipmunk effect), use sparingly"
+                },
+                "backBufferLength": {
+                    "value": 5,
+                    "description": "How many seconds of video to keep in buffer behind current playback position",
+                    "5": "Keep 5 seconds for seeking/rewind capability",
+                    "tradeoff": "Lower = less memory usage, less rewind. Higher = more memory, better seeking.",
+                    "ll_hls_recommended": "5-10 (minimal buffer)",
+                    "regular_hls_recommended": "10-30 (allow more seeking)"
+                }
+            },
+            "future_protocols": {
+                "flv_js": "Configuration for flv.js (RTMP streams) - not yet implemented",
+                "dash_js": "Configuration for DASH streams if added in future",
+                "native_player": "Settings for browsers with native HLS support (Safari) - currently uses defaults"
+            },
+            "how_applied": {
+                "code_location": "static/js/streaming/hls-stream.js and stream.js",
+                "merge_strategy": "Smart defaults based on stream_type (LL_HLS vs HLS), then override with camera-specific player_settings",
+                "fallback": "If player_settings missing or incomplete, uses hardcoded defaults appropriate for stream type"
+            },
+            "tuning_guide": {
+                "lower_latency": "Decrease liveSyncDurationCount (min 1), decrease liveMaxLatencyDurationCount (min 2)",
+                "smoother_playback": "Increase liveSyncDurationCount (2-3), increase liveMaxLatencyDurationCount (4-5), decrease maxLiveSyncPlaybackRate (1.2)",
+                "debugging_buffering": "Increase all values by 1-2, check if issues resolve (indicates network/encoding bottleneck)",
+                "memory_constrained": "Decrease backBufferLength to 3-5"
+            }
+        },
+        "ll_hls": {
+            "description": "Complete configuration for LL-HLS publishing pipeline",
+            "publisher": {
+                "description": "Settings for FFmpeg output to MediaMTX",
+                "protocol": {
+                    "value": "rtsp",
+                    "options": [
+                        "rtsp",
+                        "rtmp"
+                    ],
+                    "rtsp": "Preferred for MediaMTX, uses port 8554",
+                    "rtmp": "Alternative, uses port 1935, tested working but not used"
+                },
+                "host": {
+                    "value": "nvr-packager",
+                    "description": "Docker Compose service name of MediaMTX container",
+                    "network": "Both containers on nvr-net bridge network, Docker DNS resolves service names"
+                },
+                "port": {
+                    "value": 8554,
+                    "description": "MediaMTX RTSP listener port (1935 for RTMP)",
+                    "container_internal": "Port is internal to Docker network, not exposed to host"
+                },
+                "path": {
+                    "value": "REOLINK_OFFICE",
+                    "description": "Stream path in MediaMTX, must match packager_path and mediamtx.yml paths: section",
+                    "url_construction": "Full publisher URL becomes: rtsp://nvr-packager:8554/REOLINK_OFFICE"
+                },
+                "rtsp_transport": {
+                    "value": "tcp",
+                    "options": [
+                        "tcp",
+                        "udp"
+                    ],
+                    "tcp": "Stable, adds ~1-2s latency, prevents freezing. CURRENTLY REQUIRED.",
+                    "udp": "Lower latency (~1s faster) but stream freezes within minutes. Root cause unknown, possibly packet loss or MediaMTX timeout.",
+                    "critical": "This is OUTPUT transport (FFmpeg→MediaMTX), separate from rtsp_input.rtsp_transport (Camera→FFmpeg)"
+                }
+            },
+            "video": {
+                "description": "FFmpeg video encoding parameters for publisher",
+                "c:v": {
+                    "value": "libx264",
+                    "description": "Video codec - software H.264 encoder",
+                    "why_not_copy": "Must re-encode to control GOP size (camera GOP ~5s, we need 1s)",
+                    "alternatives": "libx265 (HEVC, better compression but higher CPU), h264_nvenc (NVIDIA GPU)"
+                },
+                "preset": {
+                    "value": "veryfast",
+                    "description": "Encoding speed preset",
+                    "range": "ultrafast → superfast → veryfast → faster → fast → medium → slow → slower → veryslow",
+                    "tradeoff": "Faster = lower CPU, worse compression. Slower = higher CPU, better quality at same bitrate.",
+                    "why_veryfast": "Balance between CPU usage (~4-5% per stream) and quality"
+                },
+                "tune": {
+                    "value": "zerolatency",
+                    "description": "Disables encoding features that add latency",
+                    "specifics": "Disables B-frames (bidirectional prediction), reduces lookahead buffer, forces immediate frame output",
+                    "impact": "Slightly worse compression but critical for live streaming low latency"
+                },
+                "profile:v": {
+                    "value": "baseline",
+                    "description": "H.264 profile",
+                    "baseline": "Maximum compatibility, no B-frames, works on all devices",
+                    "main": "Better compression, allows B-frames (conflicts with zerolatency)",
+                    "high": "Best compression but requires modern hardware",
+                    "why_baseline": "Maximum browser compatibility + required for zerolatency tune"
+                },
+                "pix_fmt": {
+                    "value": "yuv420p",
+                    "description": "Pixel format (chroma subsampling)",
+                    "yuv420p": "4:2:0 subsampling, standard for web video, widely supported",
+                    "yuv444p": "4:4:4 no subsampling, better quality but not supported by baseline profile"
+                },
+                "r": {
+                    "value": 30,
+                    "description": "Output framerate in fps",
+                    "source_fps": "Camera outputs ~18-20 fps (variable), we request 30 to allow smooth motion",
+                    "impact": "Higher fps = smoother motion but higher bitrate needed. Lower fps = choppier but less bandwidth.",
+                    "alternatives": "15 fps (half, saves bandwidth), 8 fps (minimum for acceptable motion)"
+                },
+                "g": {
+                    "value": 15,
+                    "description": "GOP (Group of Pictures) size in frames",
+                    "calculation": "15 frames ÷ 30 fps = 0.5 second GOP",
+                    "critical": "This determines MediaMTX segment size! GOP must be ≤ segment duration.",
+                    "why_15": "Creates 2 GOPs per 1-second MediaMTX segment, allows MediaMTX to cut segments cleanly",
+                    "must_match_keyint_min": "Set g = keyint_min for fixed GOP (no variable GOP)"
+                },
+                "keyint_min": {
+                    "value": 15,
+                    "description": "Minimum interval between keyframes (I-frames) in frames",
+                    "when_equal_to_g": "Forces fixed GOP - keyframe every exactly 15 frames, no exceptions",
+                    "why_critical": "Variable GOP breaks LL-HLS segment alignment, causes buffering/stalls"
+                },
+                "b:v": {
+                    "value": "800k",
+                    "description": "Target video bitrate",
+                    "quality": "800 kbps is medium quality for 640x480 @ 30fps",
+                    "alternatives": "400k (low quality, very compressed), 1200k (higher quality), 2000k+ (near-lossless but high bandwidth)"
+                },
+                "maxrate": {
+                    "value": "800k",
+                    "description": "Maximum bitrate (VBV constraint)",
+                    "when_equal_to_bv": "Creates CBR (Constant Bitrate) - bitrate stays near 800k always",
+                    "why_cbr": "Predictable bandwidth, prevents buffering, better for live streaming",
+                    "vbr_alternative": "Set maxrate higher (e.g., 1200k) for VBR - variable bitrate, better quality on complex scenes"
+                },
+                "bufsize": {
+                    "value": "1600k",
+                    "description": "VBV (Video Buffering Verifier) buffer size",
+                    "calculation": "2x bitrate is standard for CBR (2 * 800k = 1600k)",
+                    "impact": "Larger buffer = smoother bitrate control but more delay. Smaller = faster response but more bitrate spikes.",
+                    "dont_touch": "Keep at 2x bitrate for CBR"
+                },
+                "x264-params": {
+                    "value": "scenecut=0:min-keyint=15:open_gop=0",
+                    "description": "Direct x264 encoder parameters",
+                    "scenecut": {
+                        "value": 0,
+                        "description": "Disables scene change detection",
+                        "default": "40 - encoder inserts keyframe on scene changes (cuts, fades)",
+                        "why_0": "Prevents unexpected keyframes that break fixed GOP, critical for LL-HLS segment alignment"
+                    },
+                    "min-keyint": {
+                        "value": 15,
+                        "description": "Minimum keyframe interval (redundant with keyint_min but explicit)",
+                        "why_set": "Double ensures fixed GOP, some FFmpeg versions prioritize x264-params"
+                    },
+                    "open_gop": {
+                        "value": 0,
+                        "description": "Forces closed GOPs",
+                        "closed_gop": "Each GOP is self-contained, can be decoded independently",
+                        "open_gop": "GOP can reference frames from previous GOP, better compression but breaks seeking/segment boundaries",
+                        "why_0": "Required for clean HLS segments - each segment must be independently decodable"
+                    }
+                },
+                "force_key_frames": {
+                    "value": "expr:gte(t,n_forced*1)",
+                    "description": "Expression to force keyframes at specific times",
+                    "breakdown": {
+                        "expr": "Signals this is an expression (not a simple interval)",
+                        "gte": "Greater than or equal to",
+                        "t": "Current timestamp in seconds",
+                        "n_forced": "Number of keyframes already forced",
+                        "1": "Force every 1 second"
+                    },
+                    "result": "Keyframe at 0s, 1s, 2s, 3s... regardless of content",
+                    "redundant_but_safe": "With g=15 and scenecut=0, this should be automatic, but explicit forcing guarantees timing"
+                },
+                "vf": {
+                    "value": "scale=640:480",
+                    "description": "Video filter - resize to 640x480",
+                    "source_resolution": "Camera outputs 640x480 (already at target)",
+                    "why_set_anyway": "Explicit scaling ensures consistent output even if camera resolution changes",
+                    "alternatives": "scale=1280:720 (higher quality, 2-3x bitrate), scale=320:240 (thumbnail quality)"
+                }
+            },
+            "audio": {
+                "description": "Audio encoding configuration (currently disabled)",
+                "enabled": {
+                    "value": false,
+                    "description": "Master switch for audio inclusion",
+                    "why_false": "Audio adds ~64-128kbps + encoding overhead + potential sync issues. Disabled for minimum latency testing.",
+                    "to_enable": "Set to true and configure codec/bitrate/rate/channels below"
+                },
+                "codec": {
+                    "value": "aac",
+                    "description": "Audio codec (only used if enabled=true)",
+                    "aac": "Standard for web, good quality, universal support",
+                    "alternatives": "mp3 (older, wider compatibility), opus (better quality, newer browsers)"
+                },
+                "bitrate": {
+                    "value": "64k",
+                    "description": "Audio bitrate (only used if enabled=true)",
+                    "64k": "Good quality for voice/surveillance audio",
+                    "alternatives": "32k (low quality, saves bandwidth), 128k (music quality)"
+                },
+                "rate": {
+                    "value": 44100,
+                    "description": "Audio sample rate in Hz (only used if enabled=true)",
+                    "44100": "CD quality, standard",
+                    "alternatives": "22050 (half, lower quality), 48000 (studio quality)"
+                },
+                "channels": {
+                    "value": 1,
+                    "description": "Audio channels (only used if enabled=true)",
+                    "1": "Mono - typical for surveillance cameras",
+                    "2": "Stereo - if camera has stereo mic"
+                }
+            }
+        },
+        "rtsp_input": {
+            "description": "FFmpeg parameters for reading camera's RTSP stream (Camera → FFmpeg)",
+            "rtsp_transport": {
+                "value": "udp",
+                "description": "Transport protocol for receiving from camera",
+                "udp": "Lower latency, allows some packet loss, preferred for local network",
+                "tcp": "Higher latency but guaranteed delivery, use if UDP has corruption (RTP: bad cseq errors)",
+                "note": "This is INPUT transport (Camera→FFmpeg), separate from ll_hls.publisher.rtsp_transport (FFmpeg→MediaMTX)"
+            },
+            "timeout": {
+                "value": 5000000,
+                "description": "Read/write timeout in microseconds (5 seconds)",
+                "why_5s": "Prevents FFmpeg from hanging indefinitely if camera stops responding",
+                "too_low": "May timeout during normal buffering",
+                "too_high": "Takes longer to detect dead cameras"
+            },
+            "analyzeduration": {
+                "value": 1000000,
+                "description": "Maximum time to analyze stream before starting playback (microseconds = 1 second)",
+                "tradeoff": "Lower = faster start but may misdetect codecs. Higher = slower start but more reliable detection.",
+                "why_1s": "Balance between startup speed and codec detection accuracy"
+            },
+            "probesize": {
+                "value": 1000000,
+                "description": "Amount of data to read for stream analysis (bytes = 1 MB)",
+                "tradeoff": "Smaller = faster start but incomplete info. Larger = slower but complete stream info.",
+                "why_1mb": "Sufficient for RTSP streams without excessive startup delay"
+            },
+            "use_wallclock_as_timestamps": {
+                "value": 1,
+                "description": "Use system clock time instead of stream timestamps",
+                "why_1": "Some cameras have unreliable/broken timestamps. System clock is more consistent for live streaming.",
+                "downside": "Ignores actual frame timing from camera, assumes constant framerate"
+            },
+            "fflags": {
+                "value": "nobuffer",
+                "description": "Format flags",
+                "nobuffer": "Minimizes input buffering for lower latency",
+                "alternative_genpts": "+genpts to generate PTS (presentation timestamps) if stream lacks them - used on some Reolink cameras with UDP"
+            }
+        },
+        "rtsp_output": {
+            "description": "FFmpeg parameters for app-generated HLS (NOT USED when stream_type=LL_HLS)",
+            "when_used": "Only if you change stream_type from LL_HLS to HLS - then app generates HLS directly instead of using MediaMTX",
+            "purpose": "Fallback/comparison config to test this camera with regular HLS pipeline",
+            "note": "These settings are ignored for LL_HLS streams - see ll_hls section instead",
+            "map": {
+                "value": [
+                    "0:v:0"
+                ],
+                "description": "Stream selection",
+                "0:v:0": "First video stream from input",
+                "0:a?": "First audio stream if present (not in current config)",
+                "why_video_only": "Audio disabled to match ll_hls.audio.enabled=false"
+            },
+            "various_encoding_params": "Similar to ll_hls.video but different values - see those descriptions",
+            "f": {
+                "value": "HLS",
+                "description": "Output format",
+                "HLS": "HTTP Live Streaming - creates .m3u8 playlist + .ts segments"
+            },
+            "hls_time": {
+                "value": "0.5",
+                "description": "Target segment duration in seconds",
+                "why_0.5": "Shorter segments = lower latency, but more overhead",
+                "typical": "1-4 seconds for normal HLS"
+            },
+            "hls_list_size": {
+                "value": "1",
+                "description": "Number of segments to keep in playlist",
+                "why_1": "Minimal playlist for live streaming, removes old segments immediately"
+            },
+            "hls_flags": {
+                "value": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+                "independent_segments": "Each segment can be decoded independently",
+                "program_date_time": "Adds timestamps for latency calculation",
+                "append_list": "Updates playlist in-place instead of rewriting",
+                "delete_segments": "Removes old .ts files automatically",
+                "split_by_time": "Cut segments by time, not keyframes (may require transcoding)"
+            },
+            "hls_fmp4_init_resend": {
+                "value": 1,
+                "description": "Resend fMP4 initialization segment periodically",
+                "why": "Allows mid-stream joining without waiting for start"
+            },
+            "muxpreload": {
+                "value": 0,
+                "description": "Container preload buffer (0 = disabled)",
+                "why_0": "Minimize muxing latency"
+            },
+            "muxdelay": {
+                "value": 0,
+                "description": "Container output delay (0 = disabled)",
+                "why_0": "Minimize muxing latency"
+            },
+            "hls_segment_type": {
+                "value": "fmp4",
+                "description": "Segment container format",
+                "fmp4": "Fragmented MP4 - modern, better seeking",
+                "mpegts": "MPEG-TS - older, more compatible, lower overhead"
+            },
+            "hls_fmp4_init_filename": {
+                "value": "init.mp4",
+                "description": "Name of fMP4 initialization segment",
+                "purpose": "Contains codec info, required before playing media segments"
+            },
+            "movflags": {
+                "value": "+frag_keyframe+empty_moov+default_base_moof",
+                "frag_keyframe": "Start new fragment at each keyframe",
+                "empty_moov": "Minimal header for faster start",
+                "default_base_moof": "Use default base media offset"
+            },
+            "hls_delete_threshold": {
+                "value": "1",
+                "description": "Delete segments when count exceeds list_size by this amount",
+                "why_1": "Immediate cleanup"
+            }
+        },
+        "hidden": {
+            "value": false,
+            "description": "Whether to hide camera from main UI grid",
+            "false": "Show in grid (this camera)",
+            "true": "Hidden cameras still accessible but not displayed by default"
+        },
+        "ui_health_monitor": {
+            "value": true,
+            "description": "Enable frame-based health monitoring for this camera in browser",
+            "true": "UI checks for blank/frozen frames and attempts restart",
+            "false": "Disable if health monitor causes false positives (some cameras had this issue)",
+            "see_also": "ui_health_global_settings in cameras.json for system-wide health monitor config"
+        },
+        "known_issues": {
+            "udp_publisher_freezing": "ll_hls.publisher.rtsp_transport=udp causes stream to freeze within minutes. MediaMTX returns 404. FFmpeg process may die silently. Root cause unknown. TCP is only stable option.",
+            "latency_degradation": "Latency starts at ~2s but increases to 4-5s over hours of continuous streaming. Possibly MediaMTX segment buffer accumulation or TCP buffering.",
+            "tcp_latency_penalty": "Using TCP for publisher adds 1-2s compared to UDP, but UDP is unstable so we accept the penalty.",
+            "regular_hls_faster": "Ironically, regular HLS (rtsp_output config) currently has LOWER latency than LL-HLS due to transcoding overhead + TCP buffering. This is backwards and needs optimization."
+        },
+        "last_checked_utc": "2025-10-19T10:00:00Z"
+    }
+}

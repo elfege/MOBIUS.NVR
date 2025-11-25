@@ -1,3 +1,8 @@
+# ---
+title: "NVR Recording System - Complete Implementation Package"
+layout: default
+---
+
 # NVR Recording System - Complete Implementation Package
 
 **Generated**: 2025-11-12 23:15 UTC

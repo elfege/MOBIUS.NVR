@@ -1,4 +1,9 @@
-# First Assessment on VCA features 
+---
+title: "First Assessment on VCA features"
+layout: default
+---
+
+# First Assessment on VCA features
 
 ## Current System State Context (from README_project_history.md)
 

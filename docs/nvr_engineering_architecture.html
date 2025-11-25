@@ -483,8 +483,7 @@
         <div class="diagram-container">
             <div class="mermaid">
                 classDiagram
-                    class StreamHandler {
-                        <<abstract>>
+                    class StreamHandler {                        
                         +build_rtsp_url(camera_config, stream_type) str
                         +get_ffmpeg_input_params(camera_config) List
                         +get_ffmpeg_output_params(stream_type, camera_config) List
@@ -494,26 +493,26 @@
                     }
                     
                     class EufyStreamHandler {
-                        -credential_provider: EufyCredentialProvider
-                        -bridge_config: Dict
-                        +build_rtsp_url() "rtsp://user:pass@bridge:554/live0"
+                        -credential_provider EufyCredentialProvider
+                        -bridge_config Dict
+                        +build_rtsp_url() str
                     }
                     
                     class ReolinkStreamHandler {
-                        -credential_provider: ReolinkCredentialProvider
-                        -reolink_config: Dict
-                        +build_rtsp_url() "rtsp://user:pass@cam:554/h264Preview_01_sub"
+                        -credential_provider ReolinkCredentialProvider
+                        -reolink_config Dict
+                        +build_rtsp_url() str
                     }
                     
                     class UniFiStreamHandler {
-                        -credential_provider: UniFiCredentialProvider
-                        -protect_config: Dict
-                        +build_rtsp_url() "rtsps://console:7441/proxy_url"
+                        -credential_provider UniFiCredentialProvider
+                        -protect_config Dict
+                        +build_rtsp_url() str
                     }
                     
                     class AmcrestStreamHandler {
-                        -credential_provider: AmcrestCredentialProvider
-                        +build_rtsp_url() "rtsp://user:pass@cam:554/cam/realmonitor"
+                        -credential_provider AmcrestCredentialProvider
+                        +build_rtsp_url() str
                     }
                     
                     StreamHandler <|-- EufyStreamHandler
@@ -522,9 +521,9 @@
                     StreamHandler <|-- AmcrestStreamHandler
                     
                     class StreamManager {
-                        -handlers: Dict~str,StreamHandler~
-                        -active_streams: Dict
-                        -camera_repo: CameraRepository
+                        -handlers Dict
+                        -active_streams Dict
+                        -camera_repo CameraRepository
                         +start_stream(camera_serial, stream_type)
                         +stop_stream(camera_serial)
                         +get_stream_url(camera_serial)

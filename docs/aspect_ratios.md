@@ -1,3 +1,8 @@
+---
+title: "Aspect Ratios & Resolutions"
+layout: default
+---
+
 <!-- markdownlint-disable MD025 -->
 
 # 🖥️ **16:9 Aspect Ratio (widescreen standard)**

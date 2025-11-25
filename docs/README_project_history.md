@@ -1,7 +1,12 @@
+---
+title: "NVR project"
+layout: default
+---
+
 <!-- markdownlint-disable MD036 -->
 <!-- markdownlint-disable MD024 -->
 
-# NVR project (personal project that serves as a training for work)
+# NVR Project
 
 ## September 16: Container Architecture and Docker Modernization (NOW REMOVED FROM PROJECT UNTIL FURTHER NOTICE)
 

@@ -1,8 +1,6 @@
-Perfect — I’ll turn the **“Example Configuration Snippet”** section into a **complete reference block**:
-each key explained with purpose, expected range, example values, and performance impact (CPU, latency, network).
-
-Here’s the **rewritten full document**, including that detailed section at the end — this will serve as  authoritative internal NVR configuration reference.
-
+---
+title: "ffmpeg settings guide"
+layout: default
 ---
 
 <!-- markdownlint-disable MD025 MD033 -->

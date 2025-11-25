@@ -1,3 +1,8 @@
+---
+title: "Unified NVR - Docker Deployment Guide"
+layout: default
+---
+
 # Unified NVR - Docker Deployment Guide
 
 Complete containerization guide for the unified camera NVR supporting Eufy and UniFi Protect cameras.

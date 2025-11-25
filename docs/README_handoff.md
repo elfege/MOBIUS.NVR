@@ -1,3 +1,8 @@
+---
+title: "Recording System Implementation - Session Handoff"
+layout: default
+---
+
 # Recording System Implementation - Session Handoff
 
 **Date:** November 15, 2025  

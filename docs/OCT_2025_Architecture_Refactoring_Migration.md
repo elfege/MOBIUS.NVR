@@ -1,3 +1,8 @@
+# ---
+title: "Architecture Refactoring Migration Guide"
+layout: default
+---
+
 # 🔄 Architecture Refactoring Migration Guide
 
 ## Overview

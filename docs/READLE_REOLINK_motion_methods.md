@@ -1,4 +1,8 @@
 
+---
+title: "REOLINK Motion Methods"
+layout: default
+---
 
 ```yaml
 # Host Object Methods (motion/detection related):

@@ -1,3 +1,8 @@
+---
+title: "NVR Recording System - Tomorrow's Testing Guide"
+layout: default
+---
+
 # NVR Recording System - Tomorrow's Testing Guide
 
 **Date**: 2025-11-12

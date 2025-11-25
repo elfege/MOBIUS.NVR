@@ -1,3 +1,8 @@
+---
+title: "Motion Detection & Recording System Architecture"
+layout: default
+---
+
 # Motion Detection & Recording System Architecture
 
 **Project**: Unified NVR System  

@@ -1,4 +1,4 @@
-# ---
+---
 title: "Architecture Refactoring Migration Guide"
 layout: default
 ---

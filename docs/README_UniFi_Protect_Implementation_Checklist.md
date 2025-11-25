@@ -1,3 +1,8 @@
+---
+title: "Implementation Checklist - UniFi Protect Containerization"
+layout: default
+---
+
 # Implementation Checklist - UniFi Protect Containerization
 
 ## ✅ Phase 1: Project Setup (5 minutes)

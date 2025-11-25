@@ -1,3 +1,8 @@
+---
+title: "Neolink Integration - Backend & Frontend Updates Plan"
+layout: default
+---
+
 # Neolink Integration - Backend & Frontend Updates Plan
 
 ## Overview

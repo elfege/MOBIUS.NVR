@@ -1,3 +1,8 @@
+---
+title: "NVR Recording System - Installation Steps"
+layout: default
+---
+
 # NVR Recording System - Installation Steps
 
 **Document Purpose**: Track all installation steps for creating automated deployment script.

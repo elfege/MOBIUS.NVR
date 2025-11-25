@@ -1,3 +1,8 @@
+---
+title: "UniFi Protect ONVIF Protocol Support"
+layout: default
+---
+
 # UniFi Protect ONVIF Protocol Support: Technical Analysis
 
 UniFi's ONVIF implementation has a critical directional distinction: **UniFi Protect accepts incoming ONVIF cameras** (added September 2024), but **UniFi cameras themselves cannot act as ONVIF servers** for third-party systems. This fundamental asymmetry defines the entire integration landscape.

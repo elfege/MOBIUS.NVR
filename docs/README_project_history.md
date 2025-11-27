@@ -1,6 +1,7 @@
 ---
 title: "NVR project"
 layout: default
+render_with_liquid: false
 ---
 
 <!-- markdownlint-disable MD036 -->

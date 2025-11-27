@@ -3,6 +3,7 @@ title: "NVR project"
 layout: default
 render_with_liquid: false
 ---
+{% raw %}
 
 <!-- markdownlint-disable MD036 -->
 <!-- markdownlint-disable MD024 -->
@@ -1341,7 +1342,7 @@ export PROTECT_SERVER_PASSWORD
 camera_info['rtsp']['url']  # "rtsp://user:pass@ip/live0"
 
 # What UniFi Protect has
-camera_info['rtsp_alias']  # "zQvCrKqH0Yj5aslR"
+camera_info['rtsp_alias']  # ""
 camera_info['protect_host']  # "192.168.10.3"
 ```
 
@@ -12386,3 +12387,4 @@ Grid-view sub-resolution and fullscreen main-resolution will need a different ar
 7. `static/js/streaming/stream.js`
 
 ---
+{% endraw %}

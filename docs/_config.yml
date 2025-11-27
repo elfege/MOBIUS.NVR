@@ -2,9 +2,3 @@
 theme: jekyll-theme-minimal
 markdown: kramdown
 
-
-
-# jekyll-theme-minimal (clean, simple)
-# jekyll-theme-cayman (GitHub-style)
-# exclude:
-#   - README_project_history.md

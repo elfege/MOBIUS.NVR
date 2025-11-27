@@ -2,3 +2,8 @@
 theme: jekyll-theme-minimal
 markdown: kramdown
 
+defaults:
+  - scope:
+      path: "README_project_history.md"
+    values:
+      render_with_liquid: false

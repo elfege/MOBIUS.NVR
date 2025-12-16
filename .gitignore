@@ -13,6 +13,12 @@ persistent.json.backup_2
 
 test_*
 
+tree.md
+tree.txt 
+
+*.jpg
+
+
 venv
 
 # Ignore all .txt files

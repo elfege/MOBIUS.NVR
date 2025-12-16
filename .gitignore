@@ -29,6 +29,8 @@ tree.md
 *.cert
 *.rsa
 
+docs/*.md
+
 bootstrap.json
 
 

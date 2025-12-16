@@ -225,6 +225,30 @@
         "max_age_days": 14,
         "quality": 85
       }
+    },
+    "XCPTP369388MNVTG": {
+      "motion_recording": {
+        "enabled": true,
+        "detection_method": "onvif",
+        "recording_source": "rtsp",
+        "segment_duration_sec": 30,
+        "pre_buffer_sec": 5,
+        "post_buffer_sec": 10,
+        "max_age_days": 7,
+        "quality": "main"
+      },
+      "continuous_recording": {
+        "enabled": false,
+        "segment_duration_sec": 3600,
+        "max_age_days": 3,
+        "quality": "sub"
+      },
+      "snapshots": {
+        "enabled": true,
+        "interval_sec": 300,
+        "max_age_days": 14,
+        "quality": 85
+      }
     }
   }
 }

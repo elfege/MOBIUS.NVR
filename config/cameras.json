@@ -237,7 +237,7 @@
     },
     "T8416P0023370398": {
       "packager_path": "T8416P0023370398",
-      "name": "Kids Room",
+      "name": "Office Desk",
       "model": "T8416",
       "type": "eufy",
       "serial": "T8416P0023370398",
@@ -247,8 +247,8 @@
         "streaming",
         "ptz"
       ],
-      "stream_type": "LL_HLS",
-      "onvif_port": 8000,
+      "stream_type": "HLS",
+      "onvif_port": 80,
       "true_mjpeg": "false",
       "player_settings": {
         "hls_js": {
@@ -834,8 +834,7 @@
       "station": "T8441P12242302AC",
       "image_mirrored": false,
       "capabilities": [
-        "streaming",
-        "ptz"
+        "streaming"
       ],
       "stream_type": "LL_HLS",
       "onvif_port": 8000,
@@ -1108,19 +1107,19 @@
       "hidden": false,
       "ui_health_monitor": true
     },
-    "REOLINK_MEBO": {
-      "packager_path": "REOLINK_MEBO",
+    "95270001Q3D82PF7": {
+      "packager_path": "95270001Q3D82PF7",
       "name": "MEBO",
       "model": "E1 Pro",
       "type": "reolink",
-      "serial": "REOLINK_MEBO",
+      "serial": "95270001Q3D82PF7",
       "host": "192.168.10.121",
       "mac": "68:39:43:BD:A5:6F",
       "capabilities": [
         "ONVIF",
         "streaming"
       ],
-      "stream_type": "HLS",
+      "stream_type": "MJPEG",
       "onvif_port": 8000,
       "true_mjpeg": "false",
       "ll_hls": {
@@ -1191,245 +1190,20 @@
       "hidden": true,
       "ui_health_monitor": true
     },
-    "REOLINK_CAT_FEEDER_2": {
-      "packager_path": "REOLINK_CAT_FEEDER_2",
-      "name": "CAT FEEDER CAM 2",
-      "model": "E1",
-      "type": "reolink",
-      "serial": "REOLINK_CAT_FEEDER_2",
-      "host": "192.168.10.122",
-      "mac": "E0:E2:E6:0C:50:F0",
-      "capabilities": [
-        "ONVIF",
-        "streaming"
-      ],
-      "stream_type": "HLS",
-      "onvif_port": 8000,
-      "true_mjpeg": "false",
-      "player_settings": {
-        "hls_js": {
-          "enableWorker": true,
-          "lowLatencyMode": true,
-          "liveSyncDurationCount": 0.5,
-          "liveMaxLatencyDurationCount": 3,
-          "maxLiveSyncPlaybackRate": 1.5,
-          "backBufferLength": 3
-        }
-      },
-      "mjpeg_snap": {
-        "sub": {
-          "enabled": true,
-          "width": 640,
-          "height": 480,
-          "fps": 5,
-          "timeout_ms": 5000
-        },
-        "main": {
-          "enabled": true,
-          "width": 1280,
-          "height": 720,
-          "fps": 5,
-          "timeout_ms": 8000
-        }
-      },
-      "neolink": {
-        "port": 8554,
-        "buffer_size": 20
-      },
-      "ll_hls": {
-        "publisher": {
-          "protocol": "rtsp",
-          "host": "nvr-packager",
-          "port": 8554,
-          "path": "REOLINK_CAT_FEEDER_2",
-          "rtsp_transport": "tcp"
-        },
-        "video": {
-          "c:v": "libx264",
-          "preset": "veryfast",
-          "tune": "zerolatency",
-          "profile:v": "baseline",
-          "pix_fmt": "yuv420p",
-          "r": 15,
-          "g": 3,
-          "keyint_min": 3,
-          "b:v": "800k",
-          "maxrate": "800k",
-          "bufsize": "1600k",
-          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
-          "force_key_frames": "expr:gte(t,n_forced*1)",
-          "vf": "scale=320:240"
-        },
-        "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
-        }
-      },
-      "rtsp_input": {
-        "rtsp_transport": "tcp",
-        "timeout": 5000000,
-        "analyzeduration": 1000000,
-        "probesize": 1000000,
-        "use_wallclock_as_timestamps": 1,
-        "fflags": "nobuffer"
-      },
-      "rtsp_output": {
-        "map": [
-          "0:v:0"
-        ],
-        "c:v": "libx264",
-        "profile:v": "baseline",
-        "pix_fmt": "yuv420p",
-        "r": 15,
-        "vf": "scale=320:240",
-        "tune": "zerolatency",
-        "g": 7,
-        "keyint_min": 7,
-        "preset": "ultrafast",
-        "f": "HLS",
-        "hls_time": "0.5",
-        "hls_list_size": "1",
-        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
-        "hls_fmp4_init_resend": 1,
-        "muxpreload": 0,
-        "muxdelay": 0,
-        "hls_segment_type": "fmp4",
-        "hls_fmp4_init_filename": "init.mp4",
-        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
-        "hls_delete_threshold": "1"
-      },
-      "hidden": true,
-      "ui_health_monitor": true
-    },
-    "REOLINK_CAT_FEEDER_1": {
-      "packager_path": "REOLINK_CAT_FEEDER_1",
-      "name": "CAT FEEDERS CAM 1",
-      "model": "E1",
-      "type": "reolink",
-      "serial": "REOLINK_CAT_FEEDER_1",
-      "host": "192.168.10.123",
-      "mac": "44:EF:BF:27:0D:30",
-      "capabilities": [
-        "ONVIF",
-        "streaming"
-      ],
-      "stream_type": "HLS",
-      "onvif_port": 8000,
-      "true_mjpeg": "false",
-      "player_settings": {
-        "hls_js": {
-          "enableWorker": true,
-          "lowLatencyMode": true,
-          "liveSyncDurationCount": 0.5,
-          "liveMaxLatencyDurationCount": 3,
-          "maxLiveSyncPlaybackRate": 1.5,
-          "backBufferLength": 3
-        }
-      },
-      "mjpeg_snap": {
-        "sub": {
-          "enabled": true,
-          "width": 640,
-          "height": 480,
-          "fps": 5,
-          "timeout_ms": 5000
-        },
-        "main": {
-          "enabled": true,
-          "width": 1280,
-          "height": 720,
-          "fps": 5,
-          "timeout_ms": 8000
-        }
-      },
-      "neolink": {
-        "port": 8554,
-        "buffer_size": 20
-      },
-      "ll_hls": {
-        "publisher": {
-          "protocol": "rtsp",
-          "host": "nvr-packager",
-          "port": 8554,
-          "path": "REOLINK_CAT_FEEDER_1",
-          "rtsp_transport": "tcp"
-        },
-        "video": {
-          "c:v": "libx264",
-          "preset": "veryfast",
-          "tune": "zerolatency",
-          "profile:v": "baseline",
-          "pix_fmt": "yuv420p",
-          "r": 15,
-          "g": 3,
-          "keyint_min": 3,
-          "b:v": "800k",
-          "maxrate": "800k",
-          "bufsize": "1600k",
-          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
-          "force_key_frames": "expr:gte(t,n_forced*1)",
-          "vf": "scale=320:240"
-        },
-        "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
-        }
-      },
-      "rtsp_input": {
-        "rtsp_transport": "tcp",
-        "timeout": 5000000,
-        "analyzeduration": 1000000,
-        "probesize": 1000000,
-        "use_wallclock_as_timestamps": 1,
-        "fflags": "nobuffer"
-      },
-      "rtsp_output": {
-        "map": [
-          "0:v:0"
-        ],
-        "c:v": "libx264",
-        "profile:v": "baseline",
-        "pix_fmt": "yuv420p",
-        "r": 15,
-        "vf": "scale=320:240",
-        "tune": "zerolatency",
-        "g": 7,
-        "keyint_min": 7,
-        "preset": "ultrafast",
-        "f": "HLS",
-        "hls_time": "0.5",
-        "hls_list_size": "1",
-        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
-        "hls_fmp4_init_resend": 1,
-        "muxpreload": 0,
-        "muxdelay": 0,
-        "hls_segment_type": "fmp4",
-        "hls_fmp4_init_filename": "init.mp4",
-        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
-        "hls_delete_threshold": "1"
-      },
-      "hidden": true,
-      "ui_health_monitor": true
-    },
-    "REOLINK_LIVING": {
-      "packager_path": "REOLINK_LIVING",
-      "name": "Living Reolink",
+    "XCPTP369388MNVTG": {
+      "packager_path": "XCPTP369388MNVTG",
+      "name": "Living 2",
       "model": "RLC-423WS",
       "type": "reolink",
-      "serial": "REOLINK_LIVING",
+      "serial": "XCPTP369388MNVTG",
       "host": "192.168.10.186",
       "mac": "EC:71:DB:AD:0D:70",
       "capabilities": [
         "ONVIF",
-        "streaming"
+        "streaming",
+        "ptz"
       ],
-      "stream_type": "HLS",
+      "stream_type": "MJPEG",
       "onvif_port": 8000,
       "true_mjpeg": "false",
       "player_settings": {
@@ -1447,14 +1221,14 @@
           "enabled": true,
           "width": 640,
           "height": 480,
-          "fps": 5,
+          "fps": 7,
           "timeout_ms": 5000
         },
         "main": {
           "enabled": true,
           "width": 1280,
           "height": 720,
-          "fps": 5,
+          "fps": 15,
           "timeout_ms": 8000
         }
       },
@@ -1527,7 +1301,7 @@
         "movflags": "+frag_keyframe+empty_moov+default_base_moof",
         "hls_delete_threshold": "1"
       },
-      "hidden": true,
+      "hidden": false,
       "ui_health_monitor": true
     },
     "REOLINK_STAIRS": {
@@ -1643,12 +1417,12 @@
       "hidden": true,
       "ui_health_monitor": true
     },
-    "REOLINK_OFFICE": {
-      "packager_path": "REOLINK_OFFICE",
-      "name": "CAM OFFICE",
+    "95270001CSO4BPDZ": {
+      "packager_path": "95270001CSO4BPDZ",
+      "name": "REOLINK OFFICE",
       "model": "RLC-410-5MP",
       "type": "reolink",
-      "serial": "REOLINK_OFFICE",
+      "serial": "95270001CSO4BPDZ",
       "host": "192.168.10.88",
       "mac": "ec:71:db:3e:93:f5",
       "capabilities": [
@@ -1756,12 +1530,12 @@
       "hidden": false,
       "ui_health_monitor": true
     },
-    "REOLINK_TERRACE": {
-      "packager_path": "REOLINK_TERRACE",
+    "95270001CSHLPO74": {
+      "packager_path": "95270001CSHLPO74",
       "name": "Terrace South",
       "model": "RLC-410-5MP",
       "type": "reolink",
-      "serial": "REOLINK_TERRACE",
+      "serial": "95270001CSHLPO74",
       "host": "192.168.10.89",
       "mac": "ec:71:db:c3:1a:14",
       "capabilities": [
@@ -1866,15 +1640,15 @@
         "movflags": "+frag_keyframe+empty_moov+default_base_moof",
         "hls_delete_threshold": "1"
       },
-      "hidden": true,
+      "hidden": false,
       "ui_health_monitor": true
     },
-    "REOLINK_LAUNDRY": {
-      "packager_path": "REOLINK_LAUNDRY",
+    "95270001NT3KNA67": {
+      "packager_path": "95270001NT3KNA67",
       "name": "LAUNDRY ROOM",
       "model": "Reolink E1 Zoom",
       "type": "reolink",
-      "serial": "REOLINK_LAUNDRY",
+      "serial": "95270001NT3KNA67",
       "host": "192.168.10.118",
       "mac": "40:AA:56:07:98:C0",
       "capabilities": [
@@ -1882,7 +1656,7 @@
         "streaming",
         "ptz"
       ],
-      "stream_type": "LL_HLS",
+      "stream_type": "MJPEG",
       "onvif_port": 8000,
       "true_mjpeg": "false",
       "player_settings": {
@@ -1983,8 +1757,8 @@
       "hidden": false,
       "ui_health_monitor": true
     },
-    "AMCREST_LOBBY": {
-      "packager_path": "AMCREST_LOBBY",
+    "AMC043145A67EFBF79": {
+      "packager_path": "AMC043145A67EFBF79",
       "name": "AMCREST LOBBY",
       "model": "Reolink E1 Zoom",
       "type": "amcrest",
@@ -2114,10 +1888,10 @@
     "UI_HEALTH_BLANK_AVG": 2,
     "UI_HEALTH_BLANK_STD": 5,
     "UI_HEALTH_SAMPLE_INTERVAL_MS": 3000,
-    "UI_HEALTH_STALE_AFTER_MS": 6000,
-    "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": 10,
+    "UI_HEALTH_STALE_AFTER_MS": 30000,
+    "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": 100,
     "UI_HEALTH_COOLDOWN_MS": 60000,
     "UI_HEALTH_WARMUP_MS": 20000,
-    "UI_HEALTH_MAX_ATTEMPTS": 0
+    "UI_HEALTH_MAX_ATTEMPTS": 300
   }
 }

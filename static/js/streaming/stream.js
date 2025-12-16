@@ -179,7 +179,10 @@ export class MultiStreamManager {
         else if (count <= 16) cols = 4;
         else cols = 5;
 
-        this.$container.attr('class', `streams-container grid-${cols}`);
+        // this.$container.attr('class', `streams-container grid-${cols}`);
+        // This preserves existing classes (including grid-attached) while only swapping the grid column class.
+        this.$container.removeClass('grid-1 grid-2 grid-3 grid-4 grid-5').addClass(`grid-${cols}`);
+
 
         // Set aspect ratio for each stream
         $streamItems.css('aspect-ratio', '16/9');

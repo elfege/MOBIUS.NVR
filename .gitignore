@@ -7,7 +7,7 @@
 !**/copy_installation_files.sh
 
 persistent.json
-persistent*.json
+persistent*
 
 venv
 

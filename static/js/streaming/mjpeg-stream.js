@@ -11,13 +11,13 @@ export class MJPEGStreamManager {
     /**
      * Start MJPEG stream for a camera
      */
-    async startStream(cameraId, streamElement, cameraType) {
+    async startStream(cameraId, streamElement, cameraType, stream) {
         console.log(`[MJPEG] startStream called: cameraId=${cameraId}, cameraType=${cameraType}`);
 
         // Build URL based on camera type
         let mjpegUrl;
         if (cameraType === 'reolink') {
-            mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+            mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?stream=${stream}&t=${Date.now()}`;
         } else if (cameraType === 'unifi') {
             mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
         } else if (cameraType === 'amcrest') {

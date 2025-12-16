@@ -892,6 +892,13 @@ def api_recycle_unifi_sessions():
 ########################################################-########################################################
 @app.route('/api/reolink/<camera_id>/stream/mjpeg')
 @csrf.exempt
+def api_reolink_stream_mjpeg_default(camera_id):
+    stream = request.args.get('stream', 'sub')
+    if stream == 'sub':
+        return api_reolink_stream_mjpeg_sub(camera_id)
+    else:
+        return api_reolink_stream_mjpeg_main(camera_id)
+
 def api_reolink_stream_mjpeg_sub(camera_id):
     """
     MJPEG stream for Reolink cameras via Snap API polling
@@ -909,12 +916,6 @@ def api_reolink_stream_mjpeg_sub(camera_id):
         if camera.get('type') != 'reolink':
             logger.error(f"Camera {camera_id} is not a Reolink camera")
             return "Not a Reolink camera", 400
-        
-        # # Get MJPEG snap configuration
-        # mjpeg_config = camera.get('mjpeg_snap', {})
-        # if not mjpeg_config.get('enabled', True):
-        #     logger.warning(f"MJPEG snap not enabled for camera {camera_id}")
-        #     return "MJPEG snap not enabled for this camera", 400
         
         # Get MJPEG snap configuration
         mjpeg_config = camera.get('mjpeg_snap', {})
@@ -974,7 +975,6 @@ def api_reolink_stream_mjpeg_sub(camera_id):
         logger.error(f"Failed to start Reolink MJPEG stream for {camera_id}: {e}")
         return f"Stream error: {e}", 500
 
-@app.route('/api/reolink/<camera_id>/stream/mjpeg/main')
 def api_reolink_stream_mjpeg_main(camera_id):
     """
     MJPEG main stream for Reolink cameras (fullscreen mode)

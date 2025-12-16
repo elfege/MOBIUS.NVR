@@ -12,8 +12,8 @@ hlsPartDuration: 100ms          # partial segment duration (ALLWAYS HALF OF hlsS
 hlsAllowOrigin: "*"             # allow browser clients
 hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
 
-# Make sure at least one ingest is enabled that matches your NVR publisher.
-# If we  publish RTMP from NVR:
+# Make sure at least one ingest is enabled that matches the NVR publisher.
+# If we publish RTMP from NVR:
 rtmp: yes
 rtmpAddress: :1935
 
@@ -26,8 +26,6 @@ paths:
     source: publisher
   T8416P0023352DA9:
     source: publisher
-  T8416P0023370398:
-    source: publisher
   T8416P0023390DE9:
     source: publisher
   T8416P6024350412:
@@ -35,6 +33,4 @@ paths:
   T8419P0024110C6A:
     source: publisher
   T8441P12242302AC:
-    source: publisher
-  REOLINK_LAUNDRY:
     source: publisher

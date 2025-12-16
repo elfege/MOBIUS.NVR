@@ -1,3 +1,318 @@
 /home/elfege/0_NVR/
+├── 0_MAINTENANCE_SCRIPTS/
+│   ├── diagnose_ffmpeg.sh*
+│   ├── eufy_security_ws.sh
+│   ├── make_self_signed_tls.sh*
+│   ├── monitor_eufy_bridge.sh*
+│   ├── monitor.sh*
+│   ├── NEOlink_integration.sh*
+│   ├── test_office_cam.sh*
+│   └── update_cameras_json.sh*
+├── app.py
+├── app_structure.txt
+├── ARCHIVE/
+│   └── eufy_service.py
+├── bootstrap.json
+├── claude_rules.md
+├── config/
+│   ├── cameras.json
+│   ├── cameras_json_notes.json
+│   ├── eufy_bridge.json
+│   ├── ffmpeg_names_map.py
+│   ├── recording_config_loader.py
+│   ├── recording_settings.json
+│   ├── reolink.json
+│   ├── test/
+│   │   └── test.sh
+│   └── unifi_protect.json
+├── debug_cookies.txt
+├── deploy.sh*
+├── docs/
+│   ├── API/
+│   │   └── analysis_01.md
+│   ├── aspect_ratios.md
+│   ├── DIAGRAMS/
+│   │   └── health_monitor_architecture_NOV_3_2025.html
+│   ├── EUFY_BRIDGE_DOC/
+│   │   └── README_eufy_security.md
+│   ├── ffmpeg_settings.md
+│   ├── index.html
+│   ├── nvr_engineering_architecture.html
+│   ├── OCT_2025_Architecture_Refactoring_Migration.md
+│   ├── READLE_REOLINK_motion_methods.md
+│   ├── README_Docker_Deployment_Guide.md
+│   ├── README_handoff.md
+│   ├── README_Motion_Detection_Recording_Architecture.md
+│   ├── README_neolink_integration_plan.md
+│   ├── README_NVR_Recording_Installation_Steps.md
+│   ├── README_NVR_Testing_Guide.md
+│   ├── README_project_history.md
+│   ├── README_Recording_System_Implementation_Package.md
+│   ├── README_REOLINK_ONVIF_TOPICS.md
+│   ├── README_UniFi_Protect_Implementation_Checklist.md
+│   ├── README_VCA_ASSESSMENT.md
+│   └── UNIFI_ONVF.md
+├── DOCS/
+│   ├── API/
+│   │   └── analysis_01.md
+│   ├── aspect_ratios.md
+│   ├── ffmpeg_settings.md
+│   ├── OCT_2025_Architecture_Refactoring_Migration.md
+│   ├── README_Docker_Deployment_Guide.md
+│   ├── README_neolink_integration_plan.md
+│   ├── README_project_history.md
+│   ├── README_UniFi_Protect_Implementation_Checklist.md
+│   └── UNIFI_ONVF.md
+├── eufy_bridge_client_verbose.py
+├── eufy_bridge.py
+├── eufy_bridge.sh*
+├── eufy_bridge_watchdog.py
+├── get_token.sh*
+├── low_level_handlers/
+│   ├── cleanup_handler.py
+│   └── process_reaper.py
+├── neolink/
+│   ├── crates/
+│   │   ├── mailnoti/
+│   │   │   └── README.md
+│   │   └── pushnoti/
+│   │       └── README.md
+│   ├── dissector/
+│   │   ├── mediapacket.md
+│   │   ├── messages.md
+│   │   ├── protocol.md
+│   │   ├── README.md
+│   │   └── udp.md
+│   ├── docker/
+│   │   └── entrypoint.sh*
+│   ├── docs/
+│   │   ├── Setting Up Neolink For Use With Blue Iris.md
+│   │   ├── unix_service.md
+│   │   └── unix_setup.md
+│   ├── kubernetes/
+│   │   └── README.md
+│   ├── README.md
+│   └── target/
+│       └── release/
+│           └── build/
+│               └── tikv-jemalloc-sys-36d51603312a5bc8/
+│                   └── out/
+│                       └── build/
+│                           ├── autogen.sh*
+│                           ├── bin/
+│                           │   └── jemalloc.sh
+│                           ├── doc_internal/
+│                           │   └── PROFILING_INTERNALS.md
+│                           ├── include/
+│                           │   └── jemalloc/
+│                           │       ├── internal/
+│                           │       │   ├── private_namespace.sh*
+│                           │       │   ├── private_symbols.sh*
+│                           │       │   ├── public_namespace.sh*
+│                           │       │   ├── public_symbols.txt
+│                           │       │   ├── public_unnamespace.sh*
+│                           │       │   └── smoothstep.sh*
+│                           │       ├── jemalloc_mangle.sh*
+│                           │       ├── jemalloc_rename.sh*
+│                           │       └── jemalloc.sh*
+│                           ├── INSTALL.md
+│                           ├── msvc/
+│                           │   └── ReadMe.txt
+│                           ├── scripts/
+│                           │   ├── check-formatting.sh*
+│                           │   ├── freebsd/
+│                           │   │   ├── before_install.sh
+│                           │   │   ├── before_script.sh
+│                           │   │   └── script.sh
+│                           │   ├── gen_travis.py*
+│                           │   ├── linux/
+│                           │   │   └── before_install.sh
+│                           │   └── windows/
+│                           │       ├── before_install.sh
+│                           │       ├── before_script.sh
+│                           │       └── script.sh
+│                           ├── src/
+│                           │   └── ticker.py*
+│                           ├── test/
+│                           │   ├── integration/
+│                           │   │   ├── cpp/
+│                           │   │   │   ├── infallible_new_false.sh
+│                           │   │   │   └── infallible_new_true.sh
+│                           │   │   ├── extent.sh
+│                           │   │   ├── mallocx.sh
+│                           │   │   ├── slab_sizes.sh
+│                           │   │   ├── smallocx.sh
+│                           │   │   └── xallocx.sh
+│                           │   ├── test.sh
+│                           │   └── unit/
+│                           │       ├── arena_decay.sh
+│                           │       ├── arena_reset_prof.sh
+│                           │       ├── batch_alloc_prof.sh
+│                           │       ├── batch_alloc.sh
+│                           │       ├── binshard.sh
+│                           │       ├── hpa_background_thread.sh
+│                           │       ├── inspect.sh
+│                           │       ├── junk_alloc.sh
+│                           │       ├── junk_free.sh
+│                           │       ├── junk.sh
+│                           │       ├── malloc_conf_2.sh
+│                           │       ├── pack.sh
+│                           │       ├── prof_accum.sh
+│                           │       ├── prof_active.sh
+│                           │       ├── prof_gdump.sh
+│                           │       ├── prof_hook.sh
+│                           │       ├── prof_idump.sh
+│                           │       ├── prof_log.sh
+│                           │       ├── prof_mdump.sh
+│                           │       ├── prof_recent.sh
+│                           │       ├── prof_reset.sh
+│                           │       ├── prof_stats.sh
+│                           │       ├── prof_sys_thread_name.sh
+│                           │       ├── prof_tctx.sh
+│                           │       ├── prof_thread_name.sh
+│                           │       ├── safety_check.sh
+│                           │       ├── san.sh
+│                           │       ├── size_check.sh
+│                           │       ├── tcache_max.sh
+│                           │       ├── thread_event.sh
+│                           │       ├── zero_realloc_abort.sh
+│                           │       ├── zero_realloc_alloc.sh
+│                           │       ├── zero_realloc_free.sh
+│                           │       ├── zero_reallocs.sh
+│                           │       └── zero.sh
+│                           └── TUNING.md
+├── package.json
+├── package-lock.json
+├── persistent.json
+├── psql/
+│   └── init-db.sql
+├── PTZ_Discovery.py
+├── ptz_pan_right.py
+├── ptz_server.py
+├── README.md
+├── requirements.txt
+├── services/
+│   ├── amcrest_mjpeg_capture_service.py
+│   ├── app_restart_handler.py
+│   ├── camera_base.py
+│   ├── camera_repository.py
+│   ├── credentials/
+│   │   ├── amcrest_credential_provider.py
+│   │   ├── credential_provider.py
+│   │   ├── eufy_credential_provider.py
+│   │   ├── reolink_credential_provider.py
+│   │   └── unifi_credential_provider.py
+│   ├── eufy/
+│   │   ├── eufy_bridge_client.py
+│   │   ├── eufy_bridge_client_verbose.py
+│   │   ├── eufy_bridge_login.sh
+│   │   ├── eufy_bridge.py
+│   │   ├── eufy_bridge.sh
+│   │   ├── eufy_bridge_watchdog.py
+│   │   └── __init__.py
+│   ├── eufy_service.py
+│   ├── mjpeg_capture_service.py
+│   ├── motion/
+│   │   ├── ffmpeg_motion_detector.py
+│   │   └── reolink_motion_service.py
+│   ├── onvif/
+│   │   ├── onvif_client.py
+│   │   ├── onvif_event_listener.py
+│   │   ├── onvif_ptz_capabilities.py
+│   │   └── onvif_ptz_handler.py
+│   ├── ptz/
+│   │   ├── amcrest_ptz_handler.py
+│   │   └── ptz_validator.py
+│   ├── recording/
+│   │   ├── __init__.py
+│   │   ├── recording_service.py
+│   │   ├── snapshot_service.py
+│   │   └── storage_manager.py
+│   ├── reolink_mjpeg_capture_service.py
+│   ├── unifi_mjpeg_capture_service.py
+│   ├── unifi_protect_service.py
+│   └── unifi_service_resource_monitor.py
+├── start_nvr_standalone.sh*
+├── start.sh*
+├── static/
+│   ├── css/
+│   │   ├── base/
+│   │   │   └── reset.css
+│   │   ├── components/
+│   │   │   ├── buttons.css
+│   │   │   ├── eufy-auth-notifier.css
+│   │   │   ├── fullscreen.css
+│   │   │   ├── fullscreen-mjpeg.css
+│   │   │   ├── fullscreen-ptz.css
+│   │   │   ├── grid-container.css
+│   │   │   ├── grid-modes.css
+│   │   │   ├── header.css
+│   │   │   ├── ptz-controls.css
+│   │   │   ├── ptz-presets.css
+│   │   │   ├── recording-modal.css
+│   │   │   ├── reset.css
+│   │   │   ├── responsive.css
+│   │   │   ├── settings-overlay.css
+│   │   │   ├── stream-controls.css
+│   │   │   ├── stream-item.css
+│   │   │   └── stream-overlay.css
+│   │   └── main.css
+│   └── js/
+│       ├── controllers/
+│       │   ├── ptz-controller.js
+│       │   ├── recording-controller.js
+│       │   └── recording-controls.js
+│       ├── forms/
+│       │   └── recording-settings-form.js
+│       ├── modals/
+│       │   └── camera-settings-modal.js
+│       ├── settings/
+│       │   ├── fullscreen-handler.js
+│       │   ├── settings-manager.js
+│       │   └── settings-ui.js
+│       ├── streaming/
+│       │   ├── flv-stream.js
+│       │   ├── health.js
+│       │   ├── hls-stream.js
+│       │   ├── hls-stream-legacy.js
+│       │   ├── mjpeg-stream.js
+│       │   ├── mjpeg-stream-legacy.js
+│       │   ├── stream.js
+│       │   └── stream_refresh.js
+│       └── utils/
+│           ├── eufy-auth-notifier.js
+│           ├── loading-manager.js
+│           ├── logger.js
+│           └── old_ios_checker.js
+├── stop_nvr_standalone.sh*
+├── stop.sh*
+├── streaming/
+│   ├── ffmpeg_params.py
+│   ├── handlers/
+│   │   ├── amcrest_stream_handler.py
+│   │   ├── eufy_stream_handler.py
+│   │   ├── reolink_stream_handler.py
+│   │   └── unifi_stream_handler.py
+│   ├── stream_handler.py
+│   └── stream_manager.py
+├── templates/
+│   ├── error.html
+│   └── eufy_auth.html
+├── TESTS/
+│   ├── test_ffmpeg_parameters.py
+│   ├── test_ffmpeg.py
+│   ├── test_HLS_MULTIPLE_CONFIG.sh*
+│   ├── test_hls_segmentation.py
+│   ├── test_hls.sh*
+│   ├── test_LL-HLS_in_console.js
+│   ├── test_ll_hls.sh*
+│   ├── test_LL_HLS.sh*
+│   ├── test_reolink_aio_motion.py
+│   ├── test_reolink_ONVIF_motion.py
+│   └── test_SIMPLE_HLS.sh*
+├── tree.md
+├── tree.txt
+├── update_mediamtx_paths.sh*
+└── update_neolink_configuration.sh*
 
-0 directories, 0 files
+64 directories, 252 files

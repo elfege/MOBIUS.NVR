@@ -18,6 +18,10 @@ tree.txt
 
 *.jpg
 
+*.log
+
+./eufy_bridge*
+
 
 venv
 

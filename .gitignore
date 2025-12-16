@@ -25,6 +25,9 @@ PTZ_*
 
 tree.md
 
+bootstrap.json
+
+
 package*.json
 
 stop_nvr_standalone.sh

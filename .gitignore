@@ -25,6 +25,8 @@ PTZ_*
 
 tree.md
 
+package*.json
+
 stop_nvr_standalone.sh
 
 venv

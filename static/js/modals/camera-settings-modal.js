@@ -228,4 +228,5 @@ export class CameraSettingsModal {
 // Auto-initialize when DOM is ready
 $(document).ready(() => {
     window.cameraSettingsModal = new CameraSettingsModal();
+    FullscreenHandler.applyGridStyle()
 });

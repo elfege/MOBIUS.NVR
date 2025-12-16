@@ -437,4 +437,5 @@ $(document).ready(() => {
 
     // Log initial state for debugging
     console.log('[FullscreenHandler] Debug - User can test with: FullscreenHandler.enterFullscreen()');
+    
 });

@@ -300,8 +300,8 @@ class ReolinkMJPEGCaptureService:
             
             # Return None if frame is too old (> 5 seconds)
             if frame_data and (time.time() - frame_data['timestamp']) > 5.0:
-                logger.warning(f"Frame for {camera_id} is stale "
-                             f"({time.time() - frame_data['timestamp']:.1f}s old)")
+            #     logger.warning(f"Frame for {camera_id} is stale "
+            #                  f"({time.time() - frame_data['timestamp']:.1f}s old)")
                 return None
                 
             return frame_data

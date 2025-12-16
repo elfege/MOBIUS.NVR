@@ -6,6 +6,8 @@
 *copy*
 !**/copy_installation_files.sh
 
+persistent.json
+
 venv
 
 # Ignore all .txt files

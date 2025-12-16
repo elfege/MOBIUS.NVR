@@ -20,7 +20,7 @@ tree.txt
 
 *.log
 
-./eufy_bridge*
+eufy_bridge*
 
 
 venv

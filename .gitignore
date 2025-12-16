@@ -14,8 +14,6 @@ persistent.json.backup_2
 test_*
 
 
-tree.*
-
 *.jpg
 
 *.log
@@ -23,6 +21,7 @@ tree.*
 eufy_bridge*
 
 ptz_*
+PTZ_*
 
 
 venv
@@ -31,7 +30,6 @@ venv
 *.txt
 # txt exceptions
 !requirements.txt
-!tree.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -12,6 +12,7 @@ persistent.json.backup_2
 *backup*
 
 test_*
+TESTS/
 
 
 *.jpg
@@ -24,6 +25,8 @@ ptz_*
 PTZ_*
 
 tree.md
+
+config/
 
 *.pem
 *.cert

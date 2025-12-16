@@ -25,6 +25,10 @@ PTZ_*
 
 tree.md
 
+*.pem
+*.cert
+*.rsa
+
 bootstrap.json
 
 

@@ -48,6 +48,7 @@ from services.recording.snapshot_service import SnapshotService
 from services.onvif.onvif_event_listener import ONVIFEventListener
 from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
 from services.motion.reolink_motion_service import create_reolink_motion_service
+from services.motion.ffmpeg_motion_detector import create_ffmpeg_detector
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -135,15 +136,30 @@ try:
         print(f"⚠️  Snapshot service initialization failed: {e}")
         snapshot_service = None
         
-    onvif_listener=None
     # ONVIF event listener for motion detection
-    # try:
-    #     onvif_listener = ONVIFEventListener(camera_repo, recording_service)
-    #     print("✅ ONVIF event listener initialized")
-    # except Exception as e:
-    #     print(f"⚠️  ONVIF event listener initialization failed: {e}")
-    #     onvif_listener = None
-        
+    onvif_listener = None
+    if recording_service:
+        try:
+            onvif_listener = ONVIFEventListener(camera_repo, recording_service)
+            print("✅ ONVIF event listener initialized")
+        except Exception as e:
+            print(f"⚠️  ONVIF event listener initialization failed: {e}")
+            onvif_listener = None
+
+    # FFmpeg motion detector for cameras without ONVIF or Baichuan support
+    ffmpeg_motion_detector = None
+    if recording_service:
+        try:
+            ffmpeg_motion_detector = create_ffmpeg_detector(
+                camera_repo,
+                recording_service,
+                recording_config
+            )
+            print("✅ FFmpeg motion detector initialized")
+        except Exception as e:
+            print(f"⚠️  FFmpeg motion detector initialization failed: {e}")
+            ffmpeg_motion_detector = None
+
     # Kill any orphaned FFmpeg recording processes from previous runs
     if recording_service:
         print("🧹 Cleaning up orphaned recording processes...")
@@ -187,20 +203,34 @@ try:
                     else:
                         print(f"  ❌ Failed continuous: {camera_name}")
                 
-                # Start ONVIF motion detection if enabled
-                if onvif_listener and recording_service.config.is_recording_enabled(camera_id, 'motion'):
+                # Start motion detection if enabled (ONVIF, FFmpeg, or Baichuan)
+                if recording_service.config.is_recording_enabled(camera_id, 'motion'):
                     camera_cfg = recording_service.config.get_camera_config(camera_id)
                     detection_method = camera_cfg.get('motion_recording', {}).get('detection_method', 'onvif')
-                    
-                    if detection_method == 'onvif':
+                    camera_type = camera.get('type', '').lower()
+
+                    # Skip Reolink cameras - they use Baichuan motion service
+                    if camera_type == 'reolink':
+                        pass  # Handled by reolink_motion_service
+                    elif detection_method == 'onvif':
                         # Check if camera has ONVIF capability
-                        if 'ONVIF' in camera.get('capabilities', []):
+                        if onvif_listener and 'ONVIF' in camera.get('capabilities', []):
                             if onvif_listener.start_listener(camera_id):
                                 print(f"  ✅ ONVIF Motion: {camera_name}")
                             else:
                                 print(f"  ❌ Failed ONVIF Motion: {camera_name}")
                         else:
                             print(f"  ⚠️  ONVIF not available for {camera_name}, configure detection_method='ffmpeg' instead")
+                    elif detection_method == 'ffmpeg':
+                        # Use FFmpeg scene detection
+                        if ffmpeg_motion_detector:
+                            sensitivity = camera_cfg.get('motion_recording', {}).get('ffmpeg_sensitivity', 0.3)
+                            if ffmpeg_motion_detector.start_detector(camera_id, sensitivity):
+                                print(f"  ✅ FFmpeg Motion: {camera_name}")
+                            else:
+                                print(f"  ❌ Failed FFmpeg Motion: {camera_name}")
+                        else:
+                            print(f"  ⚠️  FFmpeg detector not available for {camera_name}")
                             
                 # Start snapshots if enabled
                 if snapshot_service and snapshot_service.config.is_recording_enabled(camera_id, 'snapshots'):
@@ -1657,7 +1687,143 @@ def api_recording_active():
     except Exception as e:
         logger.error(f"Get active recordings API error: {e}")
         return jsonify({'error': str(e)}), 500
-    
+
+
+########################################################
+#           🏃 MOTION DETECTION API ROUTES 🏃
+########################################################
+
+@app.route('/api/motion/status', methods=['GET'])
+def api_motion_status():
+    """Get status of all motion detection services"""
+    try:
+        status = {
+            'onvif': {},
+            'ffmpeg': {},
+            'reolink': {}
+        }
+
+        # ONVIF listeners
+        if onvif_listener:
+            for camera_id, is_active in onvif_listener.active_listeners.items():
+                camera = camera_repo.get_camera(camera_id)
+                status['onvif'][camera_id] = {
+                    'camera_name': camera.get('name', camera_id) if camera else camera_id,
+                    'active': is_active,
+                    'method': 'onvif'
+                }
+
+        # FFmpeg detectors
+        if ffmpeg_motion_detector:
+            status['ffmpeg'] = ffmpeg_motion_detector.get_status()
+
+        # Reolink Baichuan service
+        if reolink_motion_service:
+            status['reolink'] = reolink_motion_service.get_status()
+
+        return jsonify({
+            'success': True,
+            'motion_detectors': status
+        })
+
+    except Exception as e:
+        logger.error(f"Motion status API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/motion/start/<camera_id>', methods=['POST'])
+@csrf.exempt
+def api_motion_start(camera_id):
+    """Start motion detection for a specific camera"""
+    if not recording_service:
+        return jsonify({'error': 'Recording service not available'}), 503
+
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return jsonify({'error': 'Camera not found'}), 404
+
+        camera_name = camera.get('name', camera_id)
+        camera_type = camera.get('type', '').lower()
+
+        data = request.get_json() or {}
+        method = data.get('method', 'auto')  # auto, onvif, ffmpeg
+
+        # Auto-detect best method
+        if method == 'auto':
+            if camera_type == 'reolink':
+                return jsonify({
+                    'success': False,
+                    'error': 'Reolink cameras use Baichuan service - start via /api/reolink/motion'
+                }), 400
+            elif 'ONVIF' in camera.get('capabilities', []):
+                method = 'onvif'
+            else:
+                method = 'ffmpeg'
+
+        success = False
+        if method == 'onvif':
+            if onvif_listener:
+                success = onvif_listener.start_listener(camera_id)
+            else:
+                return jsonify({'error': 'ONVIF listener not available'}), 503
+        elif method == 'ffmpeg':
+            if ffmpeg_motion_detector:
+                sensitivity = data.get('sensitivity', 0.3)
+                success = ffmpeg_motion_detector.start_detector(camera_id, sensitivity)
+            else:
+                return jsonify({'error': 'FFmpeg detector not available'}), 503
+        else:
+            return jsonify({'error': f'Unknown method: {method}'}), 400
+
+        return jsonify({
+            'success': success,
+            'camera_id': camera_id,
+            'camera_name': camera_name,
+            'method': method,
+            'message': f'Motion detection started ({method})' if success else 'Failed to start'
+        })
+
+    except Exception as e:
+        logger.error(f"Motion start API error for {camera_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/motion/stop/<camera_id>', methods=['POST'])
+@csrf.exempt
+def api_motion_stop(camera_id):
+    """Stop motion detection for a specific camera"""
+    try:
+        stopped = []
+
+        # Stop ONVIF listener
+        if onvif_listener and camera_id in onvif_listener.active_listeners:
+            onvif_listener.stop_listener(camera_id)
+            stopped.append('onvif')
+
+        # Stop FFmpeg detector
+        if ffmpeg_motion_detector and camera_id in ffmpeg_motion_detector.active_detectors:
+            ffmpeg_motion_detector.stop_detector(camera_id)
+            stopped.append('ffmpeg')
+
+        if stopped:
+            return jsonify({
+                'success': True,
+                'camera_id': camera_id,
+                'stopped_methods': stopped,
+                'message': f'Stopped motion detection: {", ".join(stopped)}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'No active motion detection found for this camera'
+            }), 404
+
+    except Exception as e:
+        logger.error(f"Motion stop API error for {camera_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 ########################################################-########################################################
 #                                   ⚙️⚙️⚙️⚙️ENVIRONMENT VARIABLE HELPERS⚙️⚙️⚙️⚙️
 ########################################################-########################################################
@@ -1793,6 +1959,17 @@ def cleanup_handler(signum=None, frame=None):
 
     print("\n🛑 Shutting down... cleaning up streams and resources")
     try:
+        # Stop motion detection services
+        if onvif_listener:
+            print("  Stopping ONVIF listeners...")
+            onvif_listener.stop_all()
+        if ffmpeg_motion_detector:
+            print("  Stopping FFmpeg motion detectors...")
+            ffmpeg_motion_detector.stop_all()
+        if reolink_motion_service:
+            print("  Stopping Reolink motion service...")
+            reolink_motion_service.stop()
+
         stop_all_services(stream_manager,
                           bridge_watchdog,
                           eufy_bridge,

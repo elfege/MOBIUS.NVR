@@ -40,7 +40,7 @@ class ReolinkCredentialProvider(CredentialProvider):
             REOLINK_API_PASSWORD
     """
     
-    def __init__(self, use_api_credentials: bool = False):
+    def __init__(self, use_api_credentials: bool = True):
         """
         Initialize Reolink credential provider.
         

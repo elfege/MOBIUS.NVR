@@ -42,8 +42,8 @@ fi
 # export credentials
 set -a
 . ~/0_NVR/.env
-start_spinner 20 "$BLUE Exporting Secrets..."
-pull_nvr_secrets >/dev/null
+# start_spinner 20 "$BLUE Exporting Secrets..."
+pull_nvr_secrets # >/dev/null
 
 # Detect and export host IP
 export LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
@@ -70,7 +70,7 @@ docker compose up -d
 # Wait for container to start
 echo ""
 echo "Waiting for container to start..."
-sleep 3
+sleep 10
 
 # Check container status
 if docker ps | grep -q unified-nvr; then

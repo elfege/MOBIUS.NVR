@@ -11,6 +11,8 @@ from services.credentials.reolink_credential_provider import ReolinkCredentialPr
 from services.credentials.unifi_credential_provider import UniFiCredentialProvider
 from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
 from .handlers.amcrest_stream_handler import AmcrestStreamHandler
+from .handlers.sv3c_stream_handler import SV3CStreamHandler
+from services.credentials.sv3c_credential_provider import SV3CCredentialProvider
 
 from services.credentials.eufy_credential_provider import EufyCredentialProvider
 from services.camera_repository import CameraRepository
@@ -58,6 +60,7 @@ class StreamManager:
         unifi_cred_provider = UniFiCredentialProvider()
         reolink_cred_provider = ReolinkCredentialProvider()
         amcrest_cred_provider = AmcrestCredentialProvider()
+        sv3c_cred_provider = SV3CCredentialProvider()
 
 
 
@@ -78,6 +81,11 @@ class StreamManager:
             'amcrest': AmcrestStreamHandler(
                 amcrest_cred_provider,
                 camera_repo.get_amcrest_config()
+            ),
+            'sv3c': SV3CStreamHandler(
+                sv3c_cred_provider,
+                # camera_repo.get_sv3c_config()  # Or {} if no config needed
+                {}
             )
         }
 

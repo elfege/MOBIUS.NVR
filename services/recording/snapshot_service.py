@@ -136,9 +136,11 @@ class SnapshotService:
             if not camera:
                 logger.error(f"Camera not found: {camera_id}")
                 return
-            
-            # Generate output path
-            output_path = self.storage.generate_recording_path(camera_id, 'snapshot')
+
+            camera_name = camera.get('name', camera_id)
+
+            # Generate output path with camera name for per-camera directory
+            output_path = self.storage.generate_recording_path(camera_id, 'snapshot', camera_name)
             
             # Get RTSP URL (similar to recording service)
             source_url = self._get_snapshot_source_url(camera)
@@ -224,6 +226,13 @@ class SnapshotService:
             from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
             handler = AmcrestStreamHandler(
                 AmcrestCredentialProvider(),
+                {}
+            )
+        elif camera_type == 'sv3c':
+            from streaming.handlers.sv3c_stream_handler import SV3CStreamHandler
+            from services.credentials.sv3c_credential_provider import SV3CCredentialProvider
+            handler = SV3CStreamHandler(
+                SV3CCredentialProvider(),
                 {}
             )
         else:

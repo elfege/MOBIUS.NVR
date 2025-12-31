@@ -54,6 +54,9 @@ class ONVIFPTZHandler:
             if cls._reolink_provider is None:
                 cls._reolink_provider = ReolinkCredentialProvider()
             return cls._reolink_provider.get_credentials(camera_serial)
+        elif camera_type == 'sv3c':
+            from services.credentials.sv3c_credential_provider import SV3CCredentialProvider
+            return SV3CCredentialProvider().get_credentials(camera_serial)
         return None, None
     
     @classmethod

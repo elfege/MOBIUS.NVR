@@ -122,6 +122,9 @@ class ONVIFEventListener:
             elif camera_type == 'unifi':
                 from services.credentials.unifi_credential_provider import UniFiCredentialProvider
                 cred_provider = UniFiCredentialProvider()
+            elif camera_type == 'sv3c':
+                from services.credentials.sv3c_credential_provider import SV3CCredentialProvider
+                cred_provider = SV3CCredentialProvider()
             else:
                 logger.error(f"Unsupported camera type for ONVIF: {camera_type}")
                 return

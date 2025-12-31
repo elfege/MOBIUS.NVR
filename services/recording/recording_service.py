@@ -138,6 +138,13 @@ class RecordingService:
                 AmcrestCredentialProvider(),
                 {} # Amcrest has no vendor config
             )
+        elif camera_type == 'sv3c':
+            from streaming.handlers.sv3c_stream_handler import SV3CStreamHandler
+            from services.credentials.sv3c_credential_provider import SV3CCredentialProvider
+            return SV3CStreamHandler(
+                SV3CCredentialProvider(),
+                {} # SV3C has no vendor config
+            )
         else:
             raise ValueError(f"Unknown camera type: {camera_type}")
         
@@ -166,9 +173,9 @@ class RecordingService:
                 return None
             
             camera_name = camera.get('name', camera_id)
-            
-            # Generate recording path
-            recording_path = self.storage.generate_recording_path(camera_id, 'motion')
+
+            # Generate recording path with camera name for per-camera directory
+            recording_path = self.storage.generate_recording_path(camera_id, 'motion', camera_name)
             recording_id = recording_path.stem  # Filename without extension
             
             # Get recording source
@@ -240,9 +247,9 @@ class RecordingService:
                 return None
             
             camera_name = camera.get('name', camera_id)
-            
-            # Generate recording path 
-            recording_path = self.storage.generate_recording_path(camera_id, 'manual')
+
+            # Generate recording path with camera name for per-camera directory
+            recording_path = self.storage.generate_recording_path(camera_id, 'manual', camera_name)
             recording_id = recording_path.stem
             
             # Get recording source
@@ -343,9 +350,9 @@ class RecordingService:
             # Get segment duration from config
             camera_cfg = self.config.get_camera_config(camera_id)
             segment_duration = camera_cfg.get('continuous_recording', {}).get('segment_duration_sec', 3600)
-            
-            # Generate recording path
-            recording_path = self.storage.generate_recording_path(camera_id, 'continuous')
+
+            # Generate recording path with camera name for per-camera directory
+            recording_path = self.storage.generate_recording_path(camera_id, 'continuous', camera_name)
             recording_id = recording_path.stem
             
             # Get recording source
@@ -593,7 +600,8 @@ class RecordingService:
             
             update_data = {
                 'end_timestamp': datetime.now().isoformat(),
-                'status': status
+                'status': status,
+                'updated_at': datetime.now().isoformat()
             }
             
             # Add file size if recording completed successfully

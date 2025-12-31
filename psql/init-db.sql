@@ -52,8 +52,9 @@ CREATE TABLE recordings (
     
     -- Timestamps for lifecycle tracking
     created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
     archived_at TIMESTAMPTZ,
-    
+
     -- Unique constraint
     CONSTRAINT recordings_camera_timestamp_unique 
         UNIQUE (camera_id, timestamp)
@@ -77,8 +78,26 @@ CREATE INDEX idx_recordings_motion_source
     WHERE motion_source IS NOT NULL;
 
 -- Composite index for common queries
-CREATE INDEX idx_recordings_camera_tier_timestamp 
+CREATE INDEX idx_recordings_camera_tier_timestamp
     ON recordings(camera_id, storage_tier, timestamp DESC);
+
+-- Index for playback queries (find recent recordings)
+CREATE INDEX idx_recordings_updated_at
+    ON recordings(updated_at DESC);
+
+-- Auto-update updated_at on row changes
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_recordings_updated_at
+    BEFORE UPDATE ON recordings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================================================
 -- MOTION EVENTS TABLE

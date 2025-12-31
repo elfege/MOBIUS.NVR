@@ -93,8 +93,8 @@ if docker ps | grep -q unified-nvr; then
 	echo "  Rebuild:          ./deploy.sh"
 	echo "  Shell access:     docker exec -it unified-nvr /bin/bash"
 	echo ""
-	echo "Checking health in 10 seconds..."
-	sleep 10
+	echo "Checking health in 20 seconds..."
+	sleep 20
 
 	# Check health
 	if curl -kI https://localhost:8443/api/status >/dev/null 2>&1; then

@@ -7,8 +7,8 @@ hls: yes
 hlsAddress: :8888
 hlsVariant: lowLatency          # emit #EXT-X-PART + PRELOAD-HINT
 hlsSegmentCount: 7              # keep very small live window beware of: "ERR [HLS] [muxer REOLINK_OFFICE] Low-Latency HLS requires at least 7 segments"
-hlsSegmentDuration: 200ms       # Instead of 1s - creates 7×0.5s = 3.5s buffer (200ms is the MINIMUM supported by MediaMTX)
-hlsPartDuration: 100ms          # partial segment duration (ALLWAYS HALF OF hlsSegmentDuration)
+hlsSegmentDuration: 1000ms       # Instead of 1s - creates 7×0.5s = 3.5s buffer (200ms is the MINIMUM supported by MediaMTX)
+hlsPartDuration: 500ms          # partial segment duration (ALLWAYS HALF OF hlsSegmentDuration)
 hlsAllowOrigin: "*"             # allow browser clients
 hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
 
@@ -25,6 +25,8 @@ paths:
   68d49398005cf203e400043f:
     source: publisher
   T8416P0023352DA9:
+    source: publisher
+  T8416P00233717CB:
     source: publisher
   T8416P0023390DE9:
     source: publisher

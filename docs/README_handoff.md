@@ -139,41 +139,52 @@ It serves as a buffer before content is transferred to `README_project_history.m
 ### Mobile PTZ UI Improvements
 
 #### 1. Hide PTZ Controls in Grid View on Touch Devices
+
 - PTZ buttons were too large on iPhone/iPad, obscuring play/stop/refresh buttons
 - Added CSS media query `@media (hover: none)` to hide `.ptz-controls` in grid view
 - PTZ remains available in fullscreen mode (`.css-fullscreen` class)
 - **File:** `static/css/components/ptz-controls.css`
 
 #### 2. PTZ Touch Event Handling Fixes
+
 - Touch devices weren't reliably detecting finger release (touchend)
 - Added document-level `touchend`/`touchcancel` handlers
 - Track `lastInputType` to avoid mouse emulation conflicts
 - **File:** `static/js/controllers/ptz-controller.js`
 
-#### 3. PTZ Command Repeat Pattern
-- Changed from single start/stop commands to repeated discrete commands (250ms interval)
-- Uses `AbortController` with `fetch()` to cancel in-flight requests on stop
-- Provides more responsive feel and handles network latency better
-- **File:** `static/js/controllers/ptz-controller.js`
+#### 3. Added Stop Button to PTZ Grid
 
-#### 4. Added Stop Button to PTZ Grid
 - Red stop button in center of directional grid
 - Provides manual fallback when automatic stop doesn't trigger
 - **Files:** `templates/streams.html`, `static/css/components/ptz-controls.css`, `static/js/controllers/ptz-controller.js`
 
-#### 5. Timestamped PTZ Logging
+#### 4. Timestamped PTZ Logging
+
 - Added ISO timestamps and elapsed time to all PTZ log messages
 - `stopMovement()` now awaits and logs camera confirmation
 - Revealed: ONVIF stop takes 700-2300ms (camera/protocol latency, not code issue)
 - **File:** `static/js/controllers/ptz-controller.js`
 
+#### 5. PTZ Race Condition Fix (14:00 EST)
+
+- **Problem:** Stop command sometimes ignored - camera keeps moving
+- **Root cause:** Move command used `await fetch()`, blocking until camera acknowledged
+- **Effect:** Stop sent while move still processing at camera level; camera ignores stop (nothing to stop yet)
+- **Fix 1:** Changed `startMovement()` to fire-and-forget (no await)
+- **Fix 2:** Added 100ms delay in `stopMovement()` before sending stop command
+- **File:** `static/js/controllers/ptz-controller.js`
+
 ### Technical Notes
 
-- ONVIF PTZ latency (700-2300ms) is inherent to the protocol + Amcrest camera
+- ONVIF PTZ uses ContinuousMove - camera keeps moving until Stop command received
+- ONVIF PTZ latency (700-2300ms) is inherent to the protocol + Amcrest/Reolink cameras
 - ONVIF connections ARE cached (`services/onvif/onvif_client.py:56-58`)
 - Delay is in camera processing SOAP requests, not connection overhead
 - Frontend stop triggers immediately; delay is backend/camera response
+- Race condition at camera level: if stop arrives before move is fully processed, camera ignores it
 
 ---
 
-*Last updated: January 1, 2026 19:15*
+*Last updated: January 1, 2026 14:00 EST*
+
+

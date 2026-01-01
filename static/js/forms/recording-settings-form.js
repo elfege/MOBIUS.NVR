@@ -112,24 +112,37 @@ export class RecordingSettingsForm {
                         </div>
                     </div>
                     
+                    <!-- Pre-Buffer Enable Toggle -->
+                    <div class="recording-form-group">
+                        <div class="recording-checkbox-wrapper">
+                            <input type="checkbox"
+                                   id="pre-buffer-enabled"
+                                   name="pre_buffer_enabled"
+                                   ${settings.motion_recording?.pre_buffer_enabled ? 'checked' : ''}>
+                            <label for="pre-buffer-enabled">Enable Pre-Buffer Recording</label>
+                        </div>
+                        <span class="form-description">Continuously buffer video to capture footage before motion events. Uses additional disk I/O and CPU.</span>
+                    </div>
+
                     <div class="recording-form-row">
                         <div class="recording-form-group">
                             <label for="pre-buffer">Pre-Buffer (seconds)</label>
-                            <input type="number" 
-                                   id="pre-buffer" 
+                            <input type="number"
+                                   id="pre-buffer"
                                    name="pre_buffer"
-                                   min="0" 
+                                   min="0"
                                    max="60"
-                                   value="${settings.motion_recording?.pre_buffer_sec || 5}">
+                                   value="${settings.motion_recording?.pre_buffer_sec || 5}"
+                                   ${!settings.motion_recording?.pre_buffer_enabled ? 'disabled' : ''}>
                             <span class="form-description">Record before motion event</span>
                         </div>
-                        
+
                         <div class="recording-form-group">
                             <label for="post-buffer">Post-Buffer (seconds)</label>
-                            <input type="number" 
-                                   id="post-buffer" 
+                            <input type="number"
+                                   id="post-buffer"
                                    name="post_buffer"
-                                   min="0" 
+                                   min="0"
                                    max="300"
                                    value="${settings.motion_recording?.post_buffer_sec || 10}">
                             <span class="form-description">Record after motion ends</span>
@@ -278,6 +291,7 @@ export class RecordingSettingsForm {
                 detection_method: form.find('#detection-method').val(),
                 recording_source: form.find('#recording-source').val(),
                 segment_duration_sec: parseInt(form.find('#segment-duration').val(), 10),
+                pre_buffer_enabled: form.find('#pre-buffer-enabled').is(':checked'),
                 pre_buffer_sec: parseInt(form.find('#pre-buffer').val(), 10),
                 post_buffer_sec: parseInt(form.find('#post-buffer').val(), 10),
                 max_age_days: parseInt(form.find('#max-age').val(), 10),
@@ -338,18 +352,23 @@ export class RecordingSettingsForm {
      */
     attachEvents(onSave, onCancel) {
         this.onSaveCallback = onSave;
-        
+
         const form = $('#recording-settings-form');
-        
+
         // Handle form submission
         form.on('submit', async (e) => {
             e.preventDefault();
             await this.handleSubmit();
         });
-        
+
         // Handle cancel
         $('#cancel-settings-btn').on('click', () => {
             if (onCancel) onCancel();
+        });
+
+        // Toggle pre-buffer seconds input based on enable checkbox
+        $('#pre-buffer-enabled').on('change', function() {
+            $('#pre-buffer').prop('disabled', !$(this).is(':checked'));
         });
     }
 

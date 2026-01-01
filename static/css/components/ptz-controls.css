@@ -86,6 +86,45 @@
     background: rgba(220, 53, 69, 0.8);
 }
 
+/* ============================================================================
+   ZOOM CONTROLS (separate row below the PTZ grid)
+   ============================================================================ */
+.ptz-zoom-controls {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    max-width: 150px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Zoom buttons - wider than direction buttons */
+.ptz-zoom-btn {
+    flex: 1;
+    aspect-ratio: auto;
+    height: 32px;
+    max-width: 60px;
+}
+
+/* Zoom out button styling */
+.ptz-btn[data-direction="zoom_out"] {
+    background: rgba(23, 162, 184, 0.6);
+}
+
+.ptz-btn[data-direction="zoom_out"]:hover {
+    background: rgba(23, 162, 184, 0.8);
+}
+
+/* Zoom in button styling */
+.ptz-btn[data-direction="zoom_in"] {
+    background: rgba(40, 167, 69, 0.6);
+}
+
+.ptz-btn[data-direction="zoom_in"]:hover {
+    background: rgba(40, 167, 69, 0.8);
+}
+
 /* Hide PTZ controls in grid view on touch devices (iPhone, iPad, Android)
    PTZ remains available in fullscreen mode where it's more useful */
 @media (hover: none) {

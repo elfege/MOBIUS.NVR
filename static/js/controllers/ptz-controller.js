@@ -13,7 +13,11 @@ export class PTZController {
         this.ptzTouchActive = false;
         this.activeDirection = null;
         this.repeatInterval = null;
-        this.abortController = null; // For cancelling in-flight movement requests
+        // AbortController for cancelling in-flight movement requests on stop.
+        // We use fetch() instead of $.ajax() here because AbortController
+        // integrates cleanly with fetch's signal option, allowing instant
+        // cancellation of queued PTZ commands when the user releases the button.
+        this.abortController = null;
         this.REPEAT_DELAY_MS = 250; // How often to send repeat commands while held
 
 

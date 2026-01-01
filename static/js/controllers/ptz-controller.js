@@ -153,6 +153,12 @@ export class PTZController {
         }
 
         const serial = this.currentCamera.serial;
+
+        // Small delay to ensure move command has been received by camera
+        // Without this, stop may arrive before move is processed, causing
+        // the camera to ignore the stop (nothing to stop yet)
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         console.log(`[PTZ ${new Date().toISOString()}] Sending stop command for:`, serial);
 
         // Send stop command and await response to confirm camera received it

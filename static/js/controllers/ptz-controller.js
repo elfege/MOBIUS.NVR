@@ -54,7 +54,10 @@ export class PTZController {
             const direction = $(event.currentTarget).data('direction');
             console.log('[PTZ] Button pressed:', direction, 'type:', this.lastInputType, 'for camera:', this.currentCamera?.serial);
 
-            if (direction && direction !== '360') {
+            if (direction === 'stop') {
+                // Explicit stop button pressed
+                this.stopMovement();
+            } else if (direction && direction !== '360') {
                 this.ptzTouchActive = true;
                 this.activeDirection = direction;
                 this.startMovement(direction);

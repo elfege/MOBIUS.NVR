@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ELFEGE'S NVR</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/recording-modal.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+
+    <!-- iOS Home Screen App Mode -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Camera Streams">
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <!-- HLS.js -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+     DO NOT USE @latest which can be unpredictable. For LL-HLS with fmp4 -->
+
+    <!-- HLS.js v1 (stable branch with fmp4 support) 
+     @1 tag ensures we get the latest stable 1.x release which has mature fmp4/LL-HLS -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+
+    <!-- flv/RTMP -->
+    <script src="https://cdn.jsdelivr.net/npm/flv.js@1.6.2/dist/flv.min.js"></script>
+</head>
+
+<body>
+    <!-- Hidden checkbox to control collapse state (CSS-only toggle trick) -->
+    <input type="checkbox" id="header-toggle" class="header-toggle-input" checked>
+
+    <div class="header">
+        <h1><i class="fas fa-video"></i></h1>
+        <div class="nav-controls">
+            <!-- <div class="global-controls">
+                <button id="start-all-streams" class="btn btn-success">
+                    <i class="fas fa-play"></i> Start All
+                </button>
+                <button id="stop-all-streams" class="btn btn-danger">
+                    <i class="fas fa-stop"></i> Stop All
+                </button>
+            </div> -->
+            <!-- <span id="stream-count">0 cameras</span> -->
+
+
+            <button id="reload-button" class="btn btn-beserious" onclick="location.reload()">Reload</button>
+
+            <!-- Fullscreen toggle button (icon only) -->
+            <i id="fullscreen-toggle-btn" class="fas fa-expand header-icon-btn" title="Toggle Fullscreen"></i>
+
+
+            <!-- Settings button -->
+            <button id="settings-btn" class="btn btn-secondary">
+                <i class="fas fa-cog"></i> Settings
+            </button>
+
+        </div>
+    </div>
+
+    <!-- Toggle button (always visible) -->
+    <label for="header-toggle" class="header-toggle-btn">
+        <i class="fas fa-chevron-up"></i>
+    </label>
+
+    <div id="streams-container" class="streams-container">
+        <!-- rest of your template stays the same -->
+        {% for serial, info in cameras.items() %}
+        <div class="stream-item" data-camera-serial="{{ serial }}" data-camera-name="{{ info.name }}"
+            data-camera-type="{{ info.type }}" data-stream-type="{{ info.stream_type }}"
+            data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}">
+
+            {% if info.stream_type == 'MJPEG' or info.stream_type == 'mjpeg_proxy' %}
+
+            <!-- MJPEG Stream (uses img element) -->
+            <img class="stream-video" style="object-fit: cover; width: 100%; height: 100%;" alt="MJPEG Stream">
+            {% else %}
+            <!-- HLS Stream (uses video element) -->
+            <video class="stream-video" muted playsinline></video>
+            {% endif %}
+
+            <div class="stream-overlay">
+                <div class="stream-title">{{ info.name }}</div>
+                <div class="stream-status">
+                    <div class="stream-indicator loading">
+                        <i class="fas fa-circle"></i>
+                        <span>Loading...</span>
+                    </div>
+                </div>
+            </div>
+            <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
+                <i class="fas fa-expand"></i>
+            </button>
+            <button class="camera-settings-btn" aria-label="Camera Settings" title="Recording Settings"
+                data-camera-id="{{ serial }}">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button class="camera-record-btn" aria-label="Start Recording" title="Start Recording"
+                data-camera-id="{{ serial }}" data-recording="false">
+                <i class="fas fa-circle"></i>
+            </button>
+
+            <div class="stream-controls">
+                <div class="control-row">
+                    <button class="stream-btn btn-success start-stream-btn">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button class="stream-btn btn-danger stop-stream-btn">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                    <button class="stream-btn btn-info refresh-stream-btn">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
+
+                {% if 'ptz' in info.capabilities %}
+                <div class="ptz-controls">
+                    <div class="ptz-grid">
+                        <button class="ptz-btn" data-direction="up">
+                            <i class="fas fa-chevron-up"></i>
+                        </button>
+                        <button class="ptz-btn" data-direction="left">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <button class="ptz-btn ptz-stop-btn" data-direction="stop">
+                            <i class="fas fa-stop"></i>
+                        </button>
+                        <button class="ptz-btn" data-direction="right">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                        <button class="ptz-btn" data-direction="down">
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div class="ptz-presets-container" style="display: none; margin-top: 8px;">
+                        <select class="ptz-preset-select">
+                            <option value="">-- Select Preset --</option>
+                        </select>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="loading-indicator">
+                <div class="spinner"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+
+    <!-- Settings Overlay -->
+    <div id="settings-overlay" class="settings-overlay">
+        <div class="settings-panel">
+            <div class="settings-header">
+                <h2><i class="fas fa-cog"></i> Settings</h2>
+                <button id="settings-close" class="settings-close-btn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="settings-content">
+                <!-- Settings will be dynamically populated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Recording Settings Modal -->
+    <div id="recording-settings-modal" class="recording-modal" style="display: none;">
+        <div class="recording-modal-content">
+            <div class="recording-modal-header">
+                <h3><i class="fas fa-video"></i> Recording Settings - <span id="modal-camera-name"></span></h3>
+                <button class="recording-modal-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="recording-modal-body">
+                <!-- Form will be dynamically populated -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Load scripts in order -->
+    <script type="module">
+
+        $(document).ready(() => {
+
+            // Auto-collapse header after 5 seconds
+            setTimeout(() => {
+                const headerToggle = document.getElementById('header-toggle');
+                if (headerToggle && headerToggle.checked) {
+                    headerToggle.checked = false;
+                }
+            }, 5000);
+
+
+            // // Auto-collapse header after 5 seconds
+            // setTimeout(() => {
+            //     const $headerToggle = $('#header-toggle');
+            //     if ($headerToggle.prop('checked')) {
+            //         $headerToggle.prop('checked', false);
+            //     }
+            // }, 5000);
+        });
+
+    </script>
+
+    <!-- Settings scripts (ES6 modules) - MUST be loaded as modules -->
+    <script type="module" src="{{ url_for('static', filename='js/settings/fullscreen-handler.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/settings/settings-ui.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/streaming/flv-stream.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/settings/settings-manager.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/modals/camera-settings-modal.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/forms/recording-settings-form.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controller.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controls.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/controllers/ptz-controller.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/utils/eufy-auth-notifier.js') }}"></script>
+
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script id="ui-health" type="application/json">
+        {{ ui_health|tojson }}
+    </script>
+    <script>
+        // ES6 or jQuery, your pick:
+        const UI_HEALTH = JSON.parse($('#ui-health').text());
+        window.UI_HEALTH = UI_HEALTH; // make it global
+    </script>
+    <script>
+        // reload every hour
+        setTimeout(() => {
+            window.location.reload()
+        }, 60 * 60 * 1000)
+    </script>
+
+
+</body>
+
+</html>

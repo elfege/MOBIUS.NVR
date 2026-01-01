@@ -132,7 +132,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-## Parallel Session: January 1, 2026 (12:30-14:20 EST)
+## Parallel Session: January 1, 2026 (12:30-14:25 EST)
 
 **Branch:** `mobile_ptz_grid_hide_JAN_1_2026_a`
 
@@ -174,31 +174,50 @@ It serves as a buffer before content is transferred to `README_project_history.m
 - **Fix 2:** `stopMovement()` waits for move acknowledgment before sending stop
 - **File:** `static/js/controllers/ptz-controller.js`
 
-#### 6. Adaptive PTZ Latency Learning (14:15 EST) - TO BE TESTED
+#### 6. Adaptive PTZ Latency Learning - Database Backed (14:15-14:25 EST) - TO BE TESTED
 
 - **Feature:** Learn per-camera ONVIF latency and adapt stop timing
-- **Storage:** Browser `localStorage` (NOT database) with key `ptz_latency_{serial}`
-- **No database changes** - purely frontend/browser storage
-- **Algorithm:** Rolling average of last 10 samples + 20% safety margin
-- **Default:** 1000ms for cameras with no data yet
-- **Methods added:**
-  - `getCameraLatency(serial)` - returns learned latency for camera
-  - `updateCameraLatency(serial, observedLatency)` - updates rolling average
-- **File:** `static/js/controllers/ptz-controller.js`
+- **Storage:** PostgreSQL database via PostgREST API
+- **Client ID:** Browser-generated UUID stored in `localStorage` key `nvr_client_uuid`
 
-**Why localStorage instead of database:**
+**Database Changes:**
 
-- Latency is device/network-specific (same camera may have different latency from different clients)
-- No schema changes needed
-- Lightweight, no API calls
-- Data persists per-browser automatically
+- **New table:** `ptz_client_latency`
+  - `client_uuid` VARCHAR(36) - browser instance identifier
+  - `camera_serial` VARCHAR(50) - camera identifier
+  - `avg_latency_ms` INTEGER - rolling average latency
+  - `samples` JSONB - last 10 latency samples
+  - `sample_count` INTEGER - number of samples collected
+- **Migration:** `psql/migrations/001_add_ptz_client_latency.sql`
+- **Schema update:** `psql/init-db.sql`
+
+**Backend API (app.py):**
+
+- `GET /api/ptz/latency/<client_uuid>/<camera_serial>` - retrieve learned latency
+- `POST /api/ptz/latency/<client_uuid>/<camera_serial>` - update with new sample
+- Uses PostgREST for database access
+
+**Frontend (ptz-controller.js):**
+
+- `getOrCreateClientUuid()` - generates/retrieves UUID from localStorage
+- `loadCameraLatency(serial)` - fetches from API when camera selected
+- `updateCameraLatency(serial, latency)` - posts to API after each move
+- `latencyCache` - in-memory cache for immediate responsiveness
 
 **How it works:**
 
-1. When move command sent, `moveStartTime` recorded
-2. When move acknowledged, latency = `performance.now() - moveStartTime`
-3. Latency saved to localStorage (rolling avg of 10 samples)
-4. On next stop, uses learned latency as max wait time before sending stop
+1. On camera select, `loadCameraLatency()` fetches stored data from DB
+2. When move command sent, `moveStartTime` recorded
+3. When move acknowledged, latency measured and sent to API
+4. API maintains rolling average of last 10 samples
+5. On next stop, uses learned latency as max wait time before sending stop
+
+**Benefits over localStorage:**
+
+- Persists across browser cache clears
+- Visible in database for debugging/monitoring
+- Per-client tracking (same camera can have different latency from different networks)
+- Could enable admin dashboard view in future
 
 ### Technical Notes
 
@@ -211,6 +230,6 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 1, 2026 14:20 EST*
+*Last updated: January 1, 2026 14:25 EST*
 
 

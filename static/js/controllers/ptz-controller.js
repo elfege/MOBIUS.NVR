@@ -73,7 +73,7 @@ export class PTZController {
 
             // Always stop if we have an active interval (most reliable check)
             if (this.repeatInterval || this.ptzTouchActive || this.isExecuting) {
-                console.log('[PTZ] Mouse up - stopping. States:', {
+                console.log(`[PTZ ${new Date().toISOString()}] Mouse up - stopping. States:`, {
                     repeatInterval: !!this.repeatInterval,
                     ptzTouchActive: this.ptzTouchActive,
                     isExecuting: this.isExecuting
@@ -85,7 +85,7 @@ export class PTZController {
         // Touch end at document level - ALWAYS stop on any touch release
         // This is aggressive but ensures camera stops when finger lifts
         $(document).on('touchend touchcancel', () => {
-            console.log('[PTZ] Touch ended - unconditionally stopping. States:', {
+            console.log(`[PTZ ${new Date().toISOString()}] Touch ended - stopping. States:`, {
                 repeatInterval: !!this.repeatInterval,
                 ptzTouchActive: this.ptzTouchActive,
                 isExecuting: this.isExecuting,
@@ -153,18 +153,19 @@ export class PTZController {
     }
 
     async stopMovement() {
-        console.log('[PTZ] stopMovement() entered. currentCamera:', this.currentCamera?.serial);
+        const stopStartTime = performance.now();
+        console.log(`[PTZ ${new Date().toISOString()}] stopMovement() entered. currentCamera:`, this.currentCamera?.serial);
 
         // Clear repeat interval IMMEDIATELY
         if (this.repeatInterval) {
-            console.log('[PTZ] Clearing interval');
+            console.log(`[PTZ ${new Date().toISOString()}] Clearing interval`);
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
         }
 
         // Abort all in-flight movement requests
         if (this.abortController) {
-            console.log('[PTZ] Aborting in-flight requests');
+            console.log(`[PTZ ${new Date().toISOString()}] Aborting in-flight requests`);
             this.abortController.abort();
             this.abortController = null;
         }
@@ -179,20 +180,30 @@ export class PTZController {
         this.updateButtonStates();
 
         if (!this.currentCamera) {
-            console.log('[PTZ] No currentCamera - cannot send stop command!');
+            console.log(`[PTZ ${new Date().toISOString()}] No currentCamera - cannot send stop command!`);
             return;
         }
 
-        console.log('[PTZ] Sending stop command for:', this.currentCamera.serial);
+        const serial = this.currentCamera.serial;
+        console.log(`[PTZ ${new Date().toISOString()}] Sending stop command for:`, serial);
 
-        // Send stop command (just one now, since we aborted in-flight moves)
+        // Send stop command and await response to confirm camera received it
         try {
-            fetch(`/api/ptz/${this.currentCamera.serial}/stop`, {
+            const response = await fetch(`/api/ptz/${serial}/stop`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
+            const data = await response.json();
+            const elapsed = (performance.now() - stopStartTime).toFixed(0);
+
+            if (data.success) {
+                console.log(`[PTZ ${new Date().toISOString()}] ✓ Stop confirmed by camera in ${elapsed}ms:`, data.message);
+            } else {
+                console.warn(`[PTZ ${new Date().toISOString()}] ✗ Stop failed after ${elapsed}ms:`, data.error || data.message);
+            }
         } catch (error) {
-            console.log(`Failed to stop PTZ: ${error.message}`);
+            const elapsed = (performance.now() - stopStartTime).toFixed(0);
+            console.error(`[PTZ ${new Date().toISOString()}] ✗ Stop request failed after ${elapsed}ms:`, error.message);
         }
     }
 

@@ -78,7 +78,7 @@
 /* Hide PTZ controls in grid view on touch devices (iPhone, iPad, Android)
    PTZ remains available in fullscreen mode where it's more useful */
 @media (hover: none) {
-    .stream-item:not(.fullscreen) .ptz-controls {
+    .stream-item:not(.css-fullscreen) .ptz-controls {
         display: none;
     }
 }

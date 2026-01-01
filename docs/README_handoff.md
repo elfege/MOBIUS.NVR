@@ -132,7 +132,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-## Parallel Session: January 1, 2026 (12:30-14:00)
+## Parallel Session: January 1, 2026 (12:30-14:20 EST)
 
 **Branch:** `mobile_ptz_grid_hide_JAN_1_2026_a`
 
@@ -177,13 +177,21 @@ It serves as a buffer before content is transferred to `README_project_history.m
 #### 6. Adaptive PTZ Latency Learning (14:15 EST) - TO BE TESTED
 
 - **Feature:** Learn per-camera ONVIF latency and adapt stop timing
-- **Storage:** `localStorage` with key `ptz_latency_{serial}`
+- **Storage:** Browser `localStorage` (NOT database) with key `ptz_latency_{serial}`
+- **No database changes** - purely frontend/browser storage
 - **Algorithm:** Rolling average of last 10 samples + 20% safety margin
 - **Default:** 1000ms for cameras with no data yet
 - **Methods added:**
   - `getCameraLatency(serial)` - returns learned latency for camera
   - `updateCameraLatency(serial, observedLatency)` - updates rolling average
 - **File:** `static/js/controllers/ptz-controller.js`
+
+**Why localStorage instead of database:**
+
+- Latency is device/network-specific (same camera may have different latency from different clients)
+- No schema changes needed
+- Lightweight, no API calls
+- Data persists per-browser automatically
 
 **How it works:**
 

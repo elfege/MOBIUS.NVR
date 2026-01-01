@@ -13,6 +13,7 @@ export class PTZController {
         this.ptzTouchActive = false;
         this.activeDirection = null;
         this.repeatInterval = null;
+        this.abortController = null; // For cancelling in-flight movement requests
         this.REPEAT_DELAY_MS = 250; // How often to send repeat commands while held
 
 
@@ -92,11 +93,17 @@ export class PTZController {
     async startMovement(direction) {
         if (!this.currentCamera) return;
 
-        // Clear any existing interval
+        // Clear any existing interval and abort controller
         if (this.repeatInterval) {
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
         }
+        if (this.abortController) {
+            this.abortController.abort();
+        }
+
+        // Create new abort controller for this movement session
+        this.abortController = new AbortController();
 
         this.isExecuting = true;
         this.updateButtonStates();
@@ -118,17 +125,24 @@ export class PTZController {
     }
 
     async sendPTZCommand(direction) {
-        if (!this.currentCamera) return;
+        if (!this.currentCamera || !this.abortController) return;
 
         try {
-            // Fire and forget - don't await to avoid blocking repeat interval
-            $.ajax({
-                url: `/api/ptz/${this.currentCamera.serial}/${direction}`,
+            // Use fetch with AbortController so we can cancel in-flight requests
+            fetch(`/api/ptz/${this.currentCamera.serial}/${direction}`, {
                 method: 'POST',
-                contentType: 'application/json'
+                headers: { 'Content-Type': 'application/json' },
+                signal: this.abortController.signal
+            }).catch(err => {
+                // Ignore abort errors, log others
+                if (err.name !== 'AbortError') {
+                    console.log(`PTZ command failed: ${err.message}`);
+                }
             });
         } catch (error) {
-            console.log(`PTZ command failed: ${error.message}`);
+            if (error.name !== 'AbortError') {
+                console.log(`PTZ command failed: ${error.message}`);
+            }
         }
     }
 
@@ -137,6 +151,12 @@ export class PTZController {
         if (this.repeatInterval) {
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
+        }
+
+        // Abort all in-flight movement requests
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
         }
 
         // Clear state to prevent any further commands
@@ -152,18 +172,14 @@ export class PTZController {
 
         console.log('[PTZ] stopMovement() called for:', this.currentCamera.serial);
 
-        // Send multiple stop commands to ensure it gets through
-        // (in case earlier movement commands are still in flight)
-        for (let i = 0; i < 3; i++) {
-            try {
-                $.ajax({
-                    url: `/api/ptz/${this.currentCamera.serial}/stop`,
-                    method: 'POST',
-                    contentType: 'application/json'
-                });
-            } catch (error) {
-                console.log(`Failed to stop PTZ: ${error.message}`);
-            }
+        // Send stop command (just one now, since we aborted in-flight moves)
+        try {
+            fetch(`/api/ptz/${this.currentCamera.serial}/stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (error) {
+            console.log(`Failed to stop PTZ: ${error.message}`);
         }
     }
 

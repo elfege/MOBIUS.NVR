@@ -14,9 +14,10 @@ export class PTZController {
         this.activeDirection = null;
         this.repeatInterval = null; // Legacy, kept for safety
         this.moveAcknowledged = true; // Track when camera has processed a move command
+        this.moveStartTime = null; // Track when move command was sent
         // PTZ uses ONVIF ContinuousMove - one command starts movement,
         // camera keeps moving until a Stop command is sent.
-        // No need for repeat interval or AbortController.
+        // Latency is learned per-camera and stored in localStorage.
 
 
         this.setupEventListeners();
@@ -29,6 +30,49 @@ export class PTZController {
         console.log("#######################################")
     }
 
+    // Get learned latency for a camera (returns milliseconds)
+    getCameraLatency(serial) {
+        try {
+            const stored = localStorage.getItem(`ptz_latency_${serial}`);
+            if (stored) {
+                const data = JSON.parse(stored);
+                // Return average latency with 20% safety margin
+                return Math.round(data.avgLatency * 1.2);
+            }
+        } catch (e) {
+            console.warn('[PTZ] Failed to read latency from localStorage:', e);
+        }
+        return 1000; // Default 1 second if no data
+    }
+
+    // Update learned latency for a camera based on observed response time
+    updateCameraLatency(serial, observedLatency) {
+        try {
+            const key = `ptz_latency_${serial}`;
+            let data = { samples: [], avgLatency: observedLatency };
+
+            const stored = localStorage.getItem(key);
+            if (stored) {
+                data = JSON.parse(stored);
+            }
+
+            // Keep last 10 samples for rolling average
+            data.samples.push(observedLatency);
+            if (data.samples.length > 10) {
+                data.samples.shift();
+            }
+
+            // Calculate new average
+            data.avgLatency = Math.round(
+                data.samples.reduce((a, b) => a + b, 0) / data.samples.length
+            );
+
+            localStorage.setItem(key, JSON.stringify(data));
+            console.log(`[PTZ] Updated latency for ${serial}: ${data.avgLatency}ms (last: ${observedLatency}ms, samples: ${data.samples.length})`);
+        } catch (e) {
+            console.warn('[PTZ] Failed to save latency to localStorage:', e);
+        }
+    }
 
     setupEventListeners() {
         // Track input type to avoid mouse emulation conflicts on touch
@@ -105,11 +149,13 @@ export class PTZController {
 
         this.isExecuting = true;
         this.moveAcknowledged = false; // Track when camera has processed the move
+        this.moveStartTime = performance.now(); // Track timing for latency learning
         this.updateButtonStates();
         this.setButtonActive(direction, true);
 
         const serial = this.currentCamera.serial;
-        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction, 'for', serial);
+        const knownLatency = this.getCameraLatency(serial);
+        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction, 'for', serial, `(known latency: ${knownLatency}ms)`);
 
         // Fire-and-forget but track acknowledgment for stop timing
         fetch(`/api/ptz/${serial}/${direction}`, {
@@ -117,11 +163,14 @@ export class PTZController {
             headers: { 'Content-Type': 'application/json' }
         }).then(response => response.json())
           .then(data => {
+              const latency = Math.round(performance.now() - this.moveStartTime);
               this.moveAcknowledged = true; // Camera has processed the move
               if (data.success) {
-                  console.log(`[PTZ ${new Date().toISOString()}] ✓ Move acknowledged:`, data.message);
+                  // Learn this camera's latency
+                  this.updateCameraLatency(serial, latency);
+                  console.log(`[PTZ ${new Date().toISOString()}] ✓ Move acknowledged in ${latency}ms:`, data.message);
               } else {
-                  console.warn(`[PTZ ${new Date().toISOString()}] ✗ Move failed:`, data.error || data.message);
+                  console.warn(`[PTZ ${new Date().toISOString()}] ✗ Move failed after ${latency}ms:`, data.error || data.message);
               }
           })
           .catch(error => {
@@ -157,19 +206,20 @@ export class PTZController {
         const serial = this.currentCamera.serial;
 
         // Wait for move command to be acknowledged by camera before sending stop
-        // ONVIF takes ~1 second to process move; if stop arrives before move is
-        // processed, camera ignores stop (nothing to stop yet)
+        // Uses learned latency per camera (stored in localStorage)
+        const learnedLatency = this.getCameraLatency(serial);
         if (!this.moveAcknowledged) {
-            console.log(`[PTZ ${new Date().toISOString()}] Waiting for move acknowledgment before stop...`);
-            const maxWait = 2000; // Max 2 seconds
+            console.log(`[PTZ ${new Date().toISOString()}] Waiting for move acknowledgment (learned latency: ${learnedLatency}ms)...`);
+            const maxWait = Math.max(learnedLatency, 2000); // At least use learned latency, max 2s
             const startWait = performance.now();
             while (!this.moveAcknowledged && (performance.now() - startWait) < maxWait) {
                 await new Promise(resolve => setTimeout(resolve, 50));
             }
+            const waited = Math.round(performance.now() - startWait);
             if (this.moveAcknowledged) {
-                console.log(`[PTZ ${new Date().toISOString()}] Move acknowledged, proceeding with stop`);
+                console.log(`[PTZ ${new Date().toISOString()}] Move acknowledged after ${waited}ms, proceeding with stop`);
             } else {
-                console.log(`[PTZ ${new Date().toISOString()}] Move acknowledgment timeout, sending stop anyway`);
+                console.log(`[PTZ ${new Date().toISOString()}] Move acknowledgment timeout after ${waited}ms, sending stop anyway`);
             }
         }
 

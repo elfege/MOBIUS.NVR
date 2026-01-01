@@ -1428,21 +1428,21 @@ def api_ptz_move(camera_serial, direction):
         success = False
         message = ""
         
-        # Try ONVIF first for Amcrest and Reolink (priority)
-        if camera_type in ['amcrest', 'reolink']:
+        # Try ONVIF for Amcrest, Reolink, and SV3C cameras
+        if camera_type in ['amcrest', 'reolink', 'sv3c']:
             print(f"[APP.PY] Attempting ONVIF PTZ for {camera_type} camera")
             success, message = ONVIFPTZHandler.move_camera(
                 camera_serial=camera_serial,
                 direction=direction,
                 camera_config=camera
             )
-            
-            # If ONVIF fails, fall back to brand-specific handler
+
+            # If ONVIF fails, fall back to brand-specific handler (Amcrest only)
             if not success and camera_type == 'amcrest':
                 print(f"[APP.PY] ONVIF failed, falling back to Amcrest CGI handler")
                 success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
                 message = f'Camera moved {direction} via CGI' if success else 'Movement failed'
-        
+
         # Eufy uses bridge (no ONVIF support)
         elif camera_type == 'eufy':
             print(f"[APP.PY] Dispatching PTZ to EUFY handler")
@@ -1474,10 +1474,10 @@ def api_ptz_get_presets(camera_serial):
         
         camera_type = camera.get('type')
         
-        # Only Amcrest and Reolink support ONVIF presets
-        if camera_type not in ['amcrest', 'reolink']:
+        # Only Amcrest, Reolink, and SV3C support ONVIF presets
+        if camera_type not in ['amcrest', 'reolink', 'sv3c']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
-        
+
         # Get presets via ONVIF
         success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera)
         
@@ -1505,11 +1505,11 @@ def api_ptz_goto_preset(camera_serial, preset_token):
             return jsonify({'success': False, 'error': 'Camera not found'}), 404
         
         camera_type = camera.get('type')
-        
-        # Only Amcrest and Reolink support ONVIF presets
-        if camera_type not in ['amcrest', 'reolink']:
+
+        # Only Amcrest, Reolink, and SV3C support ONVIF presets
+        if camera_type not in ['amcrest', 'reolink', 'sv3c']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
-        
+
         # Execute goto preset
         success, message = ONVIFPTZHandler.goto_preset(camera_serial, preset_token, camera)
         

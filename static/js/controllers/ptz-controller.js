@@ -59,24 +59,31 @@ export class PTZController {
         });
 
         // Mouse up anywhere on document (not just on button)
-        $(document).on('mouseup', (event) => {
+        $(document).on('mouseup', () => {
             // Ignore if this was a touch interaction (avoid emulated mouse events)
             if (this.lastInputType === 'touch') return;
 
-            if (this.ptzTouchActive || this.isExecuting) {
-                console.log('[PTZ] Mouse up (document level) - stopping movement');
-                this.ptzTouchActive = false;
-                this.activeDirection = null;
+            // Always stop if we have an active interval (most reliable check)
+            if (this.repeatInterval || this.ptzTouchActive || this.isExecuting) {
+                console.log('[PTZ] Mouse up - stopping. States:', {
+                    repeatInterval: !!this.repeatInterval,
+                    ptzTouchActive: this.ptzTouchActive,
+                    isExecuting: this.isExecuting
+                });
                 this.stopMovement();
             }
         });
 
         // Touch end at document level - catches finger lift anywhere on screen
         $(document).on('touchend touchcancel', () => {
-            if (this.ptzTouchActive || this.isExecuting) {
-                console.log('[PTZ] Touch ended (document level) - stopping movement, direction was:', this.activeDirection);
-                this.ptzTouchActive = false;
-                this.activeDirection = null;
+            // Always stop if we have an active interval (most reliable check)
+            if (this.repeatInterval || this.ptzTouchActive || this.isExecuting) {
+                console.log('[PTZ] Touch ended - stopping. States:', {
+                    repeatInterval: !!this.repeatInterval,
+                    ptzTouchActive: this.ptzTouchActive,
+                    isExecuting: this.isExecuting,
+                    activeDirection: this.activeDirection
+                });
                 this.stopMovement();
             }
         });

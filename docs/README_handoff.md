@@ -309,5 +309,3 @@ It serves as a buffer before content is transferred to `README_project_history.m
 ---
 
 *Last updated: January 1, 2026 (post-compaction)*
-
-

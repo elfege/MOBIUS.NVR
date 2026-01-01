@@ -1561,6 +1561,174 @@ def api_ptz_set_preset(camera_serial):
         logger.error(f"Set preset API error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/ptz/latency/<client_uuid>/<camera_serial>', methods=['GET'])
+def api_ptz_get_latency(client_uuid, camera_serial):
+    """
+    Get learned PTZ latency for a client/camera pair.
+
+    Returns stored latency data from PostgreSQL via PostgREST.
+    If no data exists, returns default values.
+
+    Args:
+        client_uuid: Browser-generated UUID identifying the client
+        camera_serial: Camera serial number
+
+    Returns:
+        JSON with avg_latency_ms and sample_count
+    """
+    try:
+        import requests
+        postgrest_url = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+
+        # Query PostgREST for this client/camera pair
+        response = requests.get(
+            f"{postgrest_url}/ptz_client_latency",
+            params={
+                'client_uuid': f'eq.{client_uuid}',
+                'camera_serial': f'eq.{camera_serial}'
+            },
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                record = data[0]
+                return jsonify({
+                    'success': True,
+                    'avg_latency_ms': record.get('avg_latency_ms', 1000),
+                    'sample_count': record.get('sample_count', 0),
+                    'samples': record.get('samples', [])
+                })
+
+        # No data found - return defaults
+        return jsonify({
+            'success': True,
+            'avg_latency_ms': 1000,
+            'sample_count': 0,
+            'samples': []
+        })
+
+    except Exception as e:
+        logger.error(f"Get PTZ latency error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'avg_latency_ms': 1000,
+            'sample_count': 0
+        }), 500
+
+
+@app.route('/api/ptz/latency/<client_uuid>/<camera_serial>', methods=['POST'])
+@csrf.exempt
+def api_ptz_update_latency(client_uuid, camera_serial):
+    """
+    Update learned PTZ latency for a client/camera pair.
+
+    Stores observed latency in PostgreSQL via PostgREST.
+    Maintains a rolling average of the last 10 samples.
+
+    Args:
+        client_uuid: Browser-generated UUID identifying the client
+        camera_serial: Camera serial number
+
+    Request body:
+        observed_latency_ms: The observed latency in milliseconds
+
+    Returns:
+        JSON with updated avg_latency_ms and sample_count
+    """
+    try:
+        import requests
+        import json
+
+        data = request.get_json()
+        observed_latency = data.get('observed_latency_ms')
+
+        if observed_latency is None:
+            return jsonify({'success': False, 'error': 'observed_latency_ms required'}), 400
+
+        postgrest_url = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+
+        # First, try to get existing record
+        get_response = requests.get(
+            f"{postgrest_url}/ptz_client_latency",
+            params={
+                'client_uuid': f'eq.{client_uuid}',
+                'camera_serial': f'eq.{camera_serial}'
+            },
+            timeout=5
+        )
+
+        existing = None
+        if get_response.status_code == 200:
+            records = get_response.json()
+            if records and len(records) > 0:
+                existing = records[0]
+
+        # Calculate new rolling average
+        samples = existing.get('samples', []) if existing else []
+        samples.append(observed_latency)
+
+        # Keep only last 10 samples
+        if len(samples) > 10:
+            samples = samples[-10:]
+
+        avg_latency = round(sum(samples) / len(samples))
+
+        record_data = {
+            'client_uuid': client_uuid,
+            'camera_serial': camera_serial,
+            'avg_latency_ms': avg_latency,
+            'samples': json.dumps(samples),
+            'sample_count': len(samples)
+        }
+
+        if existing:
+            # Update existing record
+            update_response = requests.patch(
+                f"{postgrest_url}/ptz_client_latency",
+                params={
+                    'client_uuid': f'eq.{client_uuid}',
+                    'camera_serial': f'eq.{camera_serial}'
+                },
+                json={
+                    'avg_latency_ms': avg_latency,
+                    'samples': samples,
+                    'sample_count': len(samples)
+                },
+                headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+                timeout=5
+            )
+            success = update_response.status_code in [200, 204]
+        else:
+            # Insert new record
+            insert_response = requests.post(
+                f"{postgrest_url}/ptz_client_latency",
+                json=record_data,
+                headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+                timeout=5
+            )
+            success = insert_response.status_code in [200, 201]
+
+        if success:
+            logger.info(f"[PTZ Latency] Updated {client_uuid[:8]}.../{camera_serial}: {avg_latency}ms (samples: {len(samples)})")
+            return jsonify({
+                'success': True,
+                'avg_latency_ms': avg_latency,
+                'sample_count': len(samples),
+                'samples': samples
+            })
+        else:
+            error_msg = f"PostgREST error: {update_response.status_code if existing else insert_response.status_code}"
+            logger.error(f"[PTZ Latency] {error_msg}")
+            return jsonify({'success': False, 'error': error_msg}), 500
+
+    except Exception as e:
+        logger.error(f"Update PTZ latency error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 ########################################################
 #           📹 RECORDING API ROUTES 📹
 ########################################################

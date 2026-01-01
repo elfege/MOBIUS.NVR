@@ -15,9 +15,13 @@ export class PTZController {
         this.repeatInterval = null; // Legacy, kept for safety
         this.moveAcknowledged = true; // Track when camera has processed a move command
         this.moveStartTime = null; // Track when move command was sent
+        this.latencyCache = {}; // In-memory cache of learned latencies per camera
         // PTZ uses ONVIF ContinuousMove - one command starts movement,
         // camera keeps moving until a Stop command is sent.
-        // Latency is learned per-camera and stored in localStorage.
+        // Latency is learned per-camera and stored in PostgreSQL via API.
+
+        // Get or create client UUID for latency tracking
+        this.clientUuid = this.getOrCreateClientUuid();
 
 
         this.setupEventListeners();
@@ -30,48 +34,96 @@ export class PTZController {
         console.log("#######################################")
     }
 
-    // Get learned latency for a camera (returns milliseconds)
-    getCameraLatency(serial) {
-        try {
-            const stored = localStorage.getItem(`ptz_latency_${serial}`);
-            if (stored) {
-                const data = JSON.parse(stored);
-                // Return average latency with 20% safety margin
-                return Math.round(data.avgLatency * 1.2);
-            }
-        } catch (e) {
-            console.warn('[PTZ] Failed to read latency from localStorage:', e);
+    /**
+     * Get or create a unique client UUID for latency tracking.
+     * Stored in localStorage to persist across sessions.
+     * @returns {string} Client UUID
+     */
+    getOrCreateClientUuid() {
+        const key = 'nvr_client_uuid';
+        let uuid = localStorage.getItem(key);
+        if (!uuid) {
+            // Generate UUID v4
+            uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+            localStorage.setItem(key, uuid);
+            console.log(`[PTZ] Created new client UUID: ${uuid}`);
         }
-        return 1000; // Default 1 second if no data
+        return uuid;
     }
 
-    // Update learned latency for a camera based on observed response time
-    updateCameraLatency(serial, observedLatency) {
-        try {
-            const key = `ptz_latency_${serial}`;
-            let data = { samples: [], avgLatency: observedLatency };
-
-            const stored = localStorage.getItem(key);
-            if (stored) {
-                data = JSON.parse(stored);
-            }
-
-            // Keep last 10 samples for rolling average
-            data.samples.push(observedLatency);
-            if (data.samples.length > 10) {
-                data.samples.shift();
-            }
-
-            // Calculate new average
-            data.avgLatency = Math.round(
-                data.samples.reduce((a, b) => a + b, 0) / data.samples.length
-            );
-
-            localStorage.setItem(key, JSON.stringify(data));
-            console.log(`[PTZ] Updated latency for ${serial}: ${data.avgLatency}ms (last: ${observedLatency}ms, samples: ${data.samples.length})`);
-        } catch (e) {
-            console.warn('[PTZ] Failed to save latency to localStorage:', e);
+    /**
+     * Get learned latency for a camera (returns milliseconds).
+     * Uses in-memory cache first, falls back to API.
+     * @param {string} serial - Camera serial number
+     * @returns {number} Latency in milliseconds with 20% safety margin
+     */
+    getCameraLatency(serial) {
+        // Check in-memory cache first
+        if (this.latencyCache[serial]) {
+            // Return cached value with 20% safety margin
+            return Math.round(this.latencyCache[serial] * 1.2);
         }
+        return 1000; // Default 1 second if no cached data
+    }
+
+    /**
+     * Load latency data from API for a camera.
+     * Called when camera is selected.
+     * @param {string} serial - Camera serial number
+     */
+    async loadCameraLatency(serial) {
+        try {
+            const response = await fetch(`/api/ptz/latency/${this.clientUuid}/${serial}`);
+            const data = await response.json();
+            if (data.success && data.avg_latency_ms) {
+                this.latencyCache[serial] = data.avg_latency_ms;
+                console.log(`[PTZ] Loaded latency for ${serial}: ${data.avg_latency_ms}ms (samples: ${data.sample_count})`);
+            }
+        } catch (e) {
+            console.warn(`[PTZ] Failed to load latency from API for ${serial}:`, e);
+        }
+    }
+
+    /**
+     * Update learned latency for a camera based on observed response time.
+     * Sends to API for persistent storage in PostgreSQL.
+     * @param {string} serial - Camera serial number
+     * @param {number} observedLatency - Observed latency in milliseconds
+     */
+    updateCameraLatency(serial, observedLatency) {
+        // Update local cache immediately for responsiveness
+        if (this.latencyCache[serial]) {
+            // Simple running average update
+            this.latencyCache[serial] = Math.round(
+                (this.latencyCache[serial] * 0.8) + (observedLatency * 0.2)
+            );
+        } else {
+            this.latencyCache[serial] = observedLatency;
+        }
+
+        // Send to API asynchronously (fire-and-forget)
+        fetch(`/api/ptz/latency/${this.clientUuid}/${serial}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ observed_latency_ms: observedLatency })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update cache with server-calculated average
+                this.latencyCache[serial] = data.avg_latency_ms;
+                console.log(`[PTZ] Updated latency for ${serial}: ${data.avg_latency_ms}ms (last: ${observedLatency}ms, samples: ${data.sample_count})`);
+            } else {
+                console.warn(`[PTZ] Failed to update latency: ${data.error}`);
+            }
+        })
+        .catch(e => {
+            console.warn(`[PTZ] Failed to save latency to API for ${serial}:`, e);
+        });
     }
 
     setupEventListeners() {
@@ -288,6 +340,9 @@ export class PTZController {
 
         // Load presets for this camera
         this.loadPresets(serial);
+
+        // Load learned latency from database for this camera
+        this.loadCameraLatency(serial);
     }
 
     setBridgeReady(ready) {

@@ -10,6 +10,8 @@ export class PTZController {
         this.bridgeReady = false;
         this.isExecuting = false;
         this.presets = [];
+        this.ptzTouchActive = false;
+        this.activeDirection = null;
 
 
         this.setupEventListeners();
@@ -24,9 +26,6 @@ export class PTZController {
 
 
     setupEventListeners() {
-        // Track if we're currently in a PTZ movement (for touch handling)
-        this.ptzTouchActive = false;
-
         $(document).on('mousedown touchstart', '.ptz-btn', (event) => {
             event.preventDefault();
 
@@ -44,6 +43,7 @@ export class PTZController {
 
             if (direction && direction !== '360') {
                 this.ptzTouchActive = true;
+                this.activeDirection = direction;
                 this.startMovement(direction);
             } else if (direction === '360') {
                 this.executeMovement(direction);
@@ -60,15 +60,17 @@ export class PTZController {
             if (direction && direction !== '360') {
                 console.log('[PTZ] Stopping movement for direction:', direction);
                 this.ptzTouchActive = false;
+                this.activeDirection = null;
                 this.stopMovement();
             }
         });
 
         // Touch end at document level - catches finger lift anywhere on screen
-        $(document).on('touchend touchcancel', (event) => {
-            if (this.ptzTouchActive) {
-                console.log('[PTZ] Touch ended (document level) - stopping movement');
+        $(document).on('touchend touchcancel', () => {
+            if (this.ptzTouchActive || this.isExecuting) {
+                console.log('[PTZ] Touch ended (document level) - stopping movement, direction was:', this.activeDirection);
                 this.ptzTouchActive = false;
+                this.activeDirection = null;
                 this.stopMovement();
             }
         });

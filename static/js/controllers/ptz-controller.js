@@ -12,13 +12,10 @@ export class PTZController {
         this.presets = [];
         this.ptzTouchActive = false;
         this.activeDirection = null;
-        this.repeatInterval = null;
-        // AbortController for cancelling in-flight movement requests on stop.
-        // We use fetch() instead of $.ajax() here because AbortController
-        // integrates cleanly with fetch's signal option, allowing instant
-        // cancellation of queued PTZ commands when the user releases the button.
-        this.abortController = null;
-        this.REPEAT_DELAY_MS = 250; // How often to send repeat commands while held
+        this.repeatInterval = null; // Legacy, kept for safety
+        // PTZ uses ONVIF ContinuousMove - one command starts movement,
+        // camera keeps moving until a Stop command is sent.
+        // No need for repeat interval or AbortController.
 
 
         this.setupEventListeners();
@@ -99,56 +96,33 @@ export class PTZController {
     async startMovement(direction) {
         if (!this.currentCamera) return;
 
-        // Clear any existing interval and abort controller
+        // Clear any existing state
         if (this.repeatInterval) {
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
         }
-        if (this.abortController) {
-            this.abortController.abort();
-        }
-
-        // Create new abort controller for this movement session
-        this.abortController = new AbortController();
 
         this.isExecuting = true;
         this.updateButtonStates();
         this.setButtonActive(direction, true);
 
-        // Send command immediately
-        this.sendPTZCommand(direction);
+        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction);
 
-        // Then repeat while held
-        this.repeatInterval = setInterval(() => {
-            if (this.ptzTouchActive && this.activeDirection === direction) {
-                this.sendPTZCommand(direction);
-            } else {
-                // Safety: clear interval if state is inconsistent
-                clearInterval(this.repeatInterval);
-                this.repeatInterval = null;
-            }
-        }, this.REPEAT_DELAY_MS);
-    }
-
-    async sendPTZCommand(direction) {
-        if (!this.currentCamera || !this.abortController) return;
-
+        // Send ONE ContinuousMove command - camera keeps moving until Stop
+        // No need for repeat interval since ONVIF ContinuousMove is persistent
         try {
-            // Use fetch with AbortController so we can cancel in-flight requests
-            fetch(`/api/ptz/${this.currentCamera.serial}/${direction}`, {
+            const response = await fetch(`/api/ptz/${this.currentCamera.serial}/${direction}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                signal: this.abortController.signal
-            }).catch(err => {
-                // Ignore abort errors, log others
-                if (err.name !== 'AbortError') {
-                    console.log(`PTZ command failed: ${err.message}`);
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
-        } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.log(`PTZ command failed: ${error.message}`);
+            const data = await response.json();
+            if (data.success) {
+                console.log(`[PTZ ${new Date().toISOString()}] ✓ Move started:`, data.message);
+            } else {
+                console.warn(`[PTZ ${new Date().toISOString()}] ✗ Move failed:`, data.error || data.message);
             }
+        } catch (error) {
+            console.error(`[PTZ ${new Date().toISOString()}] ✗ Move request failed:`, error.message);
         }
     }
 
@@ -156,21 +130,13 @@ export class PTZController {
         const stopStartTime = performance.now();
         console.log(`[PTZ ${new Date().toISOString()}] stopMovement() entered. currentCamera:`, this.currentCamera?.serial);
 
-        // Clear repeat interval IMMEDIATELY
+        // Clear any interval (legacy, but keep for safety)
         if (this.repeatInterval) {
-            console.log(`[PTZ ${new Date().toISOString()}] Clearing interval`);
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
         }
 
-        // Abort all in-flight movement requests
-        if (this.abortController) {
-            console.log(`[PTZ ${new Date().toISOString()}] Aborting in-flight requests`);
-            this.abortController.abort();
-            this.abortController = null;
-        }
-
-        // Clear state to prevent any further commands
+        // Clear state
         this.ptzTouchActive = false;
         this.activeDirection = null;
 

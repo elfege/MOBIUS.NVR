@@ -3,6 +3,15 @@
 -- Description: Stores learned ONVIF PTZ latency per client/camera pair
 --              for optimizing stop timing based on observed response times
 
+-- Ensure the update_updated_at_column function exists
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 -- Check if table already exists
 DO $$
 BEGIN

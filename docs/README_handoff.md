@@ -230,6 +230,45 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 1, 2026 14:25 EST*
+## Session Continued: January 1, 2026 (16:00-17:00 EST)
+
+### PTZ Zoom Controls Added
+
+#### 1. Zoom Buttons in UI
+
+- Added zoom in/out buttons below the directional PTZ grid
+- Styled with distinct colors (green for zoom in, cyan for zoom out)
+- **Files:** `templates/streams.html`, `static/css/components/ptz-controls.css`
+
+#### 2. SV3C ONVIF PTZ Support Fixed
+
+- **Problem:** SV3C cameras returned "PTZ not supported for camera type: sv3c"
+- **Root cause:** `app.py` PTZ routes only checked for `amcrest` and `reolink` types
+- **Fix:** Added `'sv3c'` to camera type checks in three locations:
+  - PTZ move endpoint (line 1432)
+  - Get presets endpoint (line 1478)
+  - Goto preset endpoint (line 1510)
+- **File:** `app.py`
+
+#### 3. SV3C Zoom Limitation Discovered
+
+- **Finding:** SV3C 1080P PTZ cameras have **digital zoom only** (no optical zoom motor)
+- **Behavior:** ONVIF zoom commands are sent and accepted, but camera doesn't respond
+- **Evidence:**
+  - Logs show `ONVIF PTZ zoom_in started for C6F0SgZ0N0PoL2` (command sent successfully)
+  - Camera reports ZoomLimits in ONVIF configuration (nominal, not functional)
+  - Pan/tilt work because those have actual motors
+- **Conclusion:** ONVIF PTZ zoom is designed for motorized optical zoom lenses; budget PTZ cameras with digital-only zoom don't respond to these commands
+- Amcrest and Reolink cameras with optical zoom motors work correctly
+
+### Files Modified
+
+1. `templates/streams.html` - Added zoom button HTML
+2. `static/css/components/ptz-controls.css` - Zoom button styling
+3. `app.py` - Added 'sv3c' to ONVIF PTZ camera type checks
+
+---
+
+*Last updated: January 1, 2026 17:00 EST*
 
 

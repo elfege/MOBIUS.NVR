@@ -102,17 +102,25 @@ class RecordingService:
         logger.debug(f"Camera {camera_id}: stream_type={stream_type}, recording_source={recording_source}")
         
         # Resolve source URL based on configuration
+        # For 'auto': use MediaMTX for LL_HLS cameras (single-connection), RTSP for others
+        if recording_source == 'auto':
+            if stream_type == 'LL_HLS':
+                recording_source = 'mediamtx'
+            else:
+                recording_source = 'rtsp'
+            logger.debug(f"Auto-resolved recording_source to '{recording_source}' for {camera_id}")
+
         if recording_source == 'mediamtx':
-            # Tap MediaMTX RTSP output
+            # Tap MediaMTX RTSP output (required for single-connection cameras)
             packager_path = camera.get('packager_path', camera_id)
             return (f"rtsp://nvr-packager:8554/{packager_path}", 'mediamtx')
-        
+
         elif recording_source == 'rtsp':
             # Direct camera RTSP connection
             handler = self._get_camera_handler(camera)
             rtsp_url = handler.build_rtsp_url(camera, stream_type='main')
             return (rtsp_url, 'rtsp')
-                
+
         else:
             raise ValueError(f"Unknown recording source: {recording_source}")
         

@@ -92,9 +92,83 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 #### Priority
 
-1. Pre-buffer implementation (first)
+1. Pre-buffer implementation (first) ✅ DONE
 2. Passthrough mode for HD recording
 3. HD fullscreen (deferred)
+
+---
+
+## Implementation Session: January 1, 2026 (17:00-18:40 EST)
+
+**Branch:** `pre_buffer_implementation_JAN_1_2026_a` → Merged to main
+
+### Pre-Buffer Recording Implementation - COMPLETE
+
+Implemented rolling segment pre-buffer for motion-triggered recordings.
+
+#### Files Created
+
+- **`services/recording/segment_buffer.py`** - NEW
+  - `SegmentBuffer`: Per-camera FFmpeg segment muxer (5-sec .ts files)
+  - `SegmentBufferManager`: Multi-camera buffer lifecycle management
+  - Rolling deque evicts old segments beyond configured buffer duration
+
+#### Files Modified
+
+- **`config/recording_config_loader.py`**
+  - Added `pre_buffer_enabled: False` to defaults
+  - Added `is_pre_buffer_enabled()` and `get_pre_buffer_seconds()` helpers
+
+- **`static/js/forms/recording-settings-form.js`**
+  - Added "Enable Pre-Buffer Recording" checkbox toggle
+  - Updated `extractFormData()` to include new field
+
+- **`services/recording/storage_manager.py`**
+  - Added `/recordings/buffer/` directory management
+  - Added `cleanup_buffer_directory()` for orphan cleanup
+
+- **`services/recording/recording_service.py`**
+  - Integrated `SegmentBufferManager`
+  - `start_motion_recording()` checks config and dispatches
+  - Added `_start_prebuffered_recording()` for pre-buffer flow
+  - Added `_finalize_prebuffered_recording()` for FFmpeg concat
+  - Fixed `auto` recording_source: now resolves to `mediamtx` for LL_HLS cameras
+
+- **`app.py`**
+  - Initialize segment buffers at startup for enabled cameras
+  - Added periodic buffer cleanup (every 5 min)
+  - Fixed: `get_all_cameras()` returns IDs, not dicts
+
+#### Technical Flow
+
+1. If `pre_buffer_enabled=true`: FFmpeg segment muxer writes 5-sec `.ts` files to `/recordings/buffer/{camera_id}/`
+2. On motion: copy buffered segments to temp dir, start live recording as `.ts`
+3. On recording end: FFmpeg concat demuxer joins `[prebuffer] + [live]` → final `.mp4`
+4. Cleanup temp files
+
+#### Key Design Points
+
+- Segment buffer taps **MediaMTX RTSP** for LL_HLS cameras (no additional camera connection)
+- `pre_buffer_enabled` toggle required (separate from `pre_buffer_sec > 0`) due to continuous FFmpeg process overhead
+- Fallback to live-only recording if no segments available
+
+#### Testing Checklist
+
+- [ ] Toggle appears in UI and saves correctly
+- [ ] Segment buffer starts only for cameras with toggle enabled
+- [ ] Old segments deleted after buffer duration
+- [ ] Motion triggers concatenation of prebuffer + live
+- [ ] Final MP4 plays with prebuffer content
+- [ ] Fallback to live-only when no segments available
+
+#### Commits
+
+1. `Add segment buffer service for pre-detection recording`
+2. `Add buffer directory support to storage manager`
+3. `Add pre-buffer UI toggle`
+4. `Implement pre-buffer recording for motion detection`
+5. `Fix pre-buffer init: get_all_cameras returns IDs not dicts`
+6. `Fix auto recording_source: use MediaMTX for LL_HLS cameras`
 
 ---
 

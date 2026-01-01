@@ -12,6 +12,8 @@ export class PTZController {
         this.presets = [];
         this.ptzTouchActive = false;
         this.activeDirection = null;
+        this.repeatInterval = null;
+        this.REPEAT_DELAY_MS = 150; // How often to send repeat commands while held
 
 
         this.setupEventListeners();
@@ -77,37 +79,61 @@ export class PTZController {
     }
 
     async startMovement(direction) {
-        if (!this.canExecuteMovement() || this.isExecuting) return;
+        if (!this.currentCamera) return;
+
+        // Clear any existing interval
+        if (this.repeatInterval) {
+            clearInterval(this.repeatInterval);
+            this.repeatInterval = null;
+        }
 
         this.isExecuting = true;
         this.updateButtonStates();
         this.setButtonActive(direction, true);
 
+        // Send command immediately
+        this.sendPTZCommand(direction);
+
+        // Then repeat while held
+        this.repeatInterval = setInterval(() => {
+            if (this.ptzTouchActive && this.activeDirection === direction) {
+                this.sendPTZCommand(direction);
+            } else {
+                // Safety: clear interval if state is inconsistent
+                clearInterval(this.repeatInterval);
+                this.repeatInterval = null;
+            }
+        }, this.REPEAT_DELAY_MS);
+    }
+
+    async sendPTZCommand(direction) {
+        if (!this.currentCamera) return;
+
         try {
-            const result = await $.ajax({
+            // Fire and forget - don't await to avoid blocking repeat interval
+            $.ajax({
                 url: `/api/ptz/${this.currentCamera.serial}/${direction}`,
                 method: 'POST',
                 contentType: 'application/json'
             });
-
-            if (!result.success) {
-                console.log(`PTZ start failed: ${result.error}`);
-                this.stopMovement();
-            }
-
         } catch (error) {
-            console.log(`PTZ movement failed: ${error.message}`);
-            this.stopMovement();
+            console.log(`PTZ command failed: ${error.message}`);
         }
     }
 
     async stopMovement() {
-        if (!this.currentCamera) return;
+        // Clear repeat interval first
+        if (this.repeatInterval) {
+            clearInterval(this.repeatInterval);
+            this.repeatInterval = null;
+        }
 
         // Update UI immediately (optimistic)
         this.isExecuting = false;
         $('.ptz-btn').removeClass('active');
         this.updateButtonStates();
+
+        if (!this.currentCamera) return;
 
         console.log('[PTZ] stopMovement() called for:', this.currentCamera.serial);
 

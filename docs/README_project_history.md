@@ -13379,4 +13379,58 @@ if isinstance(samples, str):
 ```
 
 ---
+
+## January 1, 2026 (16:00-17:30 EST): PTZ Zoom Controls & SV3C Fixes
+
+### PTZ Zoom Controls Added
+
+- Added zoom in/out buttons below the directional PTZ grid
+- Styled with distinct colors (green for zoom in, cyan for zoom out)
+- **Files:** `templates/streams.html`, `static/css/components/ptz-controls.css`
+
+### SV3C ONVIF PTZ Support Fixed
+
+**Problem:** SV3C cameras returned "PTZ not supported for camera type: sv3c"
+
+**Root Cause:** `app.py` PTZ routes only checked for `amcrest` and `reolink` types
+
+**Fix:** Added `'sv3c'` to camera type checks in three locations:
+
+- PTZ move endpoint (line 1432)
+- Get presets endpoint (line 1478)
+- Goto preset endpoint (line 1510)
+
+**File:** `app.py`
+
+### SV3C Hardware Limitations Discovered
+
+#### Digital Zoom Only
+
+- **Finding:** SV3C 1080P PTZ cameras have **digital zoom only** (no optical zoom motor)
+- **Behavior:** ONVIF zoom commands are sent and accepted, but camera doesn't respond
+- **Evidence:** Logs show `ONVIF PTZ zoom_in started for C6F0SgZ0N0PoL2` but no physical response
+- **Conclusion:** ONVIF PTZ zoom requires motorized optical zoom; budget PTZ cameras ignore these commands
+- Amcrest and Reolink cameras with optical zoom motors work correctly
+
+#### Preset Position Reporting
+
+- SV3C ONVIF GetStatus always returns position as (0.0, 0.0)
+- Cannot programmatically verify if preset was reached
+- Camera reports 256 presets (Preset001-Preset256) all with position (0,0)
+- Presets work functionally - just can't verify position via ONVIF
+
+### SV3C Technical Notes
+
+- ONVIF port: 8080 (not default 80)
+- Camera IP: 192.168.10.90 (per cameras.json)
+- Credentials via `SV3CCredentialProvider`
+- Preset tokens use format `Preset001` not `1`
+
+### Files Modified
+
+1. `templates/streams.html` - Added zoom button HTML
+2. `static/css/components/ptz-controls.css` - Zoom button styling
+3. `app.py` - Added 'sv3c' to ONVIF PTZ camera type checks (lines 1432, 1478, 1510)
+
+---
 {% endraw %}

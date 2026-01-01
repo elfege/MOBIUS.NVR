@@ -144,6 +144,10 @@ class FFmpegMotionDetector:
         """
         Get RTSP URL for camera using appropriate stream handler.
 
+        For cameras using LL_HLS streaming, returns MediaMTX RTSP URL
+        (single connection to camera, multiple readers from MediaMTX).
+        For other cameras, returns direct camera RTSP URL.
+
         Args:
             camera: Camera configuration dict
 
@@ -153,12 +157,18 @@ class FFmpegMotionDetector:
         camera_type = camera.get('type', '').lower()
         stream_type = camera.get('stream_type', '').upper()
 
-        # For HLS/LL_HLS cameras, use MediaMTX RTSP
-        if stream_type in ['HLS', 'LL_HLS']:
-            packager_path = camera.get('packager_path', camera.get('serial'))
-            return f"rtsp://nvr-packager:8554/{packager_path}"
+        # For LL_HLS cameras, use MediaMTX RTSP output
+        # This avoids opening a second connection to the camera
+        if stream_type == 'LL_HLS':
+            packager_path = camera.get('packager_path') or camera.get('serial')
+            if packager_path:
+                mediamtx_url = f"rtsp://nvr-packager:8554/{packager_path}"
+                logger.info(f"Using MediaMTX RTSP for {camera.get('name')}: {mediamtx_url}")
+                return mediamtx_url
+            else:
+                logger.warning(f"LL_HLS camera {camera.get('name')} has no packager_path, falling back to direct RTSP")
 
-        # Build camera-type specific RTSP URL
+        # For other cameras, use direct camera RTSP URL via stream handler
         try:
             if camera_type == 'eufy':
                 from streaming.handlers.eufy_stream_handler import EufyStreamHandler

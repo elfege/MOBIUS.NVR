@@ -28,8 +28,14 @@ export class PTZController {
 
 
     setupEventListeners() {
+        // Track input type to avoid mouse emulation conflicts on touch
+        this.lastInputType = null;
+
         $(document).on('mousedown touchstart', '.ptz-btn', (event) => {
             event.preventDefault();
+
+            // Track input type
+            this.lastInputType = event.type === 'touchstart' ? 'touch' : 'mouse';
 
             // Always detect camera from button's parent stream-item (grid view)
             const $streamItem = $(event.currentTarget).closest('.stream-item');
@@ -41,7 +47,7 @@ export class PTZController {
             }
 
             const direction = $(event.currentTarget).data('direction');
-            console.log('[PTZ] Button pressed:', direction, 'for camera:', this.currentCamera?.serial);
+            console.log('[PTZ] Button pressed:', direction, 'type:', this.lastInputType, 'for camera:', this.currentCamera?.serial);
 
             if (direction && direction !== '360') {
                 this.ptzTouchActive = true;
@@ -52,15 +58,13 @@ export class PTZController {
             }
         });
 
-        // Mouse events still use the button-specific handler
-        $(document).on('mouseup mouseleave', '.ptz-btn', (event) => {
-            event.preventDefault();
+        // Mouse up anywhere on document (not just on button)
+        $(document).on('mouseup', (event) => {
+            // Ignore if this was a touch interaction (avoid emulated mouse events)
+            if (this.lastInputType === 'touch') return;
 
-            const direction = $(event.currentTarget).data('direction');
-            console.log('[PTZ] Mouse released:', direction, 'for camera:', this.currentCamera?.serial);
-
-            if (direction && direction !== '360') {
-                console.log('[PTZ] Stopping movement for direction:', direction);
+            if (this.ptzTouchActive || this.isExecuting) {
+                console.log('[PTZ] Mouse up (document level) - stopping movement');
                 this.ptzTouchActive = false;
                 this.activeDirection = null;
                 this.stopMovement();

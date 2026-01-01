@@ -13,7 +13,7 @@ export class PTZController {
         this.ptzTouchActive = false;
         this.activeDirection = null;
         this.repeatInterval = null;
-        this.REPEAT_DELAY_MS = 150; // How often to send repeat commands while held
+        this.REPEAT_DELAY_MS = 250; // How often to send repeat commands while held
 
 
         this.setupEventListeners();
@@ -126,11 +126,15 @@ export class PTZController {
     }
 
     async stopMovement() {
-        // Clear repeat interval first
+        // Clear repeat interval IMMEDIATELY
         if (this.repeatInterval) {
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
         }
+
+        // Clear state to prevent any further commands
+        this.ptzTouchActive = false;
+        this.activeDirection = null;
 
         // Update UI immediately (optimistic)
         this.isExecuting = false;
@@ -141,16 +145,18 @@ export class PTZController {
 
         console.log('[PTZ] stopMovement() called for:', this.currentCamera.serial);
 
-        try {
-            // Fire and forget - don't block UI on response
-            $.ajax({
-                url: `/api/ptz/${this.currentCamera.serial}/stop`,
-                method: 'POST',
-                contentType: 'application/json'
-            });
-
-        } catch (error) {
-            console.log(`Failed to stop PTZ: ${error.message}`);
+        // Send multiple stop commands to ensure it gets through
+        // (in case earlier movement commands are still in flight)
+        for (let i = 0; i < 3; i++) {
+            try {
+                $.ajax({
+                    url: `/api/ptz/${this.currentCamera.serial}/stop`,
+                    method: 'POST',
+                    contentType: 'application/json'
+                });
+            } catch (error) {
+                console.log(`Failed to stop PTZ: ${error.message}`);
+            }
         }
     }
 

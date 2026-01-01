@@ -82,18 +82,17 @@ export class PTZController {
             }
         });
 
-        // Touch end at document level - catches finger lift anywhere on screen
+        // Touch end at document level - ALWAYS stop on any touch release
+        // This is aggressive but ensures camera stops when finger lifts
         $(document).on('touchend touchcancel', () => {
-            // Always stop if we have an active interval (most reliable check)
-            if (this.repeatInterval || this.ptzTouchActive || this.isExecuting) {
-                console.log('[PTZ] Touch ended - stopping. States:', {
-                    repeatInterval: !!this.repeatInterval,
-                    ptzTouchActive: this.ptzTouchActive,
-                    isExecuting: this.isExecuting,
-                    activeDirection: this.activeDirection
-                });
-                this.stopMovement();
-            }
+            console.log('[PTZ] Touch ended - unconditionally stopping. States:', {
+                repeatInterval: !!this.repeatInterval,
+                ptzTouchActive: this.ptzTouchActive,
+                isExecuting: this.isExecuting,
+                activeDirection: this.activeDirection
+            });
+            // Always call stopMovement - it's safe to call even if not moving
+            this.stopMovement();
         });
     }
 

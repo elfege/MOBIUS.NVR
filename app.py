@@ -245,12 +245,12 @@ try:
     # Start pre-buffer segment recording for cameras with it enabled
     if recording_service and recording_service.segment_buffer_manager:
         print("\n📼 Starting pre-buffer segment recording...")
-        for camera in camera_repo.get_all_cameras():
-            camera_id = camera.get('serial_number')
-            camera_name = camera.get('name', camera_id)
+        for camera_id in camera_repo.get_all_cameras():
+            camera = camera_repo.get_camera(camera_id)
+            camera_name = camera.get('name', camera_id) if camera else camera_id
             if recording_service.config.is_pre_buffer_enabled(camera_id):
                 # Get stream URL from recording service
-                source_url = recording_service._get_stream_url(camera_id)
+                source_url, _ = recording_service._get_recording_source_url(camera_id)
                 if source_url and recording_service.segment_buffer_manager.start_buffer(camera_id, source_url):
                     print(f"  ✅ Pre-buffer: {camera_name}")
                 else:

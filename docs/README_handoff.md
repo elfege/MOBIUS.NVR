@@ -269,6 +269,45 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 1, 2026 17:00 EST*
+## Session Continued: January 1, 2026 (Context Compaction Recovery)
+
+**Branch:** `mediamtx_centralization_and_workflow_setup_JAN_1_2026_a`
+
+### SV3C Preset Investigation
+
+#### Issue Reported
+
+- User reported SV3C preset goto "moves vaguely towards the position but stops short of reaching it"
+- Preset worked from camera's built-in Web UI but not as accurately from NVR ONVIF
+
+#### Investigation Findings
+
+1. **SV3C Preset Token Format:** Camera uses tokens like `Preset001` not `1`
+   - API correctly fetches presets with full token names from ONVIF
+   - Frontend correctly passes `preset.token` to API
+
+2. **SV3C Reports Position as (0.0, 0.0):** Camera's ONVIF GetStatus always returns pan=0, tilt=0
+   - Cannot programmatically verify if preset was reached
+   - Budget camera ONVIF implementation doesn't expose actual position
+
+3. **256 Presets Pre-Configured:** SV3C reports Preset001-Preset256 all with position (0,0)
+
+4. **User Confirmed Working:** After investigation, user confirmed presets are working acceptably
+
+#### Technical Notes
+
+- SV3C ONVIF port: 8080 (not default 80)
+- Camera IP: 192.168.10.90 (per cameras.json)
+- Credentials via SV3CCredentialProvider
+
+### Files Read (No Modifications)
+
+- `services/onvif/onvif_ptz_handler.py` - Reviewed goto_preset implementation
+- `static/js/controllers/ptz-controller.js` - Verified preset token handling
+- `app.py` - Verified API endpoint routing
+
+---
+
+*Last updated: January 1, 2026 (post-compaction)*
 
 

@@ -106,24 +106,26 @@ export class PTZController {
         this.updateButtonStates();
         this.setButtonActive(direction, true);
 
-        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction);
+        const serial = this.currentCamera.serial;
+        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction, 'for', serial);
 
-        // Send ONE ContinuousMove command - camera keeps moving until Stop
-        // No need for repeat interval since ONVIF ContinuousMove is persistent
-        try {
-            const response = await fetch(`/api/ptz/${this.currentCamera.serial}/${direction}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            const data = await response.json();
-            if (data.success) {
-                console.log(`[PTZ ${new Date().toISOString()}] ✓ Move started:`, data.message);
-            } else {
-                console.warn(`[PTZ ${new Date().toISOString()}] ✗ Move failed:`, data.error || data.message);
-            }
-        } catch (error) {
-            console.error(`[PTZ ${new Date().toISOString()}] ✗ Move request failed:`, error.message);
-        }
+        // Fire-and-forget: DON'T await the move command!
+        // If we await, the stop command (on mouseup) may arrive at the camera
+        // BEFORE the move command finishes, causing the camera to ignore the stop.
+        fetch(`/api/ptz/${serial}/${direction}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        }).then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  console.log(`[PTZ ${new Date().toISOString()}] ✓ Move acknowledged:`, data.message);
+              } else {
+                  console.warn(`[PTZ ${new Date().toISOString()}] ✗ Move failed:`, data.error || data.message);
+              }
+          })
+          .catch(error => {
+              console.error(`[PTZ ${new Date().toISOString()}] ✗ Move request failed:`, error.message);
+          });
     }
 
     async stopMovement() {

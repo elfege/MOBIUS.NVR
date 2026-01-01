@@ -153,14 +153,18 @@ export class PTZController {
     }
 
     async stopMovement() {
+        console.log('[PTZ] stopMovement() entered. currentCamera:', this.currentCamera?.serial);
+
         // Clear repeat interval IMMEDIATELY
         if (this.repeatInterval) {
+            console.log('[PTZ] Clearing interval');
             clearInterval(this.repeatInterval);
             this.repeatInterval = null;
         }
 
         // Abort all in-flight movement requests
         if (this.abortController) {
+            console.log('[PTZ] Aborting in-flight requests');
             this.abortController.abort();
             this.abortController = null;
         }
@@ -174,9 +178,12 @@ export class PTZController {
         $('.ptz-btn').removeClass('active');
         this.updateButtonStates();
 
-        if (!this.currentCamera) return;
+        if (!this.currentCamera) {
+            console.log('[PTZ] No currentCamera - cannot send stop command!');
+            return;
+        }
 
-        console.log('[PTZ] stopMovement() called for:', this.currentCamera.serial);
+        console.log('[PTZ] Sending stop command for:', this.currentCamera.serial);
 
         // Send stop command (just one now, since we aborted in-flight moves)
         try {

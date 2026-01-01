@@ -137,11 +137,15 @@ class ONVIFEventListener:
                 username = credentials.get('username')
                 password = credentials.get('password')
             
+            # Get ONVIF port from camera config (defaults to 80)
+            onvif_port = camera.get('onvif_port', 80)
+
             onvif_cam = ONVIFClient.get_camera(
                 host=camera.get('host'),
                 username=username,
                 password=password,
-                camera_serial=camera_id
+                camera_serial=camera_id,
+                port=onvif_port
             )
             
             if not onvif_cam:

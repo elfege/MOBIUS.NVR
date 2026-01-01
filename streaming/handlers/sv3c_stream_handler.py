@@ -10,7 +10,7 @@ ONVIF support on port 8000
 import logging
 import traceback
 from pprint import pprint
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from ..stream_handler import StreamHandler
 from urllib.parse import quote
 from ..ffmpeg_params import (
@@ -66,8 +66,37 @@ class SV3CStreamHandler(StreamHandler):
         rtsp_url = f"rtsp://{username}:{quote(password, safe='')}@{host}:{port}/{stream_path}"
         
         logger.info(f"Built RTSP URL for {camera_config.get('name')} ({stream_type}, path=/{stream_path}): rtsp://{username}:****@{host}:{port}/{stream_path}")
-        
+
         return rtsp_url
+
+    def _build_ll_hls_publish(self, camera_config: Dict, rtsp_url: str) -> Tuple[List[str], str]:
+        """
+            Build the full ffmpeg argv to *publish* LL-HLS to the packager for this camera.
+            Returns: (argv, play_url)
+            - argv: ["ffmpeg", <input flags>, "-i", <rtsp_url>, <output flags>]
+            - play_url: "/hls/<packager_path or serial>/index.m3u8"
+        """
+        # INPUT side
+        in_args: List[str] = build_ll_hls_input_publish_params(camera_config=camera_config)
+
+        # OUTPUT side (delegates to FFmpegHLSParamBuilder.build_ll_hls_publish_output via helper)
+        out_args: List[str] = build_ll_hls_output_publish_params(
+            camera_config=camera_config,
+            vendor_prefix=camera_config.get("type", "sv3c")
+        )
+
+        # Assemble final argv
+        argv: List[str] = ["ffmpeg", *in_args, "-i", rtsp_url, *out_args]
+
+        # Compute the play URL for the UI/API (edge proxies /hls/ → packager)
+        path = (
+            (camera_config.get("packager_path") or
+             camera_config.get("serial") or
+             camera_config.get("id"))
+        )
+        play_url = f"/hls/{path}/index.m3u8"
+
+        return argv, play_url
 
     def get_ffmpeg_input_params(self, camera_config: Dict) -> List[str]:
         """FFmpeg input parameters for SV3C cameras"""

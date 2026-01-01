@@ -13,6 +13,7 @@ export class PTZController {
         this.ptzTouchActive = false;
         this.activeDirection = null;
         this.repeatInterval = null; // Legacy, kept for safety
+        this.moveAcknowledged = true; // Track when camera has processed a move command
         // PTZ uses ONVIF ContinuousMove - one command starts movement,
         // camera keeps moving until a Stop command is sent.
         // No need for repeat interval or AbortController.
@@ -103,20 +104,20 @@ export class PTZController {
         }
 
         this.isExecuting = true;
+        this.moveAcknowledged = false; // Track when camera has processed the move
         this.updateButtonStates();
         this.setButtonActive(direction, true);
 
         const serial = this.currentCamera.serial;
         console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction, 'for', serial);
 
-        // Fire-and-forget: DON'T await the move command!
-        // If we await, the stop command (on mouseup) may arrive at the camera
-        // BEFORE the move command finishes, causing the camera to ignore the stop.
+        // Fire-and-forget but track acknowledgment for stop timing
         fetch(`/api/ptz/${serial}/${direction}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         }).then(response => response.json())
           .then(data => {
+              this.moveAcknowledged = true; // Camera has processed the move
               if (data.success) {
                   console.log(`[PTZ ${new Date().toISOString()}] ✓ Move acknowledged:`, data.message);
               } else {
@@ -124,6 +125,7 @@ export class PTZController {
               }
           })
           .catch(error => {
+              this.moveAcknowledged = true; // Even on error, we're done waiting
               console.error(`[PTZ ${new Date().toISOString()}] ✗ Move request failed:`, error.message);
           });
     }
@@ -154,10 +156,22 @@ export class PTZController {
 
         const serial = this.currentCamera.serial;
 
-        // Small delay to ensure move command has been received by camera
-        // Without this, stop may arrive before move is processed, causing
-        // the camera to ignore the stop (nothing to stop yet)
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for move command to be acknowledged by camera before sending stop
+        // ONVIF takes ~1 second to process move; if stop arrives before move is
+        // processed, camera ignores stop (nothing to stop yet)
+        if (!this.moveAcknowledged) {
+            console.log(`[PTZ ${new Date().toISOString()}] Waiting for move acknowledgment before stop...`);
+            const maxWait = 2000; // Max 2 seconds
+            const startWait = performance.now();
+            while (!this.moveAcknowledged && (performance.now() - startWait) < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            if (this.moveAcknowledged) {
+                console.log(`[PTZ ${new Date().toISOString()}] Move acknowledged, proceeding with stop`);
+            } else {
+                console.log(`[PTZ ${new Date().toISOString()}] Move acknowledgment timeout, sending stop anyway`);
+            }
+        }
 
         console.log(`[PTZ ${new Date().toISOString()}] Sending stop command for:`, serial);
 

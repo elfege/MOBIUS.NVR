@@ -132,7 +132,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-## Parallel Session: January 1, 2026 (18:30-19:15)
+## Parallel Session: January 1, 2026 (12:30-14:00)
 
 **Branch:** `mobile_ptz_grid_hide_JAN_1_2026_a`
 
@@ -171,8 +171,26 @@ It serves as a buffer before content is transferred to `README_project_history.m
 - **Root cause:** Move command used `await fetch()`, blocking until camera acknowledged
 - **Effect:** Stop sent while move still processing at camera level; camera ignores stop (nothing to stop yet)
 - **Fix 1:** Changed `startMovement()` to fire-and-forget (no await)
-- **Fix 2:** Added 100ms delay in `stopMovement()` before sending stop command
+- **Fix 2:** `stopMovement()` waits for move acknowledgment before sending stop
 - **File:** `static/js/controllers/ptz-controller.js`
+
+#### 6. Adaptive PTZ Latency Learning (14:15 EST) - TO BE TESTED
+
+- **Feature:** Learn per-camera ONVIF latency and adapt stop timing
+- **Storage:** `localStorage` with key `ptz_latency_{serial}`
+- **Algorithm:** Rolling average of last 10 samples + 20% safety margin
+- **Default:** 1000ms for cameras with no data yet
+- **Methods added:**
+  - `getCameraLatency(serial)` - returns learned latency for camera
+  - `updateCameraLatency(serial, observedLatency)` - updates rolling average
+- **File:** `static/js/controllers/ptz-controller.js`
+
+**How it works:**
+
+1. When move command sent, `moveStartTime` recorded
+2. When move acknowledged, latency = `performance.now() - moveStartTime`
+3. Latency saved to localStorage (rolling avg of 10 samples)
+4. On next stop, uses learned latency as max wait time before sending stop
 
 ### Technical Notes
 
@@ -185,6 +203,6 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 1, 2026 14:00 EST*
+*Last updated: January 1, 2026 14:20 EST*
 
 

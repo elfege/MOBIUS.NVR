@@ -241,23 +241,45 @@ try:
                 
             except Exception as e:
                 print(f"  ❌ Error starting services for {camera_id}: {e}")
-                
-    
+
+    # Start pre-buffer segment recording for cameras with it enabled
+    if recording_service and recording_service.segment_buffer_manager:
+        print("\n📼 Starting pre-buffer segment recording...")
+        for camera in camera_repo.get_all_cameras():
+            camera_id = camera.get('serial_number')
+            camera_name = camera.get('name', camera_id)
+            if recording_service.config.is_pre_buffer_enabled(camera_id):
+                # Get stream URL from recording service
+                source_url = recording_service._get_stream_url(camera_id)
+                if source_url and recording_service.segment_buffer_manager.start_buffer(camera_id, source_url):
+                    print(f"  ✅ Pre-buffer: {camera_name}")
+                else:
+                    print(f"  ❌ Failed pre-buffer: {camera_name}")
+
     # Background thread to monitor recording completions and auto-restart
     if recording_service:
         def recording_monitor_loop():
             """Background thread to cleanup finished recordings and auto-restart continuous"""
             import time
-            
+
+            buffer_cleanup_counter = 0
+
             while True:
                 try:
                     time.sleep(10)  # Check every 10 seconds
-                    
+
                     if recording_service:
                         cleaned = recording_service.cleanup_finished_recordings()
                         if cleaned > 0:
                             logger.debug(f"Recording monitor cleaned {cleaned} finished recordings")
-                            
+
+                        # Periodic buffer cleanup every 5 minutes (30 iterations * 10s)
+                        buffer_cleanup_counter += 1
+                        if buffer_cleanup_counter >= 30:
+                            buffer_cleanup_counter = 0
+                            if recording_service.storage_manager:
+                                recording_service.storage_manager.cleanup_buffer_directory(max_age_minutes=5)
+
                 except Exception as e:
                     logger.error(f"Recording monitor error: {e}")
                     time.sleep(30)  # Back off on error

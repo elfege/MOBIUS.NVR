@@ -77,6 +77,15 @@ class FFmpegMotionDetector:
             # Allow config to override sensitivity
             sensitivity = motion_cfg.get('ffmpeg_sensitivity', sensitivity)
 
+        # For LL_HLS cameras reading from MediaMTX, use much lower threshold
+        # Re-encoded streams have very low scene scores due to scenecut=0 in encoder
+        stream_type = camera.get('stream_type', '').upper()
+        if stream_type == 'LL_HLS' and sensitivity >= 0.1:
+            # Only auto-adjust if not explicitly configured to a low value
+            default_ll_hls_sensitivity = 0.01  # 1% scene change threshold
+            logger.info(f"LL_HLS camera detected, adjusting sensitivity from {sensitivity} to {default_ll_hls_sensitivity}")
+            sensitivity = default_ll_hls_sensitivity
+
         camera_name = camera.get('name', camera_id)
         logger.info(f"Starting FFmpeg motion detector for {camera_name} "
                    f"(sensitivity: {sensitivity}, cooldown: {cooldown_sec}s)")

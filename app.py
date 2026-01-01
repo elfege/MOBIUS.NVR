@@ -1669,6 +1669,9 @@ def api_ptz_update_latency(client_uuid, camera_serial):
 
         # Calculate new rolling average
         samples = existing.get('samples', []) if existing else []
+        # PostgREST may return JSONB as string or as list depending on config
+        if isinstance(samples, str):
+            samples = json.loads(samples) if samples else []
         samples.append(observed_latency)
 
         # Keep only last 10 samples

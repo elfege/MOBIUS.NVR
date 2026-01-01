@@ -87,7 +87,8 @@ class StorageManager:
         self.continuous_path = self.base_path / "continuous"
         self.snapshots_path = self.base_path / "snapshots"
         self.manual_path = self.base_path / "manual"
-        
+        self.buffer_path = self.base_path / "buffer"  # Pre-buffer rolling segments
+
         # Verify directories exist
         self._verify_directories()
         
@@ -96,15 +97,24 @@ class StorageManager:
     
     def _verify_directories(self):
         """Verify all storage directories exist and are writable."""
+        # Core directories that must exist
         for path in [self.motion_path, self.continuous_path, self.snapshots_path, self.manual_path]:
             if not path.exists():
                 logger.error(f"Storage directory does not exist: {path}")
                 raise FileNotFoundError(f"Storage directory missing: {path}")
-            
+
             if not os.access(path, os.W_OK):
                 logger.error(f"Storage directory not writable: {path}")
                 raise PermissionError(f"Cannot write to: {path}")
-        
+
+        # Buffer directory is optional - create if it doesn't exist
+        if not self.buffer_path.exists():
+            try:
+                self.buffer_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created buffer directory: {self.buffer_path}")
+            except Exception as e:
+                logger.warning(f"Could not create buffer directory: {e}")
+
         logger.info("All storage directories verified")
 
     def _cleanup_empty_dirs(self, start_dir: Path, stop_at: Path):
@@ -387,3 +397,99 @@ class StorageManager:
         logger.info(f"Total cleanup: {total_deleted} files deleted across {len(cleanup_results)} cameras")
 
         return cleanup_results
+
+    def cleanup_buffer_directory(self, max_age_minutes: int = 5) -> int:
+        """
+        Clean up old buffer segments that weren't properly cleaned.
+
+        This catches any orphaned segment files from crashed buffer processes.
+        The SegmentBuffer class normally handles its own cleanup, but this
+        is a safety net for files left behind.
+
+        Args:
+            max_age_minutes: Delete segments older than this (default 5 minutes)
+
+        Returns:
+            Number of files deleted
+        """
+        if not self.buffer_path.exists():
+            return 0
+
+        deleted = 0
+        cutoff = datetime.now().timestamp() - (max_age_minutes * 60)
+
+        # Check each camera's buffer directory
+        for camera_dir in self.buffer_path.iterdir():
+            if camera_dir.is_dir():
+                # Delete old .ts segment files
+                for seg_file in camera_dir.glob("*.ts"):
+                    try:
+                        if seg_file.stat().st_mtime < cutoff:
+                            seg_file.unlink()
+                            deleted += 1
+                            logger.debug(f"Deleted orphaned buffer segment: {seg_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete buffer segment {seg_file}: {e}")
+
+                # Also delete old segment list files
+                for list_file in camera_dir.glob("segments.txt"):
+                    try:
+                        if list_file.stat().st_mtime < cutoff:
+                            list_file.unlink()
+                            logger.debug(f"Deleted orphaned segment list: {list_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete segment list {list_file}: {e}")
+
+                # Clean up empty directories
+                try:
+                    if camera_dir.is_dir() and not any(camera_dir.iterdir()):
+                        camera_dir.rmdir()
+                        logger.debug(f"Removed empty buffer directory: {camera_dir}")
+                except Exception as e:
+                    logger.warning(f"Could not remove buffer directory {camera_dir}: {e}")
+
+        if deleted > 0:
+            logger.info(f"Cleaned up {deleted} orphaned buffer segments")
+
+        return deleted
+
+    def get_buffer_stats(self) -> Dict:
+        """
+        Get statistics about buffer directory usage.
+
+        Returns:
+            Dict with buffer storage statistics
+        """
+        if not self.buffer_path.exists():
+            return {
+                'exists': False,
+                'total_bytes': 0,
+                'total_mb': 0,
+                'file_count': 0,
+                'cameras': {}
+            }
+
+        total_size = 0
+        file_count = 0
+        camera_stats = {}
+
+        for camera_dir in self.buffer_path.iterdir():
+            if camera_dir.is_dir():
+                cam_size = sum(f.stat().st_size for f in camera_dir.glob("*.ts") if f.is_file())
+                cam_count = len([f for f in camera_dir.glob("*.ts") if f.is_file()])
+                total_size += cam_size
+                file_count += cam_count
+                camera_stats[camera_dir.name] = {
+                    'total_bytes': cam_size,
+                    'total_mb': round(cam_size / 1024 / 1024, 2),
+                    'segment_count': cam_count
+                }
+
+        return {
+            'exists': True,
+            'path': str(self.buffer_path),
+            'total_bytes': total_size,
+            'total_mb': round(total_size / 1024 / 1024, 2),
+            'file_count': file_count,
+            'cameras': camera_stats
+        }

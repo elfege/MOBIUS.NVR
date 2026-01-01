@@ -24,6 +24,9 @@ export class PTZController {
 
 
     setupEventListeners() {
+        // Track if we're currently in a PTZ movement (for touch handling)
+        this.ptzTouchActive = false;
+
         $(document).on('mousedown touchstart', '.ptz-btn', (event) => {
             event.preventDefault();
 
@@ -40,29 +43,32 @@ export class PTZController {
             console.log('[PTZ] Button pressed:', direction, 'for camera:', this.currentCamera?.serial);
 
             if (direction && direction !== '360') {
+                this.ptzTouchActive = true;
                 this.startMovement(direction);
             } else if (direction === '360') {
                 this.executeMovement(direction);
             }
         });
-        
-        $(document).on('mouseup touchend mouseleave', '.ptz-btn', (event) => {
+
+        // Mouse events still use the button-specific handler
+        $(document).on('mouseup mouseleave', '.ptz-btn', (event) => {
             event.preventDefault();
 
-            // Always detect camera from button's parent stream-item (grid view)
-            const $streamItem = $(event.currentTarget).closest('.stream-item');
-            const serial = $streamItem.data('camera-serial');
-            const name = $streamItem.data('camera-name');
-            if (serial && serial !== this.currentCamera?.serial) {
-                this.setCurrentCamera(serial, name);
-                this.setBridgeReady(true);
-            }
-
             const direction = $(event.currentTarget).data('direction');
-            console.log('[PTZ] Button released:', direction, 'for camera:', this.currentCamera?.serial);
+            console.log('[PTZ] Mouse released:', direction, 'for camera:', this.currentCamera?.serial);
 
             if (direction && direction !== '360') {
                 console.log('[PTZ] Stopping movement for direction:', direction);
+                this.ptzTouchActive = false;
+                this.stopMovement();
+            }
+        });
+
+        // Touch end at document level - catches finger lift anywhere on screen
+        $(document).on('touchend touchcancel', (event) => {
+            if (this.ptzTouchActive) {
+                console.log('[PTZ] Touch ended (document level) - stopping movement');
+                this.ptzTouchActive = false;
                 this.stopMovement();
             }
         });

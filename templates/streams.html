@@ -199,8 +199,14 @@
 
     <!-- Load scripts in order -->
     <script type="module">
+        // Import and initialize connection monitor
+        import { ConnectionMonitor } from "{{ url_for('static', filename='js/connection-monitor.js') }}";
 
         $(document).ready(() => {
+
+            // Initialize connection monitoring
+            ConnectionMonitor.initialize();
+            console.log('[App] Connection monitoring initialized');
 
             // Auto-collapse header after 5 seconds
             setTimeout(() => {
@@ -234,6 +240,7 @@
     <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/ptz-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/utils/eufy-auth-notifier.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/connection-monitor.js') }}"></script>
 
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>

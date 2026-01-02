@@ -140,59 +140,96 @@ export class PTZController {
             initialTop: 0
         };
 
-        // Watch for fullscreen mode changes to add/remove drag handle
-        const observer = new MutationObserver((mutations) => {
+        // Store observer reference for observing new elements
+        this.fullscreenObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                     const $streamItem = $(mutation.target);
                     if ($streamItem.hasClass('css-fullscreen')) {
-                        // Entering fullscreen - add drag handle
+                        console.log('[PTZ] Fullscreen detected, adding drag handle');
                         this.addDragHandle($streamItem);
-                    } else {
-                        // Exiting fullscreen - remove drag handle and reset position
+                    } else if ($streamItem.data('had-fullscreen')) {
+                        console.log('[PTZ] Exiting fullscreen, removing drag handle');
                         this.removeDragHandle($streamItem);
+                        $streamItem.removeData('had-fullscreen');
                     }
                 }
             });
         });
 
-        // Observe all stream items for class changes
-        $('.stream-item').each((i, el) => {
-            observer.observe(el, { attributes: true, attributeFilter: ['class'] });
-        });
+        // Function to observe a stream item
+        const observeStreamItem = (el) => {
+            this.fullscreenObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+            console.log('[PTZ] Now observing stream item:', $(el).data('camera-serial') || 'unknown');
+        };
+
+        // Initial observation - wait for DOM to be ready
+        const initObservers = () => {
+            const streamItems = document.querySelectorAll('.stream-item');
+            console.log(`[PTZ] Setting up drag observers for ${streamItems.length} stream items`);
+            streamItems.forEach(el => observeStreamItem(el));
+        };
+
+        // Run now if DOM ready, otherwise wait
+        if (document.readyState === 'complete') {
+            initObservers();
+        } else {
+            $(document).ready(() => initObservers());
+        }
 
         // Also observe for dynamically added stream items
         const containerObserver = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 mutation.addedNodes.forEach((node) => {
                     if (node.nodeType === 1 && $(node).hasClass('stream-item')) {
-                        observer.observe(node, { attributes: true, attributeFilter: ['class'] });
+                        observeStreamItem(node);
                     }
                 });
             });
         });
-        const container = document.querySelector('.streams-container');
-        if (container) {
-            containerObserver.observe(container, { childList: true });
-        }
+
+        // Wait for container to exist
+        const setupContainerObserver = () => {
+            const container = document.querySelector('.streams-container');
+            if (container) {
+                containerObserver.observe(container, { childList: true });
+                console.log('[PTZ] Container observer set up');
+            } else {
+                // Retry after a short delay
+                setTimeout(setupContainerObserver, 100);
+            }
+        };
+        setupContainerObserver();
 
         // Use event delegation for drag handle
         $(document).on('mousedown touchstart', '.stream-item.css-fullscreen .ptz-controls .ptz-drag-handle', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation();
+
+            // Mark that we're in drag mode to prevent PTZ touchend handler interference
+            this.isDraggingPTZ = true;
+
             const $controls = $(e.currentTarget).closest('.ptz-controls');
             this.startDrag(e, $controls);
         });
 
         $(document).on('mousemove touchmove', (e) => {
             if (this.dragState.isDragging) {
+                e.preventDefault();
                 this.doDrag(e);
             }
         });
 
-        $(document).on('mouseup touchend touchcancel', () => {
+        $(document).on('mouseup touchend touchcancel', (e) => {
             if (this.dragState.isDragging) {
+                e.preventDefault();
+                e.stopPropagation();
                 this.endDrag();
+                // Clear drag mode flag after a short delay
+                setTimeout(() => {
+                    this.isDraggingPTZ = false;
+                }, 100);
             }
         });
     }
@@ -203,12 +240,18 @@ export class PTZController {
     addDragHandle($streamItem) {
         const $ptzControls = $streamItem.find('.ptz-controls');
         if ($ptzControls.length && !$ptzControls.find('.ptz-drag-handle').length) {
+            // Mark as having been in fullscreen (for cleanup later)
+            $streamItem.data('had-fullscreen', true);
+
             // Add drag handle at the top
             $ptzControls.prepend('<div class="ptz-drag-handle"></div>');
-            console.log('[PTZ] Added drag handle for fullscreen');
+            console.log('[PTZ] Added drag handle for fullscreen, ptz-controls found:', $ptzControls.length);
 
             // Restore saved position
             this.restorePTZPosition($ptzControls, $streamItem);
+        } else {
+            console.log('[PTZ] addDragHandle: ptz-controls length:', $ptzControls.length,
+                        'already has handle:', $ptzControls.find('.ptz-drag-handle').length > 0);
         }
     }
 
@@ -219,12 +262,13 @@ export class PTZController {
         const $ptzControls = $streamItem.find('.ptz-controls');
         $ptzControls.find('.ptz-drag-handle').remove();
 
-        // Reset position to default CSS
+        // Reset position and width to default CSS
         $ptzControls.css({
             top: '',
             left: '',
             bottom: '',
-            right: ''
+            right: '',
+            width: ''
         });
         console.log('[PTZ] Removed drag handle, reset position');
     }
@@ -235,29 +279,37 @@ export class PTZController {
     startDrag(e, $controls) {
         const touch = e.type === 'touchstart' ? e.originalEvent.touches[0] : e;
 
-        // Get current position (convert from bottom/right to top/left)
+        // Get current position relative to the fullscreen stream-item
         const rect = $controls[0].getBoundingClientRect();
-        const parentRect = $controls.parent()[0].getBoundingClientRect();
+        const $streamItem = $controls.closest('.stream-item.css-fullscreen');
+        const boundaryRect = $streamItem.length ? $streamItem[0].getBoundingClientRect() :
+                            { left: 0, top: 0 };
+
+        // Store current width to prevent expansion during drag
+        const currentWidth = rect.width;
 
         this.dragState = {
             isDragging: true,
             $element: $controls,
             startX: touch.clientX,
             startY: touch.clientY,
-            initialLeft: rect.left - parentRect.left,
-            initialTop: rect.top - parentRect.top
+            initialLeft: rect.left - boundaryRect.left,
+            initialTop: rect.top - boundaryRect.top,
+            fixedWidth: currentWidth
         };
 
         // Switch from bottom/right positioning to top/left for smooth dragging
+        // Also lock the width to prevent expansion
         $controls.css({
             bottom: 'auto',
             right: 'auto',
             top: this.dragState.initialTop + 'px',
-            left: this.dragState.initialLeft + 'px'
+            left: this.dragState.initialLeft + 'px',
+            width: currentWidth + 'px'
         });
 
         $controls.addClass('dragging');
-        console.log('[PTZ] Started dragging controls');
+        console.log('[PTZ] Started dragging controls at', this.dragState.initialLeft, this.dragState.initialTop, 'width:', currentWidth);
     }
 
     /**
@@ -268,7 +320,11 @@ export class PTZController {
 
         const touch = e.type === 'touchmove' ? e.originalEvent.touches[0] : e;
         const $controls = this.dragState.$element;
-        const parentRect = $controls.parent()[0].getBoundingClientRect();
+
+        // Use the fullscreen stream-item as the boundary, not immediate parent
+        const $streamItem = $controls.closest('.stream-item.css-fullscreen');
+        const boundaryRect = $streamItem.length ? $streamItem[0].getBoundingClientRect() :
+                            { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
 
         // Calculate new position
         const deltaX = touch.clientX - this.dragState.startX;
@@ -277,10 +333,10 @@ export class PTZController {
         let newLeft = this.dragState.initialLeft + deltaX;
         let newTop = this.dragState.initialTop + deltaY;
 
-        // Constrain to parent bounds
+        // Constrain to boundary (keep fully visible)
         const controlsRect = $controls[0].getBoundingClientRect();
-        const maxLeft = parentRect.width - controlsRect.width;
-        const maxTop = parentRect.height - controlsRect.height;
+        const maxLeft = boundaryRect.width - controlsRect.width;
+        const maxTop = boundaryRect.height - controlsRect.height;
 
         newLeft = Math.max(0, Math.min(newLeft, maxLeft));
         newTop = Math.max(0, Math.min(newTop, maxTop));
@@ -319,10 +375,21 @@ export class PTZController {
         if (saved) {
             try {
                 const position = JSON.parse(saved);
-                // Validate position is within viewport before restoring
                 const left = parseInt(position.left);
                 const top = parseInt(position.top);
-                if (!isNaN(left) && !isNaN(top) && left >= 0 && top >= 0) {
+
+                // Get viewport bounds
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                const controlsRect = $controls[0].getBoundingClientRect();
+
+                // Validate position is within viewport (with some margin)
+                const maxLeft = viewportWidth - controlsRect.width - 20;
+                const maxTop = viewportHeight - controlsRect.height - 20;
+
+                if (!isNaN(left) && !isNaN(top) &&
+                    left >= 0 && left <= maxLeft &&
+                    top >= 0 && top <= maxTop) {
                     $controls.css({
                         bottom: 'auto',
                         right: 'auto',
@@ -330,9 +397,14 @@ export class PTZController {
                         left: position.left
                     });
                     console.log('[PTZ] Restored saved position:', position);
+                } else {
+                    console.log('[PTZ] Saved position out of bounds, using default. Saved:', position, 'Max:', maxLeft, maxTop);
+                    // Clear invalid saved position
+                    localStorage.removeItem('ptz_controls_position');
                 }
             } catch (e) {
                 console.warn('[PTZ] Failed to restore position:', e);
+                localStorage.removeItem('ptz_controls_position');
             }
         }
     }

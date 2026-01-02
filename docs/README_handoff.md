@@ -339,3 +339,46 @@ Created friendly custom error page with auto-retry functionality.
 ### Additional Fixes
 
 - **Progress bar sync** (03:30 EST): Changed from CSS animation to JavaScript-controlled width, syncs exactly with countdown timer (20% per second)
+
+---
+
+## Draggable PTZ Controls in Fullscreen (03:34 EST)
+
+### Problem
+
+PTZ controls in fullscreen mode had fixed position at bottom-right, which could obstruct the video or be inconvenient for users.
+
+### Solution Implemented
+
+Made PTZ controls draggable when in fullscreen mode.
+
+### Implementation Details
+
+1. **`static/css/components/fullscreen-ptz.css`** - Updated CSS:
+   - Changed selectors from `.fullscreen-ptz-controls` to `.stream-item.css-fullscreen .ptz-controls`
+   - Added drag handle styles with grab cursor
+   - Drag handle icon: 2 horizontal lines (using `::before` pseudo-element with `box-shadow`)
+   - Blur backdrop effect on controls
+
+2. **`static/js/controllers/ptz-controller.js`** - Added drag functionality:
+   - `setupDraggable()`: Uses MutationObserver to watch for `.css-fullscreen` class
+   - `addDragHandle()`: Dynamically prepends drag handle div when entering fullscreen
+   - `removeDragHandle()`: Removes handle and resets position when exiting fullscreen
+   - `startDrag()`, `doDrag()`, `endDrag()`: Handle mouse/touch drag events
+   - `restorePTZPosition()`: Restores saved position from localStorage
+   - Position constrained to viewport bounds during drag
+   - Position persisted to localStorage for cross-session persistence
+
+### Key Technical Details
+
+- Uses event delegation for drag handle events (dynamically created element)
+- MutationObserver pattern to detect fullscreen mode changes
+- Converts from `bottom/right` CSS positioning to `top/left` during drag for smooth movement
+- Touch and mouse support for mobile/desktop compatibility
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `static/css/components/fullscreen-ptz.css` | Drag handle styles, updated selectors |
+| `static/js/controllers/ptz-controller.js` | Drag functionality with MutationObserver |

@@ -73,18 +73,20 @@ export class CameraSettingsModal {
             const $streamItem = $button.closest('.stream-item');
             const cameraName = $streamItem.data('camera-name');
 
-            // Fetch camera data from API to get capabilities
+            // Fetch camera data from API to get capabilities and stream type
             let capabilities = [];
             let cameraType = null;
+            let streamType = null;
             try {
                 const response = await axios.get(`/api/cameras/${cameraId}`);
                 capabilities = response.data.capabilities || [];
                 cameraType = response.data.type || null;
+                streamType = response.data.stream_type || null;
             } catch (error) {
                 console.error(`Failed to load camera data for ${cameraId}:`, error);
             }
-            
-            await this.show(cameraId, cameraName, capabilities, cameraType);
+
+            await this.show(cameraId, cameraName, capabilities, cameraType, streamType);
         });
     }
 
@@ -94,12 +96,14 @@ export class CameraSettingsModal {
      * @param {string} cameraName - Camera display name
      * @param {Array} capabilities - Camera capabilities
      * @param {string} cameraType - Camera type (reolink, amcrest, eufy, unifi)
+     * @param {string} streamType - Stream type (LL_HLS, MJPEG, etc.)
      */
-    async show(cameraId, cameraName, capabilities = [], cameraType = null) {
+    async show(cameraId, cameraName, capabilities = [], cameraType = null, streamType = null) {
         this.currentCameraId = cameraId;
         this.currentCameraName = cameraName;
         this.cameraCapabilities = capabilities;
         this.cameraType = cameraType;
+        this.streamType = streamType;
         
         // Update modal title
         this.$modal.find('#modal-camera-name').text(cameraName);
@@ -120,7 +124,7 @@ export class CameraSettingsModal {
             const settings = await this.controller.getSettings(cameraId);
             
             // Generate and insert form
-            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType);
+            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType, this.streamType);
             this.$modalBody.html(formHtml);
             
             // Attach form events

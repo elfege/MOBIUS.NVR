@@ -283,9 +283,16 @@ class SegmentBuffer:
                 # Check if FFmpeg is still running
                 if self.process and self.process.poll() is not None:
                     exit_code = self.process.returncode
-                    logger.warning(f"FFmpeg exited with code {exit_code} for {self.camera_name}")
-                    # Could implement auto-restart here if needed
-                    break
+                    logger.warning(f"FFmpeg exited with code {exit_code} for {self.camera_name}, restarting...")
+
+                    # Auto-restart FFmpeg after short delay
+                    time.sleep(5)
+                    if not self._stop_event.is_set() and self.running:
+                        if self._restart_ffmpeg():
+                            logger.info(f"FFmpeg restarted successfully for {self.camera_name}")
+                        else:
+                            logger.error(f"FFmpeg restart failed for {self.camera_name}")
+                            break
 
                 time.sleep(1)  # Check every second
 
@@ -313,6 +320,58 @@ class SegmentBuffer:
 
         except Exception as e:
             logger.error(f"Segment cleanup error for {self.camera_name}: {e}")
+
+    def _restart_ffmpeg(self) -> bool:
+        """
+        Restart FFmpeg process for segment buffer.
+
+        Called by monitor thread when FFmpeg exits unexpectedly.
+
+        Returns:
+            True if restarted successfully, False otherwise
+        """
+        try:
+            # Clean up any old process
+            if self.process:
+                try:
+                    self.process.kill()
+                except:
+                    pass
+                self.process = None
+
+            # Build FFmpeg command (same as in start())
+            segment_pattern = str(self.buffer_path / "seg_%Y%m%d_%H%M%S.ts")
+
+            cmd = [
+                'ffmpeg',
+                '-rtsp_transport', 'tcp',
+                '-i', self.source_url,
+                '-c', 'copy',
+                '-f', 'segment',
+                '-segment_time', str(self.SEGMENT_DURATION),
+                '-segment_format', self.SEGMENT_FORMAT,
+                '-strftime', '1',
+                '-reset_timestamps', '1',
+                '-segment_list', str(self.buffer_path / 'segments.txt'),
+                '-segment_list_type', 'flat',
+                '-y',
+                segment_pattern
+            ]
+
+            logger.debug(f"Restarting FFmpeg for {self.camera_name}")
+
+            self.process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to restart FFmpeg for {self.camera_name}: {e}")
+            return False
 
     def is_healthy(self) -> bool:
         """

@@ -79,16 +79,27 @@ class FFmpegMotionDetector:
 
         # For LL_HLS cameras reading from MediaMTX, use much lower threshold
         # Re-encoded streams have very low scene scores due to scenecut=0 in encoder
+        # Tested scores: mostly 0.0005-0.002 with spikes to 0.005 during movement
         stream_type = camera.get('stream_type', '').upper()
         if stream_type == 'LL_HLS' and sensitivity >= 0.1:
             # Only auto-adjust if not explicitly configured to a low value
-            default_ll_hls_sensitivity = 0.01  # 1% scene change threshold
+            default_ll_hls_sensitivity = 0.002  # 0.2% scene change threshold (Eufy cameras produce very low scores ~0.001)
             logger.info(f"LL_HLS camera detected, adjusting sensitivity from {sensitivity} to {default_ll_hls_sensitivity}")
             sensitivity = default_ll_hls_sensitivity
 
         camera_name = camera.get('name', camera_id)
         logger.info(f"Starting FFmpeg motion detector for {camera_name} "
                    f"(sensitivity: {sensitivity}, cooldown: {cooldown_sec}s)")
+
+        # Add to active_detectors BEFORE starting thread to avoid race condition
+        # where thread checks membership before we add it
+        self.active_detectors[camera_id] = {
+            'sensitivity': sensitivity,
+            'cooldown_sec': cooldown_sec,
+            'last_motion': 0,
+            'camera_name': camera_name,
+            'started_at': time.time()
+        }
 
         # Start detector thread
         thread = threading.Thread(
@@ -98,14 +109,6 @@ class FFmpegMotionDetector:
             name=f"FFmpegMotion-{camera_id[:8]}"
         )
         thread.start()
-
-        self.active_detectors[camera_id] = {
-            'sensitivity': sensitivity,
-            'cooldown_sec': cooldown_sec,
-            'last_motion': 0,
-            'camera_name': camera_name,
-            'started_at': time.time()
-        }
         self.detector_threads[camera_id] = thread
 
         return True

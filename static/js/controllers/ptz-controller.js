@@ -206,6 +206,7 @@ export class PTZController {
 
         // Use event delegation for drag handle
         $(document).on('mousedown touchstart', '.stream-item.css-fullscreen .ptz-controls .ptz-drag-handle', (e) => {
+            console.log('[PTZ] Drag handle touched/clicked');
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
@@ -214,6 +215,7 @@ export class PTZController {
             this.isDraggingPTZ = true;
 
             const $controls = $(e.currentTarget).closest('.ptz-controls');
+            console.log('[PTZ] Starting drag, controls display:', $controls.css('display'), 'visibility:', $controls.css('visibility'));
             this.startDrag(e, $controls);
         });
 
@@ -286,18 +288,33 @@ export class PTZController {
         const rect = $controls[0].getBoundingClientRect();
         const $streamItem = $controls.closest('.stream-item.css-fullscreen');
         const boundaryRect = $streamItem.length ? $streamItem[0].getBoundingClientRect() :
-                            { left: 0, top: 0 };
+                            { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
 
         // Store current width to prevent expansion during drag
         const currentWidth = rect.width;
+
+        // Calculate position relative to boundary
+        let initialLeft = rect.left - boundaryRect.left;
+        let initialTop = rect.top - boundaryRect.top;
+
+        // Sanity check: ensure position is within reasonable bounds
+        const maxLeft = boundaryRect.width - currentWidth;
+        const maxTop = boundaryRect.height - rect.height;
+
+        if (initialLeft < 0 || initialLeft > maxLeft || initialTop < 0 || initialTop > maxTop) {
+            console.warn('[PTZ] Invalid initial position, using defaults. Calculated:', initialLeft, initialTop, 'Max:', maxLeft, maxTop);
+            // Fall back to bottom-right positioning (default CSS)
+            initialLeft = Math.max(0, Math.min(initialLeft, maxLeft));
+            initialTop = Math.max(0, Math.min(initialTop, maxTop));
+        }
 
         this.dragState = {
             isDragging: true,
             $element: $controls,
             startX: touch.clientX,
             startY: touch.clientY,
-            initialLeft: rect.left - boundaryRect.left,
-            initialTop: rect.top - boundaryRect.top,
+            initialLeft: initialLeft,
+            initialTop: initialTop,
             fixedWidth: currentWidth
         };
 
@@ -306,13 +323,13 @@ export class PTZController {
         $controls.css({
             bottom: 'auto',
             right: 'auto',
-            top: this.dragState.initialTop + 'px',
-            left: this.dragState.initialLeft + 'px',
+            top: initialTop + 'px',
+            left: initialLeft + 'px',
             width: currentWidth + 'px'
         });
 
         $controls.addClass('dragging');
-        console.log('[PTZ] Started dragging controls at', this.dragState.initialLeft, this.dragState.initialTop, 'width:', currentWidth);
+        console.log('[PTZ] Started dragging controls at', initialLeft, initialTop, 'width:', currentWidth);
     }
 
     /**

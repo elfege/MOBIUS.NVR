@@ -13649,7 +13649,63 @@ Camera (port 9000) → Neolink v0.6.2 (Baichuan→RTSP) → FFmpeg → HLS → B
 
 ### Result
 
-Laundry Room camera streaming confirmed working via Neolink Baichuan bridge at 06:42 EST.
+Laundry Room camera streaming confirmed working via Neolink Baichuan bridge at 01:42 EST.
+
+---
+
+## January 2, 2026 (02:30-02:50 EST): NEOLINK → MediaMTX LL-HLS Integration
+
+### Problem
+
+NEOLINK streams were using legacy HLS path (FFmpeg writes segments directly), causing:
+
+1. High latency (3-4s) due to HLS segment duration
+2. Motion detection had no stream to tap
+3. Recording source unavailable
+
+### Solution
+
+Route NEOLINK through MediaMTX LL-HLS path (same as other LL_HLS cameras):
+
+```
+Camera:9000 → Neolink (RTSP) → MediaMTX (LL-HLS) → Browser
+                                    ↓
+                            Motion detection taps here
+                            Recording taps here
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `streaming/stream_manager.py` | Added `NEOLINK` to LL_HLS branch condition |
+| `services/recording/recording_service.py` | Added `NEOLINK` to MediaMTX recording source |
+| `update_mediamtx_paths.sh` | Include NEOLINK cameras in MediaMTX paths generation |
+| `services/motion/ffmpeg_motion_detector.py` | Added NEOLINK support for threshold adjustment and MediaMTX tap |
+| `start.sh` | Fixed bash_utils sourcing, corrected neolink script name |
+| `static/js/streaming/hls-stream.js` | Fixed latency badge position (was blocking settings button) |
+
+### UI Bug Fix
+
+**Problem:** Settings button not working for LAUNDRY ROOM and AMCREST cameras.
+
+**Root Cause:** Latency badge overlay positioned at top-right (`right: 8px, top: 8px`) blocked the settings button.
+
+**Fix:** Moved latency badge to bottom-left (`left: 8px, bottom: 8px`).
+
+### Benefits
+
+- Lower latency (~1s vs 3-4s)
+- Motion detection works (taps MediaMTX RTSP)
+- Recording works (taps MediaMTX RTSP)
+- Single connection to Neolink
+
+### Verification
+
+- LAUNDRY ROOM streaming via Neolink → MediaMTX LL-HLS: ✅
+- PTZ controls working: ✅
+- Motion detection (Baichuan) triggering recordings: ✅
+- Recording confirmed: `95270001NT3KNA67_20260102_023621.mp4` (2.2 MB)
 
 ---
 {% endraw %}

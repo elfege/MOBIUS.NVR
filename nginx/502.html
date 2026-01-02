@@ -42,6 +42,17 @@
             margin-bottom: 0.5rem;
             color: #fff;
         }
+        .silly-message {
+            font-style: italic;
+            color: #6a9eff;
+            min-height: 1.5em;
+            margin-bottom: 0.5rem;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+        .silly-message.fade {
+            opacity: 0;
+        }
         .status {
             color: #888;
             margin-bottom: 1.5rem;
@@ -66,12 +77,12 @@
         .progress-fill {
             height: 100%;
             background: #4a9eff;
-            width: 100%;
-            animation: progress 5s linear;
+            width: 0%;
+            animation: progress 5s linear forwards;
         }
         @keyframes progress {
-            from { width: 100%; }
-            to { width: 0%; }
+            from { width: 0%; }
+            to { width: 100%; }
         }
         .retry-count {
             font-size: 0.8rem;
@@ -101,7 +112,8 @@
     <div class="container">
         <div class="spinner"></div>
         <h1>NVR is starting up...</h1>
-        <p class="status">The application is initializing. This usually takes 10-30 seconds.</p>
+        <p class="silly-message" id="silly">Waking up the cameras...</p>
+        <p class="status">This usually takes 10-30 seconds.</p>
         <div class="countdown">Retrying in <span id="seconds">5</span>s</div>
         <div class="progress-bar">
             <div class="progress-fill" id="progress"></div>
@@ -114,6 +126,43 @@
 
     <script>
         (function() {
+            // Silly loading messages
+            const sillyMessages = [
+                "Waking up the cameras...",
+                "Brewing digital coffee...",
+                "Convincing pixels to cooperate...",
+                "Negotiating with RTSP streams...",
+                "Polishing the lens caps...",
+                "Teaching AI to count sheep...",
+                "Untangling network cables...",
+                "Asking MediaMTX nicely...",
+                "Warming up the video buffers...",
+                "Checking if anyone's home...",
+                "Herding cat videos...",
+                "Calibrating the flux capacitor...",
+                "Feeding the hamsters that power the server...",
+                "Reticulating splines...",
+                "Consulting the camera gods...",
+                "Bribing the firewall...",
+                "Defragmenting the video streams...",
+                "Locating the any key...",
+                "Generating witty loading messages...",
+                "Almost there, probably..."
+            ];
+
+            let messageIndex = 0;
+            const sillyEl = document.getElementById('silly');
+
+            // Rotate silly messages every 2 seconds with fade
+            setInterval(() => {
+                sillyEl.classList.add('fade');
+                setTimeout(() => {
+                    messageIndex = (messageIndex + 1) % sillyMessages.length;
+                    sillyEl.textContent = sillyMessages[messageIndex];
+                    sillyEl.classList.remove('fade');
+                }, 300);
+            }, 2000);
+
             // Get retry count from URL or start at 1
             const params = new URLSearchParams(window.location.search);
             let attempt = parseInt(params.get('attempt')) || 1;
@@ -127,7 +176,7 @@
             // Reset progress animation
             progressEl.style.animation = 'none';
             progressEl.offsetHeight; // Trigger reflow
-            progressEl.style.animation = 'progress 5s linear';
+            progressEl.style.animation = 'progress 5s linear forwards';
 
             const timer = setInterval(() => {
                 seconds--;
@@ -142,12 +191,13 @@
                 }
             }, 1000);
 
-            // Also try a background health check
-            setTimeout(() => {
-                fetch('/api/health', { method: 'GET' })
+            // Background health check - polls every 2 seconds
+            const healthCheck = setInterval(() => {
+                fetch('/api/status', { method: 'GET' })
                     .then(r => {
                         if (r.ok) {
                             // App is up, reload immediately without attempt param
+                            clearInterval(healthCheck);
                             window.location.href = window.location.pathname;
                         }
                     })

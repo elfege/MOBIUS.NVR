@@ -469,6 +469,10 @@ export class PTZController {
 
     loadPresetsForAllCameras() {
         // Find all PTZ cameras on the page and load their presets
+        // Stagger the requests to avoid overwhelming the server/browser on initial page load
+        let delay = 0;
+        const staggerMs = 500; // 500ms between each camera's preset load
+
         $('.stream-item').each((index, streamItem) => {
             const $streamItem = $(streamItem);
             const serial = $streamItem.data('camera-serial');
@@ -476,8 +480,14 @@ export class PTZController {
 
             // Only load presets for cameras that have PTZ controls
             if (serial && $ptzControls.length > 0) {
-                console.log('[PTZ] Loading presets for:', serial);
-                this.loadPresets(serial);
+                console.log(`[PTZ] Scheduling preset load for ${serial} in ${delay}ms`);
+
+                // Stagger the requests to prevent browser from aborting simultaneous requests
+                setTimeout(() => {
+                    this.loadPresets(serial);
+                }, delay);
+
+                delay += staggerMs;
             }
         });
     }

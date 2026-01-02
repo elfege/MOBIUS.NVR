@@ -45,16 +45,7 @@ class FFmpegHLSParamBuilder:
         - Returns a clean argv-style list, e.g. ['-c:v','libx264','-r','18','-vf','scale=1280:720',...]
         """
         try:
-            # Start with reconnect flags for stream resilience
-            # These allow FFmpeg to reconnect if the RTSP connection drops temporarily
-            # (e.g., camera reboot, network hiccup). FFmpeg 7.1.3+ fully supports these.
-            params: List[str] = [
-                '-reconnect', '1',
-                '-reconnect_at_eof', '1',
-                '-reconnect_streamed', '1',
-                '-reconnect_on_network_error', '1',
-                '-reconnect_delay_max', '5',  # Max 5 seconds between reconnect attempts
-            ]
+            params: List[str] = []
             cfg = dict(self.camera_rtsp_config or {})
 
             # typo correction

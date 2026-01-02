@@ -14,13 +14,191 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 04:29 EST*
+*Last updated: January 2, 2026 17:12 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 2, 2026 (02:30-04:01 EST)
+## Current Session: January 2, 2026 (13:00-17:12 EST)
+
+### Branch: `sub_main_stream_switching_JAN_2_2026_a`
+
+### Tasks
+
+1. **PTZ Preset Improvements** - Fixed multiple issues with preset loading and execution
+2. **Connection Monitoring** - Implemented client-side server disconnect detection (untested)
+3. **ONVIF GotoHomePosition** - Added stepper calibration command
+4. **Preset Loading Issue** - Living_REOLINK presets not showing in UI (backend working, frontend broken)
+
+---
+
+### 1. PTZ Preset Loading and Execution Fixes
+
+#### Problem 1: Presets Not Loading on Page Load
+- **Issue**: Presets only loaded when clicking PTZ buttons
+- **Root Cause**: `loadPresets()` only called via `setCurrentCamera()` when PTZ buttons clicked
+- **Fix**: Added `loadPresetsForAllCameras()` method called on page init
+- **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:438-451)
+
+#### Problem 2: Preset Dropdown Cut Off at Bottom
+- **Issue**: Dropdown extended beyond viewport bottom in fullscreen
+- **Root Cause**: Dropdown positioned after PTZ grid, extends downward
+- **Fix**: Added flexbox to `.fullscreen-ptz-controls` and `order: -1` to move dropdown above grid
+- **Files Modified**:
+  - [`static/css/components/fullscreen-ptz.css`](static/css/components/fullscreen-ptz.css:11-12)
+  - [`static/css/components/ptz-presets.css`](static/css/components/ptz-presets.css:9-13)
+
+#### Problem 3: Preset Selection Not Triggering Camera Selection
+- **Issue**: `gotoPreset()` requires `currentCamera` but wasn't set when clicking dropdown
+- **Fix**: Modified dropdown change handler to detect camera from parent `.stream-item` and call `setCurrentCamera()` first
+- **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:416-435)
+
+#### Problem 4: Preset Movement Interrupted by Stop Command
+- **Issue**: Mouseup/touchend event from dropdown click immediately fired `stopMovement()`, interrupting preset
+- **Root Cause**: Document-level mouseup handler stops PTZ movement whenever mouse released
+- **Fix**: Added `executingPreset` flag to skip `stopMovement()` during preset execution
+- **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:12,175-178,195-198,483,504)
+- **Console Evidence**:
+  ```
+  [PTZ] Going to preset: 0 for camera: XCPTP369388MNVTG
+  [PTZ] Mouse up - stopping. States: {isExecuting: true}
+  [PTZ] Sending stop command for: XCPTP369388MNVTG
+  ```
+
+#### Commits
+- `8b90842` - Fix preset selection - set current camera before goto
+- `024d896` - Load presets for all PTZ cameras on page load
+- `559de65` - Fix preset dropdown cutoff in fullscreen
+- `8b90ab2` - Show PTZ preset dropdown always (debugging)
+- `6598e4e` - Fix PTZ touch handling - stop movement on any touchend
+
+---
+
+### 2. ONVIF GotoHomePosition for Stepper Calibration
+
+#### Problem
+- Reolink Living camera lost stepper calibration, needed reset without power cycle
+
+#### Solution
+- Added ONVIF `GotoHomePosition` command support
+- New direction: `'home'` in DIRECTION_VECTORS
+- Triggers camera to return to home position and recalibrate steppers
+
+#### Usage
+```bash
+curl -X POST http://localhost:5000/api/ptz/XCPTP369388MNVTG/home
+```
+
+#### Files Modified
+- [`services/onvif/onvif_ptz_handler.py`](services/onvif/onvif_ptz_handler.py:40,120-121,453-481)
+
+#### Commit
+- `6598e4e` - Add ONVIF GotoHomePosition for PTZ stepper calibration
+
+---
+
+### 3. Client-Side Connection Monitoring (UNTESTED)
+
+#### Objective
+Detect server disconnection/restart and show reloading page instead of error
+
+#### Implementation
+
+**Backend** ([`app.py`](app.py)):
+- Added `AppState` class for thread-safe shutdown tracking (lines 70-83)
+- Added `/api/health` endpoint:
+  - Returns `200 OK` when healthy
+  - Returns `503` with `status: 'shutting_down'` when server shutting down
+- Modified `cleanup_handler()` to set shutdown flag immediately (line 2199)
+
+**Frontend** ([`static/js/connection-monitor.js`](static/js/connection-monitor.js)):
+- Health polling every 5 seconds
+- Detects 503 response for immediate redirect
+- Tracks 2 consecutive failures → triggers redirect
+- Fetch interceptor: 3 consecutive network errors → triggers redirect
+- Extensive emoji logging for debugging
+
+**Graceful Degradation**:
+1. Try to reach `/reloading` page first (HEAD request, 2s timeout)
+2. If accessible: redirect to reloading page
+3. If not accessible: show inline modal overlay with auto-retry
+
+**Reloading Page** ([`templates/reloading.html`](templates/reloading.html)):
+- Orange theme (vs blue for initial 502)
+- Faster retry (3s vs 5s)
+- Aggressive polling (1s)
+- Stores return URL in localStorage
+- Returns to saved page after reconnection
+
+**Offline Modal** (when server completely down):
+- Full-screen overlay (z-index 999999)
+- Spinner animation
+- "Server Unavailable" message
+- Auto-retry every 5s
+- Manual "Retry Now" button
+- Returns to saved URL when recovered
+
+#### User Experience Flow
+1. Server shutdown initiated → `AppState.set_shutting_down()`
+2. Client polls `/api/health` → Gets 503 response
+3. Immediate redirect → Client goes to `/reloading` before connection breaks
+4. Reloading page polls → Every 1s checking for server recovery
+5. Server back online → User returned to original page
+
+#### Testing Status
+**NOT YET TESTED** - waiting for user to test with `docker compose restart`
+
+#### Files Modified
+- [`app.py`](app.py:70-83,448-451,2199) - AppState, /api/health, shutdown flag
+- [`templates/reloading.html`](templates/reloading.html) - Reconnection page
+- [`static/js/connection-monitor.js`](static/js/connection-monitor.js) - Monitoring module
+- [`templates/streams.html`](templates/streams.html:203,237) - Initialize monitor
+
+#### Commits
+- `5147655` - Add client-side connection monitoring and server shutdown detection
+- `8fe343f` - Add extensive logging to connection monitor for debugging
+- `1926021` - Move reloading page to Flask template route
+- `9725246` - Add fallback modal when reloading page is unreachable
+
+---
+
+### 4. Living_REOLINK Preset Loading Issue (ACTIVE)
+
+#### Current Problem
+- Frontend shows 0 presets for Living_REOLINK (XCPTP369388MNVTG)
+- Backend API works correctly - returns 5 presets
+- Other cameras (Laundry_REOLINK) work fine
+
+#### Browser Console Output
+```
+[PTZ] Loading presets for: XCPTP369388MNVTG
+[PTZ] Loading presets for camera: XCPTP369388MNVTG
+[PTZ] Updated UI for XCPTP369388MNVTG: 0 presets
+```
+
+#### API Test (Working)
+```bash
+$ curl -s "https://192.168.10.20:8443/api/ptz/XCPTP369388MNVTG/presets" -k | jq
+{
+  "camera": "XCPTP369388MNVTG",
+  "presets": [
+    {"name": "0", "token": "000"},
+    {"name": "closeupsofa", "token": "001"},
+    {"name": "sofacloser", "token": "002"},
+    {"name": "kids_playground", "token": "003"},
+    {"name": "Piano_kitchen", "token": "004"}
+  ],
+  "success": true
+}
+```
+
+#### Status
+**INVESTIGATING** - Backend correct, frontend parsing issue suspected
+
+---
+
+## Previous Session: January 2, 2026 (02:30-04:01 EST)
 
 ### Branch: `sub_main_stream_switching_JAN_2_2026_a`
 

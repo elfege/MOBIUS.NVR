@@ -14,7 +14,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 02:59 EST*
+*Last updated: January 2, 2026 07:45 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -27,6 +27,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ### Objective
 
 Implement sub/main stream switching for HLS/LL_HLS cameras:
+
 - **Grid view**: Low-resolution sub stream (efficient for multi-camera display)
 - **Fullscreen**: High-resolution main stream (better quality for single camera focus)
 
@@ -47,6 +48,7 @@ The previous attempt used composite keys like `"camera:main"` and `"camera:sub"`
 7. `config/cameras.json` - Camera configuration
 
 **Root Cause**: Systemic key format mismatch - not all files were updated consistently, causing:
+
 - Streams starting but not being tracked
 - Multiple instances created for same camera
 - Streams not stopping properly
@@ -55,27 +57,44 @@ The previous attempt used composite keys like `"camera:main"` and `"camera:sub"`
 ### What Works: MJPEG Pattern (For Reference)
 
 The MJPEG implementation successfully supports dual streams:
+
 - Separate API endpoints: `/api/mjpeg/<camera_id>/sub` and `/api/mjpeg/<camera_id>/main`
 - Key suffix pattern: `camera_id_main = f"{camera_id}_main"`
 - Both streams can run simultaneously
 
 ---
 
-## Design Decision: One Stream Per Camera
+## Design Decision: Single FFmpeg, Dual Output
 
-**User Decision**: Stop existing stream before starting main stream. Never have more than one stream per camera.
+### The Multi-Client Problem
 
-This is **simpler** than the MJPEG dual-stream approach:
-- Grid view starts sub stream
-- Entering fullscreen: stop sub, start main
-- Exiting fullscreen: stop main, start sub
-- No need for dual-key tracking
+**Initial Idea**: Stop sub stream before starting main stream (one stream per camera).
 
-### Implications
+**Problem Identified**: This breaks multi-client scenarios:
 
-1. **Backend already supports this** - `stream_manager.py` changes allow starting main stream with same camera_serial
-2. **Frontend needs update** - `openFullscreen()` must call API to switch streams
-3. **Brief interruption acceptable** - User will see loading state while stream switches
+- Client A viewing grid (sub stream)
+- Client B clicks fullscreen → stops sub → **Client A loses video!**
+- FFmpeg process is per-camera, not per-client
+
+### Solution Chosen: Option D - Single FFmpeg with Dual Outputs
+
+**User Decision**: One FFmpeg process pulls from camera main stream, produces TWO outputs:
+
+```
+Camera (main RTSP) → FFmpeg → sub (transcoded, scaled per cameras.json) → MediaMTX /camera
+                           ↘ main (passthrough, -c:v copy) → MediaMTX /camera_main
+```
+
+**Benefits:**
+
+- Single camera connection (budget cameras only allow one)
+- Server controls quality via `cameras.json` settings
+- Multi-client safe (sub always available)
+- Main stream is full resolution passthrough (no re-encoding latency)
+
+**Trade-off:**
+
+- Sub stream has ~100-200ms extra latency from transcoding (but we're already transcoding anyway)
 
 ---
 
@@ -100,6 +119,7 @@ def start_stream(self, camera_serial: str, resolution: str = 'sub') -> Optional[
 ```
 
 **Stream Key Logic** (current implementation - may simplify):
+
 ```python
 # Current: Different keys for sub vs main
 stream_key = f"{camera_serial}_main" if resolution == 'main' else camera_serial
@@ -110,6 +130,7 @@ stream_key = f"{camera_serial}_main" if resolution == 'main' else camera_serial
 ### `app.py`
 
 Updated `/api/stream/start/<camera_serial>` endpoint:
+
 ```python
 data = request.get_json() or {}
 resolution = data.get('type', 'sub')  # 'main' or 'sub'
@@ -122,33 +143,33 @@ stream_url = stream_manager.start_stream(camera_serial, resolution=resolution)
 
 ## Frontend Changes Needed
 
-### Option: Stream Switching on Fullscreen
+### Dual-Stream Fullscreen (Sub Keeps Running)
 
 ```javascript
 // In fullscreen.js or stream.js
 
 async function openFullscreen(cameraId, videoElement) {
-    // 1. Stop current sub stream
-    await fetch(`/api/stream/stop/${cameraId}`, { method: 'POST' });
-
-    // 2. Show loading indicator
+    // 1. Show loading indicator (sub stream continues in background)
     showLoadingIndicator(videoElement);
 
-    // 3. Start main stream
+    // 2. Start main stream (uses different key: cameraId_main)
+    // Sub stream keeps running for other clients
     await hlsManager.startStream(cameraId, videoElement, 'main');
 
-    // 4. Enter fullscreen
+    // 3. Enter fullscreen with main stream
     requestFullscreen(videoElement.parentElement);
 }
 
 async function exitFullscreen(cameraId, videoElement) {
-    // 1. Stop main stream
-    await fetch(`/api/stream/stop/${cameraId}`, { method: 'POST' });
+    // 1. Stop main stream only (sub was never stopped)
+    await fetch(`/api/stream/stop/${cameraId}_main`, { method: 'POST' });
 
-    // 2. Restart sub stream
+    // 2. Switch video element back to sub stream (already running)
     await hlsManager.startStream(cameraId, videoElement, 'sub');
 }
 ```
+
+**Key Insight**: The stop endpoint needs `cameraId_main` suffix to stop main stream specifically, not the sub stream.
 
 ---
 
@@ -159,6 +180,7 @@ async function exitFullscreen(cameraId, videoElement) {
 **Problem**: Latency badge at top-right blocked settings button for some cameras.
 
 **Fix** in `static/js/streaming/hls-stream.js`:
+
 ```javascript
 Object.assign(badge.style, {
     position: 'absolute',
@@ -171,6 +193,7 @@ Object.assign(badge.style, {
 ### NEOLINK MediaMTX Integration
 
 Completed in earlier part of session:
+
 - LAUNDRY ROOM camera (Reolink E1 Pro) streaming via Neolink → MediaMTX LL-HLS
 - Detection method: Baichuan (Reolink proprietary, port 9000)
 - Tested successfully with motion recordings
@@ -218,3 +241,59 @@ Completed in earlier part of session:
 | `stream_type` | `cameras.json` | Protocol: HLS, LL_HLS, MJPEG, NEOLINK, RTMP |
 | `resolution` | `stream_manager.py` | Quality: 'sub' (low-res) or 'main' (high-res) |
 | `stream_key` | Internal | Dictionary key for tracking active streams |
+
+---
+
+## Custom 502 Error Page (06:15-07:45 EST)
+
+### Problem
+
+When NVR container restarts, nginx shows ugly default 502 Bad Gateway error page.
+
+### Solution Implemented
+
+Created friendly custom error page with auto-retry functionality.
+
+### Files Modified
+
+1. **`nginx/502.html`** - Custom error page with:
+   - Dark themed UI matching NVR aesthetic
+   - Animated spinner
+   - **Silly rotating messages** (every 2 seconds with fade):
+     - "Waking up the cameras..."
+     - "Brewing digital coffee..."
+     - "Convincing pixels to cooperate..."
+     - "Negotiating with RTSP streams..."
+     - "Reticulating splines..."
+     - ...and 15 more
+   - Progress bar (0% → 100%, fixed direction)
+   - 5-second countdown with auto-retry
+   - Attempt counter
+   - Manual "Retry Now" button
+   - Background health check polling `/api/status` every 2 seconds
+
+2. **`nginx/nginx.conf`** - Added error page configuration:
+
+   ```nginx
+   error_page 502 503 504 /custom_error.html;
+   location = /custom_error.html {
+       alias /usr/share/nginx/html/502.html;
+   }
+   proxy_intercept_errors on;
+   ```
+
+3. **`docker-compose.yml`** - Added volume mount:
+
+   ```yaml
+   - ./nginx/502.html:/usr/share/nginx/html/502.html:ro
+   ```
+
+### Debugging Notes
+
+- Initial attempt with `root` + `internal` directive returned 403 Forbidden
+- Fixed by using `alias` instead - serves file directly without restrictions
+- `proxy_intercept_errors on;` required for nginx to intercept backend errors
+
+### Result
+
+✅ Custom error page displays when NVR backend is down, with fun messages and auto-retry

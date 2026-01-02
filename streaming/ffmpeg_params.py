@@ -298,3 +298,124 @@ def build_ll_hls_output_publish_params(
     except Exception as e:
         print(traceback.print_exc())
         raise Exception(f"something went wrong in build_ll_hls_output_publish_params: {e}")
+
+
+def build_ll_hls_dual_output_publish_params(
+    camera_config: Dict,
+    vendor_prefix: str = 'Unknown',
+) -> List[str]:
+    """
+    Returns OUTPUT flags for DUAL publishing to MediaMTX:
+    - Sub stream: transcoded (scaled per config) → /camera_serial
+    - Main stream: passthrough (copy) → /camera_serial_main
+
+    This allows clients to receive low-res for grid view and high-res for fullscreen
+    from a SINGLE FFmpeg process with ONE camera connection.
+
+    Args:
+        camera_config: Full camera configuration from cameras.json
+        vendor_prefix: Vendor type for logging
+
+    Returns:
+        List of FFmpeg output arguments for both streams
+    """
+    try:
+        camera_name = camera_config.get('name', 'unknown camera')
+        ll = camera_config.get('ll_hls')
+        if not ll:
+            raise Exception(f"Missing ll_hls config for {camera_name}")
+
+        pub = (ll.get("publisher") or {}).copy()
+        vid = (ll.get("video") or {}).copy()
+        aud = (ll.get("audio") or {}).copy()
+
+        # ----- Publisher settings -----
+        protocol = str(pub.get("protocol", "rtmp")).lower()
+        host = pub.get("host", "nvr-packager")
+        port = int(pub.get("port", 1935 if protocol == "rtmp" else 554))
+        path = pub.get("path")
+        if not host or not path:
+            raise ValueError("LL-HLS: publisher.host and publisher.path are required")
+
+        out: List[str] = []
+
+        # ========== OUTPUT 1: SUB STREAM (transcoded, scaled) ==========
+        # Use -map 0:v to explicitly map video stream for this output
+
+        # Build vf scale filter from config
+        if "vf" not in vid and ("width" in vid and "height" in vid):
+            try:
+                w, h = int(vid["width"]), int(vid["height"])
+                vid["vf"] = f"scale={w}:{h}"
+            except Exception:
+                pass
+
+        # Video encoding params for sub stream
+        video_key_order = [
+            "c:v", "preset", "tune", "profile:v", "pix_fmt",
+            "r", "g", "keyint_min",
+            "b:v", "maxrate", "bufsize",
+            "x264-params", "force_key_frames",
+            "vf"
+        ]
+
+        out += ["-map", "0:v:0"]  # Map video stream for sub output
+        for k in video_key_order:
+            if k in vid and vid[k] is not None:
+                out += [f"-{k}", str(vid[k])]
+
+        # Audio for sub stream
+        if bool(aud.get("enabled", False)):
+            out += ["-map", "0:a:0?"]  # Map audio if present (? = optional)
+            c_a = aud.get("c:a", aud.get("codec", None))
+            b_a = aud.get("b:a", aud.get("bitrate", None))
+            ar = aud.get("ar", aud.get("rate", None))
+            ac = aud.get("ac", aud.get("channels", None))
+            if c_a: out += ["-c:a", str(c_a)]
+            if b_a: out += ["-b:a", str(b_a)]
+            if ar: out += ["-ar", str(ar)]
+            if ac is not None: out += ["-ac", str(ac)]
+        else:
+            out += ["-an"]
+
+        # Sub stream sink (original path)
+        if protocol == "rtmp":
+            sub_sink = f"rtmp://{host}:{port}/{path}"
+            out += ["-f", "flv", sub_sink]
+        elif protocol == "rtsp":
+            sub_sink = f"rtsp://{host}:{port}/{path}"
+            rtsp_transport = pub.get("rtsp_transport", "tcp")
+            out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, sub_sink]
+        else:
+            raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
+
+        # ========== OUTPUT 2: MAIN STREAM (passthrough, no transcode) ==========
+        # Use -c:v copy for passthrough - no scaling, no re-encoding
+
+        out += ["-map", "0:v:0"]  # Map video stream for main output
+        out += ["-c:v", "copy"]   # Passthrough video
+
+        # Audio for main stream (also passthrough if enabled)
+        if bool(aud.get("enabled", False)):
+            out += ["-map", "0:a:0?"]  # Map audio if present
+            out += ["-c:a", "copy"]    # Passthrough audio too
+        else:
+            out += ["-an"]
+
+        # Main stream sink (path + _main suffix)
+        main_path = f"{path}_main"
+        if protocol == "rtmp":
+            main_sink = f"rtmp://{host}:{port}/{main_path}"
+            out += ["-f", "flv", main_sink]
+        elif protocol == "rtsp":
+            main_sink = f"rtsp://{host}:{port}/{main_path}"
+            rtsp_transport = pub.get("rtsp_transport", "tcp")
+            out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, main_sink]
+
+        logger.info(f"Built dual LL-HLS output for {camera_name}: sub→{path}, main→{main_path}")
+
+        return out
+
+    except Exception as e:
+        print(traceback.print_exc())
+        raise Exception(f"something went wrong in build_ll_hls_dual_output_publish_params: {e}")

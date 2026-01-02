@@ -102,11 +102,16 @@ class RecordingService:
         logger.debug(f"Camera {camera_id}: stream_type={stream_type}, recording_source={recording_source}")
         
         # Resolve source URL based on configuration
-        # For 'auto': use MediaMTX for LL_HLS cameras (single-connection), RTSP for others
+        # For 'auto': use MediaMTX for all HLS-type streams, MJPEG uses capture service
         if recording_source == 'auto':
-            if stream_type == 'LL_HLS':
+            if stream_type in ('LL_HLS', 'HLS', 'NEOLINK_LL_HLS'):
+                # All HLS streams publish to MediaMTX - tap RTSP output
                 recording_source = 'mediamtx'
+            elif stream_type == 'MJPEG':
+                # MJPEG cameras use dedicated capture service
+                recording_source = 'mjpeg_service'
             else:
+                # Fallback to direct RTSP for unknown types
                 recording_source = 'rtsp'
             logger.debug(f"Auto-resolved recording_source to '{recording_source}' for {camera_id}")
 
@@ -120,6 +125,12 @@ class RecordingService:
             handler = self._get_camera_handler(camera)
             rtsp_url = handler.build_rtsp_url(camera, stream_type='main')
             return (rtsp_url, 'rtsp')
+
+        elif recording_source == 'mjpeg_service':
+            # MJPEG cameras use dedicated capture service
+            # TODO: Implement MJPEG recording by tapping the capture service buffer
+            logger.warning(f"MJPEG recording not yet implemented for {camera_id}")
+            raise NotImplementedError(f"MJPEG recording source not yet implemented for camera {camera_id}")
 
         else:
             raise ValueError(f"Unknown recording source: {recording_source}")

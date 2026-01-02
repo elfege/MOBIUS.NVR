@@ -147,7 +147,9 @@ export class PTZController {
                 if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
                     const $streamItem = $(mutation.target);
                     if ($streamItem.hasClass('css-fullscreen')) {
-                        console.log('[PTZ] Fullscreen detected, adding drag handle');
+                        console.log('[PTZ] Fullscreen detected for:', $streamItem.data('camera-serial'));
+                        const $ptz = $streamItem.find('.ptz-controls');
+                        console.log('[PTZ] PTZ controls found:', $ptz.length, 'display:', $ptz.css('display'));
                         this.addDragHandle($streamItem);
                     } else if ($streamItem.data('had-fullscreen')) {
                         console.log('[PTZ] Exiting fullscreen, removing drag handle');

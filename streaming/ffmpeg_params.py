@@ -375,8 +375,13 @@ def build_ll_hls_dual_output_publish_params(
             if b_a: out += ["-b:a", str(b_a)]
             if ar: out += ["-ar", str(ar)]
             if ac is not None: out += ["-ac", str(ac)]
+            # Resync audio to handle timestamp discontinuities from budget cameras
+            out += ["-async", "1"]
         else:
             out += ["-an"]
+
+        # Increase muxing queue size to handle timestamp discontinuities
+        out += ["-max_muxing_queue_size", "1024"]
 
         # Sub stream sink (original path)
         if protocol == "rtmp":
@@ -401,6 +406,9 @@ def build_ll_hls_dual_output_publish_params(
             out += ["-c:a", "copy"]    # Passthrough audio too
         else:
             out += ["-an"]
+
+        # Increase muxing queue size for main stream as well
+        out += ["-max_muxing_queue_size", "1024"]
 
         # Main stream sink (path + _main suffix)
         main_path = f"{path}_main"

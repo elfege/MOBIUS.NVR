@@ -38,7 +38,8 @@ class SegmentBuffer:
                  camera_name: str,
                  source_url: str,
                  max_buffer_seconds: int = 60,
-                 buffer_base_path: str = "/recordings/buffer"):
+                 buffer_base_path: str = "/recordings/buffer",
+                 use_udp: bool = False):
         """
         Initialize segment buffer for camera.
 
@@ -48,12 +49,14 @@ class SegmentBuffer:
             source_url: RTSP source URL (MediaMTX or direct camera)
             max_buffer_seconds: Maximum seconds to buffer (determines segment count)
             buffer_base_path: Base directory for segment storage
+            use_udp: If True, use UDP transport (required for Neolink sources)
         """
         self.camera_id = camera_id
         self.camera_name = camera_name
         self.source_url = source_url
         self.max_buffer_seconds = max_buffer_seconds
         self.max_segments = max(1, max_buffer_seconds // self.SEGMENT_DURATION)
+        self.use_udp = use_udp
 
         # Segment storage path
         self.buffer_path = Path(buffer_base_path) / camera_id

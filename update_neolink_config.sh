@@ -111,8 +111,34 @@ password = "$REOLINK_PASSWORD"
 uid = ""
 address = "$host:9000"
 stream = "subStream"
-enabled = true
+
+# Buffer settings
+# - buffer_size: Number of frames to keep in memory before overflow
+# - buffer_duration: Duration in ms (1-15000) before buffer is considered full
 buffer_size = $buffer_size
+buffer_duration = 1000
+
+# Show splash screen when paused (helps debug pause state visually)
+use_splash = true
+
+# Disconnect from camera when no clients for 30s (saves bandwidth and camera resources)
+idle_disconnect = true
+
+# Disable push notifications (not needed for NVR integration, reduces traffic)
+push_notifications = false
+
+# Pause configuration - prevents buffer overflow by pausing when no clients
+# This is the correct way to enable on-demand streaming in Neolink
+#
+# CRITICAL: TOML SYNTAX NOTES
+# - [[cameras]] creates an array element (NOT [cameras])
+# - Sub-tables within array elements MUST be indented with 2 spaces
+# - Without indentation, [cameras.pause] would create a new top-level table
+# - The indentation tells TOML parser this belongs to the previous [[cameras]] entry
+# - See: https://toml.io/en/v1.0.0#array-of-tables
+  [cameras.pause]
+  on_client = true   # Pause stream when no RTSP client connected (on_disconnect alias)
+  timeout = 2.0      # Seconds to wait before pausing after client disconnects
 
 EOF
 
@@ -138,6 +164,11 @@ cat >> "$NEOLINK_TOML" << 'EOF'
 # RTSP Paths:
 #   - rtsp://neolink:8554/{serial}/sub (subStream)
 #   - rtsp://neolink:8554/{serial}/main (mainStream)
+#
+# Pause Mode ([cameras.pause] with on_client = true):
+#   - Pauses stream when no RTSP client is connected
+#   - Prevents buffer overflow from GStreamer's internal buffers
+#   - Recommended for NVR integration to avoid "Buffer full" errors
 #
 ################################################################################
 EOF

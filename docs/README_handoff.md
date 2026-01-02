@@ -14,13 +14,13 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 03:18 EST*
+*Last updated: January 2, 2026 03:30 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 2, 2026 (02:30-03:18 EST)
+## Current Session: January 2, 2026 (02:30-03:30 EST)
 
 ### Branch: `sub_main_stream_switching_JAN_2_2026_a`
 
@@ -232,16 +232,23 @@ Completed in earlier part of session:
 
 ---
 
+## Testing Complete (03:30 EST)
+
+**Sub/Main Stream Switching - VERIFIED WORKING**
+
+After container recreation (`startnvr`), user confirmed:
+
+- HD quality in fullscreen (main stream passthrough working)
+- Closing fullscreen works correctly (switches back to sub)
+- Overall feature working as designed
+
+---
+
 ## Pending Tasks
 
 1. **Audio support** - User explicitly requested this as next feature
 
 2. **Optional future**: Rename `stream_type` to `protocol` in cameras.json (deferred)
-
-3. **Testing needed**: Verify dual-output FFmpeg works in practice
-   - Run `./update_mediamtx_paths.sh` to create both paths in MediaMTX
-   - Restart NVR with `startnvr`
-   - Test fullscreen switching on LL_HLS/NEOLINK cameras
 
 ---
 
@@ -279,7 +286,7 @@ Completed in earlier part of session:
 
 ---
 
-## Custom 502 Error Page (06:15-07:45 EST)
+## Custom 502 Error Page (02:50-03:20 EST)
 
 ### Problem
 

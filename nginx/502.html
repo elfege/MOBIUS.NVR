@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVR Starting...</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+        }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: #4a9eff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+        .status {
+            color: #888;
+            margin-bottom: 1.5rem;
+        }
+        .countdown {
+            display: inline-block;
+            background: rgba(74, 158, 255, 0.2);
+            color: #4a9eff;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #4a9eff;
+            width: 100%;
+            animation: progress 5s linear;
+        }
+        @keyframes progress {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+        .retry-count {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 1rem;
+        }
+        .manual-retry {
+            margin-top: 1.5rem;
+        }
+        .manual-retry button {
+            background: transparent;
+            border: 1px solid #4a9eff;
+            color: #4a9eff;
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .manual-retry button:hover {
+            background: #4a9eff;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h1>NVR is starting up...</h1>
+        <p class="status">The application is initializing. This usually takes 10-30 seconds.</p>
+        <div class="countdown">Retrying in <span id="seconds">5</span>s</div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress"></div>
+        </div>
+        <p class="retry-count">Attempt <span id="attempt">1</span></p>
+        <div class="manual-retry">
+            <button onclick="location.reload()">Retry Now</button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // Get retry count from URL or start at 1
+            const params = new URLSearchParams(window.location.search);
+            let attempt = parseInt(params.get('attempt')) || 1;
+            document.getElementById('attempt').textContent = attempt;
+
+            // Countdown timer
+            let seconds = 5;
+            const countdownEl = document.getElementById('seconds');
+            const progressEl = document.getElementById('progress');
+
+            // Reset progress animation
+            progressEl.style.animation = 'none';
+            progressEl.offsetHeight; // Trigger reflow
+            progressEl.style.animation = 'progress 5s linear';
+
+            const timer = setInterval(() => {
+                seconds--;
+                countdownEl.textContent = seconds;
+                if (seconds <= 0) {
+                    clearInterval(timer);
+                    // Increment attempt and reload
+                    const newUrl = new URL(window.location.href);
+                    newUrl.searchParams.set('attempt', attempt + 1);
+                    // Remove attempt param from final URL to keep it clean on success
+                    window.location.href = newUrl.pathname + '?attempt=' + (attempt + 1);
+                }
+            }, 1000);
+
+            // Also try a background health check
+            setTimeout(() => {
+                fetch('/api/health', { method: 'GET' })
+                    .then(r => {
+                        if (r.ok) {
+                            // App is up, reload immediately without attempt param
+                            window.location.href = window.location.pathname;
+                        }
+                    })
+                    .catch(() => {});
+            }, 2000);
+        })();
+    </script>
+</body>
+</html>

@@ -168,6 +168,16 @@ export class HLSStreamManager {
                         resolve(true);
                     });
 
+                    // Listen for first frame to update UI status
+                    hls.on(Hls.Events.FRAG_CHANGED, () => {
+                        // Dispatch custom event when first fragment plays
+                        if (!videoElement._firstFragReceived) {
+                            videoElement._firstFragReceived = true;
+                            console.log(`[HLS] ${cameraId}: First fragment received, stream is live`);
+                            videoElement.dispatchEvent(new CustomEvent('streamlive', { detail: { cameraId } }));
+                        }
+                    });
+
                     hls.on(Hls.Events.ERROR, (event, data) => {
                         const timeout = 30000
                         const maxretries = 20
@@ -179,6 +189,10 @@ export class HLSStreamManager {
                                 if (retries < maxretries) {
                                     console.log(`[HLS] Playlist 404 for ${cameraId}, retrying every ${timeout / 1000} seconds; ${retries + 1}/${maxretries}`);
                                     this.retryAttempts.set(cameraId, retries + 1);
+                                    // Dispatch event to update UI during retry
+                                    videoElement.dispatchEvent(new CustomEvent('streamretrying', {
+                                        detail: { cameraId, retry: retries + 1, maxRetries: maxretries }
+                                    }));
                                     setTimeout(() => {
                                         hls.loadSource(playlistUrl);
                                     }, timeout); // Wait N seconds for FFmpeg to create playlist

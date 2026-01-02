@@ -132,11 +132,21 @@ export class HealthMonitor {
     t.lastSig = null;
     t.lastProgressAt = performance.now();
     t.warmupUntil = performance.now() + this.opts.warmupMs;
+    t.hasReceivedFrames = false;  // Track if we've ever seen frames
 
     console.log(`[Health] Attached monitor for ${serial}`);
 
     this.startTimer(serial, () => {
+      // Skip during warmup period
       if (performance.now() < t.warmupUntil) return;
+
+      // Wait for video element to have data before health checking
+      // readyState: 0=nothing, 1=metadata, 2=current, 3=future, 4=enough
+      if (t.el.readyState < 2) {
+        // Video not ready yet - extend warmup implicitly
+        console.log(`[Health] ${serial}: Video not ready (readyState=${t.el.readyState}), waiting...`);
+        return;
+      }
 
       const sig = this.frameSignature(t.el);
       if (sig !== null && sig !== t.lastSig) {

@@ -96,6 +96,11 @@
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
                 <i class="fas fa-expand"></i>
             </button>
+            {% if info.stream_type != 'MJPEG' and info.stream_type != 'mjpeg_proxy' %}
+            <button class="stream-audio-btn" aria-label="Toggle Audio" title="Toggle Audio (muted by default)">
+                <i class="fas fa-volume-mute"></i>
+            </button>
+            {% endif %}
             <button class="camera-settings-btn" aria-label="Camera Settings" title="Recording Settings"
                 data-camera-id="{{ serial }}">
                 <i class="fas fa-cog"></i>

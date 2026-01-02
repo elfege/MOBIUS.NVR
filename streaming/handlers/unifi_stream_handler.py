@@ -13,7 +13,8 @@ from ..ffmpeg_params import (
     build_rtsp_output_params,
     build_rtsp_input_params,
     build_ll_hls_input_publish_params,
-    build_ll_hls_output_publish_params
+    build_ll_hls_output_publish_params,
+    build_ll_hls_dual_output_publish_params
 )
 
 
@@ -74,16 +75,21 @@ class UniFiStreamHandler(StreamHandler):
     
     def _build_ll_hls_publish(self, camera_config: Dict, rtsp_url: str) -> Tuple[List[str], str]:
         """
-            Build the full ffmpeg argv to *publish* LL-HLS to the packager for this camera.
-            Returns: (argv, play_url)
-            - argv: ["ffmpeg", <input flags>, "-i", <rtsp_url>, <output flags>]
-            - play_url: "/hls/<packager_path or serial>/index.m3u8"
+        Build the full ffmpeg argv to publish LL-HLS to MediaMTX packager.
+
+        Uses DUAL OUTPUT mode: single FFmpeg process produces both:
+        - Sub stream (transcoded, scaled per cameras.json) → /camera_serial
+        - Main stream (passthrough, full resolution) → /camera_serial_main
+
+        Returns: (argv, play_url)
+        - argv: ["ffmpeg", <input flags>, "-i", <rtsp_url>, <dual output flags>]
+        - play_url: "/hls/<packager_path or serial>/index.m3u8" (sub stream for grid)
         """
-        # INPUT side (mirrors  RTSP input helper; redundant by design for clarity)
+        # INPUT side (mirrors RTSP input helper; redundant by design for clarity)
         in_args: List[str] = build_ll_hls_input_publish_params(camera_config=camera_config)
 
-        # OUTPUT side (delegates to FFmpegHLSParamBuilder.build_ll_hls_publish_output via helper)
-        out_args: List[str] = build_ll_hls_output_publish_params(
+        # OUTPUT side - DUAL outputs: sub (transcoded) + main (passthrough)
+        out_args: List[str] = build_ll_hls_dual_output_publish_params(
             camera_config=camera_config,
             vendor_prefix=camera_config.get("type", "unifi")
         )

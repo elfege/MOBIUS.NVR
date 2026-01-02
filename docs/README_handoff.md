@@ -4,6 +4,8 @@ layout: default
 ---
 
 <!-- markdownlint-disable MD025 -->
+<!-- markdownlint-disable MD024 -->
+<!-- markdownlint-disable MD036 -->
 
 # Session Handoff Buffer
 
@@ -440,6 +442,7 @@ Route all HLS-type streams through MediaMTX so recording and motion detection ta
 **Problem:** Pre-buffered recordings were not being finalized - temp files existed with `live.ts` and `prebuf_000.ts` but no final MP4 was created.
 
 **Root Cause:** Two `cleanup_finished_recordings()` methods existed in `recording_service.py`:
+
 - Line 626: Correct version with pre-buffer finalization logic
 - Line 792: Duplicate version without finalization logic (Python uses last definition)
 
@@ -491,4 +494,198 @@ Route all HLS-type streams through MediaMTX so recording and motion detection ta
 
 ---
 
-*Last updated: January 1, 2026*
+## Session: January 1-2, 2026 (21:30-02:50 EST)
+
+**Branch:** `ui_health_monitor_black_frames_JAN_1_2026_a`
+
+### UI Health Monitor Fixes
+
+**Problem:** SV3C_Living_3 camera showed "Failed" status on initial page load, but worked after manual refresh.
+
+**Root Cause:** Race condition between stream initialization and health monitor - health monitor checked before video element had decoded frames.
+
+**Fixes Applied:**
+
+1. **Health monitor waits for video readyState** (health.js:143-149)
+   - Added check `if (t.el.readyState < 2)` before health checking
+   - Video must have decoded frames before checking for black screens
+
+2. **HLS streams show "Connecting..." instead of "Failed"** (stream.js:404-413)
+   - HLS streams have retry logic, initial error doesn't mean permanent failure
+   - Changed immediate "Failed" to "Connecting..." for HLS/LL_HLS types
+
+3. **Added stream status events** (hls-stream.js:171-195)
+   - `streamlive` event fired when first fragment received
+   - `streamretrying` event fired during 404 retry loops with retry count
+
+4. **UI listens for status events** (stream.js:603-620)
+   - Updates status indicator in real-time based on HLS events
+   - Shows "Retry X/20..." during retry attempts
+
+### Laundry Room Camera Issue (Ongoing)
+
+**Problem:** Laundry Room (95270001NT3KNA67) completely broken - black screen, never loads.
+
+**Investigation:**
+
+- RTSP connection times out (even in VLC with correct credentials)
+- Camera works fine in native Reolink app (uses Baichuan protocol, port 9000)
+- FFmpeg exit code 8 in constant restart loop
+- MediaMTX logs: `no stream is available on path '95270001NT3KNA67'`
+
+**Root Cause:** Camera's RTSP service is likely crashed/hung. Works via Baichuan (native app) but not RTSP.
+
+**Status:** Needs camera reboot (physically inaccessible currently)
+
+### Baichuan Protocol Research
+
+**History reviewed:** October 2025 - Neolink integration attempted for low-latency streaming via Baichuan (port 9000).
+
+**Why it was abandoned:**
+
+- Neolink successfully connects via Baichuan
+- But outputs RTSP, which still needs HLS conversion for browser
+- HLS segmentation adds ~1.5s minimum latency regardless of source
+- Native app is faster (~300ms) because: direct binary stream, GPU decode, no HTTP overhead
+
+**Potential future approach:**
+
+- Use Neolink `image` command for snapshot polling via Baichuan
+- Similar to existing MJPEG capture services
+- Would work when RTSP is broken (different protocol)
+- Laundry camera NOT in neolink.toml - would need to be added
+
+### Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| `static/js/streaming/health.js` | Added readyState check before health monitoring |
+| `static/js/streaming/stream.js` | HLS "Connecting..." status, stream event listeners |
+| `static/js/streaming/hls-stream.js` | Added streamlive/streamretrying custom events |
+
+### Testing Checklist
+
+- [x] Health monitor waits for video readyState >= 2
+- [x] HLS streams show "Connecting..." on initial error
+- [x] Stream status events fire correctly
+- [ ] SV3C camera loads without manual refresh (needs user verification)
+- [ ] Laundry camera (needs reboot to test)
+
+---
+
+## Session: January 2, 2026 (02:50+ EST)
+
+**Branch:** `mediamtx_centralization_and_workflow_setup_JAN_1_2026_a`
+
+### Custom 502 Error Page Implementation
+
+**Problem:** When NVR container restarts, nginx shows ugly default 502 Bad Gateway error page.
+
+**Solution:** Created custom 502 error page with auto-retry functionality.
+
+#### Files Created/Modified
+
+1. **`nginx/502.html`** - NEW
+   - Dark themed "NVR Starting Up..." page
+   - Animated spinner and progress bar
+   - 5-second countdown timer with auto-retry
+   - Tracks retry attempts in URL parameter
+   - Background health check at `/api/health`
+   - Manual "Retry Now" button
+
+2. **`nginx/nginx.conf`** - MODIFIED
+   - Added custom error page directive for 502/503/504 errors:
+
+   ```nginx
+   error_page 502 503 504 /502.html;
+   location = /502.html {
+       root /usr/share/nginx/html;
+       internal;
+   }
+   ```
+
+3. **`docker-compose.yml`** - MODIFIED
+   - Added volume mount for 502.html:
+
+   ```yaml
+   - ./nginx/502.html:/usr/share/nginx/html/502.html:ro
+   ```
+
+#### Testing Required
+
+- [ ] Restart nvr-edge container to load new nginx config
+- [ ] Stop nvr container and verify custom 502 page appears
+- [ ] Verify auto-retry works and loads app when available
+
+---
+
+## Session: January 2, 2026 (05:00-06:00 EST)
+
+**Branch:** `ui_health_monitor_black_frames_JAN_1_2026_a` (continued)
+
+### Neolink/Baichuan Integration for Laundry Camera
+
+**Problem:** Laundry Room camera (95270001NT3KNA67) RTSP was unresponsive but native Reolink app worked (uses Baichuan protocol on port 9000).
+
+**Investigation Results:**
+
+1. **Port 9000 (Baichuan) was reachable** even when RTSP (port 554) was hung
+2. **Neolink successfully connected** via Baichuan and logged in
+3. **Root cause identified:** Camera's RTSP service gets saturated and TCP layer doesn't flush properly
+4. **RTSP can be reset** from native app without full camera reboot
+
+### Changes Made
+
+1. **Added Laundry camera to neolink.toml**
+   - Uses serial as name for consistency: `name = "95270001NT3KNA67"`
+   - Configured for subStream via Baichuan: `address = "192.168.10.118:9000"`
+   - Increased buffer_size to 100 for E1 Zoom's variable bitrate
+
+2. **Updated cameras.json**
+   - Changed Laundry camera `stream_type` from `"LL_HLS"` to `"NEOLINK"`
+
+3. **Fixed reolink_stream_handler.py** (`_build_NEOlink_url`)
+   - Was using camera name with underscores, now uses serial
+   - Path: `rtsp://neolink:{port}/{serial}/{stream_type}`
+   - Stream type now respects 'main' or 'sub' parameter (was hardcoded to 'main')
+
+4. **Created update_neolink_config.sh** - NEW
+   - Auto-generates neolink.toml from cameras.json
+   - Filters for `stream_type: "NEOLINK"` and `type: "reolink"`
+   - Uses serial as Neolink camera name for consistency
+   - Injects REOLINK_USERNAME/PASSWORD from environment
+
+### Files Modified/Created
+
+| File | Changes |
+|------|---------|
+| `config/neolink.toml` | Added Laundry camera with serial as name |
+| `config/cameras.json` | Changed Laundry stream_type to NEOLINK |
+| `streaming/handlers/reolink_stream_handler.py` | Fixed Neolink URL building |
+| `update_neolink_config.sh` | NEW - auto-sync neolink.toml |
+
+### Neolink Buffer Issue (Ongoing)
+
+When FFmpeg connects to Neolink RTSP, buffers fill up quickly:
+
+```log
+Buffer full on audsrc pausing stream until client consumes frames
+Buffer full on vidsrc pausing stream until client consumes frames
+Failed to send to source: App source is closed
+```
+
+This appears to be a known Neolink/GStreamer issue with buffer management. May need:
+
+- Disable audio in Neolink output
+- Tune buffer sizes
+- Use continuous FFmpeg consumer to drain buffers
+
+### Testing Required
+
+- [ ] Full NVR restart to test Neolink integration end-to-end
+- [ ] Verify Laundry camera streams via Baichuan → Neolink → MediaMTX → HLS
+- [ ] Add update_neolink_config.sh to start.sh
+
+---
+
+*Last updated: January 2, 2026 06:00 EST*

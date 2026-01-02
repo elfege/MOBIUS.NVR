@@ -459,6 +459,7 @@ Made PTZ controls draggable when in fullscreen mode.
 3. Only calls `stopMovement()` if PTZ movement was actually active (`ptzTouchActive || activeDirection`)
 
 **Code Change** in `ptz-controller.js` lines 462-481:
+
 ```javascript
 $(document).on('touchend touchcancel', () => {
     // Skip if we're dragging PTZ controls
@@ -488,6 +489,7 @@ Previous session ran out of context. Continued investigating stream stability is
 **Issue**: Segment buffer FFmpeg processes exiting with code 0 (normal termination) when they should run continuously.
 
 **Investigation**:
+
 - Found FFmpeg 7.1.3 is now installed (much newer than before)
 - Checked that `-reconnect` flags are fully supported
 - Previous note in README_project_history.md mentioned `-reconnect` caused crashes - now safe
@@ -511,6 +513,7 @@ cmd = [
 ```
 
 **Note on cameras.json**: User asked if FFmpeg commands should be dynamically built from cameras.json. Clarification:
+
 - The reconnect flags are RTSP **input** flags for connection resilience
 - They're separate from the `rtsp_input` section in cameras.json which has FFmpeg **input params** like `timeout`, `analyzeduration`
 - For segment buffer specifically, `-c copy` (no transcoding) is always used
@@ -519,15 +522,18 @@ cmd = [
 ### Observations from Running Processes
 
 Found segment buffer processes using direct camera RTSP URLs instead of MediaMTX for some cameras:
+
 - XCPTP369388MNVTG (Living_REOLINK): Direct RTSP to 192.168.10.186
 - 95270001CSO4BPDZ: Direct RTSP to 192.168.10.88
 
 These cameras have `stream_type: MJPEG` but still have RTSP capability. The current code path:
+
 1. `stream_type == 'MJPEG'` → `recording_source = 'mjpeg_service'`
 2. Raises `NotImplementedError`
 3. Should be caught and skipped
 
 **Possible Explanations**:
+
 - Container has older code version
 - Different startup path for these cameras
 
@@ -547,6 +553,7 @@ These cameras have `stream_type: MJPEG` but still have RTSP capability. The curr
 ### Problem Identified
 
 **Symptoms:**
+
 - LL-HLS publishers starting then immediately stopping
 - Streams appearing briefly then disappearing after page load/refresh
 - Motion detectors and segment buffers failing with exit code 8 (no stream in MediaMTX)
@@ -564,6 +571,7 @@ In `streaming/stream_manager.py`:
 ### Fix Applied
 
 Modified `get_active_streams()` to:
+
 - **NOT stop dead streams** - it now only reports status
 - Include streams with `status='starting'` in the response
 - Leave dead stream cleanup to the watchdog or explicit stop calls
@@ -592,3 +600,66 @@ Container restart (`startnvr`) needed to apply this fix.
 | File | Change |
 |------|--------|
 | `streaming/stream_manager.py` | Fixed `get_active_streams()` race condition |
+
+---
+
+## Audio Timestamp Issue Fix: January 2, 2026 (05:00-05:08 EST)
+
+### Problem Identified
+
+**Symptoms:**
+- LL-HLS publishers (FFmpeg) exiting with code 0 after running briefly
+- MediaMTX logs showing publishers "torn down" shortly after starting
+- Streams would start, publish to MediaMTX, then terminate cleanly
+
+**Root Cause Found:**
+
+Budget Eufy cameras produce audio streams with timestamp discontinuities. When FFmpeg tries to encode audio (AAC) for the dual-output LL-HLS, it encounters:
+```
+[aost#0:1/aac @ ...] Non-monotonic DTS; previous: X, current: Y
+[aac @ ...] Queue input is backward in time
+```
+
+After enough timestamp errors, FFmpeg exits cleanly (code 0) instead of crashing.
+
+**Additional Factor:** The dual-output implementation (sub + main streams from single FFmpeg process) was added along with audio support, making the issue harder to isolate.
+
+### Fix Applied
+
+1. **Disabled audio in cameras.json** for all cameras:
+   - Changed `ll_hls.audio.enabled` from `true` to `false` for all 17 cameras
+   - Audio from budget cameras is unreliable and causes stream instability
+
+2. **Added FFmpeg safeguards** in `streaming/ffmpeg_params.py`:
+   - Added `-async 1` to resync audio timestamps (if audio enabled in future)
+   - Added `-max_muxing_queue_size 1024` to handle buffer issues
+
+3. **Result:** FFmpeg commands now use `-an` (no audio) for both sub and main outputs:
+   ```
+   ffmpeg ... -map 0:v:0 ... -an -max_muxing_queue_size 1024 -f rtsp ... /sub
+              -map 0:v:0 -c:v copy -an -max_muxing_queue_size 1024 -f rtsp ... /main
+   ```
+
+### Testing Observations
+
+After fix:
+- STAIRS FFmpeg log shows 87+ seconds of continuous encoding at 15fps
+- No audio-related errors in FFmpeg output
+- Publishers still being torn down periodically (separate issue - likely segment buffer or motion detector connections)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `config/cameras.json` | Disabled `ll_hls.audio.enabled` for all 17 cameras |
+| `streaming/ffmpeg_params.py` | Added `-async 1` and `-max_muxing_queue_size 1024` for audio resilience |
+
+### Lessons Learned
+
+1. **Audio from budget cameras is problematic** - timestamp issues cause FFmpeg to exit cleanly
+2. **Test one change at a time** - dual-output + audio were added together, making root cause harder to find
+3. **Exit code 0 doesn't mean success** - FFmpeg exits cleanly when it decides to stop due to errors
+
+---
+
+*Last updated: January 2, 2026 05:08 EST*

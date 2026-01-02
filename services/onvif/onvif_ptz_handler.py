@@ -36,7 +36,8 @@ class ONVIFPTZHandler:
         'down': (0, -1, 0),   # tilt down
         'zoom_in': (0, 0, 1), # zoom in
         'zoom_out': (0, 0, -1), # zoom out
-        'stop': (0, 0, 0)     # stop all movement
+        'stop': (0, 0, 0),     # stop all movement
+        'home': None          # go to home position (handled separately)
     }
     
     # Credential providers (initialized on first use)
@@ -81,26 +82,18 @@ class ONVIFPTZHandler:
             # Validate direction
             if direction not in cls.DIRECTION_VECTORS:
                 return False, f"Invalid direction: {direction}"
-            
-            # Get movement vector
-            pan, tilt, zoom = cls.DIRECTION_VECTORS[direction]
-            
-            # Apply speed multiplier
-            pan_speed = cls.DEFAULT_PAN_SPEED * speed_multiplier * pan
-            tilt_speed = cls.DEFAULT_TILT_SPEED * speed_multiplier * tilt
-            zoom_speed = cls.DEFAULT_ZOOM_SPEED * speed_multiplier * zoom
-            
+
             # Get camera host and type
             host = camera_config.get('host')
             if not host:
                 return False, "No host configured for camera"
-            
+
             # Get credentials via provider
             camera_type = camera_config.get('type')
             username, password = cls._get_credentials(camera_serial, camera_type)
             if not username or not password:
                 return False, "Missing credentials for camera"
-            
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
@@ -109,19 +102,31 @@ class ONVIFPTZHandler:
                 password=password,
                 camera_serial=camera_serial
             )
-            
+
             if not camera:
                 return False, "Failed to connect to camera via ONVIF"
-            
+
             # Get PTZ service
             ptz_service = ONVIFClient.get_ptz_service(camera)
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
-            
+
             # Get profile token
             profile_token = ONVIFClient.get_profile_token(camera)
             if not profile_token:
                 return False, "Could not get media profile token"
+
+            # Handle home position separately
+            if direction == 'home':
+                return cls.goto_home_position(ptz_service, profile_token, camera_serial)
+
+            # Get movement vector
+            pan, tilt, zoom = cls.DIRECTION_VECTORS[direction]
+
+            # Apply speed multiplier
+            pan_speed = cls.DEFAULT_PAN_SPEED * speed_multiplier * pan
+            tilt_speed = cls.DEFAULT_TILT_SPEED * speed_multiplier * tilt
+            zoom_speed = cls.DEFAULT_ZOOM_SPEED * speed_multiplier * zoom
             
             # Create velocity request
             request = ptz_service.create_type('ContinuousMove')
@@ -222,8 +227,8 @@ class ONVIFPTZHandler:
                         'token': preset.token,
                         'name': preset.Name if hasattr(preset, 'Name') else preset.token
                     })
-            
-            logger.info(f"Retrieved {len(presets)} presets for {camera_serial}")
+
+            logger.info(f"Retrieved {len(presets)} presets for {camera_serial}: {presets}")
             return True, presets
             
         except Exception as e:
@@ -444,6 +449,36 @@ class ONVIFPTZHandler:
         except Exception as e:
             logger.error(f"Failed to remove preset for {camera_serial}: {e}")
             return False, f"Failed to remove preset: {str(e)}"
+
+    @classmethod
+    def goto_home_position(cls, ptz_service, profile_token: str, camera_serial: str) -> Tuple[bool, str]:
+        """
+        Move PTZ camera to home position (triggers stepper calibration)
+
+        Args:
+            ptz_service: ONVIF PTZ service instance
+            profile_token: Media profile token
+            camera_serial: Camera serial number for logging
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            logger.info(f"Moving {camera_serial} to home position (stepper calibration)")
+
+            # Create GotoHomePosition request
+            request = ptz_service.create_type('GotoHomePosition')
+            request.ProfileToken = profile_token
+
+            # Execute home position movement
+            ptz_service.GotoHomePosition(request)
+
+            logger.info(f"{camera_serial} moved to home position successfully")
+            return True, "Camera moved to home position (stepper calibration initiated)"
+
+        except Exception as e:
+            logger.error(f"Failed to move {camera_serial} to home position: {e}")
+            return False, f"Failed to move to home position: {str(e)}"
 
 
 # Module-level convenience functions

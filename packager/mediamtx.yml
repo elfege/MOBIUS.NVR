@@ -24,23 +24,45 @@ rtspAddress: :8554
 paths:
   68d49398005cf203e400043f:
     source: publisher
+  68d49398005cf203e400043f_main:
+    source: publisher
   T8416P0023352DA9:
+    source: publisher
+  T8416P0023352DA9_main:
     source: publisher
   T8416P0023370398:
     source: publisher
+  T8416P0023370398_main:
+    source: publisher
   T8416P00233717CB:
+    source: publisher
+  T8416P00233717CB_main:
     source: publisher
   T8416P0023390DE9:
     source: publisher
+  T8416P0023390DE9_main:
+    source: publisher
   T8416P6024350412:
+    source: publisher
+  T8416P6024350412_main:
     source: publisher
   T8419P0024110C6A:
     source: publisher
+  T8419P0024110C6A_main:
+    source: publisher
   T8441P12242302AC:
+    source: publisher
+  T8441P12242302AC_main:
     source: publisher
   T8441P122428038A:
     source: publisher
+  T8441P122428038A_main:
+    source: publisher
   C6F0SgZ0N0PoL2:
     source: publisher
+  C6F0SgZ0N0PoL2_main:
+    source: publisher
   95270001NT3KNA67:
+    source: publisher
+  95270001NT3KNA67_main:
     source: publisher

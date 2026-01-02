@@ -78,11 +78,7 @@
             height: 100%;
             background: #4a9eff;
             width: 0%;
-            animation: progress 5s linear forwards;
-        }
-        @keyframes progress {
-            from { width: 0%; }
-            to { width: 100%; }
+            transition: width 1s linear;
         }
         .retry-count {
             font-size: 0.8rem;
@@ -169,18 +165,24 @@
             document.getElementById('attempt').textContent = attempt;
 
             // Countdown timer
-            let seconds = 5;
+            const totalSeconds = 5;
+            let seconds = totalSeconds;
             const countdownEl = document.getElementById('seconds');
             const progressEl = document.getElementById('progress');
 
-            // Reset progress animation
-            progressEl.style.animation = 'none';
-            progressEl.offsetHeight; // Trigger reflow
-            progressEl.style.animation = 'progress 5s linear forwards';
+            // Update progress bar with countdown
+            const updateProgress = () => {
+                const progress = ((totalSeconds - seconds) / totalSeconds) * 100;
+                progressEl.style.width = progress + '%';
+            };
+
+            // Start with 0% progress
+            updateProgress();
 
             const timer = setInterval(() => {
                 seconds--;
                 countdownEl.textContent = seconds;
+                updateProgress();
                 if (seconds <= 0) {
                     clearInterval(timer);
                     // Increment attempt and reload

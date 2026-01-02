@@ -104,25 +104,26 @@ class ReolinkStreamHandler(StreamHandler):
 
     def _build_NEOlink_url(self, camera_config: Dict, stream_type: str) -> str:
         """Build RTSP URL via Neolink bridge for Reolink camera
-        
-        NOTE: Currently only supports mainStream. Neolink dual-stream support
-        requires duplicate camera entries in neolink.toml with different names.
-        TODO: Implement sub-stream support when needed.
+
+        Uses camera serial as the Neolink path - neolink.toml must use
+        the same serial as the 'name' field for consistency.
         """
-        
-        serial = camera_config.get('serial', 'UNKNOWN')
+
         neolink_config = camera_config.get('neolink', {})
         port = neolink_config.get('port', 8554)
-        
-        # Always use mainStream for now (sub-stream support TODO)
-        # Neolink accepts: main, Main, mainStream, MainStream, Mainstream, mainstream
-        stream_path = 'main'
-        
+
+        # Use serial for the Neolink path (must match [[cameras]] name in neolink.toml)
+        serial = camera_config.get('serial', 'UNKNOWN')
+
+        # Use the requested stream_type: 'main' or 'sub'
+        # Neolink accepts: main, Main, mainStream, sub, Sub, subStream, etc.
+        stream_path = stream_type if stream_type in ('main', 'sub') else 'sub'
+
         # Neolink bridge runs locally - no credentials needed
         neolink_url = f"rtsp://neolink:{port}/{serial}/{stream_path}"
-        
-        logger.info(f"Built Neolink bridge URL for {camera_config.get('name')} (requested: {stream_type}, using: mainStream): {neolink_url}")
-        
+
+        logger.info(f"Built Neolink bridge URL for {camera_config.get('name')}: {neolink_url}")
+
         return neolink_url
 
     def _build_rtmp_url(self, camera_config: Dict, stream_type: str) -> str:

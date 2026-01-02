@@ -399,9 +399,18 @@ export class MultiStreamManager {
             }
         } catch (error) {
             $loadingIndicator.hide();
-            this.setStreamStatus($streamItem, 'error', 'Failed');
-            this.updateStreamButtons($streamItem, false);
             console.error(`Stream start failed for ${cameraId}:`, error);
+
+            // For HLS/LL_HLS streams, show "Connecting..." instead of "Failed"
+            // These streams have retry logic and may still succeed
+            const isHlsStream = ['HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS'].includes(streamType);
+            if (isHlsStream) {
+                this.setStreamStatus($streamItem, 'loading', 'Connecting...');
+                this.updateStreamButtons($streamItem, true);  // Keep buttons enabled for retry
+            } else {
+                this.setStreamStatus($streamItem, 'error', 'Failed');
+                this.updateStreamButtons($streamItem, false);
+            }
 
             // CRITICAL: Attach health monitor even on initial failure so it can retry
             this.attachHealthMonitor(cameraId, $streamItem, streamType);
@@ -590,6 +599,25 @@ export class MultiStreamManager {
         }
 
         console.log(`[Health] Attaching monitor for ${cameraId} (${streamType})`);
+
+        // Listen for HLS stream events to update UI status
+        if (!el._streamEventsBound) {
+            el._streamEventsBound = true;
+
+            // Update UI when stream goes live (first fragment received)
+            el.addEventListener('streamlive', () => {
+                console.log(`[Stream] ${cameraId}: Received 'streamlive' event`);
+                this.setStreamStatus($streamItem, 'live', 'Live');
+                this.restartAttempts.delete(cameraId);
+            });
+
+            // Update UI during retry attempts
+            el.addEventListener('streamretrying', (e) => {
+                const { retry, maxRetries } = e.detail;
+                console.log(`[Stream] ${cameraId}: Received 'streamretrying' event (${retry}/${maxRetries})`);
+                this.setStreamStatus($streamItem, 'loading', `Retry ${retry}/${maxRetries}...`);
+            });
+        }
 
         if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
             const hls = this.hlsManager?.hlsInstances?.get?.(cameraId) || null;

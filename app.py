@@ -247,14 +247,26 @@ try:
         print("\n📼 Starting pre-buffer segment recording...")
         for camera_id in camera_repo.get_all_cameras():
             camera = camera_repo.get_camera(camera_id)
-            camera_name = camera.get('name', camera_id) if camera else camera_id
+            if not camera:
+                continue
+            camera_name = camera.get('name', camera_id)
+
+            # Skip cameras without streaming capability (e.g., doorbells)
+            if 'streaming' not in camera.get('capabilities', []):
+                continue
+
             if recording_service.config.is_pre_buffer_enabled(camera_id):
-                # Get stream URL from recording service
-                source_url, _ = recording_service._get_recording_source_url(camera_id)
-                if source_url and recording_service.segment_buffer_manager.start_buffer(camera_id, source_url):
-                    print(f"  ✅ Pre-buffer: {camera_name}")
-                else:
-                    print(f"  ❌ Failed pre-buffer: {camera_name}")
+                try:
+                    # Get stream URL from recording service
+                    source_url, _ = recording_service._get_recording_source_url(camera_id)
+                    if source_url and recording_service.segment_buffer_manager.start_buffer(camera_id, source_url):
+                        print(f"  ✅ Pre-buffer: {camera_name}")
+                    else:
+                        print(f"  ⚠️  Skipped pre-buffer: {camera_name} (no source URL)")
+                except NotImplementedError:
+                    print(f"  ⏭️  Skipped pre-buffer: {camera_name} (source not implemented)")
+                except Exception as e:
+                    print(f"  ❌ Failed pre-buffer: {camera_name} ({e})")
 
     # Background thread to monitor recording completions and auto-restart
     if recording_service:

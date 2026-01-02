@@ -91,6 +91,10 @@ services:
       - POSTGREST_URL=http://postgrest:3001
 
     volumes:
+      # Timezone - sync container time with host
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
       # recording volumes
 
       # RECENT RECORDINGS
@@ -98,6 +102,7 @@ services:
       - /mnt/sdc/NVR_Recent/continuous:/recordings/continuous
       - /mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots
       - /mnt/sdc/NVR_Recent/manual:/recordings/manual
+      - /mnt/sdc/NVR_Recent/buffer:/recordings/buffer
 
       # LONG TERM STORAGE
       - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion

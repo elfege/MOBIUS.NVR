@@ -424,10 +424,70 @@ Route all HLS-type streams through MediaMTX so recording and motion detection ta
 
 ### Testing Required
 
-- [ ] Restart NVR to apply cameras.json changes
-- [ ] Verify Office Desk and Hot Tub streams work via MediaMTX
-- [ ] Test motion recording uses MediaMTX source for these cameras
-- [ ] Confirm no additional camera connections created
+- [x] Restart NVR to apply cameras.json changes
+- [x] Verify Office Desk and Hot Tub streams work via MediaMTX
+- [x] Test motion recording uses MediaMTX source for these cameras
+- [x] Confirm no additional camera connections created
+
+---
+
+## Debugging Session: January 1, 2026 (20:00-20:45 EST)
+
+**Branch:** `mediamtx_full_centralization_JAN_1_2026_a`
+
+### Critical Bug Fixed: Duplicate `cleanup_finished_recordings()` Method
+
+**Problem:** Pre-buffered recordings were not being finalized - temp files existed with `live.ts` and `prebuf_000.ts` but no final MP4 was created.
+
+**Root Cause:** Two `cleanup_finished_recordings()` methods existed in `recording_service.py`:
+- Line 626: Correct version with pre-buffer finalization logic
+- Line 792: Duplicate version without finalization logic (Python uses last definition)
+
+**Fix:** Removed duplicate method at line 792.
+
+**File:** `services/recording/recording_service.py`
+
+### Motion Detection Fixes
+
+1. **NoneType Error for stream_type**
+   - Changed `camera.get('stream_type', '').upper()` to `(camera.get('stream_type') or '').upper()`
+   - **File:** `services/recording/recording_service.py:85`
+
+2. **FFmpeg Motion Detector Race Condition**
+   - Thread started before `active_detectors[camera_id]` was set
+   - Moved assignment before `thread.start()`
+   - **File:** `services/motion/ffmpeg_motion_detector.py:93-112`
+
+3. **LL_HLS Scene Detection Threshold**
+   - Office Desk producing scores 0.0005-0.002, below 0.005 threshold
+   - Lowered LL_HLS default threshold from 0.005 to 0.002
+   - **File:** `services/motion/ffmpeg_motion_detector.py:86`
+
+### Doorbell Camera Filter
+
+- Pre-buffer initialization skips cameras without `streaming` capability
+- **File:** `app.py:254-257`
+
+### Timezone Fix
+
+- Added volume mounts for timezone sync:
+
+```yaml
+- /etc/localtime:/etc/localtime:ro
+- /etc/timezone:/etc/timezone:ro
+```
+
+- **File:** `docker-compose.yml:95-96`
+
+### Segment Buffer Auto-Restart
+
+- Added `_restart_ffmpeg()` method for auto-restart when FFmpeg exits
+- **File:** `services/recording/segment_buffer.py:283-374`
+
+### Verification
+
+- Motion detection triggers for Office Desk camera (score 0.003-0.007)
+- Recordings finalized with pre-buffer: `T8416P0023370398_20260101_203221.mp4` (1.1 MB)
 
 ---
 

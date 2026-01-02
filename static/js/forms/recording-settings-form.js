@@ -18,14 +18,19 @@ export class RecordingSettingsForm {
      * @param {Object} settings - Current settings
      * @param {Object} cameraCapabilities - Camera capabilities array
      * @param {string} cameraType - Camera type (reolink, amcrest, eufy, unifi)
+     * @param {string} streamType - Stream type (LL_HLS, MJPEG, etc.)
      * @returns {string} - Form HTML
      */
-    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null) {
+    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null) {
         this.currentCameraId = cameraId;
         this.currentSettings = settings;
-        
+
         const hasOnvif = cameraCapabilities.includes('ONVIF');
         const isReolink = cameraType && cameraType.toLowerCase() === 'reolink';
+
+        // Determine recording source based on stream type (not user-configurable)
+        const resolvedRecordingSource = this._resolveRecordingSource(streamType);
+        this.resolvedRecordingSource = resolvedRecordingSource;
         
         return `
             <form id="recording-settings-form" class="recording-settings-form">
@@ -70,21 +75,12 @@ export class RecordingSettingsForm {
                         
                         <div class="recording-form-group">
                             <label for="recording-source">Recording Source</label>
-                            <select id="recording-source" name="recording_source">
-                                <option value="auto" ${settings.motion_recording?.recording_source === 'auto' ? 'selected' : ''}>
-                                    Auto (Recommended)
-                                </option>
-                                <option value="mediamtx" ${settings.motion_recording?.recording_source === 'mediamtx' ? 'selected' : ''}>
-                                    MediaMTX Tap
-                                </option>
-                                <option value="rtsp" ${settings.motion_recording?.recording_source === 'rtsp' ? 'selected' : ''}>
-                                    Direct RTSP
-                                </option>
-                                <option value="mjpeg_service" ${settings.motion_recording?.recording_source === 'mjpeg_service' ? 'selected' : ''}>
-                                    MJPEG Service
+                            <select id="recording-source" name="recording_source" disabled>
+                                <option value="${resolvedRecordingSource.value}" selected>
+                                    ${resolvedRecordingSource.label}
                                 </option>
                             </select>
-                            <span class="form-description">Source for recording stream</span>
+                            <span class="form-description">${resolvedRecordingSource.description}</span>
                         </div>
                     </div>
                     
@@ -284,12 +280,12 @@ export class RecordingSettingsForm {
      */
     extractFormData() {
         const form = $('#recording-settings-form');
-        
+
         return {
             motion_recording: {
                 enabled: form.find('#motion-enabled').is(':checked'),
                 detection_method: form.find('#detection-method').val(),
-                recording_source: form.find('#recording-source').val(),
+                recording_source: this.resolvedRecordingSource?.value || 'mediamtx',
                 segment_duration_sec: parseInt(form.find('#segment-duration').val(), 10),
                 pre_buffer_enabled: form.find('#pre-buffer-enabled').is(':checked'),
                 pre_buffer_sec: parseInt(form.find('#pre-buffer').val(), 10),
@@ -436,6 +432,36 @@ export class RecordingSettingsForm {
                     $(this).remove();
                 });
             }, 3000);
+        }
+    }
+
+    /**
+     * Resolve recording source based on stream type
+     * Recording source is determined by stream type, not user choice
+     * @param {string} streamType - Stream type (LL_HLS, MJPEG, etc.)
+     * @returns {Object} - {value, label, description}
+     */
+    _resolveRecordingSource(streamType) {
+        const type = (streamType || '').toUpperCase();
+
+        if (['LL_HLS', 'HLS', 'NEOLINK_LL_HLS'].includes(type)) {
+            return {
+                value: 'mediamtx',
+                label: 'MediaMTX Tap',
+                description: 'Records from MediaMTX RTSP output (no extra camera connection)'
+            };
+        } else if (type === 'MJPEG') {
+            return {
+                value: 'mjpeg_service',
+                label: 'MJPEG Capture Service',
+                description: 'Records from MJPEG capture buffer (not yet implemented)'
+            };
+        } else {
+            return {
+                value: 'rtsp',
+                label: 'Direct RTSP',
+                description: 'Records directly from camera RTSP stream'
+            };
         }
     }
 }

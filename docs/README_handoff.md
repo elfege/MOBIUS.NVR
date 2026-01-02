@@ -888,13 +888,14 @@ Successfully routed NEOLINK streams through MediaMTX LL-HLS path for lower laten
 - ✅ Motion detection service connected (Reolink Baichuan)
 - ✅ Settings button should now work (needs UI refresh to verify)
 
-### Pending
+### Verified
 
-- [ ] Verify settings button works after hard refresh
-- [ ] Verify motion detection triggers recording for NEOLINK cameras
+- [x] Verify settings button works after hard refresh
+- [x] Verify motion detection triggers recording for NEOLINK cameras
+  - Recording confirmed: `95270001NT3KNA67_20260102_023621.mp4` (2.2 MB at 02:36)
 
 ---
 
-*Last updated: January 2, 2026 02:35 EST*
+*Last updated: January 2, 2026 02:42 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.

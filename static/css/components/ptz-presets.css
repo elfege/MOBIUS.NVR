@@ -5,6 +5,13 @@
     padding: 0 4px;
 }
 
+/* In fullscreen, position presets above the PTZ grid to prevent cutoff */
+.stream-item.css-fullscreen .ptz-presets-container {
+    order: -1; /* Move to top in flexbox */
+    margin-bottom: 8px;
+    margin-top: 0;
+}
+
 .ptz-preset-select {
     width: 100%;
     padding: 6px 8px;

@@ -181,3 +181,68 @@
 .stream-audio-btn.audio-active:hover {
     background: rgba(34, 139, 34, 0.9);
 }
+
+/* ============================================================================
+   STREAM PTZ TOGGLE BUTTON
+   ============================================================================ */
+
+.stream-ptz-toggle-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 7rem;  /* Offset from audio button (3.5rem + 3.5rem) */
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 25;
+    opacity: 0;
+    pointer-events: auto;
+    transition: opacity 0.3s ease, background 0.2s ease;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .stream-ptz-toggle-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .stream-ptz-toggle-btn {
+        opacity: 0.7;
+    }
+
+    .stream-ptz-toggle-btn:active {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* Desktop hover effect */
+@media (hover: hover) {
+    .stream-ptz-toggle-btn:hover {
+        background: rgba(0, 0, 0, 0.8);
+        border-color: rgba(255, 255, 255, 0.4);
+        transform: scale(1.05);
+    }
+}
+
+.stream-ptz-toggle-btn i {
+    font-size: 1.1rem;
+}
+
+/* Active (PTZ controls visible) state - blue tint */
+.stream-ptz-toggle-btn.ptz-active {
+    background: rgba(74, 144, 226, 0.7);
+    border-color: rgba(74, 144, 226, 0.8);
+}
+
+.stream-ptz-toggle-btn.ptz-active:hover {
+    background: rgba(74, 144, 226, 0.9);
+}

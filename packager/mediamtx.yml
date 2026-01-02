@@ -21,6 +21,14 @@ rtmpAddress: :1935
 rtsp: yes
 rtspAddress: :8554
 
+# === TCP Buffer Management for Dual-Output Streams ===
+# Dual-output FFmpeg publishes both sub and main streams constantly.
+# When main stream is unconsumed (grid mode), TCP buffers fill up.
+# These settings manage buffer overflow gracefully:
+readTimeout: 30s           # Close consumer if no data read for 30s
+writeTimeout: 15s          # Close publisher connection if can't write for 15s (buffer full)
+writeQueueSize: 4096       # Increase write queue from default 512 (allows ~4 seconds of buffering at 2Mbps)
+
 paths:
   68d49398005cf203e400043f:
     source: publisher

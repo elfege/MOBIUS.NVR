@@ -23,15 +23,15 @@ cp "$MEDIAMTX_YML" "${BACKUP_DIR}/mediamtx.yml.$(date +%Y%m%d_%H%M%S)"
 echo -e "${GREEN}✓${NC} Backup created"
 echo
 
-# Extract LL_HLS camera IDs
-LL_HLS_PATHS=$(jq -r '.devices | to_entries[] | select(.value.stream_type == "LL_HLS") | .key' "$CAMERAS_JSON")
+# Extract LL_HLS and NEOLINK camera IDs (both use MediaMTX LL-HLS path)
+LL_HLS_PATHS=$(jq -r '.devices | to_entries[] | select(.value.stream_type == "LL_HLS" or .value.stream_type == "NEOLINK") | .key' "$CAMERAS_JSON")
 
 if [[ -z "$LL_HLS_PATHS" ]]; then
-    echo -e "${YELLOW}No LL_HLS cameras found${NC}"
+    echo -e "${YELLOW}No LL_HLS or NEOLINK cameras found${NC}"
     exit 0
 fi
 
-echo -e "${YELLOW}Found LL_HLS cameras:${NC}"
+echo -e "${YELLOW}Found LL_HLS/NEOLINK cameras:${NC}"
 echo "$LL_HLS_PATHS" | while read -r path; do
     echo "  - $path"
 done

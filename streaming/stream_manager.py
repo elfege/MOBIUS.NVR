@@ -257,72 +257,105 @@ class StreamManager:
         return result
 
     # Public API
-    def start_stream(self, camera_serial: str, stream_type: str = 'sub') -> Optional[str]:
-        """Start stream asynchronously and return immediately"""
+    def start_stream(self, camera_serial: str, resolution: str = 'sub') -> Optional[str]:
+        """Start stream asynchronously and return immediately
+
+        Args:
+            camera_serial: Camera identifier
+            resolution: 'sub' for grid view (low-res), 'main' for fullscreen (high-res)
+                        Note: This is different from cameras.json 'stream_type' which is protocol (HLS, LL_HLS, etc.)
+
+        Note: Sub and main streams can run simultaneously using different keys:
+            - Sub stream key: camera_serial (e.g., "ABC123")
+            - Main stream key: camera_serial + "_main" (e.g., "ABC123_main")
+        """
+        # Derive stream_key from camera_serial + resolution
+        # This allows sub and main streams to run simultaneously (like MJPEG does)
+        stream_key = f"{camera_serial}_main" if resolution == 'main' else camera_serial
 
         with self._streams_lock:
             # Check if already running
-            entry = self.active_streams.get(camera_serial)
+            entry = self.active_streams.get(stream_key)
             if entry and entry.get('status') == 'starting':
-                print("... Stream already starting ...")
+                print(f"... Stream already starting for {stream_key} ...")
 
                 cam = self.camera_repo.get_camera(camera_serial) if hasattr(self, 'camera_repo') else None
-                st  = (cam or {}).get('stream_type', 'HLS').upper()
+                protocol = (cam or {}).get('stream_type', 'HLS').upper()
                 # NEOLINK uses LL_HLS path through MediaMTX
-                if st in ('LL_HLS', 'NEOLINK'):
+                if protocol in ('LL_HLS', 'NEOLINK'):
                     path = cam.get('packager_path') or camera_serial
+                    # Main resolution uses different MediaMTX path
+                    if resolution == 'main':
+                        return f"/hls/{path}_main/index.m3u8"
                     return f"/hls/{path}/index.m3u8"
 
+                if resolution == 'main':
+                    return f"/api/streams/{camera_serial}_main/playlist.m3u8"
                 return f"/api/streams/{camera_serial}/playlist.m3u8"
 
-            if entry and self.is_stream_alive(camera_serial):
+            if entry and self.is_stream_alive(stream_key):
                 print("═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-")
-                print(f"Stream already active for {camera_serial}")
+                print(f"Stream already active for {stream_key}")
                 print("═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-")
-                return self.get_stream_url(camera_serial)
-            
+                return self.get_stream_url(stream_key)
+
             # Reserve the slot IMMEDIATELY to prevent duplicate starts
             # Mark as "starting" before spawning thread
-            if camera_serial not in self.active_streams:
+            if stream_key not in self.active_streams:
                 camera = self.camera_repo.get_camera(camera_serial)
                 camera_name = camera.get('name', camera_serial) if camera else camera_serial
-                
-                self.active_streams[camera_serial] = {
+
+                self.active_streams[stream_key] = {
                     'process': None,  # Will be set by thread
                     'playlist_path': None,  # Will be set by thread
                     'stream_dir': None,  # Will be set by thread
                     'status': 'starting',  # Mark as starting
                     'camera_name': camera_name,
+                    'camera_serial': camera_serial,  # Store original serial for config lookup
+                    'resolution': resolution,  # Store sub/main for reference
                     'start_time': None  # Will be set by thread
                 }
-                print(f"[RESERVED] Slot for {camera_serial} - preventing duplicate starts")
+                print(f"[RESERVED] Slot for {stream_key} - preventing duplicate starts")
             # ===== END NEW BLOCK =====
 
-        # Start in background thread
+        # Start in background thread - pass stream_key for storage, camera_serial for config
         threading.Thread(
             target=self._start_stream,
-            args=(camera_serial, stream_type),
+            args=(camera_serial, resolution, stream_key),
             daemon=True
         ).start()
 
         # Return placeholder URL immediately
+        if resolution == 'main':
+            return f"/api/streams/{camera_serial}_main/playlist.m3u8"
         return f"/api/streams/{camera_serial}/playlist.m3u8"
 
     # Private implementation
-    def _start_stream(self, camera_serial: str, stream_type: str = 'sub') -> Optional[str]:
+    def _start_stream(self, camera_serial: str, resolution: str = 'sub', stream_key: str = None) -> Optional[str]:
+        """Internal stream start implementation
+
+        Args:
+            camera_serial: Camera identifier (used for config lookup)
+            resolution: 'sub' for grid view, 'main' for fullscreen
+            stream_key: Key for active_streams dict (camera_serial or camera_serial_main)
+        """
+        # Default stream_key if not provided (backwards compatibility)
+        if stream_key is None:
+            stream_key = f"{camera_serial}_main" if resolution == 'main' else camera_serial
+
         try:
             # Step 1: Quick checks WITH lock
             with self._streams_lock:
-                if camera_serial in self.active_streams:
-                    entry = self.active_streams[camera_serial]
+                if stream_key in self.active_streams:
+                    entry = self.active_streams[stream_key]
                     if entry.get('status') == 'starting':
-                        print(f"[THREAD] Found reserved slot for {camera_serial}, proceeding...")
+                        print(f"[THREAD] Found reserved slot for {stream_key}, proceeding...")
                     else:
-                        print(f"[THREAD] Stream already active for {camera_serial}, aborting thread")
+                        print(f"[THREAD] Stream already active for {stream_key}, aborting thread")
                         return None
-                            
-                # Kill lingering ffmpeg
-                self._kill_all_ffmpeg_for_camera(camera_serial)
+
+                # Kill lingering ffmpeg for this stream_key
+                self._kill_all_ffmpeg_for_camera(stream_key)
             
             # Step 2: Get camera config WITHOUT lock (no shared state modified)
             camera = self.camera_repo.get_camera(camera_serial)
@@ -348,9 +381,9 @@ class StreamManager:
                 logger.error(f"No handler for camera type: {camera_type}")
                 raise Exception(f"No handler for camera type: {camera_type}")
             
-            # Step 3: Build URL
-            print(f"════════ Building URL for {camera_name} ════════")
-            source_url = handler.build_rtsp_url(camera, stream_type=stream_type)
+            # Step 3: Build URL (resolution determines main/sub stream path)
+            print(f"════════ Building URL for {camera_name} ({resolution}) ════════")
+            source_url = handler.build_rtsp_url(camera, stream_type=resolution)
             
             if not source_url:
                 logger.error(f"Failed to build URL for {camera_name}")
@@ -392,20 +425,22 @@ class StreamManager:
                 
                 # Step 4: Register WITH lock (quick)
                 with self._streams_lock:
-                    self.active_streams[camera_serial] = {
+                    self.active_streams[stream_key] = {
                         'process': process,
                         'protocol': 'rtmp',
-                        'rtmp_url': source_url,
+                        'rtsp_url': source_url,
                         'stream_dir': None,
                         'camera_name': camera_name,
+                        'camera_serial': camera_serial,
                         'camera_type': camera_type,
+                        'resolution': resolution,
                         'start_time': time.time(),
                         'playlist_path': None,
                         'status': 'active'
                     }
-                
-                logger.info(f"Started RTMP stream for {camera_name}")
-                return f"/api/camera/{camera_serial}/flv"
+
+                logger.info(f"Started RTMP stream for {camera_name} ({resolution})")
+                return f"/api/camera/{stream_key}/flv"
             
             # ===== LL_HLS publisher path =====
             # NEOLINK uses LL_HLS through MediaMTX for lower latency and
@@ -456,89 +491,95 @@ class StreamManager:
 
                 # Register as active
                 with self._streams_lock:
-                    self.active_streams[camera_serial] = {
+                    self.active_streams[stream_key] = {
                         'process': process,
                         'protocol': 'll_hls',
                         'rtsp_url': source_url,
                         'stream_dir': None,
                         'camera_name': camera_name,
+                        'camera_serial': camera_serial,
                         'camera_type': camera_type,
+                        'resolution': resolution,
                         'start_time': time.time(),
                         'playlist_path': None,
                         'status': 'active',
                         'stream_url': play_url,
                     }
 
-                # Optional: start watchdog if you want restart behavior
-                self._start_watchdog(camera_serial)
+                # Optional: start watchdog if you want restart behavior (sub streams only)
+                if resolution == 'sub':
+                    self._start_watchdog(stream_key)
 
-                logger.info(f"Started LL-HLS publisher for {camera_name}")
+                logger.info(f"Started LL-HLS publisher for {camera_name} ({resolution})")
                 return play_url
             # ===== end LL_HLS branch =====
 
             else:
                 # Legacy HLS path (FFmpeg writes segments directly to disk)
                 # Used by cameras without MediaMTX integration
-                stream_dir = self.hls_dir / camera_serial
+                stream_dir = self.hls_dir / stream_key
                 stream_dir.mkdir(exist_ok=True)
-                
+
                 playlist_path = stream_dir / "playlist.m3u8"
 
                 # pick extension based on camera config
                 hls_cfg  = (camera.get('rtsp_output') or {})
                 seg_ext  = "m4s" if str(hls_cfg.get('hls_segment_type', '')).lower() == "fmp4" else "ts"
                 segment_pattern = stream_dir / f"segment_%03d.{seg_ext}"
-                
+
                 process = self._start_ffmpeg(
                     rtsp_url=source_url,
                     playlist_path=playlist_path,
                     segment_pattern=segment_pattern,
                     handler=handler,
-                    stream_type=stream_type,
+                    stream_type=resolution,  # Pass resolution for output params
                     camera_config=camera
                 )
-                
+
                 time.sleep(2)
                 if process.poll() is not None:
                     raise Exception(f"FFmpeg died immediately")
-                
+
                 # Register WITH lock
                 with self._streams_lock:
-                    self.active_streams[camera_serial] = {
+                    self.active_streams[stream_key] = {
                         'process': process,
                         'protocol': 'hls',
                         'rtsp_url': source_url,
                         'stream_dir': stream_dir,
                         'camera_name': camera_name,
+                        'camera_serial': camera_serial,
                         'camera_type': camera_type,
+                        'resolution': resolution,
                         'start_time': time.time(),
                         'playlist_path': playlist_path,
-                        'status': 'active' 
-                        
+                        'status': 'active'
+
                     }
-                
+
                 # Wait for playlist (outside lock)
-                self._wait_for_playlist(camera_serial)
-                
-                # Start watchdog
-                self._start_watchdog(camera_serial)
-                
-                logger.info(f"Started stream for {camera_name}")
-                return self.get_stream_url(camera_serial)
-        
+                self._wait_for_playlist(stream_key)
+
+                # Start watchdog (sub streams only)
+                if resolution == 'sub':
+                    self._start_watchdog(stream_key)
+
+                logger.info(f"Started stream for {camera_name} ({resolution})")
+                return self.get_stream_url(stream_key)
+
         except Exception as e:
             # CRITICAL: Clean up the reservation slot on failure
             logger.error(f"❌ Failed to start stream for {camera_name}: {e}")
             print(traceback.print_exc())
-            
+
             # Remove the 'starting' reservation
             with self._streams_lock:
-                if camera_serial in self.active_streams:
-                    entry = self.active_streams.get(camera_serial, {})
+                if stream_key in self.active_streams:
+                    entry = self.active_streams.get(stream_key, {})
                     if entry.get('status') == 'starting':
-                        logger.warning(f"Removing failed 'starting' slot for {camera_name}")
-                        self.active_streams.pop(camera_serial, None)
-            
+                        logger.warning(f"Removing failed 'starting' slot for {stream_key}")
+                        self.active_streams.pop(stream_key, None)
+
             return None
         
     def _start_ffmpeg(self, rtsp_url: str, playlist_path: Path,

@@ -395,6 +395,38 @@ export class MultiStreamManager {
             // Save preference to localStorage
             this.savePTZPreference(cameraId, !isVisible);
         });
+
+        // Stream controls toggle handler (start/stop/refresh buttons)
+        this.$container.on('click', '.stream-controls-toggle-btn', (e) => {
+            e.stopPropagation();
+            const $button = $(e.currentTarget);
+            const $streamItem = $button.closest('.stream-item');
+            const $streamControls = $streamItem.find('.stream-controls');
+            const cameraId = $streamItem.data('camera-serial');
+
+            if (!$streamControls.length) {
+                console.log('[StreamControls] No stream controls found for this camera');
+                return;
+            }
+
+            // Toggle stream controls visibility
+            const isVisible = $streamControls.hasClass('stream-controls-visible');
+
+            if (isVisible) {
+                // Hide stream controls
+                $streamControls.removeClass('stream-controls-visible');
+                $button.removeClass('controls-active');
+                console.log(`[StreamControls] ${cameraId}: Controls hidden`);
+            } else {
+                // Show stream controls
+                $streamControls.addClass('stream-controls-visible');
+                $button.addClass('controls-active');
+                console.log(`[StreamControls] ${cameraId}: Controls shown`);
+            }
+
+            // Save preference to localStorage
+            this.saveStreamControlsPreference(cameraId, !isVisible);
+        });
     }
 
     /**
@@ -436,6 +468,31 @@ export class MultiStreamManager {
     }
 
     /**
+     * Save stream controls visibility preference to localStorage
+     */
+    saveStreamControlsPreference(cameraId, visible) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('cameraStreamControlsPreferences') || '{}');
+            prefs[cameraId] = visible;
+            localStorage.setItem('cameraStreamControlsPreferences', JSON.stringify(prefs));
+        } catch (e) {
+            console.warn('[StreamControls] Failed to save preference:', e);
+        }
+    }
+
+    /**
+     * Get stream controls visibility preference from localStorage
+     */
+    getStreamControlsPreference(cameraId) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('cameraStreamControlsPreferences') || '{}');
+            return prefs[cameraId] || false;  // Default to hidden
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
      * Get audio preference from localStorage
      */
     getAudioPreference(cameraId) {
@@ -466,6 +523,28 @@ export class MultiStreamManager {
         } else {
             $ptzControls.removeClass('ptz-visible');
             $ptzToggleBtn.removeClass('ptz-active');
+        }
+    }
+
+    /**
+     * Apply saved stream controls visibility preference
+     */
+    applyStreamControlsPreference(cameraId, $streamItem) {
+        const visible = this.getStreamControlsPreference(cameraId);
+        const $streamControls = $streamItem.find('.stream-controls');
+        const $toggleBtn = $streamItem.find('.stream-controls-toggle-btn');
+
+        if (!$streamControls.length || !$toggleBtn.length) {
+            return;  // No stream controls for this camera
+        }
+
+        if (visible) {
+            $streamControls.addClass('stream-controls-visible');
+            $toggleBtn.addClass('controls-active');
+            console.log(`[StreamControls] ${cameraId}: Restored visible state from preferences`);
+        } else {
+            $streamControls.removeClass('stream-controls-visible');
+            $toggleBtn.removeClass('controls-active');
         }
     }
 
@@ -561,6 +640,9 @@ export class MultiStreamManager {
 
                 // Apply saved PTZ visibility preference
                 this.applyPTZPreference(cameraId, $streamItem);
+
+                // Apply saved stream controls visibility preference
+                this.applyStreamControlsPreference(cameraId, $streamItem);
 
                 // Attach health monitor (refactored)
                 this.attachHealthMonitor(cameraId, $streamItem, streamType);

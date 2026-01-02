@@ -14,13 +14,13 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 07:45 EST*
+*Last updated: January 2, 2026 03:18 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 2, 2026 (02:30-02:59 EST)
+## Current Session: January 2, 2026 (02:30-03:18 EST)
 
 ### Branch: `sub_main_stream_switching_JAN_2_2026_a`
 
@@ -200,17 +200,48 @@ Completed in earlier part of session:
 
 ---
 
+## Implementation Complete
+
+### Backend
+
+1. **`streaming/ffmpeg_params.py`** - Added `build_ll_hls_dual_output_publish_params()`
+   - Single FFmpeg produces TWO outputs from one camera connection
+   - Sub stream: transcoded, scaled per cameras.json `rtsp_output.vf` settings
+   - Main stream: passthrough (`-c:v copy`) for full resolution
+
+2. **All LL_HLS handlers updated** to use dual output:
+   - `streaming/handlers/reolink_stream_handler.py`
+   - `streaming/handlers/eufy_stream_handler.py`
+   - `streaming/handlers/sv3c_stream_handler.py`
+   - `streaming/handlers/unifi_stream_handler.py`
+
+3. **`streaming/stream_manager.py`** - Smart main stream detection
+   - For LL_HLS/NEOLINK: if sub stream running and main requested → return main URL
+   - No new FFmpeg process needed (dual-output already publishing both)
+
+4. **`update_mediamtx_paths.sh`** - Generates both paths:
+   - `/camera_serial` (sub)
+   - `/camera_serial_main` (main)
+
+### Frontend
+
+1. **`static/js/streaming/stream.js`**
+   - `openFullscreen()`: Switch to main stream for LL_HLS/NEOLINK cameras
+   - `closeFullscreen()`: Switch back to sub stream on exit
+   - Track `switched-to-main` flag to know when to switch back
+
+---
+
 ## Pending Tasks
 
-1. **Frontend stream switching** (in progress)
-   - Update `openFullscreen()` to stop sub, start main
-   - Update fullscreen exit handler to stop main, start sub
-   - Add loading state during stream switch
+1. **Audio support** - User explicitly requested this as next feature
 
-2. **Audio support** (after stream switching)
-   - User explicitly requested this as next feature
+2. **Optional future**: Rename `stream_type` to `protocol` in cameras.json (deferred)
 
-3. **Optional future**: Rename `stream_type` to `protocol` in cameras.json (deferred)
+3. **Testing needed**: Verify dual-output FFmpeg works in practice
+   - Run `./update_mediamtx_paths.sh` to create both paths in MediaMTX
+   - Restart NVR with `startnvr`
+   - Test fullscreen switching on LL_HLS/NEOLINK cameras
 
 ---
 
@@ -218,10 +249,15 @@ Completed in earlier part of session:
 
 | File | Change |
 |------|--------|
-| `streaming/stream_manager.py` | Renamed `stream_type` → `resolution`, added resolution param support |
-| `app.py` | Pass `resolution` parameter to `start_stream()` |
-| `static/js/streaming/hls-stream.js` | Moved latency badge from top-right to bottom-left |
-| `docs/README_project_history.md` | Added January 2 session documentation |
+| `streaming/ffmpeg_params.py` | Added `build_ll_hls_dual_output_publish_params()` |
+| `streaming/handlers/reolink_stream_handler.py` | Use dual-output for LL_HLS |
+| `streaming/handlers/eufy_stream_handler.py` | Use dual-output for LL_HLS |
+| `streaming/handlers/sv3c_stream_handler.py` | Use dual-output for LL_HLS |
+| `streaming/handlers/unifi_stream_handler.py` | Use dual-output for LL_HLS |
+| `streaming/stream_manager.py` | Smart main stream detection for dual-output |
+| `update_mediamtx_paths.sh` | Generate both sub and main paths |
+| `static/js/streaming/stream.js` | Fullscreen sub/main switching |
+| `static/js/streaming/hls-stream.js` | Latency badge position fix |
 | `docs/README_handoff.md` | This file |
 
 ---
@@ -229,8 +265,7 @@ Completed in earlier part of session:
 ## Commits
 
 - Branch: `sub_main_stream_switching_JAN_2_2026_a`
-- Backend changes committed
-- Frontend changes pending
+- All implementation committed and pushed
 
 ---
 

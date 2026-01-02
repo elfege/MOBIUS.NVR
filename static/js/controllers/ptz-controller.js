@@ -244,19 +244,24 @@ export class PTZController {
      */
     addDragHandle($streamItem) {
         const $ptzControls = $streamItem.find('.ptz-controls');
+        const cameraSerial = $streamItem.data('camera-serial');
+        console.log('[PTZ] addDragHandle for', cameraSerial, '- ptz-controls found:', $ptzControls.length);
+
         if ($ptzControls.length && !$ptzControls.find('.ptz-drag-handle').length) {
             // Mark as having been in fullscreen (for cleanup later)
             $streamItem.data('had-fullscreen', true);
 
             // Add drag handle at the top
             $ptzControls.prepend('<div class="ptz-drag-handle"></div>');
-            console.log('[PTZ] Added drag handle for fullscreen, ptz-controls found:', $ptzControls.length);
+            console.log('[PTZ] Added drag handle, current display:', $ptzControls.css('display'));
 
             // Restore saved position
             this.restorePTZPosition($ptzControls, $streamItem);
+        } else if (!$ptzControls.length) {
+            console.log('[PTZ] NO PTZ CONTROLS FOUND for camera:', cameraSerial);
+            console.log('[PTZ] Stream item children:', $streamItem.children().map((i, el) => el.className).get());
         } else {
-            console.log('[PTZ] addDragHandle: ptz-controls length:', $ptzControls.length,
-                        'already has handle:', $ptzControls.find('.ptz-drag-handle').length > 0);
+            console.log('[PTZ] addDragHandle: already has handle');
         }
     }
 

@@ -416,6 +416,17 @@ export class PTZController {
         $(document).on('change', '.ptz-preset-select', async (event) => {
             const presetToken = $(event.currentTarget).val();
             if (presetToken && presetToken !== '') {
+                // Get camera info from parent stream-item
+                const $streamItem = $(event.currentTarget).closest('.stream-item');
+                const serial = $streamItem.data('camera-serial');
+                const name = $streamItem.data('camera-name');
+
+                // Set current camera if not already set
+                if (serial && serial !== this.currentCamera?.serial) {
+                    this.setCurrentCamera(serial, name);
+                    this.setBridgeReady(true);
+                }
+
                 const presetName = $(event.currentTarget).find('option:selected').text();
                 await this.gotoPreset(presetToken, presetName);
                 // Reset dropdown

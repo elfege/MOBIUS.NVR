@@ -762,6 +762,47 @@ class StreamManager:
         
         return True
     
+    def _classify_ffmpeg_exit(self, stderr_log_path: Optional[str], exit_code: int) -> str:
+        """
+        Classify FFmpeg exit reason by analyzing stderr log.
+
+        Args:
+            stderr_log_path: Path to FFmpeg stderr log file
+            exit_code: FFmpeg process exit code
+
+        Returns:
+            str: Exit reason classification:
+                - "buffer_management": Broken pipe due to unconsumed dual-output stream (expected)
+                - "connection_error": Network/camera connection issue
+                - "codec_error": Video/audio codec problem
+                - "unknown": Unknown error or unable to read log
+        """
+        if not stderr_log_path:
+            return "unknown"
+
+        try:
+            with open(stderr_log_path, 'r') as f:
+                stderr_content = f.read()
+
+            # Check for broken pipe errors (normal for dual-output buffer management)
+            if "broken pipe" in stderr_content.lower() or "epipe" in stderr_content.lower():
+                # Further check: is this from MediaMTX refusing the write?
+                if "rtsp://" in stderr_content and ("nvr-packager" in stderr_content or "mediamtx" in stderr_content):
+                    return "buffer_management"
+
+            # Other error classifications
+            if "connection" in stderr_content.lower() or "timeout" in stderr_content.lower():
+                return "connection_error"
+
+            if "codec" in stderr_content.lower() or "invalid" in stderr_content.lower():
+                return "codec_error"
+
+            return "unknown"
+
+        except Exception as e:
+            logger.debug(f"Could not read stderr log {stderr_log_path}: {e}")
+            return "unknown"
+
     def is_stream_healthy(self, camera_serial: str, caller: str) -> bool:
 
         info = self.active_streams.get(camera_serial)
@@ -776,7 +817,16 @@ class StreamManager:
 
         proc = info.get("process")
         if not proc or proc.poll() is not None:
-            print(f"[{caller}:is_stream_healthy] {camera_serial} not healthy (proc not None)")
+            # Check if this is a buffer management exit (broken pipe) vs actual error
+            if proc and proc.poll() is not None:
+                stderr_log_path = info.get('stderr_log')
+                exit_reason = self._classify_ffmpeg_exit(stderr_log_path, proc.returncode)
+                if exit_reason == "buffer_management":
+                    print(f"[{caller}:is_stream_healthy] {camera_serial} FFmpeg exit due to buffer management (normal for unconsumed dual-output streams)")
+                else:
+                    print(f"[{caller}:is_stream_healthy] {camera_serial} not healthy (FFmpeg exited: {exit_reason})")
+            else:
+                print(f"[{caller}:is_stream_healthy] {camera_serial} not healthy (no process)")
             return False
         playlist = info.get("playlist_path")
         stream_dir = info.get("stream_dir")

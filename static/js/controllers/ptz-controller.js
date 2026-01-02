@@ -9,7 +9,7 @@ export class PTZController {
         this.currentCamera = null;
         this.bridgeReady = false;
         this.isExecuting = false;
-        this.presets = [];
+        this.presets = {}; // Changed to object to store presets per camera: {serial: [presets]}
         this.ptzTouchActive = false;
         this.activeDirection = null;
         this.repeatInterval = null; // Legacy, kept for safety
@@ -30,6 +30,9 @@ export class PTZController {
 
         // Show preset dropdowns immediately (for debugging)
         this.updatePresetUI();
+
+        // Load presets for all PTZ cameras on page load
+        this.loadPresetsForAllCameras();
 
 
         console.log("#######################################")
@@ -421,6 +424,21 @@ export class PTZController {
         });
     }
 
+    loadPresetsForAllCameras() {
+        // Find all PTZ cameras on the page and load their presets
+        $('.stream-item').each((index, streamItem) => {
+            const $streamItem = $(streamItem);
+            const serial = $streamItem.data('camera-serial');
+            const $ptzControls = $streamItem.find('.ptz-controls');
+
+            // Only load presets for cameras that have PTZ controls
+            if (serial && $ptzControls.length > 0) {
+                console.log('[PTZ] Loading presets for:', serial);
+                this.loadPresets(serial);
+            }
+        });
+    }
+
     async loadPresets(cameraSerial) {
         try {
             console.log('[PTZ] Loading presets for camera:', cameraSerial);
@@ -432,17 +450,17 @@ export class PTZController {
             });
 
             if (response.success) {
-                this.presets = response.presets || [];
-                console.log('[PTZ] Loaded presets:', this.presets);
+                this.presets[cameraSerial] = response.presets || [];
+                console.log(`[PTZ] Loaded ${this.presets[cameraSerial].length} presets for ${cameraSerial}:`, this.presets[cameraSerial]);
                 this.updatePresetUI();
             } else {
                 console.error('[PTZ] Failed to load presets:', response.error);
-                this.presets = [];
+                this.presets[cameraSerial] = [];
                 this.updatePresetUI();
             }
         } catch (error) {
             console.error('[PTZ] Error loading presets:', error);
-            this.presets = [];
+            this.presets[cameraSerial] = [];
             this.updatePresetUI();
         }
     }
@@ -476,18 +494,27 @@ export class PTZController {
     }
 
     updatePresetUI() {
-        // Update preset dropdowns
-        $('.ptz-preset-select').each((index, select) => {
-            const $select = $(select);
-            $select.empty();
-            $select.append('<option value="">-- Select Preset --</option>');
+        // Update preset dropdowns - each camera gets its own presets
+        $('.stream-item').each((index, streamItem) => {
+            const $streamItem = $(streamItem);
+            const serial = $streamItem.data('camera-serial');
+            const $select = $streamItem.find('.ptz-preset-select');
 
-            this.presets.forEach(preset => {
-                $select.append(`<option value="${preset.token}">${preset.name}</option>`);
-            });
+            if ($select.length && serial) {
+                $select.empty();
+                $select.append('<option value="">-- Select Preset --</option>');
 
-            // Always show preset dropdown for debugging
-            $select.closest('.ptz-presets-container').show();
+                // Get presets for this specific camera
+                const cameraPresets = this.presets[serial] || [];
+                cameraPresets.forEach(preset => {
+                    $select.append(`<option value="${preset.token}">${preset.name}</option>`);
+                });
+
+                console.log(`[PTZ] Updated UI for ${serial}: ${cameraPresets.length} presets`);
+
+                // Always show preset dropdown for debugging
+                $select.closest('.ptz-presets-container').show();
+            }
         });
     }
 

@@ -102,9 +102,10 @@ class RecordingService:
         logger.debug(f"Camera {camera_id}: stream_type={stream_type}, recording_source={recording_source}")
         
         # Resolve source URL based on configuration
-        # LL_HLS/HLS cameras MUST use MediaMTX (they don't have direct RTSP access)
+        # LL_HLS/HLS/NEOLINK cameras MUST use MediaMTX (they don't have direct RTSP access)
+        # NEOLINK now routes through MediaMTX for LL-HLS packaging
         # This overrides any config setting since direct RTSP isn't possible for these cameras
-        if stream_type in ('LL_HLS', 'HLS', 'NEOLINK_LL_HLS'):
+        if stream_type in ('LL_HLS', 'HLS', 'NEOLINK'):
             if recording_source != 'mediamtx':
                 logger.debug(f"Overriding recording_source '{recording_source}' to 'mediamtx' for {camera_id} (stream_type={stream_type})")
             recording_source = 'mediamtx'

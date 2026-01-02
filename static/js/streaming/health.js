@@ -133,32 +133,66 @@ export class HealthMonitor {
     t.lastProgressAt = performance.now();
     t.warmupUntil = performance.now() + this.opts.warmupMs;
     t.hasReceivedFrames = false;  // Track if we've ever seen frames
+    t.lastCurrentTime = 0;  // Track video currentTime for more reliable stale detection
 
     console.log(`[Health] Attached monitor for ${serial}`);
 
     this.startTimer(serial, () => {
+      const now = performance.now();
+
       // Skip during warmup period
-      if (performance.now() < t.warmupUntil) return;
+      if (now < t.warmupUntil) return;
 
       // Wait for video element to have data before health checking
       // readyState: 0=nothing, 1=metadata, 2=current, 3=future, 4=enough
       if (t.el.readyState < 2) {
-        // Video not ready yet - extend warmup implicitly
-        console.log(`[Health] ${serial}: Video not ready (readyState=${t.el.readyState}), waiting...`);
+        // Video not ready yet - reset lastProgressAt to avoid false stale detection
+        t.lastProgressAt = now;
         return;
       }
 
+      // For HLS streams, check if video is actually playing (not paused/ended)
+      // A paused video shouldn't be marked unhealthy
+      if (t.el.paused || t.el.ended) {
+        t.lastProgressAt = now;  // Don't mark paused streams as stale
+        return;
+      }
+
+      // PRIMARY STALE CHECK: Use currentTime progression (most reliable)
+      // This works even for static/dark scenes where frame signatures don't change
+      const currentTime = t.el.currentTime || 0;
+      if (currentTime > t.lastCurrentTime) {
+        // Video is progressing - stream is healthy
+        t.lastCurrentTime = currentTime;
+        t.lastProgressAt = now;
+        t.hasReceivedFrames = true;
+        t.blanks = 0;  // Reset blanks counter on progress
+      }
+
+      // SECONDARY CHECK: Frame signature (backup for img elements)
       const sig = this.frameSignature(t.el);
       if (sig !== null && sig !== t.lastSig) {
         t.lastSig = sig;
-        t.lastProgressAt = performance.now();
+        t.lastProgressAt = now;
         t.blanks = 0;
+        t.hasReceivedFrames = true;
       }
 
-      const staleDuration = performance.now() - t.lastProgressAt;
+      // Only check for stale if we've ever received frames
+      // This prevents false stale detection during initial buffering
+      if (!t.hasReceivedFrames) {
+        // Haven't seen any frame changes yet - extend grace period
+        t.lastProgressAt = now;
+        return;
+      }
+
+      const staleDuration = now - t.lastProgressAt;
       if (staleDuration > this.opts.staleAfterMs) {
-        console.warn(`[Health] ${serial}: STALE - No new frames for ${(staleDuration / 1000).toFixed(1)}s`);
-        this.markUnhealthy(serial, 'stale', { staleDuration });
+        // Double-check: is currentTime REALLY stuck?
+        if (t.el.currentTime === t.lastCurrentTime && t.lastCurrentTime > 0) {
+          console.warn(`[Health] ${serial}: STALE - currentTime stuck at ${t.el.currentTime.toFixed(1)}s for ${(staleDuration / 1000).toFixed(1)}s`);
+          this.markUnhealthy(serial, 'stale', { staleDuration, currentTime: t.el.currentTime });
+        }
         return;
       }
 

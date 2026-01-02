@@ -347,26 +347,28 @@ def build_ll_hls_dual_output_publish_params(
 
         out: List[str] = []
 
-        # ========== OUTPUT 1: SUB STREAM (transcoded, low-res) ==========
+        # ========== FILTER_COMPLEX: Split video into sub and main streams ==========
 
-        # Build vf scale filter from config
-        if "vf" not in vid_sub and ("width" in vid_sub and "height" in vid_sub):
-            try:
-                w, h = int(vid_sub["width"]), int(vid_sub["height"])
-                vid_sub["vf"] = f"scale={w}:{h}"
-            except Exception:
-                pass
+        # Extract scale resolutions from config
+        sub_scale = vid_sub.get("vf", "scale=320:240")
+        main_scale = vid_main.get("vf", "scale=1280:720")
 
-        # Video encoding params for sub stream
+        # Build filter_complex to split input into two scaled outputs
+        # [0:v] split into [sub] and [main], then scale each independently
+        filter_complex = f"[0:v]split=2[vsub][vmain];[vsub]{sub_scale}[sub];[vmain]{main_scale}[main]"
+        out += ["-filter_complex", filter_complex]
+
+        # Video encoding params (excluding vf which is now in filter_complex)
         video_key_order = [
             "c:v", "preset", "tune", "profile:v", "pix_fmt",
             "r", "g", "keyint_min",
             "b:v", "maxrate", "bufsize",
-            "x264-params", "force_key_frames",
-            "vf"
+            "x264-params", "force_key_frames"
         ]
 
-        out += ["-map", "0:v:0"]  # Map video stream for sub output
+        # ========== OUTPUT 1: SUB STREAM (transcoded, low-res) ==========
+
+        out += ["-map", "[sub]"]  # Map filtered sub stream
         for k in video_key_order:
             if k in vid_sub and vid_sub[k] is not None:
                 out += [f"-{k}", str(vid_sub[k])]
@@ -402,17 +404,8 @@ def build_ll_hls_dual_output_publish_params(
             raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
 
         # ========== OUTPUT 2: MAIN STREAM (transcoded, high-res) ==========
-        # Now transcoded instead of copy to ensure GOP alignment and format compatibility
 
-        # Build vf scale filter from config
-        if "vf" not in vid_main and ("width" in vid_main and "height" in vid_main):
-            try:
-                w, h = int(vid_main["width"]), int(vid_main["height"])
-                vid_main["vf"] = f"scale={w}:{h}"
-            except Exception:
-                pass
-
-        out += ["-map", "0:v:0"]  # Map video stream for main output
+        out += ["-map", "[main]"]  # Map filtered main stream
         for k in video_key_order:
             if k in vid_main and vid_main[k] is not None:
                 out += [f"-{k}", str(vid_main[k])]

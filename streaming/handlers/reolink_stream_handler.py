@@ -154,16 +154,27 @@ class ReolinkStreamHandler(StreamHandler):
     def get_ffmpeg_input_params(self, camera_config: Dict) -> List[str]:
         """
         FFmpeg input parameters for Reolink cameras
-        Different params for RTSP vs RTMP
+        Different params for RTSP vs RTMP vs NEOLINK
         """
         protocol = camera_config.get('stream_type', 'HLS')
-        
+
         if protocol == 'RTMP':
             # RTMP input needs minimal params
             return [
                 '-timeout', '5000000',          # 5-second timeout
                 '-analyzeduration', '500000',   # Fast analysis for low latency
                 '-probesize', '500000'          # Smaller probe for low latency
+            ]
+        elif protocol == 'NEOLINK':
+            # Neolink bridge: use UDP transport to prevent buffer overflow
+            # Neolink's GStreamer RTSP server works better with UDP
+            return [
+                '-rtsp_transport', 'udp',       # UDP prevents buffer stalls
+                '-timeout', '5000000',
+                '-analyzeduration', '500000',   # Fast analysis
+                '-probesize', '500000',
+                '-fflags', 'nobuffer',          # Reduce buffering
+                '-flags', 'low_delay'           # Minimize latency
             ]
         else:
             # RTSP input needs transport and timeout params

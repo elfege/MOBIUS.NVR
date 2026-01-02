@@ -13525,6 +13525,7 @@ Two classes:
 **Problem:** Pre-buffered recordings were not being finalized - temp files existed with `live.ts` and `prebuf_000.ts` but no final MP4 was created.
 
 **Root Cause:** Two `cleanup_finished_recordings()` methods existed in `recording_service.py`:
+
 - Line 626: Correct version with pre-buffer finalization logic (`_finalize_prebuffered_recording`)
 - Line 792: Duplicate version without finalization logic
 
@@ -13567,10 +13568,12 @@ Python uses the last method definition, so the correct one was being shadowed.
 
 - **Problem:** Container running in UTC, host in EST - timestamps didn't match events
 - **Fix:** Added volume mounts for timezone sync:
+
   ```yaml
   - /etc/localtime:/etc/localtime:ro
   - /etc/timezone:/etc/timezone:ro
   ```
+
 - **File:** `docker-compose.yml:95-96`
 
 ### Segment Buffer Auto-Restart
@@ -13585,6 +13588,68 @@ Python uses the last method definition, so the correct one was being shadowed.
 - Recordings being finalized with pre-buffer segments:
   - Example: `T8416P0023370398_20260101_203221.mp4` (1.1 MB with 5s pre-buffer)
 - Other cameras also showing successful finalization
+
+---
+
+## January 2, 2026 (01:00-06:45 EST): Neolink Baichuan Protocol Integration
+
+### Problem
+
+Laundry Room camera (Reolink E1 Zoom, serial `95270001NT3KNA67`) had broken RTSP - camera's RTSP service hung, causing constant timeout/restart loops. Native Reolink app still worked via Baichuan protocol (port 9000).
+
+### Solution: Neolink Bridge
+
+Neolink translates Reolink's proprietary Baichuan protocol to standard RTSP, allowing cameras with broken RTSP to stream via their backup protocol.
+
+### Critical Issue: Buffer Overflow in v0.6.3.rc.x
+
+**Symptoms:**
+
+- Endless "Buffer full on audsrc/vidsrc pausing stream" errors
+- FFmpeg failed with "Operation not permitted" (exit code 8)
+- Clients couldn't consume stream despite config looking correct
+
+**Investigation:**
+
+- Tested various config options (buffer_size, buffer_duration, use_splash, idle_disconnect, push_notifications)
+- Added `[cameras.pause]` with `on_client = true` - TOML syntax required 2-space indentation
+- None of the config fixes resolved the buffer overflow
+
+**Root Cause:** Regression in Neolink v0.6.3.rc.x (GitHub Issue #349)
+
+**Fix:** Rollback to v0.6.2 Docker image
+
+```yaml
+neolink:
+  image: quantumentangledandy/neolink:v0.6.2
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `docker-compose.yml` | Changed neolink from building source to v0.6.2 image |
+| `config/neolink.toml` | Added Laundry camera with serial as name, pause config |
+| `config/cameras.json` | Changed Laundry `stream_type` from `LL_HLS` to `NEOLINK` |
+| `streaming/handlers/reolink_stream_handler.py` | Fixed `_build_NEOlink_url()` to use serial, added UDP transport params |
+| `update_neolink_config.sh` | Auto-generate neolink.toml from cameras.json |
+
+### Stream Flow
+
+```
+Camera (port 9000) → Neolink v0.6.2 (Baichuan→RTSP) → FFmpeg → HLS → Browser
+```
+
+### Key Takeaways
+
+1. **Neolink v0.6.3.rc.x has buffer overflow regression** - use v0.6.2
+2. **Baichuan protocol (port 9000)** works when RTSP (port 554) is unresponsive
+3. **TOML array sub-tables** require 2-space indentation for nested properties within `[[cameras]]`
+4. **FFmpeg needs UDP transport** for Neolink RTSP (`-rtsp_transport udp`)
+
+### Result
+
+Laundry Room camera streaming confirmed working via Neolink Baichuan bridge at 06:42 EST.
 
 ---
 {% endraw %}

@@ -613,9 +613,31 @@ Route all HLS-type streams through MediaMTX so recording and motion detection ta
 
 #### Testing Required
 
-- [ ] Restart nvr-edge container to load new nginx config
+- [x] Restart nvr-edge container to load new nginx config
 - [ ] Stop nvr container and verify custom 502 page appears
 - [ ] Verify auto-retry works and loads app when available
+
+#### Fix: 403 Forbidden Instead of Custom Error Page (06:15 EST)
+
+**Problem:** User got 403 Forbidden instead of custom 502 page.
+
+**Root Cause:** nginx wasn't intercepting backend errors.
+
+**Fix Applied:**
+
+1. Added `proxy_intercept_errors on;` - tells nginx to intercept HTTP errors from backend
+2. Added 403 to error_page directive - catches 403 errors too
+
+Updated nginx.conf:
+
+```nginx
+error_page 403 502 503 504 /502.html;
+location = /502.html {
+    root /usr/share/nginx/html;
+    internal;
+}
+proxy_intercept_errors on;
+```
 
 ---
 
@@ -664,28 +686,107 @@ Route all HLS-type streams through MediaMTX so recording and motion detection ta
 | `streaming/handlers/reolink_stream_handler.py` | Fixed Neolink URL building |
 | `update_neolink_config.sh` | NEW - auto-sync neolink.toml |
 
-### Neolink Buffer Issue (Ongoing)
+### Neolink Buffer Issue - Deep Investigation (01:00-02:00 EST)
 
-When FFmpeg connects to Neolink RTSP, buffers fill up quickly:
+**Root Issue:** GStreamer internal buffers in Neolink fill faster than RTSP client can consume.
 
+**Symptoms:**
 ```log
 Buffer full on audsrc pausing stream until client consumes frames
 Buffer full on vidsrc pausing stream until client consumes frames
-Failed to send to source: App source is closed
+Failed to send to source: App source is not linked
 ```
 
-This appears to be a known Neolink/GStreamer issue with buffer management. May need:
+**FFmpeg error:** `Operation not permitted` after RTSP PLAY command (exit code 8: "Invalid data found")
 
-- Disable audio in Neolink output
-- Tune buffer sizes
-- Use continuous FFmpeg consumer to drain buffers
+**Research Findings:**
+
+1. **TOML Syntax for Array Sub-tables:**
+   - `[cameras.pause]` within `[[cameras]]` requires 2-space indentation
+   - Without indent, TOML creates top-level table instead of nested property
+   - Verified correct parsing with Python tomllib
+
+2. **Config Options Tested:**
+   ```toml
+   [[cameras]]
+   name = "95270001NT3KNA67"
+   buffer_size = 10           # Frames (reduced from 100)
+   buffer_duration = 500      # Milliseconds
+   use_splash = true          # Visual feedback when paused
+   idle_disconnect = true     # Disconnect after 30s inactivity
+   push_notifications = false # Reduce traffic
+
+     [cameras.pause]
+     on_client = true         # Pause when no RTSP client
+     timeout = 2.0            # Seconds before pausing
+   ```
+
+3. **Issue Persists Despite Correct Config:**
+   - `on_client = true` SHOULD prevent streaming until client connects
+   - Buffer overflow occurs THE MOMENT a client connects
+   - GStreamer starts receiving from camera faster than RTSP handshake completes
+   - Data arrives before client is ready to consume
+
+4. **VLC Test from Windows:** Partial success - connected but showed "stream not ready"
+
+5. **Frigate Users' Solution:** Use UDP transport preset (`preset-rtsp-udp`)
+   - Source: https://github.com/blakeblackshear/frigate/discussions/20612
+
+**Files Updated:**
+- `config/neolink.toml` - Added all config options above
+- `update_neolink_config.sh` - Updated template with detailed TOML syntax comments
+
+### SOLUTION FOUND: Rollback to v0.6.2 (02:35 EST)
+
+**Root Cause Confirmed:** Buffer overflow is a **regression in v0.6.3.rc.x**
+
+- GitHub Issue: https://github.com/QuantumEntangledAndy/neolink/issues/349
+- Multiple users confirm v0.6.2 works correctly
+
+**Fix Applied:**
+
+```yaml
+# docker-compose.yml - neolink service
+neolink:
+  # Use v0.6.2 - v0.6.3.rc.x has buffer overflow regression
+  image: quantumentangledandy/neolink:v0.6.2
+```
+
+**Result:** ✅ Buffer overflow FIXED!
+
+- v0.6.2 shows correct behavior: `Activating Client` → `Pausing Client`
+- No buffer overflow spam
+- FFprobe from NVR container connects successfully
+- Stream properly pauses when client disconnects
 
 ### Testing Required
 
-- [ ] Full NVR restart to test Neolink integration end-to-end
-- [ ] Verify Laundry camera streams via Baichuan → Neolink → MediaMTX → HLS
+- [x] Switch to v0.6.2 Docker image
+- [x] FFprobe test from NVR container - WORKS
+- [x] **Full NVR UI test - STREAM WORKS!** (06:42 EST)
+- [ ] Test VLC from Windows: `rtsp://192.168.10.20:8554/95270001NT3KNA67/sub`
 - [ ] Add update_neolink_config.sh to start.sh
+
+### Final Result (06:42 EST)
+
+**Laundry Room camera streaming via Neolink Baichuan bridge - CONFIRMED WORKING!**
+
+Full chain verified:
+```
+E1 Zoom Camera (port 9000) → Neolink v0.6.2 (RTSP) → NVR StreamManager → MediaMTX → HLS → Browser
+```
+
+Neolink logs show proper client lifecycle:
+```log
+[INFO] 95270001NT3KNA67: Activating Client   # When browser requests stream
+[INFO] 95270001NT3KNA67: Pausing Client      # When browser closes/navigates away
+```
+
+**Key Takeaways:**
+- Neolink v0.6.3.rc.x has buffer overflow regression - use v0.6.2
+- Baichuan protocol (port 9000) works when RTSP (port 554) is unresponsive
+- TOML array sub-tables require 2-space indentation for nested properties
 
 ---
 
-*Last updated: January 2, 2026 06:00 EST*
+*Last updated: January 2, 2026 06:42 EST*

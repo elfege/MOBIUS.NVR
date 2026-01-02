@@ -7,11 +7,11 @@ export class ConnectionMonitor {
     constructor() {
         this.checkInterval = null;
         this.failedChecks = 0;
-        this.maxFailedChecks = 3; // Fail after 3 consecutive failures
-        this.checkIntervalMs = 10000; // Check every 10 seconds
+        this.maxFailedChecks = 2; // Fail after 2 consecutive failures (faster detection)
+        this.checkIntervalMs = 5000; // Check every 5 seconds (more frequent)
         this.isMonitoring = false;
 
-        console.log('[ConnectionMonitor] Initialized');
+        console.log('[ConnectionMonitor] Initialized - will check health every', this.checkIntervalMs / 1000, 'seconds');
     }
 
     /**
@@ -54,6 +54,9 @@ export class ConnectionMonitor {
      * Perform a health check against the server
      */
     async performHealthCheck() {
+        const checkStartTime = Date.now();
+        console.log(`[ConnectionMonitor] ⏱️ Performing health check at ${new Date().toISOString()}`);
+
         try {
             const response = await fetch('/api/health', {
                 method: 'GET',
@@ -61,24 +64,36 @@ export class ConnectionMonitor {
                 signal: AbortSignal.timeout(5000) // 5 second timeout
             });
 
+            const latency = Date.now() - checkStartTime;
+            console.log(`[ConnectionMonitor] ✅ Health check completed in ${latency}ms - Status: ${response.status}`);
+
             if (response.ok) {
                 // Server is healthy, reset failure count
                 if (this.failedChecks > 0) {
-                    console.log('[ConnectionMonitor] Server recovered');
+                    console.log('[ConnectionMonitor] 🎉 Server recovered after', this.failedChecks, 'failed checks');
                 }
                 this.failedChecks = 0;
             } else if (response.status === 503) {
                 // Server is shutting down - immediate redirect
-                const data = await response.json();
-                if (data.status === 'shutting_down') {
-                    console.warn('[ConnectionMonitor] Server is shutting down, redirecting immediately');
-                    this.redirectToReloadingPage();
-                    return;
+                console.warn('[ConnectionMonitor] ⚠️ Server returned 503 - parsing response...');
+                try {
+                    const data = await response.json();
+                    console.log('[ConnectionMonitor] 📥 Shutdown response data:', data);
+                    if (data.status === 'shutting_down') {
+                        console.error('[ConnectionMonitor] 🛑 SERVER IS SHUTTING DOWN - REDIRECTING IMMEDIATELY');
+                        this.redirectToReloadingPage();
+                        return;
+                    }
+                } catch (jsonError) {
+                    console.error('[ConnectionMonitor] ❌ Failed to parse 503 response JSON:', jsonError);
+                    this.handleFailedCheck(`HTTP 503 (parse error: ${jsonError.message})`);
                 }
             } else {
                 this.handleFailedCheck(`HTTP ${response.status}`);
             }
         } catch (error) {
+            const latency = Date.now() - checkStartTime;
+            console.error(`[ConnectionMonitor] ❌ Health check FAILED after ${latency}ms:`, error.name, error.message);
             this.handleFailedCheck(error.message);
         }
     }
@@ -88,11 +103,14 @@ export class ConnectionMonitor {
      */
     handleFailedCheck(reason) {
         this.failedChecks++;
-        console.warn(`[ConnectionMonitor] Health check failed (${this.failedChecks}/${this.maxFailedChecks}): ${reason}`);
+        console.warn(`[ConnectionMonitor] ⚠️ Health check FAILED (${this.failedChecks}/${this.maxFailedChecks}): ${reason}`);
 
         if (this.failedChecks >= this.maxFailedChecks) {
-            console.error('[ConnectionMonitor] Server appears to be down, redirecting to reloading page');
+            console.error(`[ConnectionMonitor] 🚨 THRESHOLD REACHED: ${this.failedChecks} consecutive failures`);
+            console.error('[ConnectionMonitor] 🔄 Server appears to be down - REDIRECTING TO RELOADING PAGE');
             this.redirectToReloadingPage();
+        } else {
+            console.log(`[ConnectionMonitor] 🔔 Will redirect after ${this.maxFailedChecks - this.failedChecks} more failure(s)`);
         }
     }
 
@@ -100,12 +118,17 @@ export class ConnectionMonitor {
      * Redirect to the reloading page
      */
     redirectToReloadingPage() {
+        console.log('[ConnectionMonitor] 📍 Current URL:', window.location.href);
+        console.log('[ConnectionMonitor] 💾 Saving return URL to localStorage');
+
         // Stop monitoring to prevent multiple redirects
         this.stop();
 
         // Store current URL so we can return to it after reconnection
         localStorage.setItem('nvr_return_url', window.location.href);
         localStorage.setItem('nvr_reconnect_attempt', '1');
+
+        console.log('[ConnectionMonitor] 🔀 Redirecting to /nginx/reloading.html');
 
         // Redirect to reloading page
         window.location.href = '/nginx/reloading.html';
@@ -118,31 +141,46 @@ export class ConnectionMonitor {
     setupFetchInterceptor() {
         // Track consecutive fetch errors
         let consecutiveErrors = 0;
-        const errorThreshold = 5; // Redirect after 5 consecutive fetch errors
+        const errorThreshold = 3; // Redirect after 3 consecutive fetch errors (reduced for faster detection)
+
+        console.log('[ConnectionMonitor] 🔌 Installing fetch interceptor (will trigger after', errorThreshold, 'consecutive errors)');
 
         // Store original fetch
         const originalFetch = window.fetch;
 
         // Override fetch
         window.fetch = async (...args) => {
+            const url = args[0];
             try {
+                const fetchStartTime = Date.now();
                 const response = await originalFetch(...args);
+                const fetchLatency = Date.now() - fetchStartTime;
 
                 // Reset error counter on successful response
                 if (response.ok) {
+                    if (consecutiveErrors > 0) {
+                        console.log(`[ConnectionMonitor] 🔌 Fetch to ${url} succeeded (${fetchLatency}ms) - resetting error count from ${consecutiveErrors}`);
+                    }
                     consecutiveErrors = 0;
+                } else {
+                    console.warn(`[ConnectionMonitor] 🔌 Fetch to ${url} returned ${response.status} (${fetchLatency}ms)`);
                 }
 
                 return response;
             } catch (error) {
+                console.error(`[ConnectionMonitor] 🔌 Fetch to ${url} FAILED:`, error.name, error.message);
+
                 // Check if it's a network error (not a programmer error)
-                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                if (error.name === 'TypeError' || error.message.includes('fetch') || error.message.includes('network')) {
                     consecutiveErrors++;
-                    console.warn(`[ConnectionMonitor] Fetch error detected (${consecutiveErrors}/${errorThreshold}):`, error.message);
+                    console.error(`[ConnectionMonitor] 🔌 Network error detected (${consecutiveErrors}/${errorThreshold})`);
 
                     if (consecutiveErrors >= errorThreshold) {
-                        console.error('[ConnectionMonitor] Multiple fetch failures detected, redirecting');
+                        console.error(`[ConnectionMonitor] 🚨 FETCH ERROR THRESHOLD REACHED: ${consecutiveErrors} consecutive failures`);
+                        console.error('[ConnectionMonitor] 🔄 Multiple fetch failures - REDIRECTING TO RELOADING PAGE');
                         this.redirectToReloadingPage();
+                    } else {
+                        console.log(`[ConnectionMonitor] 🔔 Will redirect after ${errorThreshold - consecutiveErrors} more fetch error(s)`);
                     }
                 }
 
@@ -151,7 +189,7 @@ export class ConnectionMonitor {
             }
         };
 
-        console.log('[ConnectionMonitor] Fetch interceptor installed');
+        console.log('[ConnectionMonitor] ✅ Fetch interceptor installed successfully');
     }
 
     /**

@@ -306,11 +306,16 @@ def build_ll_hls_dual_output_publish_params(
 ) -> List[str]:
     """
     Returns OUTPUT flags for DUAL publishing to MediaMTX:
-    - Sub stream: transcoded (scaled per config) → /camera_serial
-    - Main stream: passthrough (copy) → /camera_serial_main
+    - Sub stream: transcoded (320x240, low bitrate) → /camera_serial
+    - Main stream: transcoded (1280x720, high bitrate) → /camera_serial_main
 
     This allows clients to receive low-res for grid view and high-res for fullscreen
     from a SINGLE FFmpeg process with ONE camera connection.
+
+    Both streams are now transcoded (not passthrough) to ensure:
+    - Correct GOP alignment with MediaMTX 1-second segments
+    - Format compatibility (fixes broken pipe issues)
+    - Consistent 1-2 second latency in both grid and fullscreen
 
     Args:
         camera_config: Full camera configuration from cameras.json
@@ -326,7 +331,10 @@ def build_ll_hls_dual_output_publish_params(
             raise Exception(f"Missing ll_hls config for {camera_name}")
 
         pub = (ll.get("publisher") or {}).copy()
-        vid = (ll.get("video") or {}).copy()
+        # Read from video_sub and video_main (new structure)
+        # Fallback to old "video" key for backward compatibility
+        vid_sub = (ll.get("video_sub") or ll.get("video") or {}).copy()
+        vid_main = (ll.get("video_main") or {}).copy()
         aud = (ll.get("audio") or {}).copy()
 
         # ----- Publisher settings -----
@@ -339,14 +347,13 @@ def build_ll_hls_dual_output_publish_params(
 
         out: List[str] = []
 
-        # ========== OUTPUT 1: SUB STREAM (transcoded, scaled) ==========
-        # Use -map 0:v to explicitly map video stream for this output
+        # ========== OUTPUT 1: SUB STREAM (transcoded, low-res) ==========
 
         # Build vf scale filter from config
-        if "vf" not in vid and ("width" in vid and "height" in vid):
+        if "vf" not in vid_sub and ("width" in vid_sub and "height" in vid_sub):
             try:
-                w, h = int(vid["width"]), int(vid["height"])
-                vid["vf"] = f"scale={w}:{h}"
+                w, h = int(vid_sub["width"]), int(vid_sub["height"])
+                vid_sub["vf"] = f"scale={w}:{h}"
             except Exception:
                 pass
 
@@ -361,8 +368,8 @@ def build_ll_hls_dual_output_publish_params(
 
         out += ["-map", "0:v:0"]  # Map video stream for sub output
         for k in video_key_order:
-            if k in vid and vid[k] is not None:
-                out += [f"-{k}", str(vid[k])]
+            if k in vid_sub and vid_sub[k] is not None:
+                out += [f"-{k}", str(vid_sub[k])]
 
         # Audio for sub stream
         if bool(aud.get("enabled", False)):
@@ -394,16 +401,34 @@ def build_ll_hls_dual_output_publish_params(
         else:
             raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
 
-        # ========== OUTPUT 2: MAIN STREAM (passthrough, no transcode) ==========
-        # Use -c:v copy for passthrough - no scaling, no re-encoding
+        # ========== OUTPUT 2: MAIN STREAM (transcoded, high-res) ==========
+        # Now transcoded instead of copy to ensure GOP alignment and format compatibility
+
+        # Build vf scale filter from config
+        if "vf" not in vid_main and ("width" in vid_main and "height" in vid_main):
+            try:
+                w, h = int(vid_main["width"]), int(vid_main["height"])
+                vid_main["vf"] = f"scale={w}:{h}"
+            except Exception:
+                pass
 
         out += ["-map", "0:v:0"]  # Map video stream for main output
-        out += ["-c:v", "copy"]   # Passthrough video
+        for k in video_key_order:
+            if k in vid_main and vid_main[k] is not None:
+                out += [f"-{k}", str(vid_main[k])]
 
-        # Audio for main stream (also passthrough if enabled)
+        # Audio for main stream
         if bool(aud.get("enabled", False)):
             out += ["-map", "0:a:0?"]  # Map audio if present
-            out += ["-c:a", "copy"]    # Passthrough audio too
+            c_a = aud.get("c:a", aud.get("codec", None))
+            b_a = aud.get("b:a", aud.get("bitrate", None))
+            ar = aud.get("ar", aud.get("rate", None))
+            ac = aud.get("ac", aud.get("channels", None))
+            if c_a: out += ["-c:a", str(c_a)]
+            if b_a: out += ["-b:a", str(b_a)]
+            if ar: out += ["-ar", str(ar)]
+            if ac is not None: out += ["-ac", str(ac)]
+            out += ["-async", "1"]
         else:
             out += ["-an"]
 
@@ -420,7 +445,10 @@ def build_ll_hls_dual_output_publish_params(
             rtsp_transport = pub.get("rtsp_transport", "tcp")
             out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, main_sink]
 
-        logger.info(f"Built dual LL-HLS output for {camera_name}: sub→{path}, main→{main_path}")
+        # Extract resolutions for logging
+        sub_res = vid_sub.get('vf', 'unknown')
+        main_res = vid_main.get('vf', 'unknown')
+        logger.info(f"Built dual LL-HLS output for {camera_name}: sub→{path} ({sub_res}), main→{main_path} ({main_res})")
 
         return out
 

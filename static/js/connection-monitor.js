@@ -115,9 +115,9 @@ export class ConnectionMonitor {
     }
 
     /**
-     * Redirect to the reloading page
+     * Redirect to the reloading page (or show modal if completely offline)
      */
-    redirectToReloadingPage() {
+    async redirectToReloadingPage() {
         console.log('[ConnectionMonitor] 📍 Current URL:', window.location.href);
         console.log('[ConnectionMonitor] 💾 Saving return URL to localStorage');
 
@@ -128,10 +128,132 @@ export class ConnectionMonitor {
         localStorage.setItem('nvr_return_url', window.location.href);
         localStorage.setItem('nvr_reconnect_attempt', '1');
 
-        console.log('[ConnectionMonitor] 🔀 Redirecting to /reloading');
+        // Try to reach the reloading page first
+        console.log('[ConnectionMonitor] 🔍 Checking if /reloading is accessible...');
+        try {
+            const response = await fetch('/reloading', {
+                method: 'HEAD',
+                cache: 'no-store',
+                signal: AbortSignal.timeout(2000)
+            });
 
-        // Redirect to reloading page
-        window.location.href = '/reloading';
+            if (response.ok) {
+                console.log('[ConnectionMonitor] ✅ /reloading is accessible, redirecting...');
+                window.location.href = '/reloading';
+            } else {
+                console.warn('[ConnectionMonitor] ⚠️ /reloading returned', response.status, '- showing modal instead');
+                this.showOfflineModal();
+            }
+        } catch (error) {
+            console.error('[ConnectionMonitor] ❌ Cannot reach /reloading:', error.message);
+            console.log('[ConnectionMonitor] 📋 Showing offline modal instead');
+            this.showOfflineModal();
+        }
+    }
+
+    /**
+     * Show an inline modal when server is completely unreachable
+     */
+    showOfflineModal() {
+        console.log('[ConnectionMonitor] 🎨 Creating offline modal');
+
+        // Create modal overlay
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999999;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+
+        // Create modal content
+        modal.innerHTML = `
+            <div style="
+                background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                padding: 3rem;
+                border-radius: 12px;
+                text-align: center;
+                max-width: 500px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            ">
+                <div style="
+                    width: 60px;
+                    height: 60px;
+                    border: 4px solid rgba(255,255,255,0.1);
+                    border-top-color: #ff9800;
+                    border-radius: 50%;
+                    animation: spin 1s linear infinite;
+                    margin: 0 auto 1.5rem;
+                "></div>
+                <h1 style="
+                    font-size: 1.5rem;
+                    font-weight: 500;
+                    margin-bottom: 0.5rem;
+                    color: #fff;
+                ">Server Unavailable</h1>
+                <p style="
+                    color: #ffb74d;
+                    font-style: italic;
+                    margin-bottom: 1rem;
+                ">Connection to NVR server lost</p>
+                <p style="
+                    color: #888;
+                    margin-bottom: 1.5rem;
+                ">Attempting to reconnect...</p>
+                <button onclick="location.reload()" style="
+                    background: transparent;
+                    border: 1px solid #ff9800;
+                    color: #ff9800;
+                    padding: 0.5rem 1.5rem;
+                    border-radius: 20px;
+                    cursor: pointer;
+                    font-size: 0.9rem;
+                    transition: all 0.2s;
+                " onmouseover="this.style.background='#ff9800'; this.style.color='#fff';"
+                   onmouseout="this.style.background='transparent'; this.style.color='#ff9800';">
+                    Retry Now
+                </button>
+            </div>
+            <style>
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            </style>
+        `;
+
+        document.body.appendChild(modal);
+        console.log('[ConnectionMonitor] ✅ Offline modal displayed');
+
+        // Retry every 5 seconds
+        const retryInterval = setInterval(async () => {
+            console.log('[ConnectionMonitor] 🔄 Retrying connection...');
+            try {
+                const response = await fetch('/api/health', {
+                    method: 'GET',
+                    cache: 'no-store',
+                    signal: AbortSignal.timeout(3000)
+                });
+
+                if (response.ok) {
+                    console.log('[ConnectionMonitor] 🎉 Server is back online, reloading page');
+                    clearInterval(retryInterval);
+                    // Return to saved URL or reload current page
+                    const returnUrl = localStorage.getItem('nvr_return_url') || window.location.href;
+                    localStorage.removeItem('nvr_return_url');
+                    localStorage.removeItem('nvr_reconnect_attempt');
+                    window.location.href = returnUrl;
+                }
+            } catch (error) {
+                console.log('[ConnectionMonitor] ⏳ Still offline, will retry in 5s');
+            }
+        }, 5000);
     }
 
     /**

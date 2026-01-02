@@ -3,8 +3,8 @@
    ============================================================================ */
 
 /* Control panel at bottom of each stream
-   - Initially hidden (opacity: 0, pointer-events: none)
-   - Appears on hover of parent .stream-item
+   - Hidden by default (display: none) - toggle with controls button
+   - Shows when .stream-controls-visible class is added
 */
 .stream-controls {
     position: absolute;
@@ -14,21 +14,16 @@
     padding: 0.75rem;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
 
-    /* Hidden by default but ALWAYS interactive */
-    opacity: 0;
-    pointer-events: auto;
-    /* Always enabled - buttons always work */
+    /* Hidden by default - toggle with button */
+    display: none;
 
-    transition: opacity 0.3s ease;
-    /* Smooth fade in/out */
     z-index: 20;
     /* Above overlay */
 }
 
-/* Show controls when hovering over stream item OR controls themselves */
-.stream-item:hover .stream-controls,
-.stream-controls:hover {
-    opacity: 1;
+/* Show controls when toggled on (via JavaScript) */
+.stream-controls.stream-controls-visible {
+    display: block;
 }
 
 /* IMPORTANT: Keep controls visible briefly after hover ends

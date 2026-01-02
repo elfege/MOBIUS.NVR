@@ -800,6 +800,7 @@ Neolink logs show proper client lifecycle:
 ### Current Problem
 
 NEOLINK streams use legacy HLS path (FFmpeg writes segments directly). This means:
+
 1. High latency (3-4s) due to HLS segment duration
 2. Motion detection has no stream to tap
 3. Recording source unavailable
@@ -818,11 +819,13 @@ Camera:9000 → Neolink (RTSP) → MediaMTX (LL-HLS) → Browser
 ### Implementation
 
 Modify `stream_manager.py` to treat `NEOLINK` same as `LL_HLS`:
+
 - Add `NEOLINK` to the `LL_HLS` branch condition
 - Source URL comes from Neolink RTSP (`rtsp://neolink:8554/{serial}/sub`)
 - MediaMTX handles LL-HLS packaging
 
 Benefits:
+
 - Lower latency (~1s vs 3-4s)
 - Motion detection works
 - Recording works
@@ -832,4 +835,4 @@ Benefits:
 
 *Last updated: January 2, 2026 07:15 EST*
 
-Always read `CLAUDE.md` in case I updated it in between sessions. 
+Always read `CLAUDE.md` in case I updated it in between sessions.

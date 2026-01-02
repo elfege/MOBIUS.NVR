@@ -93,7 +93,7 @@ class RecordingService:
         if not camera:
             raise ValueError(f"Camera not found: {camera_id}")
         
-        stream_type = camera.get('stream_type', '').upper()
+        stream_type = (camera.get('stream_type') or '').upper()
         
         # Get recording configuration for this camera
         camera_cfg = self.config.get_camera_config(camera_id, stream_type)
@@ -102,12 +102,14 @@ class RecordingService:
         logger.debug(f"Camera {camera_id}: stream_type={stream_type}, recording_source={recording_source}")
         
         # Resolve source URL based on configuration
-        # For 'auto': use MediaMTX for all HLS-type streams, MJPEG uses capture service
-        if recording_source == 'auto':
-            if stream_type in ('LL_HLS', 'HLS', 'NEOLINK_LL_HLS'):
-                # All HLS streams publish to MediaMTX - tap RTSP output
-                recording_source = 'mediamtx'
-            elif stream_type == 'MJPEG':
+        # LL_HLS/HLS cameras MUST use MediaMTX (they don't have direct RTSP access)
+        # This overrides any config setting since direct RTSP isn't possible for these cameras
+        if stream_type in ('LL_HLS', 'HLS', 'NEOLINK_LL_HLS'):
+            if recording_source != 'mediamtx':
+                logger.debug(f"Overriding recording_source '{recording_source}' to 'mediamtx' for {camera_id} (stream_type={stream_type})")
+            recording_source = 'mediamtx'
+        elif recording_source == 'auto':
+            if stream_type == 'MJPEG':
                 # MJPEG cameras use dedicated capture service
                 recording_source = 'mjpeg_service'
             else:
@@ -786,39 +788,7 @@ class RecordingService:
                     })
             
             return active
-    
-    def cleanup_finished_recordings(self) -> int:
-        """
-        Clean up metadata for finished recording processes.
-        
-        Returns:
-            Number of finished recordings cleaned up
-        """
-        with self.recording_lock:
-            finished_ids = []
-            
-            for recording_id, metadata in self.active_recordings.items():
-                process = metadata.get('process')
-                
-                # Check if process has finished
-                if process and process.poll() is not None:
-                    finished_ids.append(recording_id)
-                    
-                    # Update metadata
-                    metadata['end_time'] = time.time()
-                    metadata['status'] = 'completed' if process.returncode == 0 else 'failed'
-                    
-                    # Update database
-                    self._update_recording_metadata(recording_id, metadata['status'])
-                    
-                    logger.info(f"Recording finished: {recording_id} (status: {metadata['status']})")
-            
-            # Remove from active recordings
-            for recording_id in finished_ids:
-                del self.active_recordings[recording_id]
-            
-            return len(finished_ids)
-    
+
     def _store_recording_metadata(self, recording_id: str, camera_id: str, recording_type: str, event_id: Optional[str] = None):
         """Store recording metadata in PostgreSQL via PostgREST."""
         try:

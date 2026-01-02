@@ -96,9 +96,17 @@ class SegmentBuffer:
             # strftime format for segment filenames with timestamp
             segment_pattern = str(self.buffer_path / "seg_%Y%m%d_%H%M%S.ts")
 
+            # Build base command with reconnect flags for stream resilience
+            # FFmpeg 7.1.3 supports full reconnect functionality
             cmd = [
                 'ffmpeg',
                 '-rtsp_transport', 'tcp',
+                # Reconnect flags for handling temporary stream disconnects
+                '-reconnect', '1',
+                '-reconnect_at_eof', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_on_network_error', '1',
+                '-reconnect_delay_max', '5',  # Max 5 seconds between reconnect attempts
                 '-i', self.source_url,
                 '-c', 'copy',  # Stream copy - no re-encoding for speed
                 '-f', 'segment',
@@ -345,9 +353,15 @@ class SegmentBuffer:
             # Build FFmpeg command (same as in start())
             segment_pattern = str(self.buffer_path / "seg_%Y%m%d_%H%M%S.ts")
 
+            # Include reconnect flags for stream resilience (FFmpeg 7.1.3+)
             cmd = [
                 'ffmpeg',
                 '-rtsp_transport', 'tcp',
+                '-reconnect', '1',
+                '-reconnect_at_eof', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_on_network_error', '1',
+                '-reconnect_delay_max', '5',
                 '-i', self.source_url,
                 '-c', 'copy',
                 '-f', 'segment',

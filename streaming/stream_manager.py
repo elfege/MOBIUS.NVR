@@ -268,7 +268,8 @@ class StreamManager:
 
                 cam = self.camera_repo.get_camera(camera_serial) if hasattr(self, 'camera_repo') else None
                 st  = (cam or {}).get('stream_type', 'HLS').upper()
-                if st == 'LL_HLS' or st == 'NEOLINK_LL_HLS':
+                # NEOLINK uses LL_HLS path through MediaMTX
+                if st in ('LL_HLS', 'NEOLINK'):
                     path = cam.get('packager_path') or camera_serial
                     return f"/hls/{path}/index.m3u8"
 
@@ -407,9 +408,9 @@ class StreamManager:
                 return f"/api/camera/{camera_serial}/flv"
             
             # ===== LL_HLS publisher path =====
-            # if "NEOLINK" then falls to HLS path further below. 
-            # if "NEOLINK_LL_HLS" then falls to this block.
-            if protocol == 'LL_HLS' or protocol == 'NEOLINK_LL_HLS':
+            # NEOLINK uses LL_HLS through MediaMTX for lower latency and
+            # motion detection support (MediaMTX provides RTSP output for tapping)
+            if protocol in ('LL_HLS', 'NEOLINK'):
                 # Ask the vendor handler to build the publish argv and the play URL
                 argv, play_url = handler._build_ll_hls_publish(camera_config=camera, rtsp_url=source_url)
 
@@ -476,8 +477,8 @@ class StreamManager:
             # ===== end LL_HLS branch =====
 
             else:
-                # NEOLINK FALLS TO THIS BLOCK as it uses the standard HLS path.
-                # HLS path
+                # Legacy HLS path (FFmpeg writes segments directly to disk)
+                # Used by cameras without MediaMTX integration
                 stream_dir = self.hls_dir / camera_serial
                 stream_dir.mkdir(exist_ok=True)
                 

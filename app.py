@@ -438,12 +438,17 @@ def streams_page():
     try:
         cameras = camera_repo.get_streaming_cameras()
         ui_health = _ui_health_from_env()
-        
+
         # Pass full camera configs (includes ui_health_monitor per camera)
         return render_template('streams.html', cameras=cameras, ui_health=ui_health)
     except Exception as e:
         print(f"Error loading streams page: {e}")
         return f"Error loading streams page: {e}", 500
+
+@app.route('/reloading')
+def reloading_page():
+    """Reconnection page shown when server is restarting"""
+    return render_template('reloading.html')
 
 # ===== Status Routes =====
 @app.route('/api/health')

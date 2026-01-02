@@ -8,6 +8,8 @@
     border-radius: 12px;
     padding: 15px;
     backdrop-filter: blur(10px);
+    display: flex;
+    flex-direction: column;
 }
 
 .fullscreen-ptz-controls .ptz-grid {

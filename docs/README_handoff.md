@@ -691,6 +691,7 @@ proxy_intercept_errors on;
 **Root Issue:** GStreamer internal buffers in Neolink fill faster than RTSP client can consume.
 
 **Symptoms:**
+
 ```log
 Buffer full on audsrc pausing stream until client consumes frames
 Buffer full on vidsrc pausing stream until client consumes frames
@@ -707,6 +708,7 @@ Failed to send to source: App source is not linked
    - Verified correct parsing with Python tomllib
 
 2. **Config Options Tested:**
+
    ```toml
    [[cameras]]
    name = "95270001NT3KNA67"
@@ -730,9 +732,10 @@ Failed to send to source: App source is not linked
 4. **VLC Test from Windows:** Partial success - connected but showed "stream not ready"
 
 5. **Frigate Users' Solution:** Use UDP transport preset (`preset-rtsp-udp`)
-   - Source: https://github.com/blakeblackshear/frigate/discussions/20612
+   - Source: <https://github.com/blakeblackshear/frigate/discussions/20612>
 
 **Files Updated:**
+
 - `config/neolink.toml` - Added all config options above
 - `update_neolink_config.sh` - Updated template with detailed TOML syntax comments
 
@@ -740,7 +743,7 @@ Failed to send to source: App source is not linked
 
 **Root Cause Confirmed:** Buffer overflow is a **regression in v0.6.3.rc.x**
 
-- GitHub Issue: https://github.com/QuantumEntangledAndy/neolink/issues/349
+- GitHub Issue: <https://github.com/QuantumEntangledAndy/neolink/issues/349>
 - Multiple users confirm v0.6.2 works correctly
 
 **Fix Applied:**
@@ -772,21 +775,61 @@ neolink:
 **Laundry Room camera streaming via Neolink Baichuan bridge - CONFIRMED WORKING!**
 
 Full chain verified:
+
 ```
 E1 Zoom Camera (port 9000) → Neolink v0.6.2 (RTSP) → NVR StreamManager → MediaMTX → HLS → Browser
 ```
 
 Neolink logs show proper client lifecycle:
+
 ```log
 [INFO] 95270001NT3KNA67: Activating Client   # When browser requests stream
 [INFO] 95270001NT3KNA67: Pausing Client      # When browser closes/navigates away
 ```
 
 **Key Takeaways:**
+
 - Neolink v0.6.3.rc.x has buffer overflow regression - use v0.6.2
 - Baichuan protocol (port 9000) works when RTSP (port 554) is unresponsive
 - TOML array sub-tables require 2-space indentation for nested properties
 
 ---
 
-*Last updated: January 2, 2026 06:42 EST*
+## Next Steps: NEOLINK → MediaMTX LL-HLS (07:15 EST)
+
+### Current Problem
+
+NEOLINK streams use legacy HLS path (FFmpeg writes segments directly). This means:
+1. High latency (3-4s) due to HLS segment duration
+2. Motion detection has no stream to tap
+3. Recording source unavailable
+
+### Planned Fix
+
+Route NEOLINK through MediaMTX LL-HLS path (same as other LL_HLS cameras):
+
+```
+Camera:9000 → Neolink (RTSP) → MediaMTX (LL-HLS) → Browser
+                                    ↓
+                            Motion detection taps here
+                            Recording taps here
+```
+
+### Implementation
+
+Modify `stream_manager.py` to treat `NEOLINK` same as `LL_HLS`:
+- Add `NEOLINK` to the `LL_HLS` branch condition
+- Source URL comes from Neolink RTSP (`rtsp://neolink:8554/{serial}/sub`)
+- MediaMTX handles LL-HLS packaging
+
+Benefits:
+- Lower latency (~1s vs 3-4s)
+- Motion detection works
+- Recording works
+- Single connection to Neolink
+
+---
+
+*Last updated: January 2, 2026 07:15 EST*
+
+Always read `CLAUDE.md` in case I updated it in between sessions. 

@@ -18,8 +18,9 @@
     pointer-events: none;
     /* Allows clicking through to video element */
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
+    justify-content: flex-start;  /* Keep title and status together on left */
+    align-items: center;
+    gap: 0.5rem;  /* Space between title and status */
     z-index: 10;
     /* Above video, below controls */
 }

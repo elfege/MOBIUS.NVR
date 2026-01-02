@@ -14,13 +14,13 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 03:44 EST*
+*Last updated: January 2, 2026 04:01 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 2, 2026 (02:30-03:35 EST)
+## Current Session: January 2, 2026 (02:30-04:01 EST)
 
 ### Branch: `sub_main_stream_switching_JAN_2_2026_a`
 
@@ -280,6 +280,32 @@ Audio was disabled in November 2025 due to `HLS bufferAppendError`. Investigatio
 | `static/css/components/stream-item.css` | Styles for audio button |
 | `static/js/streaming/stream.js` | Audio toggle handler + preference storage |
 | `static/js/settings/settings-ui.js` | Mute All / Unmute All buttons |
+
+---
+
+## UI Button Repositioning (03:50-04:00 EST)
+
+### Changes Made
+
+1. **Settings & Record buttons**: Moved from top-right to bottom-right
+   - No longer overlap with audio button
+   - Hidden by default, show on hover
+   - Record button stays visible when actively recording
+
+2. **Live/Status indicator**: Kept at top-left next to camera title
+   - Changed `.stream-overlay` from `justify-content: space-between` to `flex-start`
+   - Title and status now stay together on the left
+
+3. **Audio button**: Top-right, next to fullscreen button (unchanged)
+
+4. **Latency badge**: Bottom-left (unchanged from earlier fix)
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `static/css/components/recording-modal.css` | Buttons to bottom-right, hover behavior |
+| `static/css/components/stream-overlay.css` | Status indicator next to title |
 
 ---
 

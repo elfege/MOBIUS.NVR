@@ -12,6 +12,7 @@ import threading
 import logging
 import time
 import shutil
+import socket
 from pathlib import Path
 from typing import Dict, Optional, List
 from collections import deque
@@ -74,6 +75,40 @@ class SegmentBuffer:
 
         logger.info(f"SegmentBuffer initialized for {camera_name} ({camera_id}): "
                    f"max {max_buffer_seconds}s ({self.max_segments} segments)")
+
+        # Retry backoff settings
+        self.retry_delay = 5  # Initial retry delay
+        self.max_retry_delay = 60  # Max retry delay
+
+    def _check_mediamtx_path_ready(self, path: str, timeout: int = 2) -> bool:
+        """
+        Check if a MediaMTX path is ready and has an active publisher.
+
+        Uses ffprobe to quickly test if the path exists and has a stream.
+
+        Args:
+            path: MediaMTX path (e.g., "68d49398005cf203e400043f")
+            timeout: Timeout in seconds for the check
+
+        Returns:
+            True if path is ready, False otherwise
+        """
+        rtsp_url = f"rtsp://nvr-packager:8554/{path}"
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-rtsp_transport', 'tcp',
+            '-timeout', str(timeout * 1000000),  # microseconds
+            '-i', rtsp_url,
+            '-show_entries', 'stream=codec_type',
+            '-of', 'default=noprint_wrappers=1'
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout + 1, text=True)
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, Exception):
+            return False
 
     def start(self) -> bool:
         """
@@ -288,8 +323,24 @@ class SegmentBuffer:
                     exit_code = self.process.returncode
                     logger.warning(f"FFmpeg exited with code {exit_code} for {self.camera_name}, restarting...")
 
+                    # For MediaMTX sources (nvr-packager in URL), check if path is ready before restarting
+                    if 'nvr-packager' in self.source_url:
+                        # Extract path from URL (rtsp://nvr-packager:8554/PATH)
+                        path = self.source_url.split('/')[-1]
+
+                        # Exit code 8 or 0 with MediaMTX = stream not ready, back off
+                        if exit_code in (0, 8):
+                            if not self._check_mediamtx_path_ready(path):
+                                logger.debug(f"MediaMTX path not ready for {self.camera_name}, waiting {self.retry_delay}s")
+                                time.sleep(self.retry_delay)
+                                self.retry_delay = min(self.retry_delay * 2, self.max_retry_delay)
+                                continue
+                            else:
+                                # Path is ready, reset retry delay
+                                self.retry_delay = 5
+
                     # Auto-restart FFmpeg after short delay
-                    time.sleep(5)
+                    time.sleep(2)
                     if not self._stop_event.is_set() and self.running:
                         if self._restart_ffmpeg():
                             logger.info(f"FFmpeg restarted successfully for {self.camera_name}")

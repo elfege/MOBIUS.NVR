@@ -617,27 +617,29 @@ Route all HLS-type streams through MediaMTX so recording and motion detection ta
 - [ ] Stop nvr container and verify custom 502 page appears
 - [ ] Verify auto-retry works and loads app when available
 
-#### Fix: 403 Forbidden Instead of Custom Error Page (06:15 EST)
+#### Fix: 403 Forbidden Instead of Custom Error Page (06:15-06:45 EST)
 
 **Problem:** User got 403 Forbidden instead of custom 502 page.
 
-**Root Cause:** nginx wasn't intercepting backend errors.
+**Root Cause:** `internal` directive with `root` was preventing the error page from being served.
 
 **Fix Applied:**
 
 1. Added `proxy_intercept_errors on;` - tells nginx to intercept HTTP errors from backend
-2. Added 403 to error_page directive - catches 403 errors too
+2. Changed from `root` + `internal` to `alias` - serves file directly without restrictions
+3. Used different location path (`/custom_error.html`) mapped to actual file via alias
 
-Updated nginx.conf:
+Final working nginx.conf:
 
 ```nginx
-error_page 403 502 503 504 /502.html;
-location = /502.html {
-    root /usr/share/nginx/html;
-    internal;
+error_page 502 503 504 /custom_error.html;
+location = /custom_error.html {
+    alias /usr/share/nginx/html/502.html;
 }
 proxy_intercept_errors on;
 ```
+
+**Result:** ✅ Custom error page now displays correctly when NVR backend is down!
 
 ---
 

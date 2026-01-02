@@ -31,17 +31,25 @@ if [[ -z "$LL_HLS_PATHS" ]]; then
     exit 0
 fi
 
-echo -e "${YELLOW}Found LL_HLS/NEOLINK cameras:${NC}"
+echo -e "${YELLOW}Found LL_HLS/NEOLINK cameras (creating sub + main paths):${NC}"
 echo "$LL_HLS_PATHS" | while read -r path; do
-    echo "  - $path"
+    echo "  - $path (sub)"
+    echo "  - ${path}_main (main)"
 done
 echo
 
-# Build new paths section
+# Build new paths section with both sub and main streams
+# Sub stream: /camera_serial (transcoded, low-res for grid)
+# Main stream: /camera_serial_main (passthrough, full-res for fullscreen)
 PATHS_SECTION="paths:"
 for path in $LL_HLS_PATHS; do
+    # Sub stream path (default, used for grid view)
     PATHS_SECTION="${PATHS_SECTION}
   ${path}:
+    source: publisher"
+    # Main stream path (full resolution for fullscreen)
+    PATHS_SECTION="${PATHS_SECTION}
+  ${path}_main:
     source: publisher"
 done
 

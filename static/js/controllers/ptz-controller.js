@@ -9,6 +9,7 @@ export class PTZController {
         this.currentCamera = null;
         this.bridgeReady = false;
         this.isExecuting = false;
+        this.executingPreset = false; // Track when executing a preset (don't interrupt with stop)
         this.presets = {}; // Changed to object to store presets per camera: {serial: [presets]}
         this.ptzTouchActive = false;
         this.activeDirection = null;
@@ -171,6 +172,12 @@ export class PTZController {
             // Ignore if this was a touch interaction (avoid emulated mouse events)
             if (this.lastInputType === 'touch') return;
 
+            // Don't interrupt preset execution
+            if (this.executingPreset) {
+                console.log(`[PTZ ${new Date().toISOString()}] Mouse up - ignoring (preset executing)`);
+                return;
+            }
+
             // Always stop if we have an active interval (most reliable check)
             if (this.repeatInterval || this.ptzTouchActive || this.isExecuting) {
                 console.log(`[PTZ ${new Date().toISOString()}] Mouse up - stopping. States:`, {
@@ -185,6 +192,12 @@ export class PTZController {
         // Touch end at document level - ALWAYS stop on any touch release
         // This is aggressive but ensures camera stops when finger lifts
         $(document).on('touchend touchcancel', () => {
+            // Don't interrupt preset execution
+            if (this.executingPreset) {
+                console.log(`[PTZ ${new Date().toISOString()}] Touch ended - ignoring (preset executing)`);
+                return;
+            }
+
             console.log(`[PTZ ${new Date().toISOString()}] Touch ended - stopping. States:`, {
                 repeatInterval: !!this.repeatInterval,
                 ptzTouchActive: this.ptzTouchActive,
@@ -480,6 +493,7 @@ export class PTZController {
         if (!this.currentCamera || this.isExecuting) return;
 
         this.isExecuting = true;
+        this.executingPreset = true; // Prevent mouseup/touchend from interrupting
 
         try {
             console.log('[PTZ] Going to preset:', presetName, 'for camera:', this.currentCamera.serial);
@@ -501,6 +515,7 @@ export class PTZController {
             console.error('[PTZ] Error going to preset:', error);
         } finally {
             this.isExecuting = false;
+            this.executingPreset = false; // Re-enable mouseup/touchend handlers
         }
     }
 

@@ -14,7 +14,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 03:30 EST*
+*Last updated: January 2, 2026 03:34 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -336,6 +336,6 @@ Created friendly custom error page with auto-retry functionality.
 - Fixed by using `alias` instead - serves file directly without restrictions
 - `proxy_intercept_errors on;` required for nginx to intercept backend errors
 
-### Result
+### Additional Fixes
 
-✅ Custom error page displays when NVR backend is down, with fun messages and auto-retry
+- **Progress bar sync** (03:30 EST): Changed from CSS animation to JavaScript-controlled width, syncs exactly with countdown timer (20% per second)

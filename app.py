@@ -596,13 +596,14 @@ def api_stream_start(camera_serial):
         if not ptz_validator.is_streaming_capable(camera_serial):
             return jsonify({'success': False, 'error': 'Camera does not support streaming'}), 400
 
-        # Extract stream type from request (defaults to 'sub' for grid view)
+        # Extract resolution from request (defaults to 'sub' for grid view)
+        # 'sub' = low-res for grid, 'main' = high-res for fullscreen
         data = request.get_json() or {}
-        stream_type = data.get('type', 'sub')  # 'main' or 'sub'
+        resolution = data.get('type', 'sub')  # 'main' or 'sub'
 
-        # Start the stream with specified type
+        # Start the stream with specified resolution
         stream_url = stream_manager.start_stream(
-            camera_serial, stream_type=stream_type)
+            camera_serial, resolution=resolution)
 
         if not stream_url:
             return jsonify({'success': False, 'error': 'Failed to start stream'}), 500

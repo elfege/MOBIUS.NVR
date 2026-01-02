@@ -265,12 +265,28 @@ class StreamManager:
             resolution: 'sub' for grid view (low-res), 'main' for fullscreen (high-res)
                         Note: This is different from cameras.json 'stream_type' which is protocol (HLS, LL_HLS, etc.)
 
-        Note: Sub and main streams can run simultaneously using different keys:
-            - Sub stream key: camera_serial (e.g., "ABC123")
-            - Main stream key: camera_serial + "_main" (e.g., "ABC123_main")
+        For LL_HLS/NEOLINK cameras with dual-output FFmpeg:
+            - A single FFmpeg process publishes BOTH sub and main streams
+            - When requesting 'main', if sub stream is running, just return main URL
+            - No need to start a second FFmpeg process
         """
+        # Check camera protocol type first
+        camera = self.camera_repo.get_camera(camera_serial)
+        protocol = (camera or {}).get('stream_type', 'HLS').upper()
+
+        # For LL_HLS/NEOLINK with dual-output: main stream is always available if sub is running
+        # The single FFmpeg process publishes to both /camera and /camera_main
+        if protocol in ('LL_HLS', 'NEOLINK') and resolution == 'main':
+            # Check if sub stream (the actual FFmpeg process) is running
+            sub_entry = self.active_streams.get(camera_serial)
+            if sub_entry and (sub_entry.get('status') == 'active' or sub_entry.get('status') == 'starting'):
+                path = camera.get('packager_path') or camera_serial
+                main_url = f"/hls/{path}_main/index.m3u8"
+                print(f"[DUAL-OUTPUT] Main stream already available via dual-output FFmpeg: {main_url}")
+                return main_url
+
         # Derive stream_key from camera_serial + resolution
-        # This allows sub and main streams to run simultaneously (like MJPEG does)
+        # For non-LL_HLS cameras, this allows separate sub and main streams
         stream_key = f"{camera_serial}_main" if resolution == 'main' else camera_serial
 
         with self._streams_lock:
@@ -279,11 +295,9 @@ class StreamManager:
             if entry and entry.get('status') == 'starting':
                 print(f"... Stream already starting for {stream_key} ...")
 
-                cam = self.camera_repo.get_camera(camera_serial) if hasattr(self, 'camera_repo') else None
-                protocol = (cam or {}).get('stream_type', 'HLS').upper()
                 # NEOLINK uses LL_HLS path through MediaMTX
                 if protocol in ('LL_HLS', 'NEOLINK'):
-                    path = cam.get('packager_path') or camera_serial
+                    path = camera.get('packager_path') or camera_serial
                     # Main resolution uses different MediaMTX path
                     if resolution == 'main':
                         return f"/hls/{path}_main/index.m3u8"
@@ -302,7 +316,6 @@ class StreamManager:
             # Reserve the slot IMMEDIATELY to prevent duplicate starts
             # Mark as "starting" before spawning thread
             if stream_key not in self.active_streams:
-                camera = self.camera_repo.get_camera(camera_serial)
                 camera_name = camera.get('name', camera_serial) if camera else camera_serial
 
                 self.active_streams[stream_key] = {
@@ -326,6 +339,12 @@ class StreamManager:
         ).start()
 
         # Return placeholder URL immediately
+        if protocol in ('LL_HLS', 'NEOLINK'):
+            path = camera.get('packager_path') or camera_serial
+            if resolution == 'main':
+                return f"/hls/{path}_main/index.m3u8"
+            return f"/hls/{path}/index.m3u8"
+
         if resolution == 'main':
             return f"/api/streams/{camera_serial}_main/playlist.m3u8"
         return f"/api/streams/{camera_serial}/playlist.m3u8"

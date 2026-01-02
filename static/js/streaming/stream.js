@@ -705,6 +705,30 @@ export class MultiStreamManager {
             localStorage.setItem('fullscreenCameraSerial', cameraId);
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
+            // For LL_HLS/NEOLINK cameras: Switch to main stream (high-res)
+            // The backend dual-output FFmpeg provides both sub and main streams
+            if (streamType === 'LL_HLS' || streamType === 'NEOLINK') {
+                console.log(`[Fullscreen] Switching ${cameraId} to main stream (high-res)...`);
+
+                const $video = $streamItem.find('.stream-video');
+                const videoEl = $video[0];
+
+                // Stop current sub stream on this video element
+                this.hlsManager.stopStream(cameraId);
+
+                // Start main stream (backend serves from camera_serial_main path)
+                try {
+                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                    console.log(`[Fullscreen] ✓ Switched to main stream for ${cameraId}`);
+                    // Store that we switched to main so closeFullscreen knows to switch back
+                    $streamItem.data('switched-to-main', true);
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch to main stream:`, e);
+                    // Fall back to keeping sub stream
+                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
+                }
+            }
+
             // Pause (not stop) all other streams
             this.pausedStreams = [];
             const $allStreamItems = $('.stream-item');
@@ -717,10 +741,10 @@ export class MultiStreamManager {
 
                 const $video = $item.find('.stream-video');
                 const videoEl = $video[0];
-                const streamType = $item.data('stream-type');
+                const itemStreamType = $item.data('stream-type');
 
                 // Pause HLS streams using HLS.js API
-                if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                if (itemStreamType === 'HLS' || itemStreamType === 'LL_HLS' || itemStreamType === 'NEOLINK' || itemStreamType === 'NEOLINK_LL_HLS') {
                     const hls = this.hlsManager.hlsInstances.get(id);
                     if (hls && videoEl) {
                         console.log(`[Fullscreen] Pausing HLS stream: ${id}`);
@@ -737,7 +761,7 @@ export class MultiStreamManager {
                     }
                 }
                 // Pause RTMP streams
-                else if (streamType === 'RTMP') {
+                else if (itemStreamType === 'RTMP') {
                     if (videoEl) {
                         console.log(`[Fullscreen] Pausing RTMP stream: ${id}`);
                         videoEl.pause();
@@ -752,7 +776,7 @@ export class MultiStreamManager {
                     }
                 }
                 // Pause MJPEG by stopping image updates
-                else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+                else if (itemStreamType === 'MJPEG' || itemStreamType === 'mjpeg_proxy') {
                     const imgEl = $video[0];
                     if (imgEl && imgEl.src) {
                         console.log(`[Fullscreen] Pausing MJPEG stream: ${id}`);
@@ -789,6 +813,10 @@ export class MultiStreamManager {
                 return;
             }
 
+            const fullscreenCameraId = $fullscreenItem.data('camera-serial');
+            const switchedToMain = $fullscreenItem.data('switched-to-main');
+            const streamType = $fullscreenItem.data('stream-type');
+
             // Remove CSS fullscreen class
             $fullscreenItem.removeClass('css-fullscreen');
             console.log('[Fullscreen] CSS fullscreen class removed');
@@ -796,6 +824,28 @@ export class MultiStreamManager {
             // Clear localStorage
             localStorage.removeItem('fullscreenCameraSerial');
             console.log('[Fullscreen] Cleared localStorage');
+
+            // If we switched to main stream, switch back to sub stream
+            if (switchedToMain && (streamType === 'LL_HLS' || streamType === 'NEOLINK')) {
+                console.log(`[Fullscreen] Switching ${fullscreenCameraId} back to sub stream...`);
+
+                const $video = $fullscreenItem.find('.stream-video');
+                const videoEl = $video[0];
+
+                // Stop current main stream
+                this.hlsManager.stopStream(fullscreenCameraId);
+
+                // Start sub stream
+                try {
+                    await this.hlsManager.startStream(fullscreenCameraId, videoEl, 'sub');
+                    console.log(`[Fullscreen] ✓ Switched back to sub stream for ${fullscreenCameraId}`);
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch back to sub stream:`, e);
+                }
+
+                // Clear the flag
+                $fullscreenItem.removeData('switched-to-main');
+            }
 
             // Resume previously paused streams
             if (this.pausedStreams && this.pausedStreams.length > 0) {
@@ -807,7 +857,7 @@ export class MultiStreamManager {
 
                     const $video = $item.find('.stream-video');
                     const videoEl = $video[0];
-                    const streamType = $item.data('stream-type');
+                    const itemStreamType = $item.data('stream-type');
 
                     if (stream.type === 'HLS') {
                         const hls = this.hlsManager.hlsInstances.get(stream.id);
@@ -817,7 +867,7 @@ export class MultiStreamManager {
                             videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
 
                             // Reattach health monitor
-                            this.attachHealthMonitor(stream.id, $item, streamType);
+                            this.attachHealthMonitor(stream.id, $item, itemStreamType);
                         }
                     }
                     else if (stream.type === 'RTMP') {
@@ -826,7 +876,7 @@ export class MultiStreamManager {
                             videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
 
                             // Reattach health monitor
-                            this.attachHealthMonitor(stream.id, $item, streamType);
+                            this.attachHealthMonitor(stream.id, $item, itemStreamType);
                         }
                     }
                     else if (stream.type === 'MJPEG') {
@@ -837,7 +887,7 @@ export class MultiStreamManager {
                             delete imgEl._pausedSrc;
 
                             // Reattach health monitor
-                            this.attachHealthMonitor(stream.id, $item, streamType);
+                            this.attachHealthMonitor(stream.id, $item, itemStreamType);
                         }
                     }
                 }

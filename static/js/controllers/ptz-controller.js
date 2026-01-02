@@ -425,6 +425,25 @@ export class PTZController {
             }
         });
 
+        // Listen for preset dropdown click/focus - load presets if missing
+        $(document).on('click focus', '.ptz-preset-select', (event) => {
+            const $dropdown = $(event.currentTarget);
+            const $streamItem = $dropdown.closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+
+            if (serial) {
+                // Check if presets are loaded for this camera
+                const presetsForCamera = this.presets[serial];
+
+                if (!presetsForCamera || presetsForCamera.length === 0) {
+                    console.log('[PTZ] Dropdown clicked but no presets loaded - loading now for:', serial);
+                    this.loadPresets(serial);
+                } else {
+                    console.log('[PTZ] Dropdown clicked - presets already loaded:', presetsForCamera.length);
+                }
+            }
+        });
+
         // Listen for preset dropdown changes
         $(document).on('change', '.ptz-preset-select', async (event) => {
             const presetToken = $(event.currentTarget).val();

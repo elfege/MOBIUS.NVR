@@ -6,18 +6,23 @@
     touch-action: none;
     user-select: none;
     backdrop-filter: blur(10px);
+    /* Add padding at top for drag handle */
+    padding-top: 30px !important;
 }
 
 /* Drag handle at top of PTZ controls */
 .stream-item.css-fullscreen .ptz-controls .ptz-drag-handle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 24px;
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 24px;
-    margin: -12px -12px 10px -12px;
     cursor: grab;
     border-radius: 12px 12px 0 0;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.15);
     transition: background 0.2s;
 }
 
@@ -27,16 +32,17 @@
 
 .stream-item.css-fullscreen .ptz-controls .ptz-drag-handle:active {
     cursor: grabbing;
+    background: rgba(255, 255, 255, 0.3);
 }
 
-/* Drag handle icon - 3 horizontal lines */
+/* Drag handle icon - 2 horizontal lines */
 .stream-item.css-fullscreen .ptz-controls .ptz-drag-handle::before {
     content: '';
     width: 30px;
     height: 3px;
-    background: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 2px;
-    box-shadow: 0 6px 0 rgba(255, 255, 255, 0.4);
+    box-shadow: 0 5px 0 rgba(255, 255, 255, 0.5);
 }
 
 /* When being dragged */

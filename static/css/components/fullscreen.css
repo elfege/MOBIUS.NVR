@@ -79,6 +79,7 @@
 }
 
 /* PTZ controls in CSS fullscreen - bottom right */
+/* Hidden by default (respects .ptz-visible toggle from grid mode) */
 .stream-item.css-fullscreen .ptz-controls {
     position: absolute !important;
     bottom: 20px !important;
@@ -87,6 +88,13 @@
     background: rgba(0, 0, 0, 0.7) !important;
     padding: 12px !important;
     border-radius: 12px !important;
+    /* Hidden by default - must have .ptz-visible class to show */
+    display: none !important;
+}
+
+/* Show PTZ controls in fullscreen when toggled on */
+.stream-item.css-fullscreen .ptz-controls.ptz-visible {
+    display: block !important;
 }
 
 .stream-item.css-fullscreen .ptz-grid {

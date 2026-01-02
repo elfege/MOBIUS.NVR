@@ -8,8 +8,14 @@
     border-radius: 12px;
     padding: 15px;
     backdrop-filter: blur(10px);
-    display: flex;
+    /* Hidden by default - toggle with PTZ button */
+    display: none;
     flex-direction: column;
+}
+
+/* Show fullscreen PTZ controls when toggled on (same as grid mode) */
+.fullscreen-ptz-controls.ptz-visible {
+    display: flex;
 }
 
 .fullscreen-ptz-controls .ptz-grid {

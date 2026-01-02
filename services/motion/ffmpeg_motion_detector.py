@@ -10,6 +10,7 @@ import threading
 import logging
 import time
 import re
+import socket
 from typing import Dict, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,36 @@ class FFmpegMotionDetector:
         logger.info("Stopped all FFmpeg detectors")
 
 
+    def _check_mediamtx_path_ready(self, path: str, timeout: int = 2) -> bool:
+        """
+        Check if a MediaMTX path is ready and has an active publisher.
+
+        Uses ffprobe to quickly test if the path exists and has a stream.
+
+        Args:
+            path: MediaMTX path (e.g., "68d49398005cf203e400043f")
+            timeout: Timeout in seconds for the check
+
+        Returns:
+            True if path is ready, False otherwise
+        """
+        rtsp_url = f"rtsp://nvr-packager:8554/{path}"
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-rtsp_transport', 'tcp',
+            '-timeout', str(timeout * 1000000),  # microseconds
+            '-i', rtsp_url,
+            '-show_entries', 'stream=codec_type',
+            '-of', 'default=noprint_wrappers=1'
+        ]
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout + 1, text=True)
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, Exception):
+            return False
+
     def _get_camera_rtsp_url(self, camera: Dict) -> Optional[str]:
         """
         Get RTSP URL for camera using appropriate stream handler.
@@ -258,7 +289,17 @@ class FFmpegMotionDetector:
                     retry_delay = min(retry_delay * 2, max_retry_delay)
                     continue
 
-                # Reset retry delay on successful URL retrieval
+                # For LL_HLS/NEOLINK cameras, check if MediaMTX path is ready before connecting
+                stream_type = camera.get('stream_type', '').upper()
+                if stream_type in ('LL_HLS', 'NEOLINK'):
+                    packager_path = camera.get('packager_path') or camera.get('serial')
+                    if packager_path and not self._check_mediamtx_path_ready(packager_path):
+                        logger.debug(f"MediaMTX path not ready for {camera_name}, waiting {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        retry_delay = min(retry_delay * 2, max_retry_delay)
+                        continue
+
+                # Reset retry delay on successful URL retrieval and path check
                 retry_delay = 5
 
                 # Build FFmpeg command for scene detection
@@ -312,11 +353,20 @@ class FFmpegMotionDetector:
                 if camera_id in self.active_detectors:
                     if exit_code != 0:
                         logger.warning(f"FFmpeg exited with code {exit_code} for {camera_name}, restarting...")
+
+                        # Exit code 8 = no stream available - back off more aggressively
+                        if exit_code == 8:
+                            retry_delay = min(retry_delay * 2, max_retry_delay)
+                            logger.debug(f"No stream available for {camera_name}, waiting {retry_delay}s before retry")
+                            time.sleep(retry_delay)
+                        else:
+                            # Other errors - short delay
+                            time.sleep(2)
                     else:
                         logger.info(f"FFmpeg process ended normally for {camera_name}")
-
-                    # Small delay before restart
-                    time.sleep(2)
+                        # Reset retry delay on normal exit
+                        retry_delay = 5
+                        time.sleep(2)
 
             except Exception as e:
                 logger.error(f"FFmpeg detection error for {camera_name}: {e}")

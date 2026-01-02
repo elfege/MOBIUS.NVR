@@ -382,4 +382,53 @@ Implemented rolling segment pre-buffer for motion-triggered recordings.
 
 ---
 
-*Last updated: January 1, 2026 (post-compaction)*
+## MediaMTX Centralization Session: January 1, 2026 (19:00+ EST)
+
+**Branch:** `mediamtx_full_centralization_JAN_1_2026_a`
+
+### Goal
+
+Route all HLS-type streams through MediaMTX so recording and motion detection tap MediaMTX RTSP instead of creating additional camera connections.
+
+### Changes Made
+
+#### 1. Converted HLS Cameras to LL_HLS
+
+- **Office Desk** (`T8416P0023370398`): `stream_type: "HLS"` → `"LL_HLS"`
+- **Hot Tub** (`T8441P122428038A`): `stream_type: "HLS"` → `"LL_HLS"`
+- Both already had `ll_hls` config sections with MediaMTX publisher settings
+- **File:** `config/cameras.json` (gitignored, manual change)
+
+#### 2. Updated Recording Service Auto-Resolution
+
+- `recording_service.py:_get_recording_source_url()` now routes:
+  - `LL_HLS`, `HLS`, `NEOLINK_LL_HLS` → `mediamtx` (tap MediaMTX RTSP)
+  - `MJPEG` → `mjpeg_service` (placeholder, not yet implemented)
+  - Others → `rtsp` (fallback to direct camera)
+- **File:** `services/recording/recording_service.py`
+
+### Stream Type Summary After Centralization
+
+| Stream Type | Count | Recording Source | Notes |
+|-------------|-------|------------------|-------|
+| **LL_HLS** | 12 | MediaMTX RTSP | All HLS cameras now use this |
+| **MJPEG** | 5 | Capture service | Recording not implemented |
+| **HLS** | 0 | (deprecated) | Converted to LL_HLS |
+
+### MJPEG Recording Status
+
+- MJPEG cameras use dedicated capture services (reolink, amcrest, unifi)
+- Recording for MJPEG is NOT implemented - raises `NotImplementedError`
+- Capture services provide lowest latency for grid view
+- Future work: implement recording by tapping capture service buffer
+
+### Testing Required
+
+- [ ] Restart NVR to apply cameras.json changes
+- [ ] Verify Office Desk and Hot Tub streams work via MediaMTX
+- [ ] Test motion recording uses MediaMTX source for these cameras
+- [ ] Confirm no additional camera connections created
+
+---
+
+*Last updated: January 1, 2026*

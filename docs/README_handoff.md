@@ -422,12 +422,29 @@ Made PTZ controls draggable when in fullscreen mode.
 | `static/css/components/fullscreen-ptz.css` | Drag handle styles, flexbox layout |
 | `static/js/controllers/ptz-controller.js` | Drag functionality with MutationObserver |
 
-### Known Issues (03:44 EST)
+### Touch Support Fix (January 2, 2026 ~04:00 EST)
 
-**Drag handle disappears on touch** - Still debugging. The touch events conflict with PTZ button touchend handler that calls `stopMovement()` on every touch release. Added:
-- `stopImmediatePropagation()` on drag handle touchstart
-- `isDraggingPTZ` flag to track drag state
-- Position validation against viewport bounds
-- Auto-clear of invalid localStorage positions
+**Issue Identified**: Document-level `touchend` handler at line 464 was calling `stopMovement()` unconditionally on every touch release, which interfered with drag handle interactions.
 
-**Status**: Feature partially working on desktop (mouse), touch support needs more debugging.
+**Fix Applied**:
+
+1. Added `isDraggingPTZ` flag initialization in constructor (line 16)
+2. Modified document touchend handler to check `isDraggingPTZ` flag before calling `stopMovement()`
+3. Only calls `stopMovement()` if PTZ movement was actually active (`ptzTouchActive || activeDirection`)
+
+**Code Change** in `ptz-controller.js` lines 462-481:
+```javascript
+$(document).on('touchend touchcancel', () => {
+    // Skip if we're dragging PTZ controls
+    if (this.isDraggingPTZ) {
+        console.log(`[PTZ] Touch ended during PTZ drag - ignoring for movement`);
+        return;
+    }
+    // Only stop if PTZ movement was active
+    if (this.ptzTouchActive || this.activeDirection) {
+        this.stopMovement();
+    }
+});
+```
+
+**Status**: Fix committed and pushed. Testing pending on touch device.

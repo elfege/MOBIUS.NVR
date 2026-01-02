@@ -14,13 +14,13 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 03:34 EST*
+*Last updated: January 2, 2026 03:35 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 2, 2026 (02:30-03:30 EST)
+## Current Session: January 2, 2026 (02:30-03:35 EST)
 
 ### Branch: `sub_main_stream_switching_JAN_2_2026_a`
 
@@ -244,9 +244,48 @@ After container recreation (`startnvr`), user confirmed:
 
 ---
 
+## Audio Support Implementation (03:30-03:50 EST)
+
+### History
+
+Audio was disabled in November 2025 due to `HLS bufferAppendError`. Investigation revealed this was a **red herring** - the real issue was the composite key refactor causing key mismatches across 7+ files. The audio error was a symptom, not the cause.
+
+### What Was Done
+
+1. **Backend**: Enabled audio in `cameras.json` for all 17 cameras
+   - Changed `ll_hls.audio.enabled: false` → `true`
+   - Codec: AAC, 64kbps, 44.1kHz, mono
+
+2. **Frontend UI**: Added per-camera mute/unmute button
+   - New `.stream-audio-btn` with speaker icon
+   - Positioned next to fullscreen button
+   - Green highlight when unmuted
+   - Saves preference to localStorage per camera
+
+3. **Global Controls**: Added to Settings panel
+   - "Mute All" / "Unmute All" buttons
+   - Applies to all video streams at once
+
+4. **Behavior**:
+   - Audio starts **muted by default** (browser autoplay policy)
+   - User click required to unmute
+   - Preferences persist across page reloads
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `config/cameras.json` | `audio.enabled: true` for all cameras |
+| `templates/streams.html` | Added `.stream-audio-btn` button |
+| `static/css/components/stream-item.css` | Styles for audio button |
+| `static/js/streaming/stream.js` | Audio toggle handler + preference storage |
+| `static/js/settings/settings-ui.js` | Mute All / Unmute All buttons |
+
+---
+
 ## Pending Tasks
 
-1. **Audio support** - User explicitly requested this as next feature
+1. **Test audio playback** - Restart NVR with `startnvr` and verify audio works
 
 2. **Optional future**: Rename `stream_type` to `protocol` in cameras.json (deferred)
 

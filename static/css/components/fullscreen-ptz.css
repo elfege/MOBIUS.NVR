@@ -6,16 +6,15 @@
     touch-action: none;
     user-select: none;
     backdrop-filter: blur(10px);
-    /* Add padding at top for drag handle */
-    padding-top: 30px !important;
+    /* Use flexbox for proper layout with drag handle */
+    display: flex !important;
+    flex-direction: column !important;
 }
 
-/* Drag handle at top of PTZ controls */
+/* Drag handle at top of PTZ controls - normal flow, not absolute */
 .stream-item.css-fullscreen .ptz-controls .ptz-drag-handle {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
+    order: -1; /* Place first in flexbox */
+    width: 100%;
     height: 24px;
     display: flex;
     justify-content: center;
@@ -24,6 +23,8 @@
     border-radius: 12px 12px 0 0;
     background: rgba(255, 255, 255, 0.15);
     transition: background 0.2s;
+    margin-bottom: 8px;
+    flex-shrink: 0;
 }
 
 .stream-item.css-fullscreen .ptz-controls .ptz-drag-handle:hover {

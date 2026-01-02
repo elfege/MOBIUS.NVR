@@ -26,6 +26,7 @@ export class PTZController {
 
         this.setupEventListeners();
         this.setupPresetListeners();
+        this.setupDraggable();
         this.updateButtonStates();
 
 
@@ -124,6 +125,216 @@ export class PTZController {
         .catch(e => {
             console.warn(`[PTZ] Failed to save latency to API for ${serial}:`, e);
         });
+    }
+
+    /**
+     * Setup draggable PTZ controls in fullscreen mode
+     */
+    setupDraggable() {
+        // State for dragging
+        this.dragState = {
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            initialLeft: 0,
+            initialTop: 0
+        };
+
+        // Watch for fullscreen mode changes to add/remove drag handle
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    const $streamItem = $(mutation.target);
+                    if ($streamItem.hasClass('css-fullscreen')) {
+                        // Entering fullscreen - add drag handle
+                        this.addDragHandle($streamItem);
+                    } else {
+                        // Exiting fullscreen - remove drag handle and reset position
+                        this.removeDragHandle($streamItem);
+                    }
+                }
+            });
+        });
+
+        // Observe all stream items for class changes
+        $('.stream-item').each((i, el) => {
+            observer.observe(el, { attributes: true, attributeFilter: ['class'] });
+        });
+
+        // Also observe for dynamically added stream items
+        const containerObserver = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === 1 && $(node).hasClass('stream-item')) {
+                        observer.observe(node, { attributes: true, attributeFilter: ['class'] });
+                    }
+                });
+            });
+        });
+        const container = document.querySelector('.streams-container');
+        if (container) {
+            containerObserver.observe(container, { childList: true });
+        }
+
+        // Use event delegation for drag handle
+        $(document).on('mousedown touchstart', '.stream-item.css-fullscreen .ptz-controls .ptz-drag-handle', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const $controls = $(e.currentTarget).closest('.ptz-controls');
+            this.startDrag(e, $controls);
+        });
+
+        $(document).on('mousemove touchmove', (e) => {
+            if (this.dragState.isDragging) {
+                this.doDrag(e);
+            }
+        });
+
+        $(document).on('mouseup touchend touchcancel', () => {
+            if (this.dragState.isDragging) {
+                this.endDrag();
+            }
+        });
+    }
+
+    /**
+     * Add drag handle to PTZ controls when entering fullscreen
+     */
+    addDragHandle($streamItem) {
+        const $ptzControls = $streamItem.find('.ptz-controls');
+        if ($ptzControls.length && !$ptzControls.find('.ptz-drag-handle').length) {
+            // Add drag handle at the top
+            $ptzControls.prepend('<div class="ptz-drag-handle"></div>');
+            console.log('[PTZ] Added drag handle for fullscreen');
+
+            // Restore saved position
+            this.restorePTZPosition($ptzControls, $streamItem);
+        }
+    }
+
+    /**
+     * Remove drag handle when exiting fullscreen
+     */
+    removeDragHandle($streamItem) {
+        const $ptzControls = $streamItem.find('.ptz-controls');
+        $ptzControls.find('.ptz-drag-handle').remove();
+
+        // Reset position to default CSS
+        $ptzControls.css({
+            top: '',
+            left: '',
+            bottom: '',
+            right: ''
+        });
+        console.log('[PTZ] Removed drag handle, reset position');
+    }
+
+    /**
+     * Start dragging the PTZ controls
+     */
+    startDrag(e, $controls) {
+        const touch = e.type === 'touchstart' ? e.originalEvent.touches[0] : e;
+
+        // Get current position (convert from bottom/right to top/left)
+        const rect = $controls[0].getBoundingClientRect();
+        const parentRect = $controls.parent()[0].getBoundingClientRect();
+
+        this.dragState = {
+            isDragging: true,
+            $element: $controls,
+            startX: touch.clientX,
+            startY: touch.clientY,
+            initialLeft: rect.left - parentRect.left,
+            initialTop: rect.top - parentRect.top
+        };
+
+        // Switch from bottom/right positioning to top/left for smooth dragging
+        $controls.css({
+            bottom: 'auto',
+            right: 'auto',
+            top: this.dragState.initialTop + 'px',
+            left: this.dragState.initialLeft + 'px'
+        });
+
+        $controls.addClass('dragging');
+        console.log('[PTZ] Started dragging controls');
+    }
+
+    /**
+     * Handle drag movement
+     */
+    doDrag(e) {
+        if (!this.dragState.isDragging) return;
+
+        const touch = e.type === 'touchmove' ? e.originalEvent.touches[0] : e;
+        const $controls = this.dragState.$element;
+        const parentRect = $controls.parent()[0].getBoundingClientRect();
+
+        // Calculate new position
+        const deltaX = touch.clientX - this.dragState.startX;
+        const deltaY = touch.clientY - this.dragState.startY;
+
+        let newLeft = this.dragState.initialLeft + deltaX;
+        let newTop = this.dragState.initialTop + deltaY;
+
+        // Constrain to parent bounds
+        const controlsRect = $controls[0].getBoundingClientRect();
+        const maxLeft = parentRect.width - controlsRect.width;
+        const maxTop = parentRect.height - controlsRect.height;
+
+        newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+        newTop = Math.max(0, Math.min(newTop, maxTop));
+
+        $controls.css({
+            left: newLeft + 'px',
+            top: newTop + 'px'
+        });
+    }
+
+    /**
+     * End dragging
+     */
+    endDrag() {
+        if (!this.dragState.isDragging) return;
+
+        const $controls = this.dragState.$element;
+        $controls.removeClass('dragging');
+
+        // Save position to localStorage for persistence
+        const position = {
+            left: $controls.css('left'),
+            top: $controls.css('top')
+        };
+        localStorage.setItem('ptz_controls_position', JSON.stringify(position));
+
+        this.dragState.isDragging = false;
+        console.log('[PTZ] Finished dragging controls, saved position:', position);
+    }
+
+    /**
+     * Restore saved PTZ controls position
+     */
+    restorePTZPosition($controls, $streamItem) {
+        const saved = localStorage.getItem('ptz_controls_position');
+        if (saved) {
+            try {
+                const position = JSON.parse(saved);
+                // Validate position is within viewport before restoring
+                const left = parseInt(position.left);
+                const top = parseInt(position.top);
+                if (!isNaN(left) && !isNaN(top) && left >= 0 && top >= 0) {
+                    $controls.css({
+                        bottom: 'auto',
+                        right: 'auto',
+                        top: position.top,
+                        left: position.left
+                    });
+                    console.log('[PTZ] Restored saved position:', position);
+                }
+            } catch (e) {
+                console.warn('[PTZ] Failed to restore position:', e);
+            }
+        }
     }
 
     setupEventListeners() {

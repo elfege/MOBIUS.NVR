@@ -128,10 +128,10 @@ export class ConnectionMonitor {
         localStorage.setItem('nvr_return_url', window.location.href);
         localStorage.setItem('nvr_reconnect_attempt', '1');
 
-        console.log('[ConnectionMonitor] 🔀 Redirecting to /nginx/reloading.html');
+        console.log('[ConnectionMonitor] 🔀 Redirecting to /reloading');
 
         // Redirect to reloading page
-        window.location.href = '/nginx/reloading.html';
+        window.location.href = '/reloading';
     }
 
     /**
@@ -196,7 +196,7 @@ export class ConnectionMonitor {
      * Check if we're currently on the reloading page
      */
     static isOnReloadingPage() {
-        return window.location.pathname.includes('reloading.html');
+        return window.location.pathname.includes('reloading');
     }
 
     /**

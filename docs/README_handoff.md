@@ -539,3 +539,56 @@ These cameras have `stream_type: MJPEG` but still have RTSP capability. The curr
 |------|--------|
 | `services/recording/segment_buffer.py` | Added FFmpeg reconnect flags |
 | `docs/README_handoff.md` | This update |
+
+---
+
+## Race Condition Fix: January 2, 2026 (04:45-04:50 EST)
+
+### Problem Identified
+
+**Symptoms:**
+- LL-HLS publishers starting then immediately stopping
+- Streams appearing briefly then disappearing after page load/refresh
+- Motion detectors and segment buffers failing with exit code 8 (no stream in MediaMTX)
+- Logs showing rapid start → stop cycles
+
+**Root Cause Found:**
+
+In `streaming/stream_manager.py`:
+
+1. `is_stream_alive()` (line 970-971) returns `False` when `status == 'starting'`
+2. `get_active_streams()` (line 994-995) was calling `stop_stream()` for any stream where `is_stream_alive()` returned `False`
+3. API endpoints `/api/status` and `/api/streams` call `get_active_streams()`
+4. **Result:** Every time the frontend polled for status, streams still initializing were being killed
+
+### Fix Applied
+
+Modified `get_active_streams()` to:
+- **NOT stop dead streams** - it now only reports status
+- Include streams with `status='starting'` in the response
+- Leave dead stream cleanup to the watchdog or explicit stop calls
+
+```python
+# Before (broken):
+if self.is_stream_alive(camera_serial):
+    # add to active
+else:
+    self.stop_stream(camera_serial)  # <-- RACE CONDITION!
+
+# After (fixed):
+if status == 'starting':
+    # Include as starting, don't stop
+elif self.is_stream_alive(camera_serial):
+    # Include as active
+# Dead streams: DO NOT stop here
+```
+
+### Testing Required
+
+Container restart (`startnvr`) needed to apply this fix.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `streaming/stream_manager.py` | Fixed `get_active_streams()` race condition |

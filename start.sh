@@ -13,6 +13,7 @@ cd "$SCRIPT_DIR" &>/dev/null || true
 
 . ~/.env.colors
 . ~/logger.sh --no-exec &>/dev/null
+. ~/.bash_utils &>/dev/null || true  # For pull_nvr_secrets function
 
 echo "=========================================="
 echo "  Unified NVR - Container Startup"
@@ -55,9 +56,9 @@ if [[ -f ~/0_NVR/update_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]
 	stop_spinner
 fi
 
-if [[ -f ~/0_NVR/update_neolink_configuration.sh.sh && -f ~/0_NVR/config/neolink.toml ]]; then
+if [[ -f ~/0_NVR/update_neolink_config.sh && -f ~/0_NVR/config/neolink.toml ]]; then
 	start_spinner 20 "$CYAN Updating config/neolink.toml"
-	~/0_NVR/update_neolink_configuration.sh >/dev/null
+	~/0_NVR/update_neolink_config.sh >/dev/null
 	stop_spinner
 fi
 

@@ -3,12 +3,13 @@
  * Location: ~/0_NVR/static/css/components/recording-modal.css
  */
 
-/* Camera Settings Button */
+/* Camera Settings Button - Bottom right corner */
 .camera-settings-btn {
     position: absolute;
-    top: 12px;
-    right: 52px;
+    bottom: 8px;
+    right: 8px;
     background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
     color: #fff;
@@ -17,6 +18,20 @@
     transition: all 0.2s ease;
     z-index: 10;
     font-size: 16px;
+    opacity: 0;
+    pointer-events: auto;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .camera-settings-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .camera-settings-btn {
+        opacity: 0.7;
+    }
 }
 
 .camera-settings-btn:hover {
@@ -29,12 +44,13 @@
     transform: scale(0.95);
 }
 
-/* Manual Recording Button */
+/* Manual Recording Button - Bottom right, next to settings */
 .camera-record-btn {
     position: absolute;
-    top: 12px;
-    right: 92px;
+    bottom: 8px;
+    right: 52px;  /* Offset from settings button */
     background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
     color: #ccc;
@@ -43,6 +59,20 @@
     transition: all 0.2s ease;
     z-index: 10;
     font-size: 16px;
+    opacity: 0;
+    pointer-events: auto;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .camera-record-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .camera-record-btn {
+        opacity: 0.7;
+    }
 }
 
 .camera-record-btn:hover {
@@ -56,6 +86,7 @@
     color: #fff;
     border-color: #e74c3c;
     animation: recordPulse 2s ease-in-out infinite;
+    opacity: 1;  /* Always visible when recording */
 }
 
 @keyframes recordPulse {
@@ -67,11 +98,11 @@
     background: rgba(192, 57, 43, 0.9);
 }
 
-/* Recording Duration Display */
+/* Recording Duration Display - above the record button */
 .recording-duration {
     position: absolute;
-    top: 52px;
-    right: 12px;
+    bottom: 52px;  /* Above the record button */
+    right: 52px;
     background: rgba(231, 76, 60, 0.9);
     color: #fff;
     padding: 4px 8px;

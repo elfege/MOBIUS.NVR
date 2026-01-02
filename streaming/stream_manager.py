@@ -978,21 +978,41 @@ class StreamManager:
             return False
 
     def get_active_streams(self) -> Dict:
-        """Get list of active streams"""
+        """Get list of active streams
+
+        Note: This method reports stream status but does NOT stop dead streams.
+        Dead stream cleanup should be handled by the watchdog or explicit stop calls.
+        Previously, this method would stop streams that weren't alive, but that caused
+        race conditions - streams in 'starting' state would be killed before they
+        had a chance to fully initialize.
+        """
         with self._streams_lock:
             active = {}
 
             for camera_serial in list(self.active_streams.keys()):
-                if self.is_stream_alive(camera_serial):
-                    info = self.active_streams[camera_serial]
+                info = self.active_streams[camera_serial]
+                status = info.get('status', 'unknown')
+
+                # Include streams that are starting or active
+                if status == 'starting':
+                    # Stream is still initializing - include it but mark as starting
+                    active[camera_serial] = {
+                        'camera_name': info.get('camera_name', 'Unknown'),
+                        'camera_type': info.get('camera_type', 'Unknown'),
+                        'stream_url': None,  # Not ready yet
+                        'uptime': 0,
+                        'status': 'starting'
+                    }
+                elif self.is_stream_alive(camera_serial):
                     active[camera_serial] = {
                         'camera_name': info['camera_name'],
                         'camera_type': info['camera_type'],
                         'stream_url': self.get_stream_url(camera_serial),
-                        'uptime': time.time() - info['start_time']
+                        'uptime': time.time() - info['start_time'],
+                        'status': 'active'
                     }
-                else:
-                    self.stop_stream(camera_serial)
+                # Note: Dead streams are NOT stopped here to avoid race conditions.
+                # The watchdog or explicit stop calls handle cleanup.
 
             return active
 

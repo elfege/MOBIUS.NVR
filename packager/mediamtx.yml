@@ -26,8 +26,8 @@ rtspAddress: :8554
 # When main stream is unconsumed (grid mode), TCP buffers fill up.
 # These settings manage buffer overflow gracefully:
 readTimeout: 30s           # Close consumer if no data read for 30s
-writeTimeout: 15s          # Close publisher connection if can't write for 15s (buffer full)
-writeQueueSize: 4096       # Increase write queue from default 512 (allows ~4 seconds of buffering at 2Mbps)
+writeTimeout: 10m          # Very long timeout - let writeQueueSize handle buffering instead
+writeQueueSize: 8192       # Large write queue to absorb unconsumed main stream (allows ~8 seconds of buffering at 2Mbps)
 
 paths:
   68d49398005cf203e400043f:

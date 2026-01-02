@@ -10,7 +10,7 @@
 
 /* Show PTZ controls when toggled on (via JavaScript) */
 .ptz-controls.ptz-visible {
-    display: block;
+    display: block !important;
 }
 
 /* 3x3 Grid layout for directional controls

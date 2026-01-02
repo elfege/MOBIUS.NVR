@@ -30,8 +30,11 @@
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-/* Status indicator section */
+/* Status indicator section - now positioned at bottom left, next to latency badge */
 .stream-status {
+    position: absolute;
+    bottom: 8px;
+    left: 60px;  /* Offset from latency badge (which is at left: 8px) */
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -45,6 +48,7 @@
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
     background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
     border-radius: 12px;
 }
 

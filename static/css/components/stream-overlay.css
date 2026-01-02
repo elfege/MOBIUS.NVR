@@ -30,11 +30,9 @@
     text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-/* Status indicator section - now positioned at bottom left, next to latency badge */
+/* Status indicator section - stays next to title at top-left
+   (keeping it in the overlay flex container for simplicity) */
 .stream-status {
-    position: absolute;
-    bottom: 8px;
-    left: 60px;  /* Offset from latency badge (which is at left: 8px) */
     display: flex;
     align-items: center;
     gap: 0.5rem;

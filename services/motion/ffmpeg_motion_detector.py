@@ -77,11 +77,11 @@ class FFmpegMotionDetector:
             # Allow config to override sensitivity
             sensitivity = motion_cfg.get('ffmpeg_sensitivity', sensitivity)
 
-        # For LL_HLS cameras reading from MediaMTX, use much lower threshold
+        # For LL_HLS/NEOLINK cameras reading from MediaMTX, use much lower threshold
         # Re-encoded streams have very low scene scores due to scenecut=0 in encoder
         # Tested scores: mostly 0.0005-0.002 with spikes to 0.005 during movement
         stream_type = camera.get('stream_type', '').upper()
-        if stream_type == 'LL_HLS' and sensitivity >= 0.1:
+        if stream_type in ('LL_HLS', 'NEOLINK') and sensitivity >= 0.1:
             # Only auto-adjust if not explicitly configured to a low value
             default_ll_hls_sensitivity = 0.002  # 0.2% scene change threshold (Eufy cameras produce very low scores ~0.001)
             logger.info(f"LL_HLS camera detected, adjusting sensitivity from {sensitivity} to {default_ll_hls_sensitivity}")
@@ -169,16 +169,17 @@ class FFmpegMotionDetector:
         camera_type = camera.get('type', '').lower()
         stream_type = camera.get('stream_type', '').upper()
 
-        # For LL_HLS cameras, use MediaMTX RTSP output
+        # For LL_HLS/NEOLINK cameras, use MediaMTX RTSP output
         # This avoids opening a second connection to the camera
-        if stream_type == 'LL_HLS':
+        # NEOLINK now routes through MediaMTX for LL-HLS packaging
+        if stream_type in ('LL_HLS', 'NEOLINK'):
             packager_path = camera.get('packager_path') or camera.get('serial')
             if packager_path:
                 mediamtx_url = f"rtsp://nvr-packager:8554/{packager_path}"
                 logger.info(f"Using MediaMTX RTSP for {camera.get('name')}: {mediamtx_url}")
                 return mediamtx_url
             else:
-                logger.warning(f"LL_HLS camera {camera.get('name')} has no packager_path, falling back to direct RTSP")
+                logger.warning(f"{stream_type} camera {camera.get('name')} has no packager_path, falling back to direct RTSP")
 
         # For other cameras, use direct camera RTSP URL via stream handler
         try:

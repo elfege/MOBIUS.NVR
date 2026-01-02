@@ -51,3 +51,11 @@
     opacity: 0.9;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
+
+/* Override the touch device hiding rule from ptz-controls.css
+   PTZ MUST be visible in fullscreen mode even on touch devices */
+@media (hover: none) {
+    .stream-item.css-fullscreen .ptz-controls {
+        display: flex !important;
+    }
+}

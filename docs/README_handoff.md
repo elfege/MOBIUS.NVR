@@ -14,22 +14,23 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 17:12 EST*
+*Last updated: January 2, 2026 17:54 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 2, 2026 (13:00-17:12 EST)
+## Current Session: January 2, 2026 (13:00-17:54 EST)
 
 ### Branch: `sub_main_stream_switching_JAN_2_2026_a`
 
 ### Tasks
 
-1. **PTZ Preset Improvements** - Fixed multiple issues with preset loading and execution
+1. **PTZ Preset Improvements** - Fixed multiple issues with preset loading and execution ✅
 2. **Connection Monitoring** - Implemented client-side server disconnect detection (untested)
-3. **ONVIF GotoHomePosition** - Added stepper calibration command
-4. **Preset Loading Issue** - Living_REOLINK presets not showing in UI (backend working, frontend broken)
+3. **ONVIF GotoHomePosition** - Added stepper calibration command ✅
+4. **Preset Loading Race Conditions** - Fixed browser request queue overflow and retry logic ✅
+5. **502 Error Page Enhancement** - Expanded funny messages for 30s+ startup time ✅
 
 ---
 
@@ -163,38 +164,127 @@ Detect server disconnection/restart and show reloading page instead of error
 
 ---
 
-### 4. Living_REOLINK Preset Loading Issue (ACTIVE)
+### 4. PTZ Preset Loading Race Conditions (RESOLVED)
 
-#### Current Problem
-- Frontend shows 0 presets for Living_REOLINK (XCPTP369388MNVTG)
-- Backend API works correctly - returns 5 presets
-- Other cameras (Laundry_REOLINK) work fine
+#### Problem Identified
+Multiple PTZ cameras loading presets simultaneously on page load caused:
+- Browser connection limits (typically 6 per domain)
+- AJAX requests aborted before being sent (`readyState: 0`)
+- Error: `{readyState: 0, getResponseHeader: ƒ, ...}`
+- Presets eventually loading after multiple retry attempts
 
-#### Browser Console Output
-```
-[PTZ] Loading presets for: XCPTP369388MNVTG
-[PTZ] Loading presets for camera: XCPTP369388MNVTG
-[PTZ] Updated UI for XCPTP369388MNVTG: 0 presets
-```
+#### Root Causes
 
-#### API Test (Working)
-```bash
-$ curl -s "https://192.168.10.20:8443/api/ptz/XCPTP369388MNVTG/presets" -k | jq
-{
-  "camera": "XCPTP369388MNVTG",
-  "presets": [
-    {"name": "0", "token": "000"},
-    {"name": "closeupsofa", "token": "001"},
-    {"name": "sofacloser", "token": "002"},
-    {"name": "kids_playground", "token": "003"},
-    {"name": "Piano_kitchen", "token": "004"}
-  ],
-  "success": true
+**Frontend Race Condition:**
+- All cameras loading presets simultaneously on page init
+- Browser queue overflow causing request abortion
+- No retry mechanism for transient failures
+
+**Potential Backend Factors:**
+- ONVIF connection creation takes time (synchronous)
+- Multiple concurrent ONVIF requests could overwhelm cameras
+- Flask app startup timing
+
+#### Solutions Implemented
+
+**1. Request Staggering** ([`ptz-controller.js:470-493`](static/js/controllers/ptz-controller.js#L470-L493))
+```javascript
+loadPresetsForAllCameras() {
+    let delay = 0;
+    const staggerMs = 500; // 500ms between each camera
+
+    $('.stream-item').each((index, streamItem) => {
+        // ...
+        setTimeout(() => {
+            this.loadPresets(serial);
+        }, delay);
+        delay += staggerMs;
+    });
 }
 ```
 
+**Benefits:**
+- Camera 1: loads immediately (0ms)
+- Camera 2: loads after 500ms
+- Camera 3: loads after 1000ms
+- Prevents browser connection queue overflow
+
+**2. Exponential Backoff Retry** ([`ptz-controller.js:495-533`](static/js/controllers/ptz-controller.js#L495-L533))
+```javascript
+async loadPresets(cameraSerial, retryCount = 0) {
+    const maxRetries = 3;
+    const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+
+    try {
+        // Load presets...
+    } catch (error) {
+        const isNetworkError = error.readyState === 0 || error.status === 0 || error.status >= 500;
+
+        if (isNetworkError && retryCount < maxRetries) {
+            // Retry: 1s, 2s, 4s delays
+            setTimeout(() => {
+                this.loadPresets(cameraSerial, retryCount + 1);
+            }, retryDelay);
+        }
+    }
+}
+```
+
+**3. On-Demand Loading Fallback** ([`ptz-controller.js:415-432`](static/js/controllers/ptz-controller.js#L415-L432))
+```javascript
+$(document).on('click focus', '.ptz-preset-select', (event) => {
+    // Check if presets loaded
+    if (!presetsForCamera || presetsForCamera.length === 0) {
+        this.loadPresets(serial); // Load now if missing
+    }
+});
+```
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| `static/js/controllers/ptz-controller.js` | Staggered loading + retry logic + dropdown click handler |
+
+#### Commits
+- `4accb9c` - Add preset dropdown click handler to load missing presets
+- `dfa757a` - Add retry logic with exponential backoff for preset loading
+- `cadfbc6` - Stagger preset loading to prevent simultaneous request abortion
+
 #### Status
-**INVESTIGATING** - Backend correct, frontend parsing issue suspected
+**RESOLVED** - Presets now load reliably on page load with graceful degradation
+
+---
+
+### 5. 502 Error Page Funny Messages Enhancement
+
+#### Problem
+Not enough silly messages to sustain typical 10-30 second NVR startup time.
+
+#### Solution
+Expanded message array from 20 to 135+ messages:
+
+**Categories Added:**
+- Docker/container operations jokes
+- Network protocol puns ("Waiting for UDP to maybe show up...")
+- Programming recursion/meta humor ("Debugging the debugger...")
+- DevOps buzzword satire ("Kubernetes-ing without Kubernetes...")
+- Existential contemplation ("Questioning life choices...")
+- Encouraging messages ("You're the best...")
+
+**Coverage:**
+- Original: 20 messages = 40 seconds before repeating
+- Updated: 135+ messages = 270+ seconds (4.5+ minutes) before repeating
+- More than enough for typical 10-30s startup
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| [`nginx/502.html`](nginx/502.html:126-262) | Expanded silly messages from 20 to 135+ |
+
+#### Commit
+- `c39a960` - Expand 502.html silly loading messages for startup entertainment
 
 ---
 

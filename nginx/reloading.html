@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVR Reconnecting...</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 500px;
+        }
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top-color: #ff9800;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1.5rem;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+        .silly-message {
+            font-style: italic;
+            color: #ffb74d;
+            min-height: 1.5em;
+            margin-bottom: 0.5rem;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+        }
+        .silly-message.fade {
+            opacity: 0;
+        }
+        .status {
+            color: #888;
+            margin-bottom: 1.5rem;
+        }
+        .countdown {
+            display: inline-block;
+            background: rgba(255, 152, 0, 0.2);
+            color: #ff9800;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #ff9800;
+            width: 0%;
+            transition: width 1s linear;
+        }
+        .retry-count {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 1rem;
+        }
+        .manual-retry {
+            margin-top: 1.5rem;
+        }
+        .manual-retry button {
+            background: transparent;
+            border: 1px solid #ff9800;
+            color: #ff9800;
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .manual-retry button:hover {
+            background: #ff9800;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="spinner"></div>
+        <h1>NVR server restarting...</h1>
+        <p class="silly-message" id="silly">Reconnecting to server...</p>
+        <p class="status">Waiting for server to come back online.</p>
+        <div class="countdown">Retrying in <span id="seconds">3</span>s</div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress"></div>
+        </div>
+        <p class="retry-count">Attempt <span id="attempt">1</span></p>
+        <div class="manual-retry">
+            <button onclick="location.reload()">Retry Now</button>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // Silly loading messages for reconnection
+            const sillyMessages = [
+                "Reconnecting to server...",
+                "Waiting for NVR to wake up...",
+                "Server took a quick coffee break...",
+                "Pinging the mothership...",
+                "Asking the server to come back...",
+                "Server is doing push-ups...",
+                "Waiting for Docker to finish its nap...",
+                "MediaMTX is stretching...",
+                "Cameras are playing hide and seek...",
+                "Server is counting to 10...",
+                "Rebooting the matrix...",
+                "Server is tying its shoelaces...",
+                "Waiting for the hamsters to wake up...",
+                "Server is checking its email...",
+                "Almost there, hopefully..."
+            ];
+
+            let messageIndex = 0;
+            const sillyEl = document.getElementById('silly');
+
+            // Rotate silly messages every 2 seconds with fade
+            setInterval(() => {
+                sillyEl.classList.add('fade');
+                setTimeout(() => {
+                    messageIndex = (messageIndex + 1) % sillyMessages.length;
+                    sillyEl.textContent = sillyMessages[messageIndex];
+                    sillyEl.classList.remove('fade');
+                }, 300);
+            }, 2000);
+
+            // Get retry count from localStorage (persists across page loads)
+            let attempt = parseInt(localStorage.getItem('nvr_reconnect_attempt')) || 1;
+            document.getElementById('attempt').textContent = attempt;
+
+            // Countdown timer (shorter for reconnection)
+            const totalSeconds = 3;
+            let seconds = totalSeconds;
+            const countdownEl = document.getElementById('seconds');
+            const progressEl = document.getElementById('progress');
+
+            // Update progress bar with countdown
+            const updateProgress = () => {
+                const progress = ((totalSeconds - seconds) / totalSeconds) * 100;
+                progressEl.style.width = progress + '%';
+            };
+
+            // Start with 0% progress
+            updateProgress();
+
+            const timer = setInterval(() => {
+                seconds--;
+                countdownEl.textContent = seconds;
+                updateProgress();
+                if (seconds <= 0) {
+                    clearInterval(timer);
+                    // Increment attempt and reload
+                    localStorage.setItem('nvr_reconnect_attempt', attempt + 1);
+                    location.reload();
+                }
+            }, 1000);
+
+            // Aggressive health check - polls every second
+            const healthCheck = setInterval(() => {
+                fetch('/api/status', { method: 'GET', cache: 'no-store' })
+                    .then(r => {
+                        if (r.ok) {
+                            // App is up, clear attempt counter and return to main app
+                            clearInterval(healthCheck);
+                            localStorage.removeItem('nvr_reconnect_attempt');
+                            // Go back to where we came from (stored in localStorage)
+                            const returnUrl = localStorage.getItem('nvr_return_url') || '/';
+                            localStorage.removeItem('nvr_return_url');
+                            window.location.href = returnUrl;
+                        }
+                    })
+                    .catch(() => {});
+            }, 1000);
+        })();
+    </script>
+</body>
+</html>

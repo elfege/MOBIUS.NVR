@@ -67,6 +67,21 @@ load_dotenv()  # loads .env from the current working directory / project root
 TRUE_SET = {"1", "true", "yes", "on"}
 FALSE_SET = {"0", "false", "no", "off"}
 
+# Application state - thread-safe singleton for shutdown tracking
+class AppState:
+    """Thread-safe application state"""
+    def __init__(self):
+        self._shutting_down = False
+
+    @property
+    def is_shutting_down(self):
+        return self._shutting_down
+
+    def set_shutting_down(self):
+        self._shutting_down = True
+
+app_state = AppState()
+
 print("=" * 80)
 print("🚀 Starting Unified NVR Server - Refactored Architecture")
 print("=" * 80)
@@ -431,6 +446,23 @@ def streams_page():
         return f"Error loading streams page: {e}", 500
 
 # ===== Status Routes =====
+@app.route('/api/health')
+def api_health():
+    """
+    Lightweight health check endpoint
+    Returns shutdown status to warn clients before server goes down
+    """
+    if app_state.is_shutting_down:
+        return jsonify({
+            'status': 'shutting_down',
+            'message': 'Server is shutting down'
+        }), 503
+
+    return jsonify({
+        'status': 'ok',
+        'message': 'Server is healthy'
+    }), 200
+
 @app.route('/api/status')
 def api_status():
     """Get system status"""
@@ -2162,6 +2194,7 @@ def reap_zombies(signum, frame):
 
 def cleanup_handler(signum=None, frame=None):
     """Handle cleanup on shutdown signals"""
+    app_state.set_shutting_down()
 
     print("\n🛑 Shutting down... cleaning up streams and resources")
     try:

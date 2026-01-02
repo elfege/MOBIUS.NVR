@@ -277,8 +277,8 @@ try:
                         buffer_cleanup_counter += 1
                         if buffer_cleanup_counter >= 30:
                             buffer_cleanup_counter = 0
-                            if recording_service.storage_manager:
-                                recording_service.storage_manager.cleanup_buffer_directory(max_age_minutes=5)
+                            if recording_service.storage:
+                                recording_service.storage.cleanup_buffer_directory(max_age_minutes=5)
 
                 except Exception as e:
                     logger.error(f"Recording monitor error: {e}")

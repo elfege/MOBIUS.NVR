@@ -13708,4 +13708,120 @@ Camera:9000 → Neolink (RTSP) → MediaMTX (LL-HLS) → Browser
 - Recording confirmed: `95270001NT3KNA67_20260102_023621.mp4` (2.2 MB)
 
 ---
+
+## January 2, 2026 (17:00-18:35): High Latency Crisis & MediaMTX Buffer Fix
+
+### Critical Issue: 140-150 Second Latency
+
+**Problem:**
+- All cameras showing 140-150 second latency in UI (except LAUNDRY ROOM at 42.9s)
+- Streams frozen or severely behind live footage
+- System appeared functional but unusable due to extreme delay
+
+**Root Cause Investigation:**
+- FFmpeg processes stuck in restart loops (exit code 8)
+- MediaMTX logs showed publishers connecting then immediately disconnecting
+- Previous buffer management settings too aggressive:
+  - `writeTimeout: 15s` closing publisher connections when TCP buffers filled
+  - Dual-output architecture constantly publishes both sub (320x240) and main (1280x720) streams
+  - In grid mode, main stream unconsumed → buffers fill → connection terminated
+
+**The Compounding Problem:**
+1. FFmpeg publishes dual outputs for ~29 seconds
+2. Main stream buffer fills (grid mode = no consumers)
+3. MediaMTX closes connection after 15s write timeout
+4. FFmpeg exits with code 8 (broken pipe)
+5. MediaMTX continues serving 7 seconds of cached segments (`hlsSegmentCount: 7`)
+6. Browser plays old cached content while FFmpeg restarts
+7. Each cycle adds 7-30 seconds of latency
+8. **Latency compounds to 140-150 seconds over multiple restart cycles**
+
+### Solution: MediaMTX Buffer Management
+
+**Changes to `packager/mediamtx.yml`:**
+
+```yaml
+readTimeout: 30s           # Close consumer if no data read for 30s
+writeTimeout: 10m          # Very long timeout - let writeQueueSize handle buffering (was 15s)
+writeQueueSize: 8192       # Large write queue ~8 seconds buffer @ 2Mbps (was 4096)
+```
+
+**Why This Works:**
+- Long timeout (10 minutes) prevents premature connection termination
+- Large buffer (`writeQueueSize: 8192`) absorbs unconsumed main stream data
+- Eliminates restart loops that cause latency accumulation
+- Multi-client safe: other clients unaffected when one exits fullscreen
+
+**Results:**
+- Latency dropped from 140-150s to 1-3s immediately after restart
+- 26 FFmpeg processes stable (13 cameras × 2 outputs)
+- No restart loops detected
+- All cameras streaming normally
+
+### SV3C Camera GOP Mismatch
+
+**Problem Discovered:**
+- SV3C camera (C6F0SgZ0N0PoL2) had broken pipe errors persisting after buffer fix
+- Camera hardware configured with:
+  - **Main stream:** GOP=120 frames @ 15fps = 8-second keyframe intervals
+  - **Sub stream:** GOP=56 frames @ 7fps = 8-second keyframe intervals
+- FFmpeg configured for GOP=15 (1-second intervals)
+- **Mismatch caused MediaMTX to reject streams** (segments require aligned keyframes)
+
+**Fix:**
+User accessed SV3C camera web interface and corrected hardware settings:
+- **Main stream:** Key frame interval: 120 → **15 frames** (1s @ 15fps)
+- **Sub stream:** Key frame interval: 56 → **7 frames** (1s @ 7fps)
+
+**Result:**
+- SV3C camera started successfully
+- Both sub and main outputs working
+- No more broken pipe errors
+- ONVIF connected properly
+
+### Architecture Summary
+
+**Final Configuration:**
+- **MediaMTX:** `writeTimeout: 10m`, `writeQueueSize: 8192`
+- **All cameras:** GOP=15 frames @ 15fps (1-second alignment with MediaMTX segments)
+- **FFmpeg:** 26 processes (dual-output for 13 cameras)
+- **Latency:** 1-3 seconds (normal LL-HLS performance)
+
+**Dual-Output Buffer Strategy:**
+- Grid mode: Main stream published but unconsumed → buffered, not terminated
+- Fullscreen mode: Both streams consumed normally
+- Multi-client: Any client can request any stream without affecting others
+- No restart churn: Buffers absorb unconsumed data gracefully
+
+### Key Learnings
+
+1. **Buffer Management vs Connection Termination:**
+   - Short write timeouts cause restart churn → latency compounds
+   - Large buffers + long timeouts = stable dual-output architecture
+   - Multi-client support requires persistent streams regardless of individual client state
+
+2. **Camera Hardware GOP Critical:**
+   - Software FFmpeg GOP settings can't override hardware-level GOP in source
+   - When transcoding, FFmpeg GOP must match MediaMTX segment duration
+   - Camera hardware GOP must align with MediaMTX expectations (1s = 15 frames @ 15fps)
+   - **Always verify camera hardware settings match software configuration**
+
+3. **Latency Accumulation Pattern:**
+   - Cached segment serving during restarts compounds over time
+   - Each restart cycle adds 7-30 seconds of latency
+   - Root cause fixes (eliminating restarts) immediately resolve latency
+   - Symptom (high latency) doesn't always point to obvious cause (restart loops)
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `packager/mediamtx.yml` | Increased writeTimeout: 15s → 10m, writeQueueSize: 4096 → 8192 |
+| SV3C camera hardware config | GOP: 120→15 (main), 56→7 (sub) via camera web interface |
+
+### Known Issues
+
+- **STAIRS camera** still experiencing failures (separate issue from latency/GOP)
+
+---
 {% endraw %}

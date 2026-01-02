@@ -26,6 +26,8 @@ paths:
     source: publisher
   T8416P0023352DA9:
     source: publisher
+  T8416P0023370398:
+    source: publisher
   T8416P00233717CB:
     source: publisher
   T8416P0023390DE9:
@@ -35,6 +37,8 @@ paths:
   T8419P0024110C6A:
     source: publisher
   T8441P12242302AC:
+    source: publisher
+  T8441P122428038A:
     source: publisher
   C6F0SgZ0N0PoL2:
     source: publisher

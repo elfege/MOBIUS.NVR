@@ -19,7 +19,6 @@ echo "  Unified NVR - Container Startup"
 echo "=========================================="
 echo ""
 
-
 # Create necessary directories
 echo ""
 echo "Creating directories..."
@@ -62,6 +61,12 @@ if [[ -f ~/0_NVR/update_neolink_configuration.sh.sh && -f ~/0_NVR/config/neolink
 	stop_spinner
 fi
 
+if [[ -f ~/0_NVR/update_recording_settings.sh && -f ~/0_NVR/config/recording_settings.json ]]; then
+	start_spinner 20 "$CYAN Syncing recording_settings.json with cameras"
+	~/0_NVR/update_recording_settings.sh >/dev/null
+	stop_spinner
+fi
+
 # Start the container
 echo ""
 echo "Starting container..."
@@ -97,18 +102,19 @@ if docker ps | grep -q unified-nvr; then
 	sleep 20
 
 	# Check health
-	if curl -kI https://localhost:8443/api/status >/dev/null 2>&1; then
-		echo -e "${GREEN}✓ HTTPS Health check passed!${NC}"
-	else
-		echo -e "${YELLOW}⚠️  Health check failed - check logs${NC}"
-		echo "Run: docker compose logs -f"
-	fi
 	if curl -s http://localhost:5000/api/status >/dev/null 2>&1; then
 		echo -e "${GREEN}✓ HTTP Health check passed!${NC}"
 	else
 		echo -e "${YELLOW}⚠️  Health check failed - check logs${NC}"
 		echo "Run: docker compose logs -f"
 	fi
+	if curl -kI https://localhost:8443/api/status >/dev/null 2>&1; then
+		echo -e "${GREEN}✓ HTTPS Health check passed!${NC}"
+	else
+		echo -e "${YELLOW}⚠️  Health check failed - check logs${NC}"
+		echo "Run: docker compose logs -f"
+	fi
+
 else
 	echo -e "${RED}✗ Container failed to start${NC}"
 	echo "Check logs with: docker compose logs"

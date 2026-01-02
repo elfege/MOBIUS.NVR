@@ -17,8 +17,8 @@ export class HLSStreamManager {
         badge.className = 'latency-badge';
         Object.assign(badge.style, {
             position: 'absolute',
-            right: '8px',
-            top: '8px',
+            left: '8px',
+            bottom: '8px',
             padding: '2px 6px',
             fontSize: '12px',
             lineHeight: '16px',

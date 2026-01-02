@@ -14,7 +14,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 03:35 EST*
+*Last updated: January 2, 2026 03:44 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -419,5 +419,15 @@ Made PTZ controls draggable when in fullscreen mode.
 
 | File | Change |
 |------|--------|
-| `static/css/components/fullscreen-ptz.css` | Drag handle styles, updated selectors |
+| `static/css/components/fullscreen-ptz.css` | Drag handle styles, flexbox layout |
 | `static/js/controllers/ptz-controller.js` | Drag functionality with MutationObserver |
+
+### Known Issues (03:44 EST)
+
+**Drag handle disappears on touch** - Still debugging. The touch events conflict with PTZ button touchend handler that calls `stopMovement()` on every touch release. Added:
+- `stopImmediatePropagation()` on drag handle touchstart
+- `isDraggingPTZ` flag to track drag state
+- Position validation against viewport bounds
+- Auto-clear of invalid localStorage positions
+
+**Status**: Feature partially working on desktop (mouse), touch support needs more debugging.

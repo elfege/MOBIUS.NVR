@@ -13,7 +13,10 @@ cd "$SCRIPT_DIR" &>/dev/null || true
 
 . ~/.env.colors
 . ~/logger.sh --no-exec &>/dev/null
-. ~/.bash_utils &>/dev/null || true  # For pull_nvr_secrets function
+. ~/.bash_utils &>/dev/null || { 
+	echo -e "${RED}✗ Failed to source ~/.bash_utils - it is required to pull secrets${NC}"
+	exit 1
+}
 
 echo "=========================================="
 echo "  Unified NVR - Container Startup"

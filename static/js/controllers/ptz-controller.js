@@ -13,6 +13,7 @@ export class PTZController {
         this.ptzTouchActive = false;
         this.activeDirection = null;
         this.repeatInterval = null; // Legacy, kept for safety
+        this.isDraggingPTZ = false; // Flag to prevent PTZ stop during drag handle interaction
         this.moveAcknowledged = true; // Track when camera has processed a move command
         this.moveStartTime = null; // Track when move command was sent
         this.latencyCache = {}; // In-memory cache of learned latencies per camera
@@ -459,17 +460,25 @@ export class PTZController {
             }
         });
 
-        // Touch end at document level - ALWAYS stop on any touch release
-        // This is aggressive but ensures camera stops when finger lifts
+        // Touch end at document level - stop PTZ movement when finger lifts
+        // BUT skip if we're dragging the PTZ controls (isDraggingPTZ flag)
         $(document).on('touchend touchcancel', () => {
-            console.log(`[PTZ ${new Date().toISOString()}] Touch ended - stopping. States:`, {
-                repeatInterval: !!this.repeatInterval,
-                ptzTouchActive: this.ptzTouchActive,
-                isExecuting: this.isExecuting,
-                activeDirection: this.activeDirection
-            });
-            // Always call stopMovement - it's safe to call even if not moving
-            this.stopMovement();
+            // Skip if we're dragging PTZ controls - let the drag handler manage this
+            if (this.isDraggingPTZ) {
+                console.log(`[PTZ ${new Date().toISOString()}] Touch ended during PTZ drag - ignoring for movement`);
+                return;
+            }
+
+            // Only stop if PTZ movement was active
+            if (this.ptzTouchActive || this.activeDirection) {
+                console.log(`[PTZ ${new Date().toISOString()}] Touch ended - stopping. States:`, {
+                    repeatInterval: !!this.repeatInterval,
+                    ptzTouchActive: this.ptzTouchActive,
+                    isExecuting: this.isExecuting,
+                    activeDirection: this.activeDirection
+                });
+                this.stopMovement();
+            }
         });
     }
 

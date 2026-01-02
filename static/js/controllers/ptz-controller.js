@@ -482,9 +482,12 @@ export class PTZController {
         });
     }
 
-    async loadPresets(cameraSerial) {
+    async loadPresets(cameraSerial, retryCount = 0) {
+        const maxRetries = 3;
+        const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
+
         try {
-            console.log('[PTZ] Loading presets for camera:', cameraSerial);
+            console.log('[PTZ] Loading presets for camera:', cameraSerial, retryCount > 0 ? `(retry ${retryCount}/${maxRetries})` : '');
 
             const response = await $.ajax({
                 url: `/api/ptz/${cameraSerial}/presets`,
@@ -502,9 +505,22 @@ export class PTZController {
                 this.updatePresetUI();
             }
         } catch (error) {
-            console.error('[PTZ] Error loading presets:', error);
-            this.presets[cameraSerial] = [];
-            this.updatePresetUI();
+            // Check if this is a network/server error (readyState 0 or 4xx/5xx)
+            const isNetworkError = error.readyState === 0 || error.status === 0 || error.status >= 500;
+
+            if (isNetworkError && retryCount < maxRetries) {
+                console.warn(`[PTZ] Error loading presets (readyState: ${error.readyState}, status: ${error.status}) - retrying in ${retryDelay}ms...`);
+
+                // Retry after delay
+                setTimeout(() => {
+                    this.loadPresets(cameraSerial, retryCount + 1);
+                }, retryDelay);
+            } else {
+                // Give up after max retries or non-network error
+                console.error('[PTZ] Error loading presets (giving up):', error);
+                this.presets[cameraSerial] = [];
+                this.updatePresetUI();
+            }
         }
     }
 

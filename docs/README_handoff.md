@@ -14,7 +14,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 04:01 EST*
+*Last updated: January 2, 2026 04:29 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -474,3 +474,68 @@ $(document).on('touchend touchcancel', () => {
 ```
 
 **Status**: Fix committed and pushed. Testing pending on touch device.
+
+---
+
+## Continued Session: January 2, 2026 (04:20-04:35 EST)
+
+### Context Compaction Recovery
+
+Previous session ran out of context. Continued investigating stream stability issues.
+
+### FFmpeg Segment Buffer Reconnect Flags
+
+**Issue**: Segment buffer FFmpeg processes exiting with code 0 (normal termination) when they should run continuously.
+
+**Investigation**:
+- Found FFmpeg 7.1.3 is now installed (much newer than before)
+- Checked that `-reconnect` flags are fully supported
+- Previous note in README_project_history.md mentioned `-reconnect` caused crashes - now safe
+
+**Fix Applied** in `services/recording/segment_buffer.py`:
+
+Added reconnect flags to both `start()` and `_restart_ffmpeg()` methods:
+
+```python
+cmd = [
+    'ffmpeg',
+    '-rtsp_transport', 'tcp',
+    '-reconnect', '1',
+    '-reconnect_at_eof', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_on_network_error', '1',
+    '-reconnect_delay_max', '5',
+    '-i', self.source_url,
+    # ...rest of command
+]
+```
+
+**Note on cameras.json**: User asked if FFmpeg commands should be dynamically built from cameras.json. Clarification:
+- The reconnect flags are RTSP **input** flags for connection resilience
+- They're separate from the `rtsp_input` section in cameras.json which has FFmpeg **input params** like `timeout`, `analyzeduration`
+- For segment buffer specifically, `-c copy` (no transcoding) is always used
+- Could consider integrating `rtsp_input` params from cameras.json in future
+
+### Observations from Running Processes
+
+Found segment buffer processes using direct camera RTSP URLs instead of MediaMTX for some cameras:
+- XCPTP369388MNVTG (Living_REOLINK): Direct RTSP to 192.168.10.186
+- 95270001CSO4BPDZ: Direct RTSP to 192.168.10.88
+
+These cameras have `stream_type: MJPEG` but still have RTSP capability. The current code path:
+1. `stream_type == 'MJPEG'` → `recording_source = 'mjpeg_service'`
+2. Raises `NotImplementedError`
+3. Should be caught and skipped
+
+**Possible Explanations**:
+- Container has older code version
+- Different startup path for these cameras
+
+**Status**: Reconnect flags committed. Container restart (`startnvr`) needed to apply changes.
+
+### Files Modified This Continuation
+
+| File | Change |
+|------|--------|
+| `services/recording/segment_buffer.py` | Added FFmpeg reconnect flags |
+| `docs/README_handoff.md` | This update |

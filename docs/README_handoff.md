@@ -835,6 +835,66 @@ Benefits:
 
 ---
 
-*Last updated: January 2, 2026 07:15 EST*
+## Session Continued: January 2, 2026 (02:30+ EST)
+
+**Branch:** `neolink_motion_detection_JAN_2_2026_a`
+
+### NEOLINK → MediaMTX LL-HLS Integration - COMPLETE
+
+Successfully routed NEOLINK streams through MediaMTX LL-HLS path for lower latency and motion detection support.
+
+#### Files Modified
+
+1. **`streaming/stream_manager.py`**
+   - Added `NEOLINK` to LL_HLS branch condition
+   - NEOLINK now routes through MediaMTX like LL_HLS cameras
+
+2. **`services/recording/recording_service.py`**
+   - Added `NEOLINK` to MediaMTX recording source condition
+   - Recording now taps MediaMTX RTSP for NEOLINK cameras
+
+3. **`update_mediamtx_paths.sh`**
+   - Include NEOLINK cameras in MediaMTX paths generation
+   - Updated jq filter: `stream_type == "LL_HLS" or .value.stream_type == "NEOLINK"`
+
+4. **`services/motion/ffmpeg_motion_detector.py`**
+   - Added NEOLINK support for threshold adjustment (0.01 for LL_HLS/NEOLINK)
+   - Added NEOLINK to MediaMTX RTSP tap condition
+
+5. **`start.sh`**
+   - Fixed: Added `. ~/.bash_utils` for credentials loading
+   - Fixed: Corrected script name `update_neolink_config.sh` (was typo)
+   - Removed duplicate `update_neolink_configuration.sh`
+
+6. **`config/cameras.json`**
+   - Updated LAUNDRY ROOM to use UDP transport for Neolink sources
+
+### UI Bug Fix: Latency Badge Blocking Settings Button
+
+**Problem:** Settings button not working for LAUNDRY ROOM and AMCREST cameras.
+
+**Root Cause:** Latency badge overlay positioned at top-right (`right: 8px, top: 8px`) was blocking the settings button click area.
+
+**Fix:** Moved latency badge to bottom-left corner.
+
+**File:** `static/js/streaming/hls-stream.js`
+- `right: '8px'` → `left: '8px'`
+- `top: '8px'` → `bottom: '8px'`
+
+### Testing Results
+
+- ✅ LAUNDRY ROOM streaming via Neolink → MediaMTX LL-HLS
+- ✅ PTZ controls working
+- ✅ Motion detection service connected (Reolink Baichuan)
+- ✅ Settings button should now work (needs UI refresh to verify)
+
+### Pending
+
+- [ ] Verify settings button works after hard refresh
+- [ ] Verify motion detection triggers recording for NEOLINK cameras
+
+---
+
+*Last updated: January 2, 2026 02:35 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.

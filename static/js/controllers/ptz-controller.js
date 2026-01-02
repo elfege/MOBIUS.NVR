@@ -28,6 +28,9 @@ export class PTZController {
         this.setupPresetListeners();
         this.updateButtonStates();
 
+        // Show preset dropdowns immediately (for debugging)
+        this.updatePresetUI();
+
 
         console.log("#######################################")
         console.log('########### PTZ controller initialized');
@@ -483,12 +486,8 @@ export class PTZController {
                 $select.append(`<option value="${preset.token}">${preset.name}</option>`);
             });
 
-            // Show/hide based on preset availability
-            if (this.presets.length > 0) {
-                $select.closest('.ptz-presets-container').show();
-            } else {
-                $select.closest('.ptz-presets-container').hide();
-            }
+            // Always show preset dropdown for debugging
+            $select.closest('.ptz-presets-container').show();
         });
     }
 

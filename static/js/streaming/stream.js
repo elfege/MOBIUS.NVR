@@ -330,6 +330,89 @@ export class MultiStreamManager {
                 }
             }
         });
+
+        // Audio mute/unmute toggle handler
+        this.$container.on('click', '.stream-audio-btn', (e) => {
+            e.stopPropagation();
+            const $button = $(e.currentTarget);
+            const $streamItem = $button.closest('.stream-item');
+            const $video = $streamItem.find('.stream-video');
+            const videoEl = $video[0];
+            const cameraId = $streamItem.data('camera-serial');
+
+            if (!videoEl || videoEl.tagName !== 'VIDEO') {
+                console.log('[Audio] Not a video element, cannot toggle audio');
+                return;
+            }
+
+            // Toggle muted state
+            videoEl.muted = !videoEl.muted;
+
+            // Update button icon and state
+            const $icon = $button.find('i');
+            if (videoEl.muted) {
+                $icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
+                $button.removeClass('audio-active');
+                console.log(`[Audio] ${cameraId}: Muted`);
+            } else {
+                $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
+                $button.addClass('audio-active');
+                console.log(`[Audio] ${cameraId}: Unmuted`);
+            }
+
+            // Save preference to localStorage
+            this.saveAudioPreference(cameraId, !videoEl.muted);
+        });
+    }
+
+    /**
+     * Save audio preference to localStorage
+     */
+    saveAudioPreference(cameraId, enabled) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('cameraAudioPreferences') || '{}');
+            prefs[cameraId] = enabled;
+            localStorage.setItem('cameraAudioPreferences', JSON.stringify(prefs));
+        } catch (e) {
+            console.warn('[Audio] Failed to save preference:', e);
+        }
+    }
+
+    /**
+     * Get audio preference from localStorage
+     */
+    getAudioPreference(cameraId) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('cameraAudioPreferences') || '{}');
+            return prefs[cameraId] || false;  // Default to muted
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * Apply saved audio preference to a video element
+     */
+    applyAudioPreference(cameraId, $streamItem) {
+        const enabled = this.getAudioPreference(cameraId);
+        const $video = $streamItem.find('.stream-video');
+        const $button = $streamItem.find('.stream-audio-btn');
+        const videoEl = $video[0];
+
+        if (!videoEl || videoEl.tagName !== 'VIDEO') return;
+
+        // Apply preference (false = muted, true = unmuted)
+        videoEl.muted = !enabled;
+
+        // Update button state
+        const $icon = $button.find('i');
+        if (enabled) {
+            $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
+            $button.addClass('audio-active');
+        } else {
+            $icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
+            $button.removeClass('audio-active');
+        }
     }
 
     async startAllStreams() {
@@ -393,6 +476,9 @@ export class MultiStreamManager {
                     clearTimeout(this.restartTimers.get(cameraId));
                     this.restartTimers.delete(cameraId);
                 }
+
+                // Apply saved audio preference (unmute if user previously enabled)
+                this.applyAudioPreference(cameraId, $streamItem);
 
                 // Attach health monitor (refactored)
                 this.attachHealthMonitor(cameraId, $streamItem, streamType);

@@ -81,6 +81,60 @@ export class SettingsUI {
 
             fullscreenHandler.setGridStyle(style);
         });
+
+        // Mute all cameras button
+        this.$content.on('click', '#mute-all-btn', () => {
+            console.log('[SettingsUI] Mute all cameras clicked');
+            this.setAllCamerasAudio(false);
+        });
+
+        // Unmute all cameras button
+        this.$content.on('click', '#unmute-all-btn', () => {
+            console.log('[SettingsUI] Unmute all cameras clicked');
+            this.setAllCamerasAudio(true);
+        });
+    }
+
+    /**
+     * Set audio state for all cameras
+     * @param {boolean} enabled - true to unmute, false to mute
+     */
+    setAllCamerasAudio(enabled) {
+        const $streamItems = $('.stream-item');
+
+        $streamItems.each((_, item) => {
+            const $item = $(item);
+            const $video = $item.find('.stream-video');
+            const $button = $item.find('.stream-audio-btn');
+            const videoEl = $video[0];
+            const cameraId = $item.data('camera-serial');
+
+            if (!videoEl || videoEl.tagName !== 'VIDEO') return;
+
+            // Set muted state (muted = !enabled)
+            videoEl.muted = !enabled;
+
+            // Update button icon and state
+            const $icon = $button.find('i');
+            if (enabled) {
+                $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
+                $button.addClass('audio-active');
+            } else {
+                $icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
+                $button.removeClass('audio-active');
+            }
+
+            // Save preference
+            try {
+                const prefs = JSON.parse(localStorage.getItem('cameraAudioPreferences') || '{}');
+                prefs[cameraId] = enabled;
+                localStorage.setItem('cameraAudioPreferences', JSON.stringify(prefs));
+            } catch (e) {
+                console.warn('[Audio] Failed to save preference:', e);
+            }
+        });
+
+        console.log(`[SettingsUI] ${enabled ? 'Unmuted' : 'Muted'} all cameras`);
     }
 
     show() {
@@ -186,6 +240,29 @@ export class SettingsUI {
             <div class="setting-description">
                 <strong>Spaced & Rounded:</strong> Modern look with gaps and rounded corners.<br>
                 <strong>Attached:</strong> Professional NVR appearance with no gaps - saves screen space.
+            </div>
+        </div>
+
+        <!-- Audio Controls Setting -->
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-volume-up"></i>
+                    Camera Audio
+                </div>
+                <div class="setting-control" style="display: flex; gap: 8px;">
+                    <button id="mute-all-btn" class="setting-btn setting-btn-secondary">
+                        <i class="fas fa-volume-mute"></i> Mute All
+                    </button>
+                    <button id="unmute-all-btn" class="setting-btn setting-btn-primary">
+                        <i class="fas fa-volume-up"></i> Unmute All
+                    </button>
+                </div>
+            </div>
+            <div class="setting-description">
+                Control audio for all cameras at once. Individual camera audio can be toggled using
+                the speaker icon on each stream. Audio preferences are saved per camera.
+                <br><strong>Note:</strong> Audio starts muted by default (browser autoplay policy).
             </div>
         </div>
     `;

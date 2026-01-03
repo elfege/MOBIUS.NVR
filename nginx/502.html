@@ -116,7 +116,7 @@
         </div>
         <p class="retry-count">Attempt <span id="attempt">1</span></p>
         <div class="manual-retry">
-            <button onclick="location.reload()">Retry Now</button>
+            <button onclick="try { location.reload(true); } catch(e) { location.reload(); }">Retry Now</button>
         </div>
     </div>
 
@@ -313,9 +313,13 @@
                 fetch('/api/status', { method: 'GET' })
                     .then(r => {
                         if (r.ok) {
-                            // App is up, reload immediately without attempt param
+                            // App is up, hard reload to bypass cache
                             clearInterval(healthCheck);
-                            window.location.href = window.location.pathname;
+                            try {
+                                location.reload(true);
+                            } catch (e) {
+                                location.reload();
+                            }
                         }
                     })
                     .catch(() => {});

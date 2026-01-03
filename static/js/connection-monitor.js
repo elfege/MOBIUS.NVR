@@ -207,7 +207,7 @@ export class ConnectionMonitor {
                     color: #888;
                     margin-bottom: 1.5rem;
                 ">Attempting to reconnect...</p>
-                <button onclick="location.reload()" style="
+                <button onclick="try { location.reload(true); } catch(e) { location.reload(); }" style="
                     background: transparent;
                     border: 1px solid #ff9800;
                     color: #ff9800;
@@ -244,11 +244,15 @@ export class ConnectionMonitor {
                 if (response.ok) {
                     console.log('[ConnectionMonitor] 🎉 Server is back online, reloading page');
                     clearInterval(retryInterval);
-                    // Return to saved URL or reload current page
-                    const returnUrl = localStorage.getItem('nvr_return_url') || window.location.href;
+                    // Clear localStorage flags
                     localStorage.removeItem('nvr_return_url');
                     localStorage.removeItem('nvr_reconnect_attempt');
-                    window.location.href = returnUrl;
+                    // Hard reload to bypass cache
+                    try {
+                        location.reload(true);
+                    } catch (error) {
+                        location.reload();
+                    }
                 }
             } catch (error) {
                 console.log('[ConnectionMonitor] ⏳ Still offline, will retry in 5s');

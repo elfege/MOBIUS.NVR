@@ -8,6 +8,7 @@ import { FLVStreamManager } from './flv-stream.js';
 import { makeHealthMonitor } from './health.js';
 import { HLSStreamManager } from './hls-stream.js';
 import { MJPEGStreamManager } from './mjpeg-stream.js';
+import { CameraStateMonitor } from './camera-state-monitor.js';
 
 
 export class MultiStreamManager {
@@ -16,6 +17,7 @@ export class MultiStreamManager {
         this.hlsManager = new HLSStreamManager();
         this.flvManager = new FLVStreamManager();
         this.ptzController = new PTZController();
+        this.cameraStateMonitor = new CameraStateMonitor();
         // Arrow function preserves context
         this.getCameraConfig = (id) => this.hlsManager.getCameraConfig(id);
         this.buildHlsConfig = (config, isLL) => this.hlsManager.buildHlsConfig(config, isLL);
@@ -133,6 +135,10 @@ export class MultiStreamManager {
         }).catch(err => {
             console.error('[Init] Stream loading error:', err);
         });
+
+        // Start camera state monitor (polls CameraStateTracker API every 10s)
+        console.log('[Init] Starting camera state monitor...');
+        this.cameraStateMonitor.start();
 
         // Restore fullscreen independently after short delay
         // Just needs DOM to be ready, doesn't need streams loaded

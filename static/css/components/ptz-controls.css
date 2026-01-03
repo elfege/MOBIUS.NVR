@@ -4,13 +4,6 @@
 
 .ptz-controls {
     margin-top: 0.5rem;
-    /* Hidden by default in grid mode - toggle with PTZ button */
-    display: none;
-}
-
-/* Show PTZ controls when toggled on (via JavaScript) */
-.ptz-controls.ptz-visible {
-    display: block;
 }
 
 /* 3x3 Grid layout for directional controls

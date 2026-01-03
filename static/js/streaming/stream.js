@@ -363,6 +363,38 @@ export class MultiStreamManager {
             // Save preference to localStorage
             this.saveAudioPreference(cameraId, !videoEl.muted);
         });
+
+        // PTZ controls toggle handler
+        this.$container.on('click', '.stream-ptz-toggle-btn', (e) => {
+            e.stopPropagation();
+            const $button = $(e.currentTarget);
+            const $streamItem = $button.closest('.stream-item');
+            const $ptzControls = $streamItem.find('.ptz-controls');
+            const cameraId = $streamItem.data('camera-serial');
+
+            if (!$ptzControls.length) {
+                console.log('[PTZ] No PTZ controls found for this camera');
+                return;
+            }
+
+            // Toggle PTZ controls visibility
+            const isVisible = $ptzControls.hasClass('ptz-visible');
+
+            if (isVisible) {
+                // Hide PTZ controls
+                $ptzControls.removeClass('ptz-visible');
+                $button.removeClass('ptz-active');
+                console.log(`[PTZ] ${cameraId}: Controls hidden`);
+            } else {
+                // Show PTZ controls
+                $ptzControls.addClass('ptz-visible');
+                $button.addClass('ptz-active');
+                console.log(`[PTZ] ${cameraId}: Controls shown`);
+            }
+
+            // Save preference to localStorage
+            this.savePTZPreference(cameraId, !isVisible);
+        });
     }
 
     /**
@@ -379,6 +411,31 @@ export class MultiStreamManager {
     }
 
     /**
+     * Save PTZ visibility preference to localStorage
+     */
+    savePTZPreference(cameraId, visible) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('cameraPTZPreferences') || '{}');
+            prefs[cameraId] = visible;
+            localStorage.setItem('cameraPTZPreferences', JSON.stringify(prefs));
+        } catch (e) {
+            console.warn('[PTZ] Failed to save preference:', e);
+        }
+    }
+
+    /**
+     * Get PTZ visibility preference from localStorage
+     */
+    getPTZPreference(cameraId) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('cameraPTZPreferences') || '{}');
+            return prefs[cameraId] || false;  // Default to hidden
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
      * Get audio preference from localStorage
      */
     getAudioPreference(cameraId) {
@@ -387,6 +444,28 @@ export class MultiStreamManager {
             return prefs[cameraId] || false;  // Default to muted
         } catch (e) {
             return false;
+        }
+    }
+
+    /**
+     * Apply saved PTZ visibility preference
+     */
+    applyPTZPreference(cameraId, $streamItem) {
+        const visible = this.getPTZPreference(cameraId);
+        const $ptzControls = $streamItem.find('.ptz-controls');
+        const $ptzToggleBtn = $streamItem.find('.stream-ptz-toggle-btn');
+
+        if (!$ptzControls.length || !$ptzToggleBtn.length) {
+            return;  // No PTZ controls for this camera
+        }
+
+        if (visible) {
+            $ptzControls.addClass('ptz-visible');
+            $ptzToggleBtn.addClass('ptz-active');
+            console.log(`[PTZ] ${cameraId}: Restored visible state from preferences`);
+        } else {
+            $ptzControls.removeClass('ptz-visible');
+            $ptzToggleBtn.removeClass('ptz-active');
         }
     }
 
@@ -479,6 +558,9 @@ export class MultiStreamManager {
 
                 // Apply saved audio preference (unmute if user previously enabled)
                 this.applyAudioPreference(cameraId, $streamItem);
+
+                // Apply saved PTZ visibility preference
+                this.applyPTZPreference(cameraId, $streamItem);
 
                 // Attach health monitor (refactored)
                 this.attachHealthMonitor(cameraId, $streamItem, streamType);

@@ -9,14 +9,8 @@ api: yes
 apiAddress: :9997
 
 # === Authentication Configuration ===
-# Allow API access from Docker network without credentials
-authMethod: internal
-authInternalUsers:
-  - user: any
-    pass:
-    ips: ['127.0.0.1', '::1', '172.19.0.0/16']  # localhost + Docker network
-    permissions:
-      - action: api
+# Disable authentication for development (trusted network only)
+authMethod: none
 
 # === HLS/LL-HLS (HTTP) ===
 hls: yes

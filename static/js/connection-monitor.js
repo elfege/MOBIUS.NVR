@@ -7,8 +7,8 @@ export class ConnectionMonitor {
     constructor() {
         this.checkInterval = null;
         this.failedChecks = 0;
-        this.maxFailedChecks = 2; // Fail after 2 consecutive failures (faster detection)
-        this.checkIntervalMs = 5000; // Check every 5 seconds (more frequent)
+        this.maxFailedChecks = 5; // Fail after 5 consecutive failures (less sensitive)
+        this.checkIntervalMs = 10000; // Check every 10 seconds (less frequent)
         this.isMonitoring = false;
 
         console.log('[ConnectionMonitor] Initialized - will check health every', this.checkIntervalMs / 1000, 'seconds');
@@ -61,7 +61,7 @@ export class ConnectionMonitor {
             const response = await fetch('/api/health', {
                 method: 'GET',
                 cache: 'no-store',
-                signal: AbortSignal.timeout(5000) // 5 second timeout
+                signal: AbortSignal.timeout(10000) // 10 second timeout (less sensitive)
             });
 
             const latency = Date.now() - checkStartTime;
@@ -267,7 +267,7 @@ export class ConnectionMonitor {
     setupFetchInterceptor() {
         // Track consecutive fetch errors
         let consecutiveErrors = 0;
-        const errorThreshold = 3; // Redirect after 3 consecutive fetch errors (reduced for faster detection)
+        const errorThreshold = 8; // Redirect after 8 consecutive fetch errors (less sensitive)
 
         console.log('[ConnectionMonitor] 🔌 Installing fetch interceptor (will trigger after', errorThreshold, 'consecutive errors)');
 

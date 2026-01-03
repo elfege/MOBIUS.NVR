@@ -49,6 +49,7 @@ from services.onvif.onvif_event_listener import ONVIFEventListener
 from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
 from services.motion.reolink_motion_service import create_reolink_motion_service
 from services.motion.ffmpeg_motion_detector import create_ffmpeg_detector
+from services.camera_state_tracker import camera_state_tracker
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -710,6 +711,50 @@ def api_stream_status(camera_serial):
             'success': False,
             'error': str(e),
             'camera_serial': camera_serial
+        }), 500
+
+@app.route('/api/camera/state/<camera_id>')
+def api_camera_state(camera_id):
+    """
+    Get detailed camera state from CameraStateTracker
+
+    Returns comprehensive state information including:
+    - availability (ONLINE, STARTING, OFFLINE, DEGRADED)
+    - publisher_active (MediaMTX has active publisher)
+    - ffmpeg_process_alive (FFmpeg publisher process running)
+    - failure_count and backoff state
+    - next_retry timestamp
+    - error_message (last error if any)
+
+    Args:
+        camera_id: Camera serial number
+
+    Returns:
+        JSON with camera state details or error
+    """
+    try:
+        state = camera_state_tracker.get_camera_state(camera_id)
+
+        return jsonify({
+            'success': True,
+            'camera_id': camera_id,
+            'availability': state.availability.value,
+            'publisher_active': state.publisher_active,
+            'ffmpeg_process_alive': state.ffmpeg_process_alive,
+            'last_seen': state.last_seen.isoformat() if state.last_seen else None,
+            'failure_count': state.failure_count,
+            'next_retry': state.next_retry.isoformat() if state.next_retry else None,
+            'backoff_seconds': state.backoff_seconds,
+            'error_message': state.error_message,
+            'can_retry': camera_state_tracker.can_retry(camera_id)
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting camera state for {camera_id}: {e}", exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'camera_id': camera_id
         }), 500
 
 @app.route('/api/streams')

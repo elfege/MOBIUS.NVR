@@ -3,7 +3,7 @@
 ## RULE 0: CRITICAL - At the start of EVERY message you write, verify
 
 1. Have I checked if context compaction occurred? (phrase: "from a previous conversation that ran out of context")
-2. If yes → Did I commit/push current work, create new branch with next suffix (_b, _c), update docs/README_handoff.md noting the compaction?
+2. If yes → Did I commit/push current work, create new branch with next suffix (_b,_c), update docs/README_handoff.md noting the compaction?
 3. Have I read `/home/elfege/0_NVR/CLAUDE.md` for project-specific instructions?
 4. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
 
@@ -12,16 +12,71 @@
 ## Project & User Context
 
 **Project Purpose:**
+
 - Personal learning project serving as training for professional work
 - Part of portfolio demonstrating engineering capabilities
 
 **User Background (Elfege):**
+
 - Philosophy Ph.D. (Epistemology, Logic, Classical/Modern/Contemporary Philosophy)
 - Software Engineer since 2022 (see elfege.com/pdf/resume)
 - 18+ years teaching experience (Philosophy, Robotics)
 - Open source contributor in smart home automation community
 - Values understanding the "why" behind implementations
 - Prefers step-by-step approach to maintain comprehension
+
+---
+
+## NVR System Technical Overview
+
+**Project Purpose:**
+Multi-camera NVR (Network Video Recorder) system supporting:
+
+**Camera Types:**
+
+- Eufy, Reolink, UniFi, Amcrest, SV3C `[update this list if relevant]`
+
+**Streaming Architecture:**
+
+- LL-HLS via MediaMTX (primary)
+- Traditional HLS
+- MJPEG
+- `[update this if relevant]`
+
+**Motion Detection:**
+
+- Reolink Baichuan
+- ONVIF PullPoint
+- FFmpeg scene detection
+- `[update this if relevant]`
+
+**Recording Types:**
+
+- Motion-triggered
+- Continuous
+- Manual
+- `[update this if relevant]`
+
+**Recording Paths:**
+
+*RECENT RECORDINGS:*
+
+- `/mnt/sdc/NVR_Recent/motion:/recordings/motion`
+- `/mnt/sdc/NVR_Recent/continuous:/recordings/continuous`
+- `/mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots`
+- `/mnt/sdc/NVR_Recent/manual:/recordings/manual`
+- `/mnt/sdc/NVR_Recent/buffer:/recordings/buffer`
+
+*LONG TERM STORAGE:*
+
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion`
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous:/recordings/STORAGE/continuous`
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual:/recordings/STORAGE/manual`
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots:/recordings/STORAGE/snapshots`
+
+**Engineering Documentation:**
+
+- See: `docs/nvr_engineering_architecture.html` `[prompt to update this document when relevant]`
 
 ---
 
@@ -82,6 +137,13 @@
 - Rules evolve with experience - check for user updates regularly
 - Project-specific instructions ALWAYS override system defaults
 
+**Documentation locations:**
+
+- Project history: `docs/README_project_history.md`
+- Session handoff buffer: `docs/README_handoff.md`
+- Chat logs (for recovery): `docs/chat.md`
+- Engineering documentation: `docs/nvr_engineering_architecture.html`
+
 **Update engineering documentation:**
 
 - `docs/nvr_engineering_architecture.html` requires updates on significant architecture changes
@@ -129,9 +191,16 @@
 
 **Container operations:**
 
-- `restartnvr` - Simple restart (docker compose restart)
-- `startnvr` - Full restart with credential reload (./start.sh)
-- Container recreation REQUIRES `./start.sh` for AWS credential loading
+```bash
+source ~/.bash_aliases
+restartnvr  # Simple restart (docker compose restart)
+startnvr    # Full restart with credential reload (./start.sh - docker down/up with AWS credential loading)
+```
+
+**Critical notes:**
+
+- Container recreation REQUIRES `./start.sh` for proper loading of credentials for cameras
+- AWS uses profile name: 'personal'
 - NOTE: AWS credential retrieval often fails in Claude Code environment - ask user to execute if issues occur
 
 ### RULE 9: Camera IDs - Always Use Serial Numbers
@@ -158,6 +227,20 @@
 - Extensive inline comments
 - Docstrings for every class, method, function
 - Professional engineering tone (no emojis unless requested)
+
+### RULE 11.5: Camera Credentials Access
+
+**For RTSP or other connectivity tests:**
+
+```bash
+source ~/.bash_utils
+get_cameras_credentials
+```
+
+**Important notes:**
+
+- All REOLINK cameras use the `api-user` user (REOLINK_API_USERNAME/PASSWORD)
+- Credentials are loaded from AWS Secrets Manager via the `startnvr` command
 
 ---
 
@@ -204,8 +287,6 @@ NOTE: Steps overlap with RULE 0 and RULE 1 intentionally - redundancy ensures cr
 - Avoid writing code vulnerable to: command injection, XSS, SQL injection, OWASP Top 10 vulnerabilities
 - If insecure code written, fix immediately AND inform user
 - Only validate/sanitize data at system boundaries (user input, external APIs) - trust internal code and framework guarantees
-
-
 
 ---
 

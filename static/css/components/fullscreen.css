@@ -94,8 +94,7 @@
 
 /* Show PTZ controls in fullscreen when toggled on */
 .stream-item.css-fullscreen .ptz-controls.ptz-visible {
-    display: flex !important;
-    flex-direction: column !important;
+    display: block !important;
 }
 
 .stream-item.css-fullscreen .ptz-grid {

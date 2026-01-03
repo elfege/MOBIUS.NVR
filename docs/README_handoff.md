@@ -1387,4 +1387,122 @@ Services import this instance for coordinated state tracking.
 
 ---
 
-*Last updated: January 3, 2026 18:00 EST*
+### Phase 1 Complete - Enhanced UI Status Display (18:00-18:45 EST)
+
+Following up on Phase 1 completion, implemented enhanced UI status display to show granular camera states.
+
+#### What Was Built
+
+**1. REST API Endpoint** ([app.py:716-758](app.py#L716-L758))
+
+New endpoint: `GET /api/camera/state/<camera_id>`
+
+Returns detailed camera state from CameraStateTracker:
+- `availability`: ONLINE | STARTING | OFFLINE | DEGRADED
+- `publisher_active`: MediaMTX publisher status (boolean)
+- `ffmpeg_process_alive`: FFmpeg process status (boolean)
+- `failure_count`: Number of consecutive failures
+- `next_retry`: ISO timestamp of next retry attempt
+- `backoff_seconds`: Current backoff duration
+- `error_message`: Last error encountered
+- `can_retry`: Whether retry is currently allowed
+
+**2. HTML Template Updates** ([templates/streams.html:87-110](templates/streams.html#L87-L110))
+
+Added detailed state indicators to stream overlay:
+- Main status indicator (existing, now updated by state monitor)
+- Publisher state badge (broadcast icon + active/inactive)
+- FFmpeg process badge (film icon + running/stopped)
+- Backoff timer badge (clock icon + countdown, shown only when in backoff)
+
+**3. CSS Styling** ([static/css/components/stream-overlay.css:59-140](static/css/components/stream-overlay.css#L59-L140))
+
+- New availability state colors (degraded=orange, offline=gray)
+- Detailed state badge styling with backdrop blur
+- Color-coded icons (green=active, red=inactive, orange=warning)
+- Auto-show detailed badges on hover or when camera has issues
+
+**4. JavaScript State Monitor** ([static/js/streaming/camera-state-monitor.js](static/js/streaming/camera-state-monitor.js), 210 lines)
+
+New `CameraStateMonitor` class that:
+- Polls `/api/camera/state/<camera_id>` every 10 seconds for all cameras
+- Updates main status indicator based on availability
+- Updates detailed state badges (publisher, FFmpeg, backoff timer)
+- Calculates and displays retry countdown timers
+- Shows error messages as tooltips on detailed state section
+
+**5. Integration** ([static/js/streaming/stream.js:11,20,139-141](static/js/streaming/stream.js#L11))
+
+- Imported `CameraStateMonitor` module
+- Instantiated in `MultiStreamManager` constructor
+- Started automatically after stream initialization
+
+#### User Experience
+
+**When camera is healthy (ONLINE):**
+- Status shows "Live" with green pulsing dot
+- Detailed badges hidden by default
+- Hovering shows: Publisher Active (green), FFmpeg Running (green)
+
+**When camera is degraded (1-2 failures):**
+- Status shows "Degraded (2 failures)" with orange pulsing dot
+- Detailed badges auto-visible showing exact issue:
+  - Publisher inactive? → Red broadcast icon
+  - FFmpeg dead? → Red film icon
+  - In backoff? → Orange clock showing "15s" countdown
+
+**When camera is offline (3+ failures):**
+- Status shows "Offline (retry in 45s)" with gray dot
+- Detailed badges show full diagnostic state
+- User can hover to see last error message in tooltip
+
+#### Benefits
+
+**Distinguishes Problem Sources:**
+- **UI Problem**: Browser shows "Live" but no video → Browser/network issue
+- **Backend Problem**: Publisher inactive OR FFmpeg dead → MediaMTX/FFmpeg issue
+- **Camera Problem**: Publisher active, FFmpeg running, but status offline → Camera hardware or network issue
+
+**Reduces Support Burden:**
+- Users can self-diagnose common issues
+- Clear visual feedback on retry timing (no more "is it working?")
+- Error messages accessible via tooltip
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| [app.py](app.py) | Added `/api/camera/state/<camera_id>` endpoint + import |
+| [templates/streams.html](templates/streams.html) | Added detailed state indicator HTML |
+| [static/css/components/stream-overlay.css](static/css/components/stream-overlay.css) | Added state badge styling |
+| [static/js/streaming/camera-state-monitor.js](static/js/streaming/camera-state-monitor.js) | New state monitor module (210 lines) |
+| [static/js/streaming/stream.js](static/js/streaming/stream.js) | Integrated state monitor |
+| [docs/README_handoff.md](docs/README_handoff.md) | This update |
+
+#### Commits
+
+- `424a04c` (cleaned) - Add API endpoint for camera state from CameraStateTracker
+- `00a3d82` (cleaned) - Add detailed state indicators to stream status overlay
+- `7feb32d` - Add CSS styling for detailed camera state indicators
+- `f5ea2f4` - Add CameraStateMonitor for real-time state updates
+- `bbebc68` - Integrate CameraStateMonitor into MultiStreamManager
+
+#### Testing Status
+
+- ⏳ **Needs container restart** to load new code (`restartnvr`)
+- ⏳ **Verify API endpoint** returns camera state correctly
+- ⏳ **Verify UI updates** every 10 seconds with state changes
+- ⏳ **Test state transitions** (trigger camera failures, verify UI updates)
+- ⏳ **Test detailed badges** show/hide correctly on hover and issue states
+
+#### Next Steps
+
+1. Restart NVR container to load new code
+2. Test API endpoint manually: `curl http://localhost:5000/api/camera/state/<camera_id>`
+3. Monitor browser console for state updates
+4. Verify detailed badges appear on hover
+5. Test with an offline camera to see degraded/offline states
+
+---
+
+*Last updated: January 3, 2026 18:45 EST*

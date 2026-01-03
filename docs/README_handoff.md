@@ -14,9 +14,127 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 2, 2026 17:54 EST*
+*Last updated: January 3, 2026 15:28 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Current Session: January 3, 2026 (15:00-15:28 EST)
+
+### Branch: `main`
+
+### Tasks
+
+1. **Cache-Busting Hard Reload** - Added `location.reload(true)` to all reload buttons ✅
+2. **Connection Monitor Sensitivity Tuning** - Reduced false positive disconnections ✅
+
+---
+
+### 1. Cache-Busting Hard Reload Implementation
+
+#### Problem
+
+User requested cache-clearing functionality for reload buttons to help with troubleshooting and avoid cache-induced false assessments during debugging.
+
+#### Solution
+
+Implemented `location.reload(true)` with fallback to standard `location.reload()` in all reload mechanisms.
+
+**Pattern Used:**
+
+```javascript
+try {
+    location.reload(true);  // Force reload from server, bypass cache
+} catch(e) {
+    location.reload();      // Fallback to standard reload
+}
+```
+
+#### Files Modified
+
+| File | Location | Change |
+|------|----------|--------|
+| [`static/js/connection-monitor.js`](static/js/connection-monitor.js:210) | Line 210 | Offline modal "Retry Now" button onclick |
+| [`static/js/connection-monitor.js`](static/js/connection-monitor.js:251-255) | Lines 251-255 | Auto-retry when server recovers |
+| [`nginx/502.html`](nginx/502.html:119) | Line 119 | Manual "Retry Now" button onclick |
+| [`nginx/502.html`](nginx/502.html:318-322) | Lines 318-322 | Health check auto-reload |
+
+#### Benefits
+
+- Forces browser to bypass HTTP cache and fetch fresh content from server
+- Helps eliminate cache as variable during debugging
+- Safe fallback ensures page always reloads even if hard reload fails
+- Simple inline implementation, no new utility files needed
+
+#### Commits
+
+- `5400972` - Add cache-busting hard reload to all reload buttons
+
+---
+
+### 2. Connection Monitor Sensitivity Tuning
+
+#### Problem
+
+Connection monitor was too aggressive, causing frequent false positive disconnections:
+- Showing "Server Unavailable" modal when server was actually running
+- Especially problematic on iPads and slower connections
+- Creating unstable UI with unnecessary reloads
+
+**Root Cause:** Monitor was too sensitive with aggressive thresholds
+
+#### Solution Iterations
+
+**Initial aggressive settings** (causing problems):
+
+- Health check interval: 5 seconds
+- Health check timeout: 5 seconds
+- Failure threshold: 2 consecutive failures
+- Fetch error threshold: 3 consecutive errors
+
+**First adjustment:**
+
+- Health check interval: 10 seconds ⬆️
+- Health check timeout: 10 seconds ⬆️
+- Failure threshold: 5 consecutive failures ⬆️
+- Fetch error threshold: 8 consecutive errors ⬆️
+
+**Second adjustment (user requested 20 failures):**
+
+- Failure threshold: 20 consecutive failures ⬆️
+- Detection time: ~200 seconds (too long)
+
+**Final balanced settings:**
+
+- Health check interval: **10 seconds**
+- Health check timeout: **10 seconds**
+- Failure threshold: **10 consecutive failures**
+- Fetch error threshold: **8 consecutive errors**
+
+**Detection time:** ~100 seconds (~1.5 minutes) before triggering redirect
+
+#### Files Modified
+
+| File | Lines | Change |
+|------|-------|--------|
+| [`static/js/connection-monitor.js`](static/js/connection-monitor.js:10-11) | 10-11 | Updated failure threshold and interval settings |
+| [`static/js/connection-monitor.js`](static/js/connection-monitor.js:64) | 64 | Increased health check timeout to 10s |
+| [`static/js/connection-monitor.js`](static/js/connection-monitor.js:270) | 270 | Increased fetch error threshold to 8 |
+
+#### Result
+
+✅ **Balanced approach:**
+
+- Not too sensitive: Avoids false positives on iPads and slow connections
+- Not too slow: Still detects genuine server issues in reasonable time (~1.5 min)
+- Immediate detection: Server shutdown via 503 response remains instant
+
+#### Commits
+
+- `067c01a` - Reduce connection monitor sensitivity to prevent false positives
+- `6d10769` - Increase connection monitor failure threshold to 20
+- `7064f1c` - Adjust connection monitor to 10 failures for balanced sensitivity
 
 ---
 
@@ -1048,4 +1166,75 @@ Added positioning properties PTZ controls needed when moved out:
 
 ---
 
-*Last updated: January 2, 2026 19:51 EST*
+## Current Session: January 3, 2026 (15:28-15:40 EST)
+
+### Branch: `recording_motion_detection_isolation_JAN_3_2026_a`
+
+### Task: Convert logsnvr Alias to Function with Optional Tail Parameter
+
+#### Problem
+
+The `logsnvr` alias was defined as an inline command that couldn't accept parameters. User wanted to add optional `--tail=N` support to limit log output lines.
+
+#### Solution
+
+Converted the inline alias to a function in `.bash_utils` that accepts an optional integer argument:
+
+**Files Modified:**
+
+| File | Change |
+|------|--------|
+| `~/.bash_utils` | Added `logsnvr_func()` in NVR section (lines 3489-3506) |
+| `~/.bash_aliases` | Changed alias from inline command to function call (line 322) |
+
+**Function Implementation** (`~/.bash_utils:3489-3506`):
+
+```bash
+logsnvr_func() {
+    # Stream docker compose logs for NVR project
+    # Usage: logsnvr_func [tail_lines]
+    # Args:
+    #   tail_lines: Optional integer - number of lines to show from end (default: all)
+    # Example: logsnvr_func 100  # Show last 100 lines then follow
+
+    local tail_arg=""
+    if [ -n "$1" ]; then
+        tail_arg="--tail=$1"
+    fi
+
+    clear
+    cd ~/0_NVR || return 1
+
+    # Try docker compose logs with fallback retry after 10s
+    docker compose logs -f $tail_arg || (sleep 10 && docker compose logs -f $tail_arg)
+}
+```
+
+**Alias Update** (`~/.bash_aliases:322`):
+
+```bash
+# Before:
+alias logsnvr="clear && cd ~/0_NVR && (docker compose logs -f || sleep 10 && docker compose logs -f)"
+
+# After:
+alias logsnvr='logsnvr_func'
+```
+
+#### Usage Examples
+
+```bash
+logsnvr           # Show all logs and follow
+logsnvr 100       # Show last 100 lines then follow
+logsnvr 50        # Show last 50 lines then follow
+```
+
+#### Result
+
+✅ The `logsnvr` alias now supports optional tail parameter
+✅ Maintains original functionality when called without arguments
+✅ Follows project coding standards with extensive inline documentation
+✅ Located in appropriate NVR section of `.bash_utils`
+
+---
+
+*Last updated: January 3, 2026 15:40 EST*

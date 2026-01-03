@@ -137,8 +137,9 @@ export class MultiStreamManager {
         });
 
         // Start camera state monitor (polls CameraStateTracker API every 10s)
-        console.log('[Init] Starting camera state monitor...');
-        this.cameraStateMonitor.start();
+        // TEMPORARILY DISABLED for debugging auth popup issue
+        // console.log('[Init] Starting camera state monitor...');
+        // this.cameraStateMonitor.start();
 
         // Restore fullscreen independently after short delay
         // Just needs DOM to be ready, doesn't need streams loaded

@@ -130,42 +130,42 @@
                         <i class="fas fa-sync-alt"></i>
                     </button>
                 </div>
-
-                {% if 'ptz' in info.capabilities %}
-                <div class="ptz-controls">
-                    <div class="ptz-grid">
-                        <button class="ptz-btn" data-direction="up">
-                            <i class="fas fa-chevron-up"></i>
-                        </button>
-                        <button class="ptz-btn" data-direction="left">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <button class="ptz-btn ptz-stop-btn" data-direction="stop">
-                            <i class="fas fa-stop"></i>
-                        </button>
-                        <button class="ptz-btn" data-direction="right">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                        <button class="ptz-btn" data-direction="down">
-                            <i class="fas fa-chevron-down"></i>
-                        </button>
-                    </div>
-                    <div class="ptz-zoom-controls">
-                        <button class="ptz-btn ptz-zoom-btn" data-direction="zoom_out">
-                            <i class="fas fa-search-minus"></i>
-                        </button>
-                        <button class="ptz-btn ptz-zoom-btn" data-direction="zoom_in">
-                            <i class="fas fa-search-plus"></i>
-                        </button>
-                    </div>
-                    <div class="ptz-presets-container" style="display: none; margin-top: 8px;">
-                        <select class="ptz-preset-select">
-                            <option value="">-- Select Preset --</option>
-                        </select>
-                    </div>
-                </div>
-                {% endif %}
             </div>
+
+            {% if 'ptz' in info.capabilities %}
+            <div class="ptz-controls">
+                <div class="ptz-grid">
+                    <button class="ptz-btn" data-direction="up">
+                        <i class="fas fa-chevron-up"></i>
+                    </button>
+                    <button class="ptz-btn" data-direction="left">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button class="ptz-btn ptz-stop-btn" data-direction="stop">
+                        <i class="fas fa-stop"></i>
+                    </button>
+                    <button class="ptz-btn" data-direction="right">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="ptz-btn" data-direction="down">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+                <div class="ptz-zoom-controls">
+                    <button class="ptz-btn ptz-zoom-btn" data-direction="zoom_out">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <button class="ptz-btn ptz-zoom-btn" data-direction="zoom_in">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                </div>
+                <div class="ptz-presets-container" style="display: none; margin-top: 8px;">
+                    <select class="ptz-preset-select">
+                        <option value="">-- Select Preset --</option>
+                    </select>
+                </div>
+            </div>
+            {% endif %}
 
             <div class="loading-indicator">
                 <div class="spinner"></div>

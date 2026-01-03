@@ -98,6 +98,7 @@ for camera_id in $ALL_CAMERA_IDS; do
                 "detection_method": $method,
                 "recording_source": $source,
                 "segment_duration_sec": 30,
+                "pre_buffer_enabled": false,
                 "pre_buffer_sec": 5,
                 "post_buffer_sec": 10,
                 "max_age_days": 7,

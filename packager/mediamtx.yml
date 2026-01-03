@@ -9,8 +9,15 @@ api: yes
 apiAddress: :9997
 
 # === Authentication Configuration ===
-# Disable authentication for development (trusted network only)
-authMethod: none
+# Authentication disabled by default (no authMethod specified)
+# Uncomment to enable API-only authentication:
+# authMethod: internal
+# authInternalUsers:
+#   - user: any
+#     pass:
+#     ips: ['192.168.10.0/24','192.168.8.0/24', '172.19.0.0/16']
+#     permissions:
+#       - action: api
 
 # === HLS/LL-HLS (HTTP) ===
 hls: yes

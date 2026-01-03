@@ -71,8 +71,72 @@
     color: #dc3545;
 }
 
+.stream-indicator.failed i {
+    color: #dc3545;
+}
+
+.stream-indicator.degraded i {
+    color: #ff9800;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.stream-indicator.offline i {
+    color: #6c757d;
+}
+
 .stream-indicator.stopped i {
     color: #6c757d;
+}
+
+/* Detailed state indicators (shown on hover or when status is not live) */
+.stream-state-details {
+    display: flex;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+}
+
+.stream-state-details .state-item {
+    display: flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem 0.4rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+}
+
+.stream-state-details .state-item i {
+    font-size: 0.6rem;
+}
+
+/* Publisher state colors */
+.stream-state-details .publisher-state.active i {
+    color: #28a745;
+}
+
+.stream-state-details .publisher-state.inactive i {
+    color: #dc3545;
+}
+
+/* FFmpeg state colors */
+.stream-state-details .ffmpeg-state.alive i {
+    color: #28a745;
+}
+
+.stream-state-details .ffmpeg-state.dead i {
+    color: #dc3545;
+}
+
+/* Backoff timer - warning color */
+.stream-state-details .backoff-state i {
+    color: #ff9800;
+}
+
+/* Show detailed state on hover or when stream has issues */
+.stream-item:hover .stream-state-details,
+.stream-item[data-camera-availability="degraded"] .stream-state-details,
+.stream-item[data-camera-availability="offline"] .stream-state-details {
+    display: flex !important;
 }
 
 /* Pulse animation for live/loading states

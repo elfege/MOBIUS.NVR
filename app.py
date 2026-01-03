@@ -381,6 +381,14 @@ try:
 except Exception as e:
     print(f"⚠️  streaming startup warning: {e}")
 
+# ===== Start Camera State Tracker =====
+try:
+    print("\n📡 Starting Camera State Tracker...")
+    camera_state_tracker.start()
+    print("✅ Camera State Tracker started (polling MediaMTX API every 5s)")
+except Exception as e:
+    print(f"⚠️  Camera State Tracker startup warning: {e}")
+
 # ===== Auto-start Reolink Motion Detection =====
 if reolink_motion_service:
     try:

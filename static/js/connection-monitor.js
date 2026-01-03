@@ -7,7 +7,7 @@ export class ConnectionMonitor {
     constructor() {
         this.checkInterval = null;
         this.failedChecks = 0;
-        this.maxFailedChecks = 5; // Fail after 5 consecutive failures (less sensitive)
+        this.maxFailedChecks = 20; // Fail after 20 consecutive failures (very conservative)
         this.checkIntervalMs = 10000; // Check every 10 seconds (less frequent)
         this.isMonitoring = false;
 

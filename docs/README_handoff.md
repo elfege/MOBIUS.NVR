@@ -1168,11 +1168,11 @@ Added positioning properties PTZ controls needed when moved out:
 
 ---
 
-## Current Session: January 3, 2026 (15:28-17:27 EST)
+## Current Session: January 3, 2026 (15:28-17:51 EST)
 
 ### Branch: `main`
 
-### Task: Enhanced logsnvr Function with Multiple Containers and Color Preservation
+### Task: Enhanced logsnvr Function with Multiple Containers, Color Preservation, and Infinite Retry
 
 #### Problem
 
@@ -1183,6 +1183,7 @@ The `logsnvr` alias was defined as an inline command that couldn't accept parame
 3. Multiple container selection support
 4. Optional auto-clear terminal every N lines
 5. **Color preservation** - maintain Docker Compose's native colorization even when using auto-clear
+6. **Infinite retry loop** - never require user to retype command when containers are down/restarting
 
 #### Solution Evolution
 
@@ -1191,14 +1192,16 @@ The `logsnvr` alias was defined as an inline command that couldn't accept parame
 **Iteration 3**: Added multiple container support
 **Iteration 4**: Added auto-clear feature (but initially broke colors by piping through AWK)
 **Iteration 5**: **Fixed color preservation using `script` command** - AWK strips ANSI codes, but `script -q -c` forces TTY mode which preserves them
+**Iteration 6**: **Implemented infinite retry loop** - changed from 6-attempt limit to `while true;` loop with indefinite retries
 
 #### Final Implementation
 
 **Files Modified:**
 
+<!-- markdownlint-disable MD060 -->
 | File | Change |
 |------|--------|
-| [`~/.bash_utils`](~/.bash_utils:3489-3580) | Enhanced `logsnvr_func()` with multi-container support, auto-clear, and color preservation (lines 3489-3580) |
+| [`~/.bash_utils`](~/.bash_utils:3489-3589) | Enhanced `logsnvr_func()` with multi-container support, auto-clear, color preservation, and infinite retry (3489-3589) |
 | [`~/.bash_aliases`](~/.bash_aliases:322) | Changed alias from inline command to function call (line 322) |
 <!-- markdownlint-enable MD060 -->
 
@@ -1214,7 +1217,13 @@ The `logsnvr` alias was defined as an inline command that couldn't accept parame
 
 2. **Multiple Container Selection** - Specify any number of containers before numeric args
 
-3. **Color Preservation via `script` Command**:
+3. **Infinite Retry Loop** - Retries indefinitely when containers are down/restarting:
+   - Changed from 6-attempt limit to `while true;` loop
+   - Displays progress: `Container(s) not ready. Retrying in 5s... (attempt N)`
+   - User never needs to retype the command during restarts
+   - 5-second delay between retries to avoid spamming
+
+4. **Color Preservation via `script` Command**:
 
    ```bash
    script -q -c "docker compose logs ..." /dev/null | awk ...
@@ -1258,6 +1267,26 @@ logsnvr mediamtx 100 500          # mediamtx, last 100 lines, clear every 500 li
 - Forces pseudo-TTY allocation → preserves color codes through pipe
 - AWK receives colored output and can process without breaking colors
 
+**Infinite Retry Implementation:**
+
+```bash
+# Retry logic: infinite retry until containers are available
+local retry_delay=5
+local attempt=1
+
+while true; do
+    # Try to start docker compose logs
+    if [command succeeds]; then
+        return 0
+    fi
+
+    # Command failed - retry indefinitely
+    echo "Container(s) not ready. Retrying in ${retry_delay}s... (attempt $attempt)"
+    sleep $retry_delay
+    attempt=$((attempt + 1))
+done
+```
+
 **Function Signature:**
 
 ```bash
@@ -1271,6 +1300,7 @@ logsnvr_func [container_name...] [tail_lines] [clear_interval]
 ✅ Optional tail parameter for limiting output
 ✅ Optional auto-clear to prevent terminal buffer overflow
 ✅ **Colors preserved in all modes** (default AND auto-clear)
+✅ **Infinite retry - never need to retype command**
 ✅ Backward compatible with original usage
 ✅ Extensive inline documentation
 ✅ Smart parameter parsing (containers → numbers)

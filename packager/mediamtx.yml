@@ -9,15 +9,17 @@ api: yes
 apiAddress: :9997
 
 # === Authentication Configuration ===
-# Authentication disabled by default (no authMethod specified)
-# Uncomment to enable API-only authentication:
-# authMethod: internal
-# authInternalUsers:
-#   - user: any
-#     pass:
-#     ips: ['192.168.10.0/24','192.168.8.0/24', '172.19.0.0/16']
-#     permissions:
-#       - action: api
+# MediaMTX requires authentication for API access from non-localhost by default.
+# We allow API access from Docker network and local subnets without password.
+# We also allow stream reading (HLS/RTSP) without authentication to prevent browser popup.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ['192.168.10.0/24','192.168.8.0/24', '172.19.0.0/16']
+    permissions:
+      - action: api
+      - action: read
 
 # === HLS/LL-HLS (HTTP) ===
 hls: yes

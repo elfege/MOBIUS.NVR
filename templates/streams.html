@@ -89,7 +89,22 @@
                 <div class="stream-status">
                     <div class="stream-indicator loading">
                         <i class="fas fa-circle"></i>
-                        <span>Loading...</span>
+                        <span class="status-text">Loading...</span>
+                    </div>
+                    <!-- Detailed state indicators (hidden by default, shown on hover or when debugging) -->
+                    <div class="stream-state-details" style="display: none;">
+                        <div class="state-item publisher-state">
+                            <i class="fas fa-broadcast-tower" title="Publisher Status"></i>
+                            <span class="publisher-status">Unknown</span>
+                        </div>
+                        <div class="state-item ffmpeg-state">
+                            <i class="fas fa-film" title="FFmpeg Process"></i>
+                            <span class="ffmpeg-status">Unknown</span>
+                        </div>
+                        <div class="state-item backoff-state" style="display: none;">
+                            <i class="fas fa-clock" title="Retry Timer"></i>
+                            <span class="backoff-timer">0s</span>
+                        </div>
                     </div>
                 </div>
             </div>

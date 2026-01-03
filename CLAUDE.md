@@ -144,6 +144,13 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 - Chat logs (for recovery): `docs/chat.md`
 - Engineering documentation: `docs/nvr_engineering_architecture.html`
 
+**CRITICAL - Documentation File Location Rule:**
+
+- ALL documentation files MUST be in `/home/elfege/0_NVR/docs/` directory
+- NEVER create or update documentation in `/home/elfege/` root directory
+- If you find duplicate docs in home root, consult user before merging/deleting
+- Common mistake: Creating `~/README_handoff.md` instead of `~/0_NVR/docs/README_handoff.md`
+
 **Update engineering documentation:**
 
 - `docs/nvr_engineering_architecture.html` requires updates on significant architecture changes

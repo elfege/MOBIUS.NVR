@@ -228,7 +228,7 @@ class ONVIFPTZHandler:
                         'name': preset.Name if hasattr(preset, 'Name') else preset.token
                     })
 
-            logger.info(f"Retrieved {len(presets)} presets for {camera_serial}: {presets}")
+            logger.info(f"Retrieved {len(presets)} presets for {camera_serial}: {presets[:10]}...(truncated)")
             return True, presets
             
         except Exception as e:

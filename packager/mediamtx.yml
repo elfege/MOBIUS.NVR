@@ -5,10 +5,18 @@
 # === API Configuration ===
 # Enables REST API for path/publisher state queries
 # Used by CameraStateTracker to monitor publisher availability
-# Internal Docker network only - no authentication required
 api: yes
 apiAddress: :9997
-authMethod: none
+
+# === Authentication Configuration ===
+# Allow API access from Docker network without credentials
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1', '172.19.0.0/16']  # localhost + Docker network
+    permissions:
+      - action: api
 
 # === HLS/LL-HLS (HTTP) ===
 hls: yes

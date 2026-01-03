@@ -2,6 +2,12 @@
 # We do NOT touch Flask/FFmpeg flow.
 # This packager ingests RTSP directly from the camera and serves LL-HLS (with PARTs).
 
+# === API Configuration ===
+# Enables REST API for path/publisher state queries
+# Used by CameraStateTracker to monitor publisher availability
+api: yes
+apiAddress: :9997
+
 # === HLS/LL-HLS (HTTP) ===
 hls: yes
 hlsAddress: :8888

@@ -6,6 +6,7 @@ layout: default
 <!-- markdownlint-disable MD025 -->
 <!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD036 -->
+<!-- markdownlint-disable MD060 -->
 
 # Session Handoff Buffer
 
@@ -78,6 +79,7 @@ try {
 #### Problem
 
 Connection monitor was too aggressive, causing frequent false positive disconnections:
+
 - Showing "Server Unavailable" modal when server was actually running
 - Especially problematic on iPads and slower connections
 - Creating unstable UI with unnecessary reloads
@@ -184,7 +186,7 @@ Connection monitor was too aggressive, causing frequent false positive disconnec
 - **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:12,175-178,195-198,483,504)
 - **Console Evidence**:
 
-  ```
+  ```text
   [PTZ] Going to preset: 0 for camera: XCPTP369388MNVTG
   [PTZ] Mouse up - stopping. States: {isExecuting: true}
   [PTZ] Sending stop command for: XCPTP369388MNVTG
@@ -1166,75 +1168,223 @@ Added positioning properties PTZ controls needed when moved out:
 
 ---
 
-## Current Session: January 3, 2026 (15:28-15:40 EST)
+## Current Session: January 3, 2026 (15:28-17:27 EST)
 
-### Branch: `recording_motion_detection_isolation_JAN_3_2026_a`
+### Branch: `main`
 
-### Task: Convert logsnvr Alias to Function with Optional Tail Parameter
+### Task: Enhanced logsnvr Function with Multiple Containers and Color Preservation
 
 #### Problem
 
-The `logsnvr` alias was defined as an inline command that couldn't accept parameters. User wanted to add optional `--tail=N` support to limit log output lines.
+The `logsnvr` alias was defined as an inline command that couldn't accept parameters. User requested multiple enhancements:
 
-#### Solution
+1. Optional `--tail=N` parameter to limit log output lines
+2. Container name filtering (nvr, mediamtx, postgres, postgrest, neolink, edge)
+3. Multiple container selection support
+4. Optional auto-clear terminal every N lines
+5. **Color preservation** - maintain Docker Compose's native colorization even when using auto-clear
 
-Converted the inline alias to a function in `.bash_utils` that accepts an optional integer argument:
+#### Solution Evolution
+
+**Iteration 1**: Added tail parameter support
+**Iteration 2**: Added single container filtering with friendly names
+**Iteration 3**: Added multiple container support
+**Iteration 4**: Added auto-clear feature (but initially broke colors by piping through AWK)
+**Iteration 5**: **Fixed color preservation using `script` command** - AWK strips ANSI codes, but `script -q -c` forces TTY mode which preserves them
+
+#### Final Implementation
 
 **Files Modified:**
 
 | File | Change |
 |------|--------|
-| `~/.bash_utils` | Added `logsnvr_func()` in NVR section (lines 3489-3506) |
-| `~/.bash_aliases` | Changed alias from inline command to function call (line 322) |
+| [`~/.bash_utils`](~/.bash_utils:3489-3580) | Enhanced `logsnvr_func()` with multi-container support, auto-clear, and color preservation (lines 3489-3580) |
+| [`~/.bash_aliases`](~/.bash_aliases:322) | Changed alias from inline command to function call (line 322) |
+<!-- markdownlint-enable MD060 -->
 
-**Function Implementation** (`~/.bash_utils:3489-3506`):
+**Key Features:**
 
-```bash
-logsnvr_func() {
-    # Stream docker compose logs for NVR project
-    # Usage: logsnvr_func [tail_lines]
-    # Args:
-    #   tail_lines: Optional integer - number of lines to show from end (default: all)
-    # Example: logsnvr_func 100  # Show last 100 lines then follow
+1. **Friendly Container Names** - Maps to docker-compose service names:
+   - `nvr` → `nvr` (unified-nvr container)
+   - `mediamtx` → `packager` (nvr-packager container)
+   - `postgres` → `postgres`
+   - `postgrest` → `postgrest`
+   - `neolink` → `neolink`
+   - `edge` → `nvr-edge`
 
-    local tail_arg=""
-    if [ -n "$1" ]; then
-        tail_arg="--tail=$1"
-    fi
+2. **Multiple Container Selection** - Specify any number of containers before numeric args
 
-    clear
-    cd ~/0_NVR || return 1
+3. **Color Preservation via `script` Command**:
 
-    # Try docker compose logs with fallback retry after 10s
-    docker compose logs -f $tail_arg || (sleep 10 && docker compose logs -f $tail_arg)
-}
-```
+   ```bash
+   script -q -c "docker compose logs ..." /dev/null | awk ...
+   ```
 
-**Alias Update** (`~/.bash_aliases:322`):
-
-```bash
-# Before:
-alias logsnvr="clear && cd ~/0_NVR && (docker compose logs -f || sleep 10 && docker compose logs -f)"
-
-# After:
-alias logsnvr='logsnvr_func'
-```
+   - `script` forces TTY mode → preserves ANSI color codes
+   - AWK can then clear terminal without stripping colors
+   - Solution found after discovering `which script` → `/usr/bin/script`
 
 #### Usage Examples
 
 ```bash
-logsnvr           # Show all logs and follow
-logsnvr 100       # Show last 100 lines then follow
-logsnvr 50        # Show last 50 lines then follow
+# Basic usage
+logsnvr                           # All containers, all logs, with colors
+logsnvr 100                       # All containers, last 100 lines, with colors
+
+# Single container
+logsnvr nvr                       # Only nvr, all logs, with colors
+logsnvr nvr 50                    # Only nvr, last 50 lines, with colors
+
+# Multiple containers
+logsnvr nvr mediamtx              # nvr + mediamtx, all logs, with colors
+logsnvr nvr postgres 50           # nvr + postgres, last 50 lines, with colors
+
+# Auto-clear with colors preserved!
+logsnvr nvr 50 100                # nvr, last 50 lines, clear every 100 lines, WITH colors
+logsnvr mediamtx 100 500          # mediamtx, last 100 lines, clear every 500 lines, WITH colors
+```
+
+#### Technical Details
+
+**Color Preservation Challenge:**
+
+- Docker Compose outputs ANSI color codes when stdout is a TTY
+- Piping through AWK strips TTY characteristics → colors lost
+- Initial attempts with `--ansi=always` flag failed (no such flag in docker compose)
+
+**Solution:**
+
+- Use `script -q -c "command" /dev/null` wrapper
+- Forces pseudo-TTY allocation → preserves color codes through pipe
+- AWK receives colored output and can process without breaking colors
+
+**Function Signature:**
+
+```bash
+logsnvr_func [container_name...] [tail_lines] [clear_interval]
 ```
 
 #### Result
 
-✅ The `logsnvr` alias now supports optional tail parameter
-✅ Maintains original functionality when called without arguments
-✅ Follows project coding standards with extensive inline documentation
-✅ Located in appropriate NVR section of `.bash_utils`
+✅ Multiple container selection support
+✅ Friendly, memorable container names
+✅ Optional tail parameter for limiting output
+✅ Optional auto-clear to prevent terminal buffer overflow
+✅ **Colors preserved in all modes** (default AND auto-clear)
+✅ Backward compatible with original usage
+✅ Extensive inline documentation
+✅ Smart parameter parsing (containers → numbers)
+
+#### Lessons Learned
+
+When faced with an apparent trade-off (colors vs auto-clear), look for a third option that provides both. The `script` command was available all along at `/usr/bin/script`, just needed to think of using it to force TTY mode.
 
 ---
 
-*Last updated: January 3, 2026 15:40 EST*
+## Session 3: January 3, 2026 (17:30-18:00 EST) - Publisher State Coordination Phase 1
+
+### Branch: `recording_motion_detection_isolation_JAN_3_2026_a`
+
+### Context Compaction: New branch `recording_motion_detection_isolation_JAN_3_2026_b` created
+
+**Original branch commits:** e9cd653, 343a294, 898af7e, 391705a
+
+---
+
+### Phase 1 Complete: MediaMTX API + CameraStateTracker Service
+
+#### Objective
+
+Implement centralized camera state tracking to prevent redundant connection attempts and coordinate exponential backoff across all NVR services (motion detection, recording, UI health monitoring).
+
+#### Problem Being Solved
+
+- Camera streams showing "Starting..." or dead in UI
+- MediaMTX logs showing "torn down" spam
+- Multiple services attempting to connect to offline cameras simultaneously
+- No coordinated retry logic across services
+
+#### What Was Implemented
+
+**1. MediaMTX API Enablement** ([packager/mediamtx.yml:5-19](packager/mediamtx.yml#L5-L19))
+
+- Enabled REST API on port 9997
+- Configured internal authentication for Docker network (172.19.0.0/16)
+- No credentials required for development
+- Endpoint: `GET /v3/paths/list` for publisher state queries
+
+**2. CameraStateTracker Service** ([services/camera_state_tracker.py](services/camera_state_tracker.py), 511 lines)
+
+**State Model:**
+
+```python
+class CameraAvailability(Enum):
+    ONLINE = "online"          # Publisher active, stream healthy
+    STARTING = "starting"      # Publisher initializing
+    OFFLINE = "offline"        # Camera unreachable (3+ failures)
+    DEGRADED = "degraded"      # Intermittent issues (1-2 failures)
+
+@dataclass
+class CameraState:
+    camera_id: str
+    availability: CameraAvailability
+    publisher_active: bool          # MediaMTX has active publisher
+    ffmpeg_process_alive: bool      # FFmpeg process running
+    last_seen: datetime
+    failure_count: int
+    next_retry: datetime
+    backoff_seconds: int
+    error_message: Optional[str]
+```
+
+**Core Features:**
+
+- **Thread-safe singleton** using RLock for concurrent service access
+- **Exponential backoff**: 5s → 10s → 20s → 40s → 80s → 120s max
+- **Background MediaMTX API polling** every 5 seconds via daemon thread
+- **State change callbacks** for reactive service updates
+- **can_retry() method** prevents redundant connection attempts during backoff
+- **register_failure() / register_success()** for services to report outcomes
+- **update_publisher_state()** tracks MediaMTX publisher status
+
+**Global Singleton:**
+
+```python
+camera_state_tracker = CameraStateTracker()
+```
+
+Services import this instance for coordinated state tracking.
+
+#### Files Modified
+
+| File | Change |
+|------|--------|
+| [packager/mediamtx.yml](packager/mediamtx.yml) | Added API configuration + authentication |
+| [services/camera_state_tracker.py](services/camera_state_tracker.py) | Complete new service (511 lines) |
+| [docs/README_handoff.md](docs/README_handoff.md) | This update |
+
+#### Commits (Branch _a)
+
+- `e9cd653` - Enable MediaMTX API for publisher state monitoring
+- `343a294` - Disable MediaMTX API authentication for internal use
+- `898af7e` - Configure MediaMTX API authentication for Docker network
+- `391705a` - Create CameraStateTracker service for coordinated camera state management
+
+#### Testing Status
+
+- ✅ Basic functionality tested (state transitions, backoff, recovery)
+- ✅ MediaMTX API integration confirmed (DNS resolution works in Docker network)
+- ⏳ Integration with StreamManager, motion detection, recording (Phase 2-3)
+- ⏳ UI integration with enhanced status display (Phase 4)
+
+#### Next Steps (Phase 2+)
+
+1. **StreamManager Integration**: Update streaming/stream_manager.py to use CameraStateTracker
+2. **Service Integration**: Motion detection and recording services respect can_retry()
+3. **API Endpoints**: Expose camera state via REST API for UI consumption
+4. **Enhanced UI Status**: Show granular states (publisher active, FFmpeg running, backoff timer, etc.)
+5. **Validation**: Monitor MediaMTX "torn down" logs, verify backoff coordination
+
+---
+
+*Last updated: January 3, 2026 18:00 EST*

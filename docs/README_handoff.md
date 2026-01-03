@@ -37,12 +37,14 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ### 1. PTZ Preset Loading and Execution Fixes
 
 #### Problem 1: Presets Not Loading on Page Load
+
 - **Issue**: Presets only loaded when clicking PTZ buttons
 - **Root Cause**: `loadPresets()` only called via `setCurrentCamera()` when PTZ buttons clicked
 - **Fix**: Added `loadPresetsForAllCameras()` method called on page init
 - **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:438-451)
 
 #### Problem 2: Preset Dropdown Cut Off at Bottom
+
 - **Issue**: Dropdown extended beyond viewport bottom in fullscreen
 - **Root Cause**: Dropdown positioned after PTZ grid, extends downward
 - **Fix**: Added flexbox to `.fullscreen-ptz-controls` and `order: -1` to move dropdown above grid
@@ -51,16 +53,19 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
   - [`static/css/components/ptz-presets.css`](static/css/components/ptz-presets.css:9-13)
 
 #### Problem 3: Preset Selection Not Triggering Camera Selection
+
 - **Issue**: `gotoPreset()` requires `currentCamera` but wasn't set when clicking dropdown
 - **Fix**: Modified dropdown change handler to detect camera from parent `.stream-item` and call `setCurrentCamera()` first
 - **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:416-435)
 
 #### Problem 4: Preset Movement Interrupted by Stop Command
+
 - **Issue**: Mouseup/touchend event from dropdown click immediately fired `stopMovement()`, interrupting preset
 - **Root Cause**: Document-level mouseup handler stops PTZ movement whenever mouse released
 - **Fix**: Added `executingPreset` flag to skip `stopMovement()` during preset execution
 - **Files Modified**: [`static/js/controllers/ptz-controller.js`](static/js/controllers/ptz-controller.js:12,175-178,195-198,483,504)
 - **Console Evidence**:
+
   ```
   [PTZ] Going to preset: 0 for camera: XCPTP369388MNVTG
   [PTZ] Mouse up - stopping. States: {isExecuting: true}
@@ -68,6 +73,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
   ```
 
 #### Commits
+
 - `8b90842` - Fix preset selection - set current camera before goto
 - `024d896` - Load presets for all PTZ cameras on page load
 - `559de65` - Fix preset dropdown cutoff in fullscreen
@@ -79,22 +85,27 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ### 2. ONVIF GotoHomePosition for Stepper Calibration
 
 #### Problem
+
 - Reolink Living camera lost stepper calibration, needed reset without power cycle
 
 #### Solution
+
 - Added ONVIF `GotoHomePosition` command support
 - New direction: `'home'` in DIRECTION_VECTORS
 - Triggers camera to return to home position and recalibrate steppers
 
 #### Usage
+
 ```bash
 curl -X POST http://localhost:5000/api/ptz/XCPTP369388MNVTG/home
 ```
 
 #### Files Modified
+
 - [`services/onvif/onvif_ptz_handler.py`](services/onvif/onvif_ptz_handler.py:40,120-121,453-481)
 
 #### Commit
+
 - `6598e4e` - Add ONVIF GotoHomePosition for PTZ stepper calibration
 
 ---
@@ -102,11 +113,13 @@ curl -X POST http://localhost:5000/api/ptz/XCPTP369388MNVTG/home
 ### 3. Client-Side Connection Monitoring (UNTESTED)
 
 #### Objective
+
 Detect server disconnection/restart and show reloading page instead of error
 
 #### Implementation
 
 **Backend** ([`app.py`](app.py)):
+
 - Added `AppState` class for thread-safe shutdown tracking (lines 70-83)
 - Added `/api/health` endpoint:
   - Returns `200 OK` when healthy
@@ -114,6 +127,7 @@ Detect server disconnection/restart and show reloading page instead of error
 - Modified `cleanup_handler()` to set shutdown flag immediately (line 2199)
 
 **Frontend** ([`static/js/connection-monitor.js`](static/js/connection-monitor.js)):
+
 - Health polling every 5 seconds
 - Detects 503 response for immediate redirect
 - Tracks 2 consecutive failures → triggers redirect
@@ -121,11 +135,13 @@ Detect server disconnection/restart and show reloading page instead of error
 - Extensive emoji logging for debugging
 
 **Graceful Degradation**:
+
 1. Try to reach `/reloading` page first (HEAD request, 2s timeout)
 2. If accessible: redirect to reloading page
 3. If not accessible: show inline modal overlay with auto-retry
 
 **Reloading Page** ([`templates/reloading.html`](templates/reloading.html)):
+
 - Orange theme (vs blue for initial 502)
 - Faster retry (3s vs 5s)
 - Aggressive polling (1s)
@@ -133,6 +149,7 @@ Detect server disconnection/restart and show reloading page instead of error
 - Returns to saved page after reconnection
 
 **Offline Modal** (when server completely down):
+
 - Full-screen overlay (z-index 999999)
 - Spinner animation
 - "Server Unavailable" message
@@ -141,6 +158,7 @@ Detect server disconnection/restart and show reloading page instead of error
 - Returns to saved URL when recovered
 
 #### User Experience Flow
+
 1. Server shutdown initiated → `AppState.set_shutting_down()`
 2. Client polls `/api/health` → Gets 503 response
 3. Immediate redirect → Client goes to `/reloading` before connection breaks
@@ -148,15 +166,18 @@ Detect server disconnection/restart and show reloading page instead of error
 5. Server back online → User returned to original page
 
 #### Testing Status
+
 **NOT YET TESTED** - waiting for user to test with `docker compose restart`
 
 #### Files Modified
+
 - [`app.py`](app.py:70-83,448-451,2199) - AppState, /api/health, shutdown flag
 - [`templates/reloading.html`](templates/reloading.html) - Reconnection page
 - [`static/js/connection-monitor.js`](static/js/connection-monitor.js) - Monitoring module
 - [`templates/streams.html`](templates/streams.html:203,237) - Initialize monitor
 
 #### Commits
+
 - `5147655` - Add client-side connection monitoring and server shutdown detection
 - `8fe343f` - Add extensive logging to connection monitor for debugging
 - `1926021` - Move reloading page to Flask template route
@@ -167,7 +188,9 @@ Detect server disconnection/restart and show reloading page instead of error
 ### 4. PTZ Preset Loading Race Conditions (RESOLVED)
 
 #### Problem Identified
+
 Multiple PTZ cameras loading presets simultaneously on page load caused:
+
 - Browser connection limits (typically 6 per domain)
 - AJAX requests aborted before being sent (`readyState: 0`)
 - Error: `{readyState: 0, getResponseHeader: ƒ, ...}`
@@ -176,11 +199,13 @@ Multiple PTZ cameras loading presets simultaneously on page load caused:
 #### Root Causes
 
 **Frontend Race Condition:**
+
 - All cameras loading presets simultaneously on page init
 - Browser queue overflow causing request abortion
 - No retry mechanism for transient failures
 
 **Potential Backend Factors:**
+
 - ONVIF connection creation takes time (synchronous)
 - Multiple concurrent ONVIF requests could overwhelm cameras
 - Flask app startup timing
@@ -188,6 +213,7 @@ Multiple PTZ cameras loading presets simultaneously on page load caused:
 #### Solutions Implemented
 
 **1. Request Staggering** ([`ptz-controller.js:470-493`](static/js/controllers/ptz-controller.js#L470-L493))
+
 ```javascript
 loadPresetsForAllCameras() {
     let delay = 0;
@@ -204,12 +230,14 @@ loadPresetsForAllCameras() {
 ```
 
 **Benefits:**
+
 - Camera 1: loads immediately (0ms)
 - Camera 2: loads after 500ms
 - Camera 3: loads after 1000ms
 - Prevents browser connection queue overflow
 
 **2. Exponential Backoff Retry** ([`ptz-controller.js:495-533`](static/js/controllers/ptz-controller.js#L495-L533))
+
 ```javascript
 async loadPresets(cameraSerial, retryCount = 0) {
     const maxRetries = 3;
@@ -231,6 +259,7 @@ async loadPresets(cameraSerial, retryCount = 0) {
 ```
 
 **3. On-Demand Loading Fallback** ([`ptz-controller.js:415-432`](static/js/controllers/ptz-controller.js#L415-L432))
+
 ```javascript
 $(document).on('click focus', '.ptz-preset-select', (event) => {
     // Check if presets loaded
@@ -247,11 +276,13 @@ $(document).on('click focus', '.ptz-preset-select', (event) => {
 | `static/js/controllers/ptz-controller.js` | Staggered loading + retry logic + dropdown click handler |
 
 #### Commits
+
 - `4accb9c` - Add preset dropdown click handler to load missing presets
 - `dfa757a` - Add retry logic with exponential backoff for preset loading
 - `cadfbc6` - Stagger preset loading to prevent simultaneous request abortion
 
 #### Status
+
 **RESOLVED** - Presets now load reliably on page load with graceful degradation
 
 ---
@@ -259,12 +290,15 @@ $(document).on('click focus', '.ptz-preset-select', (event) => {
 ### 5. 502 Error Page Funny Messages Enhancement
 
 #### Problem
+
 Not enough silly messages to sustain typical 10-30 second NVR startup time.
 
 #### Solution
+
 Expanded message array from 20 to 135+ messages:
 
 **Categories Added:**
+
 - Docker/container operations jokes
 - Network protocol puns ("Waiting for UDP to maybe show up...")
 - Programming recursion/meta humor ("Debugging the debugger...")
@@ -273,6 +307,7 @@ Expanded message array from 20 to 135+ messages:
 - Encouraging messages ("You're the best...")
 
 **Coverage:**
+
 - Original: 20 messages = 40 seconds before repeating
 - Updated: 135+ messages = 270+ seconds (4.5+ minutes) before repeating
 - More than enough for typical 10-30s startup
@@ -284,6 +319,7 @@ Expanded message array from 20 to 135+ messages:
 | [`nginx/502.html`](nginx/502.html:126-262) | Expanded silly messages from 20 to 135+ |
 
 #### Commit
+
 - `c39a960` - Expand 502.html silly loading messages for startup entertainment
 
 ---
@@ -876,6 +912,7 @@ Container restart (`startnvr`) needed to apply this fix.
 ### Problem Identified
 
 **Symptoms:**
+
 - LL-HLS publishers (FFmpeg) exiting with code 0 after running briefly
 - MediaMTX logs showing publishers "torn down" shortly after starting
 - Streams would start, publish to MediaMTX, then terminate cleanly
@@ -883,6 +920,7 @@ Container restart (`startnvr`) needed to apply this fix.
 **Root Cause Found:**
 
 Budget Eufy cameras produce audio streams with timestamp discontinuities. When FFmpeg tries to encode audio (AAC) for the dual-output LL-HLS, it encounters:
+
 ```
 [aost#0:1/aac @ ...] Non-monotonic DTS; previous: X, current: Y
 [aac @ ...] Queue input is backward in time
@@ -903,6 +941,7 @@ After enough timestamp errors, FFmpeg exits cleanly (code 0) instead of crashing
    - Added `-max_muxing_queue_size 1024` to handle buffer issues
 
 3. **Result:** FFmpeg commands now use `-an` (no audio) for both sub and main outputs:
+
    ```
    ffmpeg ... -map 0:v:0 ... -an -max_muxing_queue_size 1024 -f rtsp ... /sub
               -map 0:v:0 -c:v copy -an -max_muxing_queue_size 1024 -f rtsp ... /main
@@ -911,6 +950,7 @@ After enough timestamp errors, FFmpeg exits cleanly (code 0) instead of crashing
 ### Testing Observations
 
 After fix:
+
 - STAIRS FFmpeg log shows 87+ seconds of continuous encoding at 15fps
 - No audio-related errors in FFmpeg output
 - Publishers still being torn down periodically (separate issue - likely segment buffer or motion detector connections)
@@ -930,4 +970,82 @@ After fix:
 
 ---
 
-*Last updated: January 2, 2026 05:08 EST*
+## Current Session: January 2, 2026 (19:00-19:51 EST)
+
+### Branch: `sub_main_stream_switching_JAN_2_2026_a`
+
+### Task: Fix PTZ Controls Toggle Button Bug
+
+#### Problem Identified
+
+PTZ controls were not showing when toggled, despite JavaScript correctly adding the `.ptz-visible` class. Investigation revealed:
+
+1. **Root Cause**: PTZ controls HTML was nested inside the `.stream-controls` div
+2. **Impact**: When `.stream-controls` had `display: none`, all children (including PTZ controls) were also hidden
+3. **Symptom**: PTZ controls only appeared when stream controls toggle was active
+
+#### Files Modified
+
+<!-- markdownlint-disable MD060 -->
+| File | Change |
+|------|--------|
+| [`templates/streams.html`](templates/streams.html#L121-L168) | Moved `.ptz-controls` div outside of `.stream-controls` div (lines 121-168) |
+| [`static/css/components/ptz-controls.css`](static/css/components/ptz-controls.css#L5-L16) | Added positioning CSS: absolute, bottom, z-index 21 (lines 5-16) |
+<!-- markdownlint-enable MD060 -->
+
+#### Solution Implemented
+
+**1. HTML Structure Fix** ([templates/streams.html:121-168](templates/streams.html#L121-L168))
+
+Changed PTZ controls from being a child of `.stream-controls` to a sibling:
+
+```html
+<!-- Before: PTZ inside stream-controls -->
+<div class="stream-controls">
+    <div class="control-row">...</div>
+    <div class="ptz-controls">...</div> <!-- Nested! -->
+</div>
+
+<!-- After: PTZ as sibling -->
+<div class="stream-controls">
+    <div class="control-row">...</div>
+</div>
+<div class="ptz-controls">...</div> <!-- Independent! -->
+```
+
+**2. CSS Positioning** ([ptz-controls.css:5-16](static/css/components/ptz-controls.css#L5-L16))
+
+Added positioning properties PTZ controls needed when moved out:
+
+```css
+.ptz-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0) 100%);
+    z-index: 21; /* Above stream controls (z-index: 20) */
+    display: none; /* Hidden by default */
+}
+```
+
+#### Commits
+
+- `9d539dd` - Restore PTZ toggle icon to arrows (fa-arrows-alt)
+- `a9089ec` - Restore stream controls toggle button functionality
+- `d8fa0b5` - Fix PTZ controls being hidden when stream controls are hidden
+- `b5908a4` - Add positioning CSS to PTZ controls after moving them out of stream-controls
+
+#### Result
+
+✅ Both toggle buttons now work independently:
+
+- **PTZ Toggle** (fa-arrows-alt) → Shows/hides PTZ directional controls
+- **Stream Controls Toggle** (fa-sliders-h) → Shows/hides start/stop/refresh buttons
+- Both can be shown simultaneously or separately
+- PTZ controls appear above stream controls when both are visible (z-index stacking)
+
+---
+
+*Last updated: January 2, 2026 19:51 EST*

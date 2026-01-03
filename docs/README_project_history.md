@@ -13824,4 +13824,74 @@ User accessed SV3C camera web interface and corrected hardware settings:
 - **STAIRS camera** still experiencing failures (separate issue from latency/GOP)
 
 ---
+
+## January 2, 2026 (Evening): Fix PTZ Controls Toggle Button Bug
+
+### Problem
+
+PTZ controls were not showing when toggled despite JavaScript correctly adding the `.ptz-visible` class.
+
+**Root Cause**: PTZ controls HTML was incorrectly nested inside the `.stream-controls` div, causing them to be hidden whenever stream controls were hidden with `display: none`.
+
+**Symptom**: PTZ controls only appeared when the stream controls toggle button was also active.
+
+### Solution
+
+**1. HTML Structure Fix**
+
+Moved PTZ controls from being a child of `.stream-controls` to a sibling element:
+
+```html
+<!-- Before: PTZ nested inside stream-controls -->
+<div class="stream-controls">
+    <div class="control-row">...</div>
+    <div class="ptz-controls">...</div> <!-- Hidden with parent! -->
+</div>
+
+<!-- After: PTZ as independent sibling -->
+<div class="stream-controls">
+    <div class="control-row">...</div>
+</div>
+<div class="ptz-controls">...</div> <!-- Independent control! -->
+```
+
+**2. CSS Positioning**
+
+Added positioning properties that PTZ controls lost when moved out of their parent:
+
+```css
+.ptz-controls {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 0.75rem;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0) 100%);
+    z-index: 21; /* Above stream controls (z-index: 20) */
+    display: none; /* Hidden by default, shown with .ptz-visible */
+}
+```
+
+### Result
+
+✅ Both toggle buttons now work independently:
+
+- **PTZ Toggle** (fa-arrows-alt icon) → Shows/hides PTZ directional controls
+- **Stream Controls Toggle** (fa-sliders-h icon) → Shows/hides start/stop/refresh buttons
+- Both can be shown simultaneously or separately
+- PTZ controls appear above stream controls when both are visible (z-index stacking)
+
+### Files Modified
+
+- `templates/streams.html` - Moved PTZ controls div to be sibling of stream-controls
+- `static/css/components/ptz-controls.css` - Added positioning and z-index
+
+### Commits
+
+- `9d539dd` - Restore PTZ toggle icon to arrows (fa-arrows-alt)
+- `a9089ec` - Restore stream controls toggle button functionality
+- `d8fa0b5` - Fix PTZ controls being hidden when stream controls are hidden
+- `b5908a4` - Add positioning CSS to PTZ controls after moving them out of stream-controls
+
+---
 {% endraw %}

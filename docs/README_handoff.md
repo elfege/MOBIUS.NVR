@@ -1641,12 +1641,14 @@ ffmpeg -rtsp_transport tcp \
 ```
 
 **Camera Details:**
+
 - Camera: T8416P0023370398 (Eufy Office Desk)
 - Type: Eufy with **direct RTSP connection** (NOT via bridge)
 - RTSP URL: `rtsp://<credentials>@192.168.10.87:554/live0`
 - Config source: `jq '.devices.T8416P0023370398.rtsp' config/cameras.json` returns `{"host": "192.168.10.87", "port": 554, "path": "/live0"}`
 
 **Why T8416P0023370398:**
+
 - SV3C camera (C6F0SgZ0N0PoL2) is the ONLY stable working HLS stream
 - Must not touch SV3C during troubleshooting to preserve stable reference
 
@@ -1668,15 +1670,39 @@ jq '.devices.<SERIAL>.rtsp' config/cameras.json
 
 ---
 
-### Pending: FFmpeg Test Results
+### FFmpeg Test Results (January 4, 2026 02:35 EST)
 
-User ran the test command - results pending sharing in this session.
+**Result: FAILED - `-reconnect` flags NOT supported for RTSP protocol**
+
+```text
+Option reconnect not found.
+Error opening input file rtsp://...@192.168.10.87:554/live0.
+Error opening input files: Option not found
+```
+
+**Analysis:**
+
+1. `-reconnect` flags are **HTTP/HTTPS-only** options, not RTSP
+2. FFmpeg help confirms: reconnect options appear under HTTP input demuxer, not RTSP
+3. RTSP uses different connection semantics (stateful TCP session)
+
+**Also discovered:** Host system runs FFmpeg 6.1.1 (Ubuntu package), not 7.1.3 as mentioned in previous notes. Docker container may have different version.
+
+**Implication for Watchdog Design:**
+
+FFmpeg cannot auto-reconnect RTSP streams. The watchdog must:
+
+- Monitor FFmpeg process exit
+- Detect stream health externally (MediaMTX publisher state, process alive check)
+- Restart FFmpeg process entirely when stream fails
+- Use CameraStateTracker exponential backoff for retry coordination
 
 ---
 
 ### Context Compaction Events
 
 Multiple context compactions occurred during this session:
+
 - ~02:22 EST (Jan 4): Compaction triggered during FFmpeg testing investigation
 - Handoff was NOT updated at any point (violation of RULE 2)
 
@@ -1685,12 +1711,14 @@ Multiple context compactions occurred during this session:
 ### TODO List (Carried Forward)
 
 **Stream Watchdog Investigation (Current Focus):**
+
 - [x] Create FFmpeg test command for reconnect flags
 - [ ] **PENDING USER INPUT**: Evaluate FFmpeg test results
 - [ ] Decide on reconnect flag implementation approach
 - [ ] Implement watchdog fixes based on test results
 
 **Phase 2+ Tasks (Deferred):**
+
 - [ ] StreamManager Integration: Use CameraStateTracker for retry coordination
 - [ ] Service Integration: Motion detection and recording services respect can_retry()
 - [ ] Validation: Monitor MediaMTX "torn down" logs after integration

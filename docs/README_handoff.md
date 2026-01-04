@@ -70,13 +70,20 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - [x] Fix UI recovery to use stop+start instead of refresh
 - [x] Disable aggressive nuclear cleanup in _start_stream()
 
-**Ready to Test:**
+**Tested and Working:**
 
 - [x] Re-enable watchdog (STREAM_WATCHDOG_ENABLED=1) - already enabled
-- [ ] Hard refresh browser to load new JS with window.streamManager exposed
-- [ ] Verify console tests pass (streamManager accessible, handleBackendRecovery uses stopIndividualStream)
-- [ ] Monitor for "torn down" messages in MediaMTX logs
-- [ ] Test UI auto-recovery when backend watchdog restarts a stream
+- [x] Hard refresh browser to load new JS with window.streamManager exposed
+- [x] Verify console tests pass (streamManager accessible, handleBackendRecovery uses stopIndividualStream)
+- [x] Test UI auto-recovery when backend watchdog restarts a stream - CONFIRMED WORKING
+  - Killed FFmpeg for T8416P00233717CB
+  - Backend watchdog detected and restarted stream
+  - UI detected recovery, performed full stop+start cycle
+  - Stream resumed automatically
+
+**Still to verify:**
+
+- [ ] Monitor for "torn down" messages in MediaMTX logs (should be reduced now)
 
 **Optional:**
 

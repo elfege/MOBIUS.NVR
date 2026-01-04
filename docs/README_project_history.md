@@ -14299,4 +14299,74 @@ StreamWatchdog (polls every 10s)
 
 ---
 
+## UI Health Refactor - January 4, 2026 (04:00 EST)
+
+### Branch: `ui_health_refactor_JAN_4_2026_a` (merged to main)
+
+### Problem Solved
+
+When StreamWatchdog (backend) restarts a failed stream, the UI didn't know about it. User had to manually refresh the page to see the recovered stream.
+
+### Solution Implemented
+
+1. Modified `CameraStateMonitor` to detect state transitions (degraded/offline → online)
+2. Added `onRecovery` callback to `CameraStateMonitor` constructor
+3. Added `handleBackendRecovery()` method to `MultiStreamManager`
+4. When backend recovers a stream, UI automatically refreshes the video element
+
+### Architecture
+
+```
+CameraStateTracker (backend, polls MediaMTX every 5s)
+         |
+         v
+StreamWatchdog (backend, polls every 10s, restarts failed streams)
+         |
+         v
+CameraStateMonitor (frontend, polls /api/camera/state every 10s)
+         |
+         +---> detects degraded/offline → online transition
+         +---> calls onRecovery callback
+         +---> MultiStreamManager.handleBackendRecovery()
+         +---> refreshes video element
+```
+
+### Bug Fix: ffmpeg_process_alive False Positive
+
+**Problem**: STAIRS camera showed "Degraded" status with `ffmpeg_process_alive: false` while `publisher_active: true` and stream was clearly working.
+
+**Root Cause**: The `ffmpeg_process_alive` field in `CameraState` dataclass was never updated anywhere - it always returned `False` (default value).
+
+**Fix**: In `app.py` line 784, derive `ffmpeg_process_alive` from `publisher_active` for LL-HLS cameras:
+
+```python
+# Before:
+'ffmpeg_process_alive': False if is_mjpeg else state.ffmpeg_process_alive,
+
+# After:
+'ffmpeg_process_alive': state.publisher_active if not is_mjpeg else False,
+```
+
+**Rationale**: For LL-HLS cameras, MediaMTX's `ready: true` already indicates FFmpeg is running and publishing. The two fields are logically equivalent.
+
+### Files Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `static/js/streaming/camera-state-monitor.js` | Modified | Added recovery detection + onRecovery callback |
+| `static/js/streaming/stream.js` | Modified | Added handleBackendRecovery() method |
+| `app.py` | Modified | Fixed ffmpeg_process_alive false positive (line 784) |
+
+### Testing Results
+
+- UI recovery detection verified working for Living Room (Eufy) camera
+- Full chain: FFmpeg died → Watchdog restart → CameraStateMonitor detected recovery → UI refreshed
+- Console logs show `[CameraState]` recovery detection and `[Recovery]` UI refresh
+
+### Status
+
+✅ **UI Health Refactor Complete** - UI now auto-refreshes when backend recovers streams
+
+---
+
 {% endraw %}

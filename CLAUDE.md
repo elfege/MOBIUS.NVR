@@ -89,6 +89,7 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 - Commit immediately with detailed message
 - Push immediately
 - Never batch multiple file changes into one commit
+- Ensure to preserve all essential untracked files (such as `CLAUDE.md`) when checking back out to main.
 
 **Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
 

@@ -215,7 +215,65 @@ class MJPEGCaptureService:
                 
         except Exception as e:
             logger.error(f"Error stopping MJPEG capture for {camera_id}: {e}")
-    
+
+    def restart_capture(self, camera_id: str, camera_config: dict) -> bool:
+        """
+        Restart MJPEG capture for a camera.
+
+        Called by StreamWatchdog when MJPEG camera health check fails.
+        Performs clean stop + start cycle.
+
+        Args:
+            camera_id: Camera serial number
+            camera_config: Camera configuration dict from camera repository
+
+        Returns:
+            bool: True if restart was successful, False otherwise
+        """
+        logger.info(f"[RESTART] Restarting generic MJPEG capture for {camera_id}")
+
+        try:
+            # Step 1: Stop existing capture
+            with self.lock:
+                # Remember client count so we can restore clients
+                client_count = self.client_counts.get(camera_id, 0)
+
+            if camera_id in self.active_captures:
+                logger.info(f"[RESTART] Stopping existing capture for {camera_id}")
+                self._stop_capture(camera_id)
+                # Brief pause for cleanup
+                import time
+                time.sleep(0.5)
+
+            # Step 2: Start fresh capture
+            logger.info(f"[RESTART] Starting fresh capture for {camera_id}")
+
+            # Restore client count (capture needs at least 1 client to start)
+            if client_count == 0:
+                client_count = 1  # Force at least 1 client for restart
+
+            with self.lock:
+                self.client_counts[camera_id] = client_count
+
+            # For generic MJPEG, we need the camera_service object
+            camera_service = camera_config.get('_camera_service')
+            if not camera_service:
+                logger.error(f"[RESTART] camera_service not available for {camera_id}")
+                return False
+
+            success = self.start_capture(camera_id, camera_service)
+
+            if success:
+                logger.info(f"[RESTART] Generic MJPEG restart successful for {camera_id}")
+                return True
+            else:
+                logger.error(f"[RESTART] Generic MJPEG restart failed for {camera_id}")
+                return False
+
+        except Exception as e:
+            logger.error(f"[RESTART] Generic MJPEG restart error for {camera_id}: {e}", exc_info=True)
+            return False
+
     def get_latest_frame(self, camera_id: str) -> Optional[dict]:
         """Get latest frame data for camera"""
         with self.lock:

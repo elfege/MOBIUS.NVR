@@ -372,8 +372,15 @@ class StreamManager:
                         print(f"[THREAD] Stream already active for {stream_key}, aborting thread")
                         return None
 
-                # Kill lingering ffmpeg for this stream_key
-                self._kill_all_ffmpeg_for_camera(stream_key)
+                # Nuclear cleanup ONLY for truly orphaned processes (no tracked entry)
+                # Skip if we just did a graceful stop_stream() - that already terminated the process
+                # This prevents killing freshly-started FFmpeg during watchdog restart cycles
+                #
+                # NOTE: Removed unconditional nuclear cleanup (was causing "torn down" messages
+                # in MediaMTX during watchdog restarts). Now MediaMTX handles stream lifecycle.
+                # Keep this as emergency fallback for crashed/orphaned processes only.
+                #
+                # self._kill_all_ffmpeg_for_camera(stream_key)  # DISABLED - too aggressive
             
             # Step 2: Get camera config WITHOUT lock (no shared state modified)
             camera = self.camera_repo.get_camera(camera_serial)

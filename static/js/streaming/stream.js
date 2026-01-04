@@ -8,6 +8,7 @@ import { FLVStreamManager } from './flv-stream.js';
 import { makeHealthMonitor } from './health.js';
 import { HLSStreamManager } from './hls-stream.js';
 import { MJPEGStreamManager } from './mjpeg-stream.js';
+import { WebRTCStreamManager } from './webrtc-stream.js';
 import { CameraStateMonitor } from './camera-state-monitor.js';
 
 
@@ -16,6 +17,7 @@ export class MultiStreamManager {
         this.mjpegManager = new MJPEGStreamManager();
         this.hlsManager = new HLSStreamManager();
         this.flvManager = new FLVStreamManager();
+        this.webrtcManager = new WebRTCStreamManager();
         this.ptzController = new PTZController();
 
         // CameraStateMonitor polls backend state and detects when watchdog recovers streams
@@ -324,12 +326,14 @@ export class MultiStreamManager {
             const streamType = $streamItem.data('stream-type');
             const videoElement = $streamItem.find('.stream-video')[0];
 
-            // Only HLS streams can be force-refreshed (for now)
-            // not adding this condition will make the system 
-            // create a new rtsp stream while rtmp witll still 
-            // be running. 
+            // Only HLS and WebRTC streams can be force-refreshed (for now)
+            // not adding this condition will make the system
+            // create a new rtsp stream while rtmp witll still
+            // be running.
             if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                 this.hlsManager.forceRefreshStream(cameraId, videoElement);
+            } else if (streamType === 'WEBRTC') {
+                this.webrtcManager.forceRefreshStream(cameraId, videoElement);
             }
         });
 
@@ -633,6 +637,9 @@ export class MultiStreamManager {
                 success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
             } else if (streamType === 'RTMP') {
                 success = await this.flvManager.startStream(cameraId, streamElement);
+            } else if (streamType === 'WEBRTC') {
+                // WebRTC via MediaMTX WHEP protocol - sub-second latency
+                success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
             } else {
                 throw new Error(`Unknown stream type: ${streamType}`);
             }
@@ -665,10 +672,10 @@ export class MultiStreamManager {
             $loadingIndicator.hide();
             console.error(`Stream start failed for ${cameraId}:`, error);
 
-            // For HLS/LL_HLS streams, show "Connecting..." instead of "Failed"
+            // For HLS/LL_HLS/WEBRTC streams, show "Connecting..." instead of "Failed"
             // These streams have retry logic and may still succeed
-            const isHlsStream = ['HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS'].includes(streamType);
-            if (isHlsStream) {
+            const isRetryableStream = ['HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS', 'WEBRTC'].includes(streamType);
+            if (isRetryableStream) {
                 this.setStreamStatus($streamItem, 'loading', 'Connecting...');
                 this.updateStreamButtons($streamItem, true);  // Keep buttons enabled for retry
             } else {
@@ -692,6 +699,8 @@ export class MultiStreamManager {
                 success = await this.hlsManager.stopStream(cameraId);
             } else if (streamType === 'RTMP') {
                 success = this.flvManager.stopStream(cameraId);
+            } else if (streamType === 'WEBRTC') {
+                success = this.webrtcManager.stopStream(cameraId);
             }
 
             if (success) {
@@ -710,11 +719,12 @@ export class MultiStreamManager {
 
     async stopAllStreams() {
         try {
-            // Stop both manager types in parallel
+            // Stop all manager types in parallel
             const stopPromises = [
                 this.mjpegManager.stopAllStreams(),
                 this.hlsManager.stopAllStreams(),
-                this.flvManager.stopAllStreams()
+                this.flvManager.stopAllStreams(),
+                this.webrtcManager.stopAllStreams()
             ];
 
             await Promise.allSettled(stopPromises);
@@ -787,6 +797,8 @@ export class MultiStreamManager {
                 await this.restartMJPEGStream(cameraId, $streamItem, cameraType, streamType);
             } else if (streamType === 'RTMP') {
                 await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
+            } else if (streamType === 'WEBRTC') {
+                await this.restartWebRTCStream(cameraId, videoElement);
             }
 
 
@@ -902,6 +914,13 @@ export class MultiStreamManager {
     }
 
     /**
+     * Restart WebRTC stream by closing and reopening RTCPeerConnection
+     */
+    async restartWebRTCStream(cameraId, videoElement) {
+        await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+    }
+
+    /**
      * Attach health monitor to a stream element
      * Centralizes health attachment logic to avoid repetition
      */
@@ -946,6 +965,9 @@ export class MultiStreamManager {
             el._healthDetach = this.health.attachRTMP(cameraId, el, flv);
         } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
             el._healthDetach = this.health.attachMjpeg(cameraId, el);
+        } else if (streamType === 'WEBRTC') {
+            const pc = this.webrtcManager?.activeStreams?.get?.(cameraId)?.pc || null;
+            el._healthDetach = this.health.attachWebRTC(cameraId, el, pc);
         }
     }
 
@@ -1024,7 +1046,7 @@ export class MultiStreamManager {
             localStorage.setItem('fullscreenCameraSerial', cameraId);
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
-            // For LL_HLS/NEOLINK cameras: Switch to main stream (high-res)
+            // For LL_HLS/NEOLINK/WEBRTC cameras: Switch to main stream (high-res)
             // The backend dual-output FFmpeg provides both sub and main streams
             if (streamType === 'LL_HLS' || streamType === 'NEOLINK') {
                 console.log(`[Fullscreen] Switching ${cameraId} to main stream (high-res)...`);
@@ -1045,6 +1067,24 @@ export class MultiStreamManager {
                     console.error(`[Fullscreen] Failed to switch to main stream:`, e);
                     // Fall back to keeping sub stream
                     await this.hlsManager.startStream(cameraId, videoEl, 'sub');
+                }
+            } else if (streamType === 'WEBRTC') {
+                console.log(`[Fullscreen] Switching ${cameraId} to main stream (high-res) via WebRTC...`);
+
+                const $video = $streamItem.find('.stream-video');
+                const videoEl = $video[0];
+
+                // Stop current sub stream
+                this.webrtcManager.stopStream(cameraId);
+
+                // Start main stream
+                try {
+                    await this.webrtcManager.startStream(cameraId, videoEl, 'main');
+                    console.log(`[Fullscreen] ✓ Switched to main stream for ${cameraId} via WebRTC`);
+                    $streamItem.data('switched-to-main', true);
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch to main stream via WebRTC:`, e);
+                    await this.webrtcManager.startStream(cameraId, videoEl, 'sub');
                 }
             }
 
@@ -1111,6 +1151,24 @@ export class MultiStreamManager {
                         this.pausedStreams.push({ id, type: 'MJPEG' });
                     }
                 }
+                // Pause WebRTC by closing the peer connection (will reconnect on resume)
+                else if (itemStreamType === 'WEBRTC') {
+                    const stream = this.webrtcManager.activeStreams.get(id);
+                    if (stream && videoEl) {
+                        console.log(`[Fullscreen] Pausing WebRTC stream: ${id}`);
+                        // Store the stream type before stopping
+                        videoEl._webrtcStreamType = stream.type || 'sub';
+                        this.webrtcManager.stopStream(id);
+
+                        // Detach health monitor for paused stream
+                        if (videoEl._healthDetach) {
+                            videoEl._healthDetach();
+                            delete videoEl._healthDetach;
+                        }
+
+                        this.pausedStreams.push({ id, type: 'WEBRTC' });
+                    }
+                }
             }
 
             console.log(`[Fullscreen] Paused ${this.pausedStreams.length} streams (still alive, no backend impact)`);
@@ -1164,6 +1222,25 @@ export class MultiStreamManager {
 
                 // Clear the flag
                 $fullscreenItem.removeData('switched-to-main');
+            } else if (switchedToMain && streamType === 'WEBRTC') {
+                console.log(`[Fullscreen] Switching ${fullscreenCameraId} back to sub stream via WebRTC...`);
+
+                const $video = $fullscreenItem.find('.stream-video');
+                const videoEl = $video[0];
+
+                // Stop current main stream
+                this.webrtcManager.stopStream(fullscreenCameraId);
+
+                // Start sub stream
+                try {
+                    await this.webrtcManager.startStream(fullscreenCameraId, videoEl, 'sub');
+                    console.log(`[Fullscreen] ✓ Switched back to sub stream for ${fullscreenCameraId} via WebRTC`);
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch back to sub stream via WebRTC:`, e);
+                }
+
+                // Clear the flag
+                $fullscreenItem.removeData('switched-to-main');
             }
 
             // Resume previously paused streams
@@ -1207,6 +1284,22 @@ export class MultiStreamManager {
 
                             // Reattach health monitor
                             this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                        }
+                    }
+                    else if (stream.type === 'WEBRTC') {
+                        if (videoEl) {
+                            console.log(`[Fullscreen] Resuming WebRTC stream: ${stream.id}`);
+                            // Reconnect WebRTC (it was fully stopped, not just paused)
+                            const streamSubType = videoEl._webrtcStreamType || 'sub';
+                            delete videoEl._webrtcStreamType;
+
+                            try {
+                                await this.webrtcManager.startStream(stream.id, videoEl, streamSubType);
+                                // Reattach health monitor
+                                this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                            } catch (e) {
+                                console.error(`[Fullscreen] Failed to resume WebRTC stream ${stream.id}:`, e);
+                            }
                         }
                     }
                 }

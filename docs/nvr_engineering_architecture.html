@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVR System - Engineering Architecture</title>
+    <title>NVR System - Engineering Architecture (Updated January 2026)</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
         body {
@@ -196,7 +196,7 @@
         <h1>Unified NVR System - Engineering Architecture</h1>
         
         <div class="critical-note">
-            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, and Amcrest cameras via HLS, MJPEG, and RTMP protocols.
+            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via LL-HLS, HLS, MJPEG, RTMP, and Neolink (Baichuan) protocols. <em>Last updated: January 3, 2026.</em>
         </div>
 
         <div class="key-metrics">
@@ -205,16 +205,16 @@
                 <div class="metric-label">Cameras Supported</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">4</div>
+                <div class="metric-value">5</div>
                 <div class="metric-label">Vendor Types</div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">~1.8s</div>
-                <div class="metric-label">HLS Latency Floor</div>
+                <div class="metric-label">LL-HLS Latency Floor</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">Strategy</div>
-                <div class="metric-label">Design Pattern</div>
+                <div class="metric-value">3</div>
+                <div class="metric-label">Motion Detection Methods</div>
             </div>
         </div>
 
@@ -222,7 +222,7 @@
         <h2>Level 1: System Overview</h2>
 
         <div class="architecture-note">
-            <strong>High-Level Architecture:</strong> User browsers connect to a Flask web application which orchestrates camera streams via vendor-specific handlers. FFmpeg processes transcode RTSP sources to HLS segments, packaged by MediaMTX for low-latency delivery. Credentials are managed via AWS Secrets Manager.
+            <strong>High-Level Architecture:</strong> User browsers connect to a Flask web application which orchestrates camera streams via vendor-specific handlers. FFmpeg processes transcode RTSP sources to LL-HLS segments, packaged by MediaMTX for low-latency delivery. MediaMTX also provides RTSP re-export, allowing motion detection and recording services to tap streams without opening additional camera connections. Credentials are managed via AWS Secrets Manager. Neolink provides Baichuan-to-RTSP translation for cameras with broken RTSP (e.g., Reolink E1 series).
         </div>
 
         <div class="diagram-container">
@@ -230,16 +230,19 @@
                 graph LR
                     A[Web Browser<br/>ES6 + jQuery + HLS.js] -->|HTTP/WebSocket| B[Flask App<br/>app.py:5000]
                     B -->|API Calls| C[StreamManager<br/>Orchestrator]
-                    C -->|Strategy Pattern| D[Vendor Handlers<br/>Eufy/Reolink/UniFi/Amcrest]
-                    D -->|RTSP Input| E[FFmpeg<br/>Transcoder]
-                    E -->|RTMP/RTSP Publish| F[MediaMTX<br/>HLS Packager:8889]
+                    C -->|Strategy Pattern| D[Vendor Handlers<br/>Eufy/Reolink/UniFi/Amcrest/SV3C]
+                    D -->|RTSP Input| E[FFmpeg<br/>Dual-Output Transcoder]
+                    E -->|RTSP Publish| F[MediaMTX<br/>LL-HLS Packager:8889]
                     F -->|HLS Segments| A
-                    
+                    F -->|RTSP Re-export| J[Motion Detection<br/>Recording Service]
+
                     G[(AWS Secrets<br/>Manager)] -.->|Credentials| D
                     H[(cameras.json<br/>Config)] -.->|Camera Metadata| B
-                    
+
                     I[IP Cameras<br/>17+ Devices] -->|RTSP/P2P| D
-                    
+                    K[Neolink<br/>Baichuan Bridge] -->|RTSP| D
+                    I -->|Baichuan:9000| K
+
                     style A fill:#e1f5ff
                     style B fill:#667eea,color:#fff
                     style C fill:#17a2b8,color:#fff
@@ -249,6 +252,8 @@
                     style G fill:#fff3cd
                     style H fill:#fff3cd
                     style I fill:#d4edda
+                    style J fill:#dc3545,color:#fff
+                    style K fill:#20c997,color:#fff
             </div>
         </div>
 
@@ -277,6 +282,14 @@
                 <div class="legend-color" style="background: #6f42c1;"></div>
                 MediaMTX Packager
             </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #dc3545;"></div>
+                Recording/Motion Services
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #20c997;"></div>
+                Neolink Bridge
+            </div>
         </div>
 
         <div class="architecture-note">
@@ -284,11 +297,13 @@
             <ul>
                 <li><strong>Backend:</strong> Python 3.11 + Flask + Threading</li>
                 <li><strong>Frontend:</strong> ES6 + jQuery + HLS.js + Axios</li>
-                <li><strong>Video Processing:</strong> FFmpeg 6+ with hardware acceleration support</li>
-                <li><strong>HLS Packaging:</strong> MediaMTX for LL-HLS delivery</li>
+                <li><strong>Video Processing:</strong> FFmpeg 7+ with dual-output support (sub + main streams)</li>
+                <li><strong>HLS Packaging:</strong> MediaMTX for LL-HLS delivery with RTSP re-export</li>
+                <li><strong>Protocol Bridge:</strong> Neolink v0.6.2 for Baichuan-to-RTSP translation</li>
                 <li><strong>Containerization:</strong> Docker + Docker Compose</li>
                 <li><strong>Credentials:</strong> AWS Secrets Manager integration</li>
-                <li><strong>Database:</strong> PostgreSQL + PostgREST (recording metadata)</li>
+                <li><strong>Database:</strong> PostgreSQL + PostgREST (recording metadata, PTZ latency learning)</li>
+                <li><strong>Motion Detection:</strong> Reolink Baichuan, ONVIF PullPoint, FFmpeg scene detection</li>
             </ul>
         </div>
 
@@ -296,7 +311,7 @@
         <h2>Level 2: Component Architecture</h2>
 
         <div class="architecture-note">
-            <strong>Internal Components:</strong> The application initializes multiple services at startup: CameraRepository for config access, StreamManager for stream orchestration, vendor-specific credential providers, PTZ controllers, recording services, and health monitoring systems.
+            <strong>Internal Components:</strong> The application initializes multiple services at startup: CameraRepository for config access, StreamManager for stream orchestration, vendor-specific credential providers, ONVIF PTZ controllers, recording services with pre-buffer support, motion detection services (Baichuan/ONVIF/FFmpeg), segment buffer manager, and client-side health monitoring with escalating recovery.
         </div>
 
         <div class="diagram-container">
@@ -307,44 +322,57 @@
                         A --> C[StreamManager]
                         A --> D[RecordingService]
                         A --> E[SnapshotService]
-                        A --> F[PTZ Controllers]
+                        A --> F[ONVIF PTZ Handler]
                     end
-                    
+
                     subgraph Credentials["Credential Providers"]
                         G[EufyCredentialProvider]
                         H[UniFiCredentialProvider]
                         I[ReolinkCredentialProvider]
                         J[AmcrestCredentialProvider]
+                        J2[SV3CCredentialProvider]
                     end
-                    
+
                     subgraph Handlers["Stream Handlers (Strategy Pattern)"]
                         K[EufyStreamHandler]
                         L[UniFiStreamHandler]
                         M[ReolinkStreamHandler]
                         N[AmcrestStreamHandler]
+                        N2[SV3CStreamHandler]
                     end
-                    
+
                     subgraph Services["Background Services"]
                         O[BridgeWatchdog<br/>Eufy P2P Monitor]
-                        P[UniFiResourceMonitor]
+                        P[SegmentBufferManager<br/>Pre-Buffer Recording]
                         Q[RecordingMonitor<br/>Daemon Thread]
                         R[ReolinkMotionService<br/>Baichuan Protocol]
                     end
-                    
+
+                    subgraph Motion["Motion Detection"]
+                        S[ONVIF Event Listener<br/>PullPoint Subscription]
+                        T[FFmpeg Motion Detector<br/>Scene Detection]
+                    end
+
                     C --> Handlers
                     Credentials --> Handlers
                     B --> C
                     B --> D
                     D --> E
-                    
+                    D --> P
+
                     A --> Services
-                    
+                    A --> Motion
+                    Motion --> D
+
                     style A fill:#667eea,color:#fff
                     style B fill:#17a2b8,color:#fff
                     style C fill:#28a745,color:#fff
                     style D fill:#6f42c1,color:#fff
                     style E fill:#6f42c1,color:#fff
                     style F fill:#fd7e14,color:#fff
+                    style S fill:#dc3545,color:#fff
+                    style T fill:#dc3545,color:#fff
+                    style P fill:#20c997,color:#fff
             </div>
         </div>
 
@@ -352,12 +380,14 @@
             <h3>Component Responsibilities</h3>
             <ul>
                 <li><strong>CameraRepository:</strong> Loads and manages camera configurations from <code>cameras.json</code>, provides filtering by type/capability</li>
-                <li><strong>StreamManager:</strong> Orchestrates FFmpeg processes, manages stream lifecycle, implements watchdog restarts</li>
-                <li><strong>Credential Providers:</strong> Fetch credentials from AWS Secrets Manager per vendor</li>
-                <li><strong>Stream Handlers:</strong> Build RTSP URLs, FFmpeg parameters using Strategy Pattern</li>
-                <li><strong>RecordingService:</strong> Manages continuous and motion-triggered recording via FFmpeg</li>
+                <li><strong>StreamManager:</strong> Orchestrates FFmpeg processes with dual-output (sub/main), manages stream lifecycle, implements watchdog restarts</li>
+                <li><strong>Credential Providers:</strong> Fetch credentials from AWS Secrets Manager per vendor (Eufy, Reolink, UniFi, Amcrest, SV3C)</li>
+                <li><strong>Stream Handlers:</strong> Build RTSP URLs, FFmpeg parameters using Strategy Pattern; SV3C added Dec 2025</li>
+                <li><strong>RecordingService:</strong> Manages continuous, motion-triggered, and manual recording with pre-buffer support</li>
+                <li><strong>SegmentBufferManager:</strong> Rolling 5-second segment buffer for pre-motion capture</li>
                 <li><strong>SnapshotService:</strong> Periodic JPEG capture from MediaMTX RTSP output</li>
-                <li><strong>PTZ Controllers:</strong> Vendor-specific pan/tilt/zoom control (ONVIF, Amcrest CGI)</li>
+                <li><strong>ONVIF PTZ Handler:</strong> Standardized pan/tilt/zoom/preset control across Amcrest, Reolink, SV3C</li>
+                <li><strong>Motion Detection:</strong> Three methods: Reolink Baichuan (push), ONVIF PullPoint (poll), FFmpeg scene detection (universal)</li>
             </ul>
         </div>
 
@@ -365,7 +395,7 @@
         <h2>Level 3: Streaming Data Flow</h2>
 
         <div class="architecture-note">
-            <strong>Protocol Pipeline:</strong> Camera RTSP sources are ingested by FFmpeg, transcoded with vendor-specific parameters, then published to MediaMTX via RTMP or RTSP. MediaMTX packages the stream as Low-Latency HLS segments, served to browsers via HLS.js.
+            <strong>Protocol Pipeline:</strong> Camera RTSP sources are ingested by FFmpeg, transcoded with vendor-specific parameters, then published to MediaMTX via RTSP. A single FFmpeg process produces dual outputs: sub-stream (transcoded, scaled for grid view) and main-stream (passthrough for fullscreen). MediaMTX packages as Low-Latency HLS segments served via HLS.js, and also re-exports RTSP for motion detection and recording services to tap without opening additional camera connections.
         </div>
 
         <div class="diagram-container">
@@ -373,53 +403,74 @@
                 flowchart LR
                     subgraph Camera["Camera Source"]
                         CAM[IP Camera<br/>RTSP/P2P]
+                        NEO[Neolink Bridge<br/>Baichuan:9000]
                     end
-                    
-                    subgraph FFmpeg["FFmpeg Process"]
-                        IN[RTSP Input<br/>-rtsp_transport tcp<br/>-timeout 30000000]
-                        TRANS[Transcode/Copy<br/>-c:v libx264<br/>-preset veryfast]
-                        OUT[Output<br/>-f flv / -f rtsp]
+
+                    subgraph FFmpeg["FFmpeg Dual-Output Process"]
+                        IN[RTSP Input<br/>-rtsp_transport tcp<br/>-reconnect 1]
+                        SUB[Sub Output<br/>-c:v libx264 -vf scale<br/>Transcoded 320x240]
+                        MAIN[Main Output<br/>-c:v copy<br/>Passthrough 1280x720]
                     end
-                    
+
                     subgraph MediaMTX["MediaMTX Packager"]
-                        INGEST[RTMP/RTSP Ingest<br/>:1935 / :8554]
+                        INGEST[RTSP Ingest<br/>:8554]
                         PACK[LL-HLS Packaging<br/>part_duration: 200ms<br/>segment_duration: 500ms]
                         HLS[HLS Output<br/>:8889/hls/*/index.m3u8]
+                        RTSP_OUT[RTSP Re-export<br/>:8554 for consumers]
                     end
-                    
+
                     subgraph Browser["Browser"]
                         HLSJS[HLS.js Player<br/>lowLatencyMode: true]
                         VIDEO[HTML5 Video]
+                        HEALTH[Health Monitor<br/>Blank Frame Detection]
                     end
-                    
+
+                    subgraph Services["Backend Services"]
+                        MOTION[Motion Detector<br/>FFmpeg/ONVIF]
+                        REC[Recording Service<br/>Pre-Buffer Support]
+                    end
+
                     CAM --> IN
-                    IN --> TRANS
-                    TRANS --> OUT
-                    OUT --> INGEST
+                    CAM -->|Broken RTSP| NEO
+                    NEO --> IN
+                    IN --> SUB
+                    IN --> MAIN
+                    SUB --> INGEST
+                    MAIN --> INGEST
                     INGEST --> PACK
                     PACK --> HLS
+                    INGEST --> RTSP_OUT
                     HLS --> HLSJS
                     HLSJS --> VIDEO
-                    
+                    VIDEO --> HEALTH
+                    RTSP_OUT --> MOTION
+                    RTSP_OUT --> REC
+
                     style CAM fill:#d4edda
+                    style NEO fill:#20c997,color:#fff
                     style IN fill:#fd7e14,color:#fff
-                    style TRANS fill:#fd7e14,color:#fff
-                    style OUT fill:#fd7e14,color:#fff
+                    style SUB fill:#fd7e14,color:#fff
+                    style MAIN fill:#fd7e14,color:#fff
                     style INGEST fill:#6f42c1,color:#fff
                     style PACK fill:#6f42c1,color:#fff
                     style HLS fill:#6f42c1,color:#fff
+                    style RTSP_OUT fill:#6f42c1,color:#fff
                     style HLSJS fill:#e1f5ff
                     style VIDEO fill:#e1f5ff
+                    style HEALTH fill:#17a2b8,color:#fff
+                    style MOTION fill:#dc3545,color:#fff
+                    style REC fill:#dc3545,color:#fff
             </div>
         </div>
 
         <div class="alert-note">
             <h3>Latency Characteristics</h3>
             <ul>
-                <li><strong>HLS Latency Floor:</strong> ~1.8 seconds minimum due to segmentation and browser decoding pipeline</li>
+                <li><strong>LL-HLS Latency Floor:</strong> ~1.8 seconds minimum due to segmentation and browser decoding pipeline</li>
                 <li><strong>LL-HLS Optimization:</strong> 200ms parts, 500ms segments reduce latency vs traditional HLS (6-30s)</li>
+                <li><strong>Dual-Output Design:</strong> Single camera connection, two MediaMTX paths (sub/main) for grid and fullscreen views</li>
                 <li><strong>MJPEG Alternative:</strong> Sub-second latency possible via direct MJPEG proxy (no HLS segmentation)</li>
-                <li><strong>RTMP/FLV:</strong> Lower latency option for browsers supporting flv.js</li>
+                <li><strong>Neolink Bridge:</strong> Adds ~100-200ms for Baichuan-to-RTSP translation; required for cameras with broken RTSP</li>
             </ul>
         </div>
 
@@ -470,6 +521,7 @@
                 <li><strong>Per-Camera Locks:</strong> <code>_restart_locks</code> prevent concurrent restart attempts</li>
                 <li><strong>Slot Reservation:</strong> Stream slots marked 'starting' before thread spawn to prevent duplicates</li>
                 <li><strong>Lock Discipline:</strong> Never sleep() while holding locks to prevent deadlocks</li>
+                <li><strong>Race Condition Fix (Jan 2026):</strong> <code>get_active_streams()</code> no longer stops 'starting' streams during status queries</li>
             </ul>
         </div>
 
@@ -514,11 +566,18 @@
                         -credential_provider: AmcrestCredentialProvider
                         +build_rtsp_url() "rtsp://user:pass@cam:554/cam/realmonitor"
                     }
-                    
+
+                    class SV3CStreamHandler {
+                        -credential_provider: SV3CCredentialProvider
+                        +build_rtsp_url() "rtsp://user:pass@cam:554/12"
+                        +_build_ll_hls_publish() MediaMTX publish
+                    }
+
                     StreamHandler <|-- EufyStreamHandler
                     StreamHandler <|-- ReolinkStreamHandler
                     StreamHandler <|-- UniFiStreamHandler
                     StreamHandler <|-- AmcrestStreamHandler
+                    StreamHandler <|-- SV3CStreamHandler
                     
                     class StreamManager {
                         -handlers: Dict~str,StreamHandler~
@@ -565,7 +624,19 @@
                     <td><strong>Amcrest</strong></td>
                     <td><code>rtsp://user:pass@cam:554/cam/realmonitor</code></td>
                     <td>Camera local credentials</td>
-                    <td>CGI API for PTZ control</td>
+                    <td>ONVIF PTZ (primary), CGI API (fallback)</td>
+                </tr>
+                <tr>
+                    <td><strong>SV3C</strong></td>
+                    <td><code>rtsp://user:pass@cam:554/12</code> (sub) <code>/11</code> (main)</td>
+                    <td>Environment variables</td>
+                    <td>ONVIF PTZ, digital zoom only, single RTSP connection limit</td>
+                </tr>
+                <tr>
+                    <td><strong>Neolink</strong></td>
+                    <td><code>rtsp://neolink:8554/{serial}</code></td>
+                    <td>Baichuan protocol credentials</td>
+                    <td>Bridge for cameras with broken RTSP (Reolink E1 series)</td>
                 </tr>
             </tbody>
         </table>
@@ -619,65 +690,86 @@
         <h2>Level 5: Recording Architecture</h2>
 
         <div class="architecture-note">
-            <strong>Recording System:</strong> RecordingService supports continuous (24/7) and motion-triggered recording. Sources can tap existing MediaMTX RTSP output or connect directly to camera RTSP. Metadata stored via PostgREST API to PostgreSQL.
+            <strong>Recording System:</strong> RecordingService supports continuous (24/7), motion-triggered, and manual recording with optional pre-buffer capture. Sources tap MediaMTX RTSP output (avoiding additional camera connections for single-connection cameras). Segment buffer maintains rolling 5-second segments for pre-motion capture. Recordings organized in per-camera hierarchical directories (<code>CAMERA_NAME/YYYY/MM/DD/</code>). Metadata stored via PostgREST API to PostgreSQL.
         </div>
 
         <div class="diagram-container">
             <div class="mermaid">
                 flowchart TB
                     subgraph Triggers["Recording Triggers"]
-                        Manual[Manual Start<br/>API Request]
-                        Motion[Motion Event<br/>Reolink Baichuan<br/>ONVIF Events]
+                        Manual[Manual Start<br/>UI Button]
+                        Motion[Motion Event<br/>Baichuan/ONVIF/FFmpeg]
                         Continuous[Continuous Mode<br/>Auto-start on boot]
                     end
-                    
+
+                    subgraph Buffer["Segment Buffer (Pre-Buffer)"]
+                        SegBuf[SegmentBufferManager<br/>Rolling 5s segments]
+                        TempSegs[/recordings/buffer/<br/>seg_*.ts files/]
+                    end
+
                     subgraph RecService["RecordingService"]
-                        StartRec[start_motion_recording<br/>start_continuous_recording]
-                        GetSource[_get_recording_source_url]
+                        StartRec[start_motion_recording<br/>start_manual_recording<br/>start_continuous_recording]
+                        PreBuf{Pre-Buffer<br/>Enabled?}
+                        Concat[FFmpeg Concat<br/>prebuf + live = final]
                         SpawnFFmpeg[Spawn FFmpeg Process]
                         Track[Track in active_recordings]
                     end
-                    
+
                     subgraph Sources["Recording Sources"]
                         MediaMTX_Src[MediaMTX RTSP<br/>rtsp://nvr-packager:8554/path]
-                        Direct_RTSP[Direct Camera RTSP<br/>rtsp://cam:554/stream]
                     end
-                    
+
                     subgraph Storage["Storage"]
-                        FS[File System<br/>/recordings/continuous/<br/>/recordings/motion/]
+                        FS[File System<br/>CAMERA/YYYY/MM/DD/<br/>*.mp4]
                         PG[(PostgreSQL<br/>Recording Metadata)]
                         PostgREST[PostgREST API<br/>:3001]
                     end
-                    
+
                     Manual --> StartRec
                     Motion --> StartRec
                     Continuous --> StartRec
-                    
-                    StartRec --> GetSource
-                    GetSource --> MediaMTX_Src
-                    GetSource --> Direct_RTSP
+
+                    SegBuf --> TempSegs
+                    MediaMTX_Src --> SegBuf
+
+                    StartRec --> PreBuf
+                    PreBuf -->|Yes| Concat
+                    PreBuf -->|No| SpawnFFmpeg
+                    Concat --> SpawnFFmpeg
+                    TempSegs --> Concat
                     MediaMTX_Src --> SpawnFFmpeg
-                    Direct_RTSP --> SpawnFFmpeg
                     SpawnFFmpeg --> Track
                     SpawnFFmpeg --> FS
                     Track --> PostgREST
                     PostgREST --> PG
-                    
+
                     style Manual fill:#17a2b8,color:#fff
                     style Motion fill:#fd7e14,color:#fff
                     style Continuous fill:#28a745,color:#fff
                     style RecService fill:#667eea,color:#fff
                     style FS fill:#6f42c1,color:#fff
                     style PG fill:#e1f5ff
+                    style SegBuf fill:#20c997,color:#fff
+                    style Concat fill:#dc3545,color:#fff
             </div>
         </div>
 
         <div class="alert-note">
             <h3>Motion Detection Methods</h3>
             <ul>
-                <li><strong>Reolink Baichuan:</strong> Proprietary protocol, low latency event notification</li>
-                <li><strong>ONVIF Events:</strong> Standardized camera events (partially implemented)</li>
-                <li><strong>FFmpeg Analysis:</strong> Frame difference detection (skeleton implemented)</li>
+                <li><strong>Reolink Baichuan:</strong> Proprietary TCP push protocol (port 9000), instant event notification, lowest latency</li>
+                <li><strong>ONVIF PullPoint:</strong> Standardized subscription-based event polling, works with ONVIF-compliant cameras (Amcrest, SV3C)</li>
+                <li><strong>FFmpeg Scene Detection:</strong> Universal fallback using <code>select='gt(scene,X)'</code> filter; auto-adjusts threshold for LL-HLS streams (0.01 vs 0.3)</li>
+            </ul>
+        </div>
+
+        <div class="architecture-note">
+            <h3>Recording Directory Structure</h3>
+            <ul>
+                <li><strong>Path Format:</strong> <code>/recordings/{type}/{CAMERA_NAME}/YYYY/MM/DD/{serial}_{timestamp}.mp4</code></li>
+                <li><strong>Recording Types:</strong> <code>motion</code>, <code>continuous</code>, <code>manual</code>, <code>snapshots</code></li>
+                <li><strong>Pre-Buffer:</strong> <code>/recordings/buffer/{camera_id}/seg_*.ts</code> (rolling segments, auto-cleanup)</li>
+                <li><strong>Camera Name Normalization:</strong> Uppercase, spaces to underscores, special chars removed, max 50 chars</li>
             </ul>
         </div>
 
@@ -691,51 +783,81 @@
                         Grid[Camera Grid Container]
                         Fullscreen[Fullscreen Overlay]
                         Settings[Settings Panel]
+                        Modal[Recording Settings Modal]
                     end
-                    
+
                     subgraph Streaming["Streaming Modules"]
-                        StreamJS[stream.js<br/>Stream lifecycle]
+                        StreamJS[stream.js<br/>Stream lifecycle + recovery]
                         HLSJS[hls-stream.js<br/>HLS.js wrapper]
                         MJPEGJS[mjpeg-stream.js<br/>MJPEG img refresh]
                         HealthJS[health.js<br/>Blank frame detection]
                     end
-                    
+
                     subgraph Controllers["Controllers"]
-                        PTZJS[ptz-controller.js<br/>PTZ joystick/presets]
-                        RecJS[recording-controller.js<br/>Recording UI]
-                        FullscreenJS[fullscreen-handler.js<br/>Fullscreen logic]
+                        PTZJS[ptz-controller.js<br/>ONVIF PTZ + latency learning]
+                        RecJS[recording-controller.js<br/>Recording UI + settings]
+                        FullscreenJS[fullscreen-handler.js<br/>Sub/main stream switching]
+                        ConnMon[connection-monitor.js<br/>Server disconnect detection]
                     end
-                    
+
                     subgraph Utils["Utilities"]
                         Logger[logger.js<br/>Console logging]
                         Loading[loading-manager.js<br/>Spinner states]
                         EufyAuth[eufy-auth-notifier.js<br/>2FA prompt]
                     end
-                    
+
                     Grid --> StreamJS
                     StreamJS --> HLSJS
                     StreamJS --> MJPEGJS
                     HLSJS --> HealthJS
-                    
+                    HealthJS -->|Escalating Recovery| StreamJS
+
                     Fullscreen --> FullscreenJS
-                    FullscreenJS --> StreamJS
-                    
+                    FullscreenJS -->|Switch to main| StreamJS
+
                     Settings --> PTZJS
-                    Settings --> RecJS
-                    
+                    Modal --> RecJS
+                    ConnMon -->|Server down| Grid
+
                     style StreamJS fill:#667eea,color:#fff
                     style HLSJS fill:#28a745,color:#fff
                     style HealthJS fill:#fd7e14,color:#fff
+                    style ConnMon fill:#dc3545,color:#fff
+                    style PTZJS fill:#17a2b8,color:#fff
             </div>
         </div>
 
         <div class="critical-note">
-            <h3>Health Monitoring System</h3>
+            <h3>Health Monitoring System (Nov 2025 Refactor)</h3>
             <ul>
-                <li><strong>Blank Frame Detection:</strong> Canvas sampling detects frozen/black streams</li>
-                <li><strong>Consecutive Threshold:</strong> Configurable blank frames before restart trigger</li>
-                <li><strong>Cooldown Period:</strong> Prevents restart loops (default 30s)</li>
-                <li><strong>Per-Camera Config:</strong> <code>ui_health_monitor</code> in cameras.json enables/disables per camera</li>
+                <li><strong>Blank Frame Detection:</strong> Canvas sampling detects frozen/black streams every 6 seconds</li>
+                <li><strong>Escalating Recovery:</strong> Tier 1 (attempts 1-3): standard refresh; Tier 2 (attempts 4+): nuclear stop+start cycle</li>
+                <li><strong>Nuclear Recovery:</strong> Forces UI stop → 3s wait → UI start to clear stuck backend FFmpeg state</li>
+                <li><strong>60-Second Failure Window:</strong> Sliding window for escalation decisions; clears on success</li>
+                <li><strong>Configurable Max Attempts:</strong> <code>UI_HEALTH_MAX_ATTEMPTS</code> in cameras.json (0 = infinite)</li>
+                <li><strong>Fullscreen Optimization:</strong> Health monitors detach for paused background streams, reattach on exit</li>
+            </ul>
+        </div>
+
+        <div class="alert-note">
+            <h3>Connection Monitor (Jan 2026)</h3>
+            <ul>
+                <li><strong>Health Polling:</strong> <code>/api/health</code> every 10 seconds, 10 failures before redirect</li>
+                <li><strong>Graceful Shutdown:</strong> Server sends 503 when shutting down for immediate redirect</li>
+                <li><strong>Offline Modal:</strong> Shows spinner with auto-retry when server unreachable</li>
+                <li><strong>Cache-Busting:</strong> <code>location.reload(true)</code> on recovery to bypass browser cache</li>
+            </ul>
+        </div>
+
+        <div class="architecture-note">
+            <h3>PTZ Controller Features (Nov 2025 - Jan 2026)</h3>
+            <ul>
+                <li><strong>ONVIF Protocol:</strong> Standardized pan/tilt/zoom/preset control for Amcrest, Reolink, SV3C</li>
+                <li><strong>Adaptive Latency:</strong> PostgreSQL-backed per-camera latency learning (rolling avg of 10 samples)</li>
+                <li><strong>Race Condition Fix:</strong> Fire-and-forget move commands with acknowledgment tracking before stop</li>
+                <li><strong>Touch Device Support:</strong> Document-level touchend handlers, mobile-optimized controls</li>
+                <li><strong>Draggable Controls:</strong> PTZ panel draggable in fullscreen mode with position persistence</li>
+                <li><strong>GotoHomePosition:</strong> ONVIF command for PTZ stepper recalibration</li>
             </ul>
         </div>
 
@@ -746,22 +868,30 @@
             <h3>NVR Engineering Architecture Overview</h3>
             <p>The Unified NVR system represents a sophisticated multi-vendor video surveillance solution with modular architecture:</p>
             <ul>
-                <li><strong>Strategy Pattern:</strong> Vendor-specific handlers enable clean separation of camera protocols while sharing common streaming infrastructure</li>
-                <li><strong>Thread-Safe Design:</strong> RLock-protected shared state with per-camera restart locks prevents race conditions in multi-threaded environment</li>
-                <li><strong>Flexible Streaming:</strong> HLS (standard/low-latency), MJPEG, and RTMP protocols support various latency/compatibility requirements</li>
+                <li><strong>Strategy Pattern:</strong> Vendor-specific handlers (Eufy, Reolink, UniFi, Amcrest, SV3C) enable clean separation of camera protocols while sharing common streaming infrastructure</li>
+                <li><strong>Dual-Output Streaming:</strong> Single FFmpeg process per camera produces sub-stream (grid view) and main-stream (fullscreen) to MediaMTX</li>
+                <li><strong>MediaMTX Hub:</strong> Central stream multiplexer providing LL-HLS packaging and RTSP re-export for motion detection and recording</li>
+                <li><strong>Protocol Bridge:</strong> Neolink v0.6.2 translates Baichuan protocol for cameras with broken RTSP</li>
+                <li><strong>Thread-Safe Design:</strong> RLock-protected shared state with per-camera restart locks; race condition fixes for status queries</li>
                 <li><strong>Credential Security:</strong> AWS Secrets Manager integration with vendor-specific credential providers</li>
-                <li><strong>Health Monitoring:</strong> Both backend watchdog (FFmpeg process) and frontend (blank frame detection) ensure stream reliability</li>
-                <li><strong>Recording System:</strong> Hybrid source support (MediaMTX tap or direct RTSP) with PostgreSQL metadata storage</li>
-                <li><strong>Docker-First:</strong> Full containerization with docker-compose for reproducible deployment</li>
+                <li><strong>Escalating Health Recovery:</strong> Two-tier frontend recovery (standard refresh → nuclear stop+start) with 60-second failure window</li>
+                <li><strong>Motion Detection:</strong> Three methods - Reolink Baichuan (push), ONVIF PullPoint (poll), FFmpeg scene detection (universal)</li>
+                <li><strong>Pre-Buffer Recording:</strong> Rolling 5-second segment buffer for motion recordings; FFmpeg concat for final output</li>
+                <li><strong>ONVIF PTZ:</strong> Standardized control with adaptive latency learning stored in PostgreSQL</li>
+                <li><strong>Docker-First:</strong> Full containerization with docker-compose; timezone sync for accurate timestamps</li>
             </ul>
         </div>
 
         <div class="danger-note">
-            <h3>Known Limitations</h3>
+            <h3>Known Limitations & Vendor Quirks</h3>
             <ul>
-                <li><strong>HLS Latency Floor:</strong> Browser-based HLS has unavoidable ~1.8s latency due to segmentation</li>
-                <li><strong>Dual-Stream Challenge:</strong> Simultaneous sub-stream (grid) and main-stream (fullscreen) requires composite key architecture (reverted in Nov 2025 sessions)</li>
-                <li><strong>Eufy P2P Dependency:</strong> Eufy cameras require bridge service for P2P stream access</li>
+                <li><strong>LL-HLS Latency Floor:</strong> Browser-based HLS has unavoidable ~1.8s latency due to segmentation</li>
+                <li><strong>Dual-Output Status:</strong> Single FFmpeg with dual outputs (sub/main) implemented Jan 2026; previous composite key approach reverted Nov 2025</li>
+                <li><strong>Single-Connection Cameras:</strong> SV3C, Eufy, some Reolink support only one RTSP connection; must use MediaMTX RTSP re-export for motion/recording</li>
+                <li><strong>Eufy P2P Dependency:</strong> Eufy cameras require eufy-security-ws bridge; frequent WiFi disconnects observed</li>
+                <li><strong>SV3C PTZ Quirks:</strong> Digital zoom only (no optical motor); ONVIF GetStatus always returns (0,0)</li>
+                <li><strong>Neolink Buffer Overflow:</strong> v0.6.3.rc.x has regression; must use v0.6.2</li>
+                <li><strong>Scene Detection Thresholds:</strong> LL-HLS streams need 0.01 threshold vs 0.3 for direct RTSP due to <code>scenecut=0</code></li>
                 <li><strong>Hardware Decoding:</strong> Browser hardware video decoding is heuristic-based, cannot be forced programmatically</li>
             </ul>
         </div>
@@ -771,12 +901,34 @@
             <ul>
                 <li><strong>Entry Point:</strong> <code>app.py</code> - Flask application and service initialization</li>
                 <li><strong>Stream Orchestration:</strong> <code>streaming/stream_manager.py</code></li>
-                <li><strong>Vendor Handlers:</strong> <code>streaming/handlers/{eufy,reolink,unifi,amcrest}_stream_handler.py</code></li>
+                <li><strong>Vendor Handlers:</strong> <code>streaming/handlers/{eufy,reolink,unifi,amcrest,sv3c}_stream_handler.py</code></li>
+                <li><strong>Credential Providers:</strong> <code>services/credentials/{eufy,reolink,unifi,amcrest,sv3c}_credential_provider.py</code></li>
                 <li><strong>FFmpeg Config:</strong> <code>streaming/ffmpeg_params.py</code></li>
                 <li><strong>Camera Config:</strong> <code>config/cameras.json</code></li>
-                <li><strong>Recording:</strong> <code>services/recording/recording_service.py</code></li>
-                <li><strong>Frontend:</strong> <code>static/js/streaming/*.js</code></li>
+                <li><strong>Recording Config:</strong> <code>config/recording_settings.json</code></li>
+                <li><strong>Recording Service:</strong> <code>services/recording/recording_service.py</code></li>
+                <li><strong>Segment Buffer:</strong> <code>services/recording/segment_buffer.py</code></li>
+                <li><strong>Storage Manager:</strong> <code>services/recording/storage_manager.py</code></li>
+                <li><strong>Motion Detection:</strong> <code>services/motion/ffmpeg_motion_detector.py</code>, <code>services/onvif/onvif_event_listener.py</code></li>
+                <li><strong>ONVIF PTZ:</strong> <code>services/onvif/onvif_ptz_handler.py</code></li>
+                <li><strong>Neolink Config:</strong> <code>config/neolink.toml</code></li>
+                <li><strong>Frontend Streaming:</strong> <code>static/js/streaming/*.js</code></li>
+                <li><strong>Frontend Controllers:</strong> <code>static/js/controllers/*.js</code></li>
                 <li><strong>Templates:</strong> <code>templates/streams.html</code></li>
+                <li><strong>Database Schema:</strong> <code>psql/init-db.sql</code></li>
+            </ul>
+        </div>
+
+        <div class="alert-note">
+            <h3>Recent Changelog (Nov 2025 - Jan 2026)</h3>
+            <ul>
+                <li><strong>Nov 2-3, 2025:</strong> ONVIF PTZ implementation, UI Health Monitor with escalating recovery</li>
+                <li><strong>Nov 8, 2025:</strong> Infinite retry fix, nuclear recovery for stuck backend state</li>
+                <li><strong>Nov 15, 2025:</strong> Recording UI modal, manual recording controls</li>
+                <li><strong>Nov 22-24, 2025:</strong> Composite key refactor (reverted); dual-stream investigation</li>
+                <li><strong>Dec 31, 2025:</strong> SV3C camera integration, per-camera recording directories, motion detection fix</li>
+                <li><strong>Jan 1, 2026:</strong> MediaMTX centralization, pre-buffer recording, FFmpeg scene detection threshold fix, PTZ latency learning</li>
+                <li><strong>Jan 2, 2026:</strong> Neolink Baichuan bridge, NEOLINK → MediaMTX LL-HLS integration, dual-output FFmpeg, connection monitor</li>
             </ul>
         </div>
 

@@ -9,16 +9,23 @@ api: yes
 apiAddress: :9997
 
 # === Authentication Configuration ===
-# MediaMTX API requires authentication from non-localhost by default.
-# Solution: Allow unauthenticated access from trusted Docker network for API calls.
-# HLS streams remain open for browser access.
+# MediaMTX requires authentication for API access from non-localhost by default.
+# Two-user setup: one for API access, one for anonymous streaming
 authMethod: internal
 authInternalUsers:
-  - user: any
-    pass:
+  # API access for CameraStateTracker (from Docker network)
+  - user: nvr-api
+    pass: ""
+    ips: []
     permissions:
       - action: api
+  # Anonymous access for HLS streaming (browsers)
+  - user: any
+    pass: ""
+    ips: []
+    permissions:
       - action: read
+      - action: playback
 
 # === HLS/LL-HLS (HTTP) ===
 hls: yes

@@ -1708,22 +1708,6 @@ Multiple context compactions occurred during this session:
 
 ---
 
-### TODO List (Updated)
-
-**Stream Watchdog Investigation:**
-
-- [x] Create FFmpeg test command for reconnect flags
-- [x] Evaluate FFmpeg test results → **RESULT: -reconnect flags not supported for RTSP**
-- [x] Unified camera state tracking for MJPEG and LL-HLS cameras
-
-**Phase 2+ Tasks:**
-
-- [ ] StreamManager Integration: Use CameraStateTracker for retry coordination
-- [ ] Service Integration: Motion detection and recording services respect can_retry()
-- [ ] Validation: Monitor MediaMTX "torn down" logs after integration
-
----
-
 ### Session Update: January 4, 2026 (02:38-03:05 EST)
 
 #### Unified Camera State Tracking Implementation
@@ -1763,3 +1747,19 @@ Multiple context compactions occurred during this session:
 - Container restart (`restartnvr`) needed to apply changes
 - Verify MJPEG cameras show proper state transitions in UI
 - Test error scenarios (disconnect camera, verify state changes)
+
+---
+
+### TODO List (Updated)
+
+**Stream Watchdog Investigation:**
+
+- [x] Create FFmpeg test command for reconnect flags
+- [x] Evaluate FFmpeg test results → **RESULT: -reconnect flags not supported for RTSP**
+- [x] Unified camera state tracking for MJPEG and LL-HLS cameras
+
+**Phase 2+ Tasks:**
+
+- [ ] StreamManager Integration: Use CameraStateTracker for retry coordination
+- [ ] Service Integration: Motion detection and recording services respect can_retry()
+- [ ] Validation: Monitor MediaMTX "torn down" logs after integration

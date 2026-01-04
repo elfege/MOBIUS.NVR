@@ -734,6 +734,9 @@ def api_camera_state(camera_id):
     - next_retry timestamp
     - error_message (last error if any)
 
+    For MJPEG cameras (which don't use MediaMTX), returns hardcoded ONLINE status
+    since they stream directly from camera hardware.
+
     Args:
         camera_id: Camera serial number
 
@@ -741,6 +744,25 @@ def api_camera_state(camera_id):
         JSON with camera state details or error
     """
     try:
+        # Check if this is an MJPEG camera (streams directly, doesn't use MediaMTX)
+        camera = cameras_data.get('devices', {}).get(camera_id)
+        if camera and camera.get('stream_type') == 'MJPEG':
+            # MJPEG cameras stream directly from hardware - always report as ONLINE
+            return jsonify({
+                'success': True,
+                'camera_id': camera_id,
+                'availability': 'online',
+                'publisher_active': True,  # N/A for MJPEG but report as true
+                'ffmpeg_process_alive': False,  # MJPEG doesn't use FFmpeg publishers
+                'last_seen': None,
+                'failure_count': 0,
+                'next_retry': None,
+                'backoff_seconds': 0,
+                'error_message': None,
+                'can_retry': True
+            })
+
+        # For LL-HLS cameras, use CameraStateTracker
         state = camera_state_tracker.get_camera_state(camera_id)
 
         return jsonify({

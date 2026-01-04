@@ -1597,7 +1597,7 @@ if active and state.availability == CameraAvailability.STARTING:
 
 ---
 
-*Last updated: January 4, 2026 02:30 EST*
+*Last updated: January 4, 2026 03:05 EST*
 
 ---
 
@@ -1708,17 +1708,58 @@ Multiple context compactions occurred during this session:
 
 ---
 
-### TODO List (Carried Forward)
+### TODO List (Updated)
 
-**Stream Watchdog Investigation (Current Focus):**
+**Stream Watchdog Investigation:**
 
 - [x] Create FFmpeg test command for reconnect flags
-- [ ] **PENDING USER INPUT**: Evaluate FFmpeg test results
-- [ ] Decide on reconnect flag implementation approach
-- [ ] Implement watchdog fixes based on test results
+- [x] Evaluate FFmpeg test results → **RESULT: -reconnect flags not supported for RTSP**
+- [x] Unified camera state tracking for MJPEG and LL-HLS cameras
 
-**Phase 2+ Tasks (Deferred):**
+**Phase 2+ Tasks:**
 
 - [ ] StreamManager Integration: Use CameraStateTracker for retry coordination
 - [ ] Service Integration: Motion detection and recording services respect can_retry()
 - [ ] Validation: Monitor MediaMTX "torn down" logs after integration
+
+---
+
+### Session Update: January 4, 2026 (02:38-03:05 EST)
+
+#### Unified Camera State Tracking Implementation
+
+**Objective:** All cameras (MJPEG and LL-HLS) should report their state to CameraStateTracker, not just LL-HLS cameras.
+
+**Changes Made:**
+
+1. **CameraStateTracker** ([services/camera_state_tracker.py:313-369](services/camera_state_tracker.py#L313-L369))
+   - Added `update_mjpeg_capture_state()` method
+   - Handles MJPEG-specific state transitions (no MediaMTX involvement)
+   - Tracks consecutive errors → DEGRADED (1-2 failures) → OFFLINE (3+ failures)
+
+2. **MJPEG Capture Services** (all 4 services updated):
+   - [reolink_mjpeg_capture_service.py](services/reolink_mjpeg_capture_service.py)
+   - [amcrest_mjpeg_capture_service.py](services/amcrest_mjpeg_capture_service.py)
+   - [unifi_mjpeg_capture_service.py](services/unifi_mjpeg_capture_service.py)
+   - [mjpeg_capture_service.py](services/mjpeg_capture_service.py)
+
+   Each service now:
+   - Reports `active=True` when capture loop starts
+   - Tracks consecutive errors (max 5 before reporting offline)
+   - Reports recovery when frames resume after errors
+   - Reports `active=False` when capture loop ends
+
+3. **API Endpoint** ([app.py:746-769](app.py#L746-L769))
+   - Removed hardcoded ONLINE status for MJPEG cameras
+   - All cameras now use CameraStateTracker for state
+   - Added `stream_type` field to response ('MJPEG' or 'LL_HLS')
+
+**Commits:**
+
+- `d7dc89e` - Unify camera state tracking: MJPEG services now report state to CameraStateTracker
+
+**Testing Required:**
+
+- Container restart (`restartnvr`) needed to apply changes
+- Verify MJPEG cameras show proper state transitions in UI
+- Test error scenarios (disconnect camera, verify state changes)

@@ -47,6 +47,11 @@ class StreamWatchdog:
     - publisher_active == False (stream is down)
     - can_retry() == True (not in backoff period)
 
+    Race Condition Prevention:
+    - STARTUP_WARMUP: Wait before first check to let streams initialize
+    - RESTART_COOLDOWN: Per-camera cooldown after restart to prevent rapid cycling
+    - Uses CameraStateTracker's exponential backoff for persistent failures
+
     Usage:
         watchdog = StreamWatchdog(stream_manager, camera_state_tracker)
         watchdog.start()
@@ -60,6 +65,13 @@ class StreamWatchdog:
 
     # Watchdog poll interval in seconds
     POLL_INTERVAL = 10
+
+    # Startup warmup: wait this long after start() before first check
+    # Gives streams time to initialize on container startup
+    STARTUP_WARMUP_SECONDS = 60
+
+    # Per-camera cooldown after restart attempt (prevents rapid restart cycling)
+    RESTART_COOLDOWN_SECONDS = 30
 
     def __init__(
         self,
@@ -89,6 +101,12 @@ class StreamWatchdog:
         # Will be populated from camera_repo on first poll
         self._camera_types: Dict[str, str] = {}  # camera_id -> 'LL_HLS' or 'MJPEG'
 
+        # Per-camera cooldown tracking: camera_id -> timestamp when cooldown expires
+        self._restart_cooldowns: Dict[str, float] = {}
+
+        # Startup timestamp - used for warmup period
+        self._start_time: Optional[float] = None
+
         logger.info("StreamWatchdog initialized")
 
     def start(self) -> None:
@@ -110,6 +128,7 @@ class StreamWatchdog:
 
         self._running = True
         self._stop_event.clear()
+        self._start_time = time.time()  # Record start time for warmup
 
         self._watch_thread = threading.Thread(
             target=self._watch_loop,
@@ -117,7 +136,11 @@ class StreamWatchdog:
             daemon=True
         )
         self._watch_thread.start()
-        logger.info(f"StreamWatchdog started (poll interval: {self.POLL_INTERVAL}s)")
+        logger.info(
+            f"StreamWatchdog started (poll: {self.POLL_INTERVAL}s, "
+            f"warmup: {self.STARTUP_WARMUP_SECONDS}s, "
+            f"cooldown: {self.RESTART_COOLDOWN_SECONDS}s)"
+        )
 
     def stop(self) -> None:
         """
@@ -170,35 +193,66 @@ class StreamWatchdog:
         """
         Check all cameras and restart unhealthy streams.
 
-        Iterates through all camera states in CameraStateTracker and triggers
-        restart for cameras where:
+        Race condition prevention:
+        1. Startup warmup: Skip checks until STARTUP_WARMUP_SECONDS elapsed
+        2. Per-camera cooldown: Skip if recently restarted
+        3. Backoff: Respect CameraStateTracker.can_retry() exponential backoff
+
+        Triggers restart for cameras where:
+        - Warmup period has elapsed
+        - Camera not in cooldown period
         - publisher_active == False
-        - can_retry() == True
+        - can_retry() == True (not in exponential backoff)
         """
         # Import here to avoid circular dependency
         from services.camera_state_tracker import CameraAvailability
 
+        # STARTUP WARMUP: Don't check until warmup period has elapsed
+        # This prevents restarts while streams are still initializing
+        elapsed = time.time() - self._start_time
+        if elapsed < self.STARTUP_WARMUP_SECONDS:
+            remaining = self.STARTUP_WARMUP_SECONDS - elapsed
+            logger.debug(f"StreamWatchdog in warmup period, {remaining:.0f}s remaining")
+            return
+
         # Get all camera states from tracker
-        # Access internal _states dict safely via the public method pattern
         all_camera_ids = self._get_all_camera_ids()
+        now = time.time()
 
         for camera_id in all_camera_ids:
             if self._stop_event.is_set():
                 break
 
             try:
-                state = self._state_tracker.get_camera_state(camera_id)
-
-                # Skip cameras that are healthy
-                if state.publisher_active:
+                # PER-CAMERA COOLDOWN: Skip if recently restarted
+                cooldown_expires = self._restart_cooldowns.get(camera_id, 0)
+                if now < cooldown_expires:
+                    remaining = cooldown_expires - now
+                    logger.debug(f"Camera {camera_id} in restart cooldown, {remaining:.0f}s remaining")
                     continue
 
-                # Skip cameras in backoff period
+                state = self._state_tracker.get_camera_state(camera_id)
+
+                # Skip cameras that are healthy (publisher active)
+                if state.publisher_active:
+                    # Clear any old cooldown since camera is healthy
+                    self._restart_cooldowns.pop(camera_id, None)
+                    continue
+
+                # Skip cameras still in STARTING state (give them time to initialize)
+                if state.availability == CameraAvailability.STARTING:
+                    continue
+
+                # Skip cameras in exponential backoff period (CameraStateTracker handles this)
                 if not self._state_tracker.can_retry(camera_id):
                     continue
 
-                # Camera is down and can retry - trigger restart
+                # Camera is down, not in cooldown, not in backoff - trigger restart
                 stream_type = self._get_stream_type(camera_id)
+                logger.info(f"[WATCHDOG] Camera {camera_id} needs restart (type: {stream_type})")
+
+                # Set cooldown BEFORE restart attempt to prevent rapid cycling
+                self._restart_cooldowns[camera_id] = now + self.RESTART_COOLDOWN_SECONDS
 
                 if stream_type == 'LL_HLS':
                     self._restart_ll_hls(camera_id)

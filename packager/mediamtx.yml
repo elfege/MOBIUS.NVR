@@ -14,18 +14,21 @@ apiAddress: :9997
 authMethod: internal
 authInternalUsers:
   # API access for CameraStateTracker (from Docker network)
+  # No path restriction = applies to all paths
   - user: nvr-api
     pass: ""
     ips: []
     permissions:
       - action: api
-  # Anonymous access for HLS streaming (browsers)
+  # Anonymous access for HLS streaming (browsers) and RTSP publishing (FFmpeg)
+  # No path restriction = applies to all paths
   - user: any
     pass: ""
     ips: []
     permissions:
       - action: read
       - action: playback
+      - action: publish
 
 # === HLS/LL-HLS (HTTP) ===
 hls: yes

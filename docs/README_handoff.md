@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 04:05 EST*
+*Last updated: January 4, 2026 10:45 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -41,51 +41,44 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Branch:** `stream_watchdog_investigation_JAN_4_2026_a`
 **Started:** January 4, 2026 04:15 EST
-**Context compaction occurred at 04:15 EST**
+**Context compactions:** 04:15 EST, 10:30 EST
 
-### Investigation Findings (from previous session)
+### Fixes Applied This Session
 
-**Original Goal:** Re-enable motion detection and recording, verify they no longer break MediaMTX streams.
+1. **Motion Detector Health Check** - Modified `ffmpeg_motion_detector.py` to use CameraStateTracker instead of ffprobe for health checks. ffprobe was creating additional RTSP connections to MediaMTX, causing stream disruptions.
 
-**Key Discovery:** The "torn down by 172.19.0.6" messages in MediaMTX logs are NOT caused by motion detection or recording (both are DISABLED).
+2. **UI Recovery Full Stop+Start** - Fixed `handleBackendRecovery()` in `stream.js` to perform full stop+start cycle instead of just HLS.js refresh. User confirmed manual stop+start works reliably; HLS.js refresh alone may stay connected to stale MediaMTX session.
 
-**Root Cause Found:** StreamWatchdog restart loop on `T8416P0023352DA9` (Living Room/Eufy camera):
+### Key Finding: Nuclear Cleanup
 
-- Watchdog repeatedly thinks `publisher_active=false`
-- Triggers restart approximately 20 times in quick succession
-- Each restart causes a "torn down" message in MediaMTX
+Found that `_kill_all_ffmpeg_for_camera()` ("Nuclear cleanup") is called at the START of every `_start_stream()` (line 376 in stream_manager.py). This means every watchdog restart triggers nuclear cleanup, which may be overly aggressive. The cleanup was intended as a fallback, but it's being called proactively.
 
-**Evidence from logs:**
+**Current observation:** Streams are healthy when watchdog is disabled (STREAM_WATCHDOG_ENABLED=0).
 
-```log
-2026/01/04 09:12:41 INF [RTSP] [session ...] destroyed: torn down by 172.19.0.6:47514
-INFO:services.stream_watchdog:[WATCHDOG] Camera T8416P0023352DA9 needs restart (type: LL_HLS)
-```
+### Files Modified
 
-**Verification Status:**
-
-- Motion detection: Uses MediaMTX for LL_HLS cameras (confirmed in `ffmpeg_motion_detector.py:206-211`)
-- Recording: Uses MediaMTX for LL_HLS cameras (confirmed in `recording_service.py:109-124`)
-- Both are currently DISABLED in `recording_settings.json`
-
-### Next Steps
-
-1. Investigate why StreamWatchdog repeatedly restarts Living Room (Eufy) camera
-2. Once watchdog stability confirmed, re-enable motion detection for testing
-3. Verify no "torn down" messages occur from motion detection requests
+| File | Change |
+|------|--------|
+| `services/motion/ffmpeg_motion_detector.py` | Use CameraStateTracker.publisher_active instead of ffprobe |
+| `app.py` | Pass camera_state_tracker to FFmpegMotionDetector |
+| `static/js/streaming/stream.js` | handleBackendRecovery uses full stop+start cycle |
 
 ---
 
 ## TODO List
 
-**Pending (from previous session):**
+**Completed:**
 
-- [ ] Container restart to apply Python/JS changes
-- [ ] Verify ffmpeg_process_alive fix (STAIRS should show "Live" not "Degraded")
-- [ ] Test MJPEG camera restart (no MJPEG failures observed yet)
-- [ ] Motion detection/recording services respect can_retry()
-- [ ] Monitor MediaMTX "torn down" logs
+- [x] Fix motion detector to use CameraStateTracker (no extra RTSP connections)
+- [x] Fix UI recovery to use stop+start instead of refresh
+
+**Pending:**
+
+- [ ] Investigate nuclear cleanup being called on every stream start
+- [ ] Re-enable watchdog after nuclear cleanup investigation
+- [ ] Test motion detection with watchdog enabled
+- [ ] Monitor for "torn down" messages in MediaMTX logs
 
 **Optional:**
 
-- [ ] Remove/reduce false positive health checks in HealthMonitor (low priority - backend recovery takes precedence)
+- [ ] Remove/reduce false positive health checks in HealthMonitor

@@ -100,9 +100,8 @@ class StreamManager:
         # CRITICAL: Master lock for thread-safe access to shared state
         self._streams_lock = threading.RLock()  # RLock allows re-entrance from same thread
 
-
-        self.watchdogs = {}
-        self.stop_flags = {}
+        # NOTE: self.watchdogs and self.stop_flags removed - old per-stream watchdog
+        # Now using services/stream_watchdog.py with CameraStateTracker
 
         # HLS output directory
         self.hls_dir = Path('./streams')
@@ -668,17 +667,16 @@ class StreamManager:
     def stop_stream(self, camera_serial: str, stop_watchdog: bool = True) -> bool:
         """
         Stop streaming for a camera with proper process termination and zombie reaping.
-        
+
         Args:
             camera_serial: Camera serial number
-            stop_watchdog: If False, don't stop watchdog thread (used during restarts)
-        
+            stop_watchdog: Deprecated parameter, kept for backward compatibility.
+                          Old per-stream watchdog removed - now using StreamWatchdog service.
+
         Returns:
             bool: True if stopped successfully
         """
-        # Signal watchdog to stop (outside lock)
-        if stop_watchdog and camera_serial in self.stop_flags:
-            self.stop_flags[camera_serial].set()
+        # NOTE: Old watchdog stop logic removed. Now handled by StreamWatchdog service.
 
         # Log throttled output
         self.printout_active_streams(caller="stop_stream")
@@ -751,17 +749,12 @@ class StreamManager:
                 print(traceback.print_exc())
                 logger.error(f"Error in stop_stream for {camera_serial}: {e}")
                 return False
-        
-        # Watchdog cleanup happens outside lock
-        if stop_watchdog and camera_serial in self.watchdogs:
-            t = self.watchdogs.get(camera_serial)
-            if t and t.is_alive() and threading.current_thread() is not t:
-                t.join(timeout=3)
-            self.watchdogs.pop(camera_serial, None)
-            self.stop_flags.pop(camera_serial, None)
-        
+
+        # NOTE: Old per-stream watchdog cleanup removed.
+        # StreamWatchdog service handles all stream monitoring now.
+
         return True
-    
+
     def _classify_ffmpeg_exit(self, stderr_log_path: Optional[str], exit_code: int) -> str:
         """
         Classify FFmpeg exit reason by analyzing stderr log.
@@ -898,135 +891,10 @@ class StreamManager:
             logger.error(f"[RESTART] Stream restart failed for {camera_serial}: {e}", exc_info=True)
             return False
 
-    def _start_watchdog(self, camera_serial: str):
-        """Start watchdog thread to monitor stream health"""
-        if camera_serial in self.watchdogs:
-            return
-
-        stop_event = threading.Event()
-        self.stop_flags[camera_serial] = stop_event
-
-        watchdog_thread = threading.Thread(
-            target=self._watchdog_loop,
-            args=(camera_serial, stop_event),
-            daemon=True
-        )
-        self.watchdogs[camera_serial] = watchdog_thread
-        watchdog_thread.start()
-
-    def _watchdog_loop(self, camera_serial: str, stop_event: threading.Event) -> None:
-        backoff = 5
-        watchdog_enabled=os.getenv('ENABLE_WATCHDOG', 'true').lower() in ['true', '1']
-        if not watchdog_enabled:
-            print(f"[WATCHDOG] DISABLED")
-            return
-        if watchdog_enabled:
-            while not stop_event.is_set():
-                # SLEEP FIRST, OUTSIDE THE LOCK
-                time.sleep(max(5, min(backoff, 60)))
-                with self._streams_lock:
-                    if stop_event.is_set() or camera_serial not in self.active_streams:
-                        break
-
-                    st = self._state(camera_serial)
-                    if time.time() < st.get("suppress_until", 0.0):
-                        backoff = 5
-                        continue
-
-                    if self.is_stream_healthy(camera_serial, caller="WATCHDOG"):
-                        backoff = 5
-                        continue
-
-                    try:
-                        print(f"[WATCHDOG] restarting {camera_serial}")
-                        self._watchdog_restart_stream(camera_serial)
-                        backoff = min(backoff * 2, 60)
-                    except Exception as e:
-                        print(traceback.print_exc())
-                        print(f"Failed to execute _watchdog_restart_stream(): {e}")
-                        backoff = min(backoff * 2, 60)
-
-
-
-
-    def _state(self, camera_serial: str) -> dict:
-        s = self._restart_state.get(camera_serial)
-        if s is None:
-            s = {"in_progress": False, "failures": 0, "last_ok": 0.0, "suppress_until": 0.0}
-            self._restart_state[camera_serial] = s
-        return s
-
-    def _suppress_watchdog(self, camera_serial: str, seconds: float = 10.0) -> None:
-        """Ignore health for this camera until now+seconds (first segments to appear)."""
-        st = self._state(camera_serial)
-        st["suppress_until"] = time.time() + max(0.0, seconds)
-
-    def _watchdog_restart_stream(self, camera_serial: str) -> None:
-        lock = self._get_or_create_lock(camera_serial)
-        watchdog_enabled=os.getenv('ENABLE_WATCHDOG', 'true').lower() in ['true', '1']
-        if not watchdog_enabled:
-            print(f"[WATCHDOG] DISABLED")
-            return
-
-        if not lock.acquire(blocking=False):
-            logger.info(
-                f"[WATCHDOG] restart already in progress for {camera_serial}")
-            return
-
-        st = self._restart_state.setdefault(
-            camera_serial, {"in_progress": False, "failures": 0, "last_ok": 0.0})
-        if st["in_progress"]:
-            lock.release()
-            logger.info(
-                f"[WATCHDOG] restart flag set; skipping duplicate for {camera_serial}")
-            return
-        st["in_progress"] = True
-
-        try:
-
-            logger.warning(f"[WATCHDOG] restarting {camera_serial}")
-
-            # IMPORTANT: do not stop/join the watchdog from inside the watchdog thread
-            self.stop_stream(camera_serial, stop_watchdog=False)
-
-            camera = self.camera_repo.get_camera(camera_serial)
-            handler = self.handlers.get(camera.get('type'))
-            if not handler:
-                raise RuntimeError(
-                    f"No handler for camera type: {camera.get('type')}")
-
-            # Reconstruct paths if needed
-            stream_dir = (self.hls_dir / camera_serial)
-            playlist_path = stream_dir / "index.m3u8"
-            rtsp_url = handler.build_rtsp_url(camera, stream_type=stream_type)
-
-            proc = self._start_ffmpeg(
-                rtsp_url=rtsp_url,
-                playlist_path=playlist_path,
-                segment_pattern=stream_dir / "segment_%03d.ts",
-                handler=handler,
-                camera_config=camera
-            )
-            # give the new pipeline time to produce segments
-            self._suppress_watchdog(camera_serial, seconds=10)
-            self._mark_ok(camera_serial)
-
-            with self._streams_lock:
-                self.active_streams[camera_serial] = {
-                    "process": proc,
-                    "stream_dir": stream_dir,
-                    "playlist_path": playlist_path,
-                }
-                self._mark_ok(camera_serial)
-
-        except Exception as e:
-            self._mark_fail(camera_serial)
-            logger.exception(
-                f"[WATCHDOG] restart failed for {camera_serial}: {e}")
-
-        finally:
-            st["in_progress"] = False
-            lock.release()
+    # NOTE: Old watchdog methods (_start_watchdog, _watchdog_loop, _state,
+    # _suppress_watchdog, _watchdog_restart_stream) removed as of Jan 4, 2026.
+    # Stream health monitoring now handled by services/stream_watchdog.py
+    # which uses CameraStateTracker for unified state management.
 
     def _wait_for_playlist(self, camera_serial: str, timeout: int = 10):
         """Wait for HLS playlist to be created"""
@@ -1118,17 +986,8 @@ class StreamManager:
             self._restart_locks[camera_serial] = lock
         return lock
 
-    def _mark_ok(self, camera_serial: str) -> None:
-        st = self._restart_state.setdefault(
-            camera_serial, {"in_progress": False, "failures": 0, "last_ok": 0.0})
-        st["failures"] = 0
-        st["last_ok"] = time.time()
-
-    def _mark_fail(self, camera_serial: str) -> None:
-        st = self._restart_state.setdefault(
-            camera_serial, {"in_progress": False, "failures": 0, "last_ok": 0.0})
-        st["failures"] += 1
-
+    # NOTE: _mark_ok and _mark_fail removed - old watchdog bookkeeping
+    # Now handled by CameraStateTracker.register_success/register_failure
 
     def stop_all_streams(self):
         """Stop all active streams"""

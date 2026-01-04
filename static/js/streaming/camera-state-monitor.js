@@ -15,10 +15,17 @@
  */
 
 export class CameraStateMonitor {
-    constructor() {
+    /**
+     * @param {object} opts - Configuration options
+     * @param {function} opts.onRecovery - Callback when camera recovers (degraded/offline → online)
+     *                                     Called with (cameraId, $streamItem, previousState, newState)
+     */
+    constructor(opts = {}) {
         this.pollInterval = 10000; // Poll every 10 seconds
         this.timers = new Map(); // Track polling timers per camera
         this.isRunning = false;
+        this.previousStates = new Map(); // Track previous state per camera for transition detection
+        this.onRecovery = opts.onRecovery || null; // Callback for recovery events
     }
 
     /**
@@ -104,6 +111,27 @@ export class CameraStateMonitor {
      * @param {object} state - Camera state data from API
      */
     updateUI(cameraId, $streamItem, state) {
+        // Check for recovery transition: degraded/offline → online
+        const previousState = this.previousStates.get(cameraId);
+        const wasUnhealthy = previousState && (previousState === 'degraded' || previousState === 'offline');
+        const isNowOnline = state.availability === 'online';
+
+        if (wasUnhealthy && isNowOnline) {
+            console.log(`[CameraState] ${cameraId}: RECOVERY detected (${previousState} → online)`);
+
+            // Trigger recovery callback if registered
+            if (this.onRecovery) {
+                try {
+                    this.onRecovery(cameraId, $streamItem, previousState, state.availability);
+                } catch (e) {
+                    console.error(`[CameraState] ${cameraId}: Error in onRecovery callback`, e);
+                }
+            }
+        }
+
+        // Store current state for next comparison
+        this.previousStates.set(cameraId, state.availability);
+
         // Update data attribute for CSS selectors
         $streamItem.attr('data-camera-availability', state.availability);
 

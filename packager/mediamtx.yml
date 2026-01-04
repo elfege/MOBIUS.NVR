@@ -75,12 +75,48 @@ hlsSegmentCount: 7              # keep very small live window beware of: "ERR [H
 # - 1000ms/500ms: Very stable but 5-8s felt latency (unacceptable)
 # - 200ms/100ms: Only works with direct RTSP passthrough (no transcode)
 #
-# For browser sub-second latency, WebRTC would be needed (future enhancement).
+# For browser sub-second latency, WebRTC is now available (see webrtc settings below).
 #
 hlsSegmentDuration: 500ms
 hlsPartDuration: 250ms          # MUST be half of hlsSegmentDuration
 hlsAllowOrigin: "*"             # allow browser clients
 hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
+
+# === WebRTC Configuration ===
+# WebRTC provides sub-second latency (~200-500ms) by streaming directly to browser
+# via peer-to-peer connection. Uses WHEP protocol for playback.
+#
+# HOW IT WORKS:
+# 1. Browser creates RTCPeerConnection and sends SDP offer to /camera_id/whep
+# 2. MediaMTX responds with SDP answer
+# 3. ICE candidates are exchanged (via Trickle ICE or bundled)
+# 4. Browser receives RTP media directly from MediaMTX
+#
+# LATENCY COMPARISON:
+# - LL-HLS: 2-4 seconds (segment-based, HTTP)
+# - WebRTC: 200-500ms (RTP-based, UDP preferred)
+#
+# TRADEOFFS:
+# - WebRTC: Lower latency, but may struggle with NAT/firewall
+# - LL-HLS: Higher latency, but works everywhere (HTTP)
+#
+# NAT TRAVERSAL:
+# For LAN-only use (this NVR), STUN/TURN servers are not needed.
+# ICE candidates use local IPs directly.
+# If external access is needed later, add STUN server:
+#   webrtcICEServers2: [{url: "stun:stun.l.google.com:19302"}]
+#
+webrtc: yes
+webrtcAddress: :8889            # HTTP endpoint for WHEP signaling
+webrtcEncryption: no            # LAN-only, no DTLS needed (faster setup)
+webrtcServerKey: ""
+webrtcServerCert: ""
+webrtcAllowOrigin: "*"          # Allow browser clients
+webrtcTrustedProxies: []
+webrtcICEServers2: []           # No STUN/TURN for LAN-only use
+webrtcICEHostNAT1To1IPs: []     # Auto-detect local IPs
+webrtcICEUDPMuxAddress: ""      # Let OS choose UDP ports
+webrtcICETCPMuxAddress: ""      # Disable TCP ICE (UDP preferred for latency)
 
 # Make sure at least one ingest is enabled that matches the NVR publisher.
 # If we publish RTMP from NVR:

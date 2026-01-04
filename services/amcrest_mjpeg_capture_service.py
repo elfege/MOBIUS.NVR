@@ -16,9 +16,21 @@ from urllib.parse import quote
 from collections import defaultdict
 from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
 
-
-
 logger = logging.getLogger(__name__)
+
+# Import CameraStateTracker for state reporting (lazy import to avoid circular deps)
+_camera_state_tracker = None
+
+def _get_state_tracker():
+    """Lazy import of camera_state_tracker to avoid circular imports"""
+    global _camera_state_tracker
+    if _camera_state_tracker is None:
+        try:
+            from services.camera_state_tracker import camera_state_tracker
+            _camera_state_tracker = camera_state_tracker
+        except ImportError:
+            logger.warning("CameraStateTracker not available - MJPEG state reporting disabled")
+    return _camera_state_tracker
 
 class AmcrestMJPEGCaptureService:
     """
@@ -131,13 +143,21 @@ class AmcrestMJPEGCaptureService:
                     
             print(f"Amcrest MJPEG capture loop started for {camera_id} ({camera_name})")
             print(f"Stream URL: {stream_url}")
-            
+
             retry_delay = 1.0
             max_retry_delay = 30.0
+
+            # Report initial state to CameraStateTracker
+            tracker = _get_state_tracker()
+            if tracker:
+                tracker.update_mjpeg_capture_state(camera_id, active=True)
+
+            consecutive_errors = 0
+            max_consecutive_errors = 5  # Report offline after this many consecutive failures
         except Exception as e:
             logger.error(f"Error initializing Amcrest MJPEG capture loop for {camera_id}: {e}")
             return
-        
+
         while not stop_flag.is_set():
             try:
                 # Open streaming connection with timeout
@@ -153,13 +173,20 @@ class AmcrestMJPEGCaptureService:
                     error_msg = f"HTTP {response.status_code} from MJPEG API"
                     with self.lock:
                         capture_info['last_error'] = error_msg
+                    consecutive_errors += 1
                     logger.error(f"[{camera_id}] {error_msg}")
+                    if consecutive_errors >= max_consecutive_errors and tracker:
+                        tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                     stop_flag.wait(retry_delay)
                     retry_delay = min(retry_delay * 2, max_retry_delay)
                     continue
-                
-                # Reset retry delay on successful connection
+
+                # Reset retry delay and error counter on successful connection
                 retry_delay = 1.0
+                if consecutive_errors > 0:
+                    consecutive_errors = 0
+                    if tracker:
+                        tracker.update_mjpeg_capture_state(camera_id, active=True)
                 logger.info(f"[{camera_id}] MJPEG stream connected successfully")
                 
                 # Parse multipart/x-mixed-replace stream
@@ -186,26 +213,39 @@ class AmcrestMJPEGCaptureService:
                 error_msg = "Connection timeout"
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.warning(f"[{camera_id}] {error_msg}, retrying in {retry_delay}s")
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 stop_flag.wait(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
-                
+
             except requests.exceptions.RequestException as e:
                 error_msg = f"Request error: {e}"
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.error(f"[{camera_id}] RequestException {error_msg}")
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 stop_flag.wait(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
-                
+
             except Exception as e:
                 error_msg = f"Unexpected error: {e}"
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.error(f"[{camera_id}] {error_msg}", exc_info=True)
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 stop_flag.wait(retry_delay)
                 retry_delay = min(retry_delay * 2, max_retry_delay)
-        
+
+        # Report capture stopped to CameraStateTracker
+        if tracker:
+            tracker.update_mjpeg_capture_state(camera_id, active=False)
+
         logger.info(f"Amcrest MJPEG capture loop ended for {camera_id}")
     
     def _process_mjpeg_stream(self, camera_id: str, capture_info: dict, 

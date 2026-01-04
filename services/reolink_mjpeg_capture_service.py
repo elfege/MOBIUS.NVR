@@ -16,6 +16,20 @@ from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
+# Import CameraStateTracker for state reporting (lazy import to avoid circular deps)
+_camera_state_tracker = None
+
+def _get_state_tracker():
+    """Lazy import of camera_state_tracker to avoid circular imports"""
+    global _camera_state_tracker
+    if _camera_state_tracker is None:
+        try:
+            from services.camera_state_tracker import camera_state_tracker
+            _camera_state_tracker = camera_state_tracker
+        except ImportError:
+            logger.warning("CameraStateTracker not available - MJPEG state reporting disabled")
+    return _camera_state_tracker
+
 class ReolinkMJPEGCaptureService:
     """
     Manages single camera Snap API polling processes serving multiple clients
@@ -133,7 +147,15 @@ class ReolinkMJPEGCaptureService:
         timeout_sec = capture_info['timeout_ms'] / 1000.0
         
         logger.info(f"Reolink MJPEG capture loop started for {camera_id} ({camera_name})")
-        
+
+        # Report initial state to CameraStateTracker
+        tracker = _get_state_tracker()
+        if tracker:
+            tracker.update_mjpeg_capture_state(camera_id, active=True)
+
+        consecutive_errors = 0
+        max_consecutive_errors = 5  # Report offline after this many consecutive failures
+
         while not stop_flag.is_set():
             try:
                 # Update cache-busting random string
@@ -146,16 +168,17 @@ class ReolinkMJPEGCaptureService:
                 
                 if response.status_code == 200:
                     snapshot = response.content
-                    
+
                     # Validate JPEG data (minimum size check)
                     if len(snapshot) < 1000:
                         error_msg = f"Response too small ({len(snapshot)} bytes) - likely error response"
                         with self.lock:
                             capture_info['last_error'] = error_msg
+                        consecutive_errors += 1
                         logger.warning(f"[{camera_id}] {error_msg}: {snapshot[:200]}")
                         stop_flag.wait(frame_interval)
                         continue
-                    
+
                     # Update shared buffer with latest frame
                     with self.lock:
                         self.frame_buffers[camera_id] = {
@@ -167,17 +190,29 @@ class ReolinkMJPEGCaptureService:
                         capture_info['frame_count'] += 1
                         capture_info['last_frame_time'] = time.time()
                         capture_info['last_error'] = None
-                    
+
+                    # Reset error counter on successful frame
+                    if consecutive_errors > 0:
+                        consecutive_errors = 0
+                        # Report recovery to CameraStateTracker
+                        if tracker:
+                            tracker.update_mjpeg_capture_state(camera_id, active=True)
+
                     # Log occasionally (every 100 frames) to reduce spam
                     if capture_info['frame_count'] % 100 == 1:
                         logger.debug(f"[{camera_id}] Frame {capture_info['frame_count']}, "
                                    f"size={len(snapshot)} bytes, clients={self.client_counts[camera_id]}")
-                
+
                 else:
                     error_msg = f"HTTP {response.status_code} from Snap API"
                     with self.lock:
                         capture_info['last_error'] = error_msg
+                    consecutive_errors += 1
                     logger.warning(f"[{camera_id}] {error_msg}")
+
+                    # Report failure after consecutive errors
+                    if consecutive_errors >= max_consecutive_errors and tracker:
+                        tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 
                 # Sleep to maintain target FPS
                 stop_flag.wait(frame_interval)
@@ -186,27 +221,41 @@ class ReolinkMJPEGCaptureService:
                 error_msg = "Snap API timeout"
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.warning(f"[{camera_id}] {error_msg}")
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 stop_flag.wait(frame_interval)
-                
+
             except requests.exceptions.RequestException as e:
                 error_msg = f"Request error: {str(e)}"
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.error(f"[{camera_id}] {error_msg}")
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 # Longer wait on connection errors
                 stop_flag.wait(2.0)
-                
+
             except Exception as e:
                 error_msg = f"Capture error: {str(e)}"
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.error(f"[{camera_id}] {error_msg}")
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
                 # Longer wait on unexpected errors
                 stop_flag.wait(2.0)
-        
+
         # Cleanup session on exit
         session.close()
+
+        # Report capture stopped to CameraStateTracker
+        if tracker:
+            tracker.update_mjpeg_capture_state(camera_id, active=False)
+
         logger.info(f"Reolink MJPEG capture loop ended for {camera_id}")
     
     def add_client(self, camera_id: str, camera_config: dict, camera_repo) -> bool:

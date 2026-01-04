@@ -49,7 +49,7 @@ hlsSegmentCount: 7              # keep very small live window beware of: "ERR [H
 #
 # WHY WE STOPPED USING DIRECT RTSP PASSTHROUGH:
 # Budget cameras (Eufy, SV3C, some Reolink) only support ONE RTSP connection.
-# With passthrough, each consumer (UI, recordings, motion detection) opened its
+# With passthrough, each consumer (recordings, motion detection) opened its
 # own RTSP connection → cameras dropped streams or refused connections entirely.
 # Solution: Single FFmpeg process connects to camera, splits to sub/main streams,
 # publishes both to MediaMTX. All consumers tap MediaMTX, not the camera directly.
@@ -62,6 +62,13 @@ hlsSegmentCount: 7              # keep very small live window beware of: "ERR [H
 #   3. Keyframe control: Force keyframes for reliable HLS segment boundaries
 # The FFmpeg transcode pipeline adds ~200-500ms latency. With 100ms parts,
 # MediaMTX HLS muxer times out waiting for segments → "muxer destroyed: terminated"
+#
+# FFMPEG GOP SIZE (-g) IMPACT ON LATENCY:
+# In Oct 2025 with passthrough, we used -g 3 (keyframe every 3 frames) for low latency.
+# With transcoding, -g 3 caused excessive CPU load and unstable segments.
+# Current values: -g 15 for sub, -g 15 for main (keyframe every 1 second at 15fps).
+# This adds ~1s to the latency floor but is required for stable transcoding.
+# See streaming/ffmpeg_params.py for GOP configuration.
 #
 # CURRENT VALUES:
 # - 500ms/250ms: Works with transcoded streams, ~2-4s latency
@@ -128,6 +135,10 @@ paths:
   T8441P122428038A:
     source: publisher
   T8441P122428038A_main:
+    source: publisher
+  XCPTP369388MNVTG:
+    source: publisher
+  XCPTP369388MNVTG_main:
     source: publisher
   C6F0SgZ0N0PoL2:
     source: publisher

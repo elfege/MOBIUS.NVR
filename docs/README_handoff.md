@@ -40,7 +40,23 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-*No active session*
+**Branch:** `mjpeg_status_fix_JAN_4_2026_b`
+**Started:** January 4, 2026 05:16 EST
+
+### Context Compaction Recovery
+
+Continued from previous session after context compaction.
+
+### Changes Made
+
+**05:22 - Fixed MJPEG Reolink streams stuck on "Starting" status**
+
+Files modified:
+
+- [stream.js:630-631](static/js/streaming/stream.js#L630-L631) - Pass 'sub' stream parameter to mjpegManager.startStream()
+- [mjpeg-stream.js:14,20](static/js/streaming/mjpeg-stream.js#L14) - Add default param `stream = 'sub'` and null fallback
+
+**Root cause:** Amcrest worked because it doesn't need stream parameter. Reolink was getting `stream=undefined` in the URL.
 
 ---
 

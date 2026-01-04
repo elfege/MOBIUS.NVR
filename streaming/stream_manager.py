@@ -524,9 +524,8 @@ class StreamManager:
                         'stream_url': play_url,
                     }
 
-                # Optional: start watchdog if you want restart behavior (sub streams only)
-                if resolution == 'sub':
-                    self._start_watchdog(stream_key)
+                # NOTE: Old per-stream watchdog removed. StreamWatchdog service now monitors
+                # all streams via CameraStateTracker centrally.
 
                 logger.info(f"Started LL-HLS publisher for {camera_name} ({resolution})")
                 return play_url
@@ -578,9 +577,8 @@ class StreamManager:
                 # Wait for playlist (outside lock)
                 self._wait_for_playlist(stream_key)
 
-                # Start watchdog (sub streams only)
-                if resolution == 'sub':
-                    self._start_watchdog(stream_key)
+                # NOTE: Old per-stream watchdog removed. StreamWatchdog service now monitors
+                # all streams via CameraStateTracker centrally.
 
                 logger.info(f"Started stream for {camera_name} ({resolution})")
                 return self.get_stream_url(stream_key)

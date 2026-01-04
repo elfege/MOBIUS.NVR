@@ -114,9 +114,9 @@ webrtcServerCert: ""
 webrtcAllowOrigin: "*"          # Allow browser clients
 webrtcTrustedProxies: []
 webrtcICEServers2: []           # No STUN/TURN for LAN-only use
-webrtcICEHostNAT1To1IPs: []     # Auto-detect local IPs
-webrtcICEUDPMuxAddress: ""      # Let OS choose UDP ports
-webrtcICETCPMuxAddress: ""      # Disable TCP ICE (UDP preferred for latency)
+webrtcAdditionalHosts: []       # Auto-detect local IPs (replaces webrtcICEHostNAT1To1IPs)
+webrtcLocalUDPAddress: :8189    # UDP port for WebRTC media (required, replaces webrtcICEUDPMuxAddress)
+webrtcLocalTCPAddress: ""       # Disable TCP ICE (UDP preferred for latency)
 
 # Make sure at least one ingest is enabled that matches the NVR publisher.
 # If we publish RTMP from NVR:

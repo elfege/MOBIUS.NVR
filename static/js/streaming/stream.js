@@ -627,7 +627,8 @@ export class MultiStreamManager {
             // Use streamType to determine which manager to use
             // NOTE: mjpeg_proxy is only for direct access to UNIFI MJPEG streams (when not using Protect)
             if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
-                success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType);
+                // Pass 'sub' as stream parameter for grid view (Reolink requires this for MJPEG endpoint)
+                success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
             } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                 success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
             } else if (streamType === 'RTMP') {

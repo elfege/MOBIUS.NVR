@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 03:39 EST*
+*Last updated: January 4, 2026 03:54 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -49,6 +49,23 @@ When StreamWatchdog (backend) restarts a failed stream, the UI didn't know about
 | `static/js/streaming/camera-state-monitor.js` | Modified | Added recovery detection + onRecovery callback |
 | `static/js/streaming/stream.js` | Modified | Added handleBackendRecovery() method |
 | `docs/README_project_history.md` | Modified | Added StreamWatchdog implementation docs |
+| `app.py` | Modified | Fixed ffmpeg_process_alive false positive (line 784) |
+
+### Bug Fix: ffmpeg_process_alive False Positive (03:54 EST)
+
+**Problem**: STAIRS camera showed "Degraded" status with `ffmpeg_process_alive: false` while `publisher_active: true` and stream was clearly working.
+
+**Root Cause**: The `ffmpeg_process_alive` field in `CameraState` was never updated anywhere - it always returned `False` (default value).
+
+**Fix**: In the API endpoint (`/api/camera/state/<camera_id>`), derive `ffmpeg_process_alive` from `publisher_active` for LL-HLS cameras since they are logically equivalent. MediaMTX's `ready: true` requires FFmpeg to be running.
+
+```python
+# Before:
+'ffmpeg_process_alive': False if is_mjpeg else state.ffmpeg_process_alive,
+
+# After:
+'ffmpeg_process_alive': state.publisher_active if not is_mjpeg else False,
+```
 
 ### Architecture
 

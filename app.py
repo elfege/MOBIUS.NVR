@@ -745,7 +745,7 @@ def api_camera_state(camera_id):
     """
     try:
         # Check if this is an MJPEG camera (streams directly, doesn't use MediaMTX)
-        camera = cameras_data.get('devices', {}).get(camera_id)
+        camera = camera_repo.get_camera(camera_id)
         if camera and camera.get('stream_type') == 'MJPEG':
             # MJPEG cameras stream directly from hardware - always report as ONLINE
             return jsonify({

@@ -811,7 +811,10 @@ export class MultiStreamManager {
     /**
      * Handle backend recovery notification from CameraStateMonitor.
      * Called when StreamWatchdog has successfully restarted a stream.
-     * Refreshes the video element to pick up the new stream.
+     *
+     * Performs full stop+start cycle to ensure clean reconnection:
+     * - HLS.js refresh alone may stay connected to stale MediaMTX session
+     * - Full stop+start forces fresh connection to new backend publisher
      *
      * @param {string} cameraId - Camera serial number
      * @param {jQuery} $streamItem - Stream item element
@@ -829,20 +832,34 @@ export class MultiStreamManager {
             this.restartAttempts.delete(cameraId);
             this.recentFailures.delete(cameraId);
 
-            // Show brief "Recovered" status before refreshing
-            this.setStreamStatus($streamItem, 'loading', 'Recovered - Refreshing...');
+            // Show brief "Recovered" status before restart
+            this.setStreamStatus($streamItem, 'loading', 'Recovered - Reconnecting...');
 
-            // Give the backend stream a moment to stabilize
-            await new Promise(r => setTimeout(r, 1000));
+            // Give the backend stream a moment to stabilize before UI connects
+            await new Promise(r => setTimeout(r, 2000));
 
-            // Refresh the stream to pick up the new backend stream
-            await this.restartStream(cameraId, $streamItem);
+            // Get stream metadata for stop/start
+            const cameraType = $streamItem.data('camera-type');
+            const streamType = $streamItem.data('stream-type');
 
-            console.log(`[Recovery] ${cameraId}: UI refresh complete after backend recovery`);
+            // Full stop+start cycle (not just refresh) for clean reconnection
+            // This mimics manual stop/start which user confirmed works reliably
+            console.log(`[Recovery] ${cameraId}: Performing full stop+start cycle`);
+
+            // Step 1: Stop stream (client-side cleanup, detach health monitor)
+            await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+
+            // Step 2: Brief pause between stop and start
+            await new Promise(r => setTimeout(r, 500));
+
+            // Step 3: Start fresh stream
+            await this.startStream(cameraId, $streamItem, cameraType, streamType);
+
+            console.log(`[Recovery] ${cameraId}: Full stop+start complete after backend recovery`);
 
         } catch (e) {
-            console.error(`[Recovery] ${cameraId}: Failed to refresh after backend recovery`, e);
-            this.setStreamStatus($streamItem, 'error', 'Recovery refresh failed');
+            console.error(`[Recovery] ${cameraId}: Failed to reconnect after backend recovery`, e);
+            this.setStreamStatus($streamItem, 'error', 'Recovery reconnect failed');
         }
     }
 

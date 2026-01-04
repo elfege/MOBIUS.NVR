@@ -11,7 +11,7 @@ persistent.json.backup_2
 **/backup*
 *backup*
 
-CLAUDE.md
+
 
 test_*
 TESTS/
@@ -184,4 +184,8 @@ config/eufy_bridge.json
 # scripts
 **/DAMS_flat_copy.sh
 
+
 claude_rules.md
+CLAUDE.md
+*claude*
+chat.md

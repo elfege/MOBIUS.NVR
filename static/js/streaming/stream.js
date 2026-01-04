@@ -17,7 +17,14 @@ export class MultiStreamManager {
         this.hlsManager = new HLSStreamManager();
         this.flvManager = new FLVStreamManager();
         this.ptzController = new PTZController();
-        this.cameraStateMonitor = new CameraStateMonitor();
+
+        // CameraStateMonitor polls backend state and detects when watchdog recovers streams
+        this.cameraStateMonitor = new CameraStateMonitor({
+            onRecovery: (cameraId, $streamItem, previousState, newState) => {
+                console.log(`[Recovery] ${cameraId}: Backend recovered stream (${previousState} → ${newState}), refreshing UI...`);
+                this.handleBackendRecovery(cameraId, $streamItem);
+            }
+        });
         // Arrow function preserves context
         this.getCameraConfig = (id) => this.hlsManager.getCameraConfig(id);
         this.buildHlsConfig = (config, isLL) => this.hlsManager.buildHlsConfig(config, isLL);
@@ -802,8 +809,46 @@ export class MultiStreamManager {
     }
 
     /**
- * Restart HLS/LL-HLS stream by destroying and recreating HLS.js instance
- */
+     * Handle backend recovery notification from CameraStateMonitor.
+     * Called when StreamWatchdog has successfully restarted a stream.
+     * Refreshes the video element to pick up the new stream.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {jQuery} $streamItem - Stream item element
+     */
+    async handleBackendRecovery(cameraId, $streamItem) {
+        try {
+            // Clear any pending UI health restart timers (backend already fixed it)
+            if (this.restartTimers.has(cameraId)) {
+                clearTimeout(this.restartTimers.get(cameraId));
+                this.restartTimers.delete(cameraId);
+                console.log(`[Recovery] ${cameraId}: Cleared pending UI health restart timer`);
+            }
+
+            // Reset restart attempt counter since backend fixed it
+            this.restartAttempts.delete(cameraId);
+            this.recentFailures.delete(cameraId);
+
+            // Show brief "Recovered" status before refreshing
+            this.setStreamStatus($streamItem, 'loading', 'Recovered - Refreshing...');
+
+            // Give the backend stream a moment to stabilize
+            await new Promise(r => setTimeout(r, 1000));
+
+            // Refresh the stream to pick up the new backend stream
+            await this.restartStream(cameraId, $streamItem);
+
+            console.log(`[Recovery] ${cameraId}: UI refresh complete after backend recovery`);
+
+        } catch (e) {
+            console.error(`[Recovery] ${cameraId}: Failed to refresh after backend recovery`, e);
+            this.setStreamStatus($streamItem, 'error', 'Recovery refresh failed');
+        }
+    }
+
+    /**
+     * Restart HLS/LL-HLS stream by destroying and recreating HLS.js instance
+     */
     async restartHLSStream(cameraId, videoElement) {
         await this.hlsManager.forceRefreshStream(cameraId, videoElement);
     }

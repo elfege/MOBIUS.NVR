@@ -174,10 +174,10 @@ class ReolinkStreamHandler(StreamHandler):
                 '-probesize', '500000'          # Smaller probe for low latency
             ]
         elif protocol == 'NEOLINK':
-            # Neolink bridge: use TCP transport for reliability
-            # UDP was causing connection failures in Docker networking
+            # Neolink bridge: use UDP transport to prevent buffer overflow
+            # Neolink's GStreamer RTSP server works better with UDP
             return [
-                '-rtsp_transport', 'tcp',       # TCP more reliable in Docker
+                '-rtsp_transport', 'udp',       # UDP prevents buffer stalls
                 '-timeout', '5000000',
                 '-analyzeduration', '500000',   # Fast analysis
                 '-probesize', '500000',

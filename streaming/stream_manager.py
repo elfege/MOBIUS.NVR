@@ -853,6 +853,51 @@ class StreamManager:
         print(f"[{caller}:is_stream_healthy] {camera_serial}: fresh:{fresh} has_segments:{has_segments}")
         return fresh and has_segments
 
+    def restart_stream(self, camera_serial: str) -> bool:
+        """
+        Restart LL-HLS stream for a camera.
+
+        Public method for the new StreamWatchdog to use. Performs a clean
+        stop and start cycle for the FFmpeg publisher.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            bool: True if restart was successful, False otherwise
+
+        Note:
+            This replaces the old _watchdog_restart_stream internal method.
+            Uses stop_stream() + start_stream() for clean restart.
+        """
+        logger.info(f"[RESTART] Initiating restart for {camera_serial}")
+
+        try:
+            # Step 1: Stop existing stream (don't stop old watchdog - it's deprecated)
+            # Use stop_watchdog=False since old watchdog is being removed
+            if camera_serial in self.active_streams:
+                logger.info(f"[RESTART] Stopping existing stream for {camera_serial}")
+                stopped = self.stop_stream(camera_serial, stop_watchdog=False)
+                if not stopped:
+                    logger.warning(f"[RESTART] stop_stream returned False for {camera_serial}")
+                # Brief pause to allow cleanup
+                time.sleep(1)
+
+            # Step 2: Start fresh stream
+            logger.info(f"[RESTART] Starting fresh stream for {camera_serial}")
+            playlist_url = self.start_stream(camera_serial, resolution='sub')
+
+            if playlist_url:
+                logger.info(f"[RESTART] Stream restart successful for {camera_serial}: {playlist_url}")
+                return True
+            else:
+                logger.error(f"[RESTART] start_stream returned None for {camera_serial}")
+                return False
+
+        except Exception as e:
+            logger.error(f"[RESTART] Stream restart failed for {camera_serial}: {e}", exc_info=True)
+            return False
+
     def _start_watchdog(self, camera_serial: str):
         """Start watchdog thread to monitor stream health"""
         if camera_serial in self.watchdogs:

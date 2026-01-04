@@ -59,6 +59,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 | `app.py` | Pass camera_state_tracker to FFmpegMotionDetector |
 | `static/js/streaming/stream.js` | handleBackendRecovery uses full stop+start cycle; exposed window.streamManager for debugging |
 | `streaming/stream_manager.py` | Disabled nuclear cleanup in _start_stream() |
+| `static/js/streaming/mjpeg-stream.js` | Poll for naturalWidth to detect MJPEG frames instead of unreliable load event |
 
 ---
 

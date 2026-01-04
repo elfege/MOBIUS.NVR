@@ -15,13 +15,13 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 03:10 EST*
+*Last updated: January 4, 2026 03:17 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 4, 2026
+## Current Session: January 4, 2026 (continued)
 
 ### Branch: `stream_watchdog_redesign_JAN_4_2026_a`
 
@@ -29,46 +29,69 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Previous branch merged to main:** `stream_watchdog_backend_restart_JAN_3_2026_a`
 
-**Key accomplishments (Jan 3-4):**
+### Stream Watchdog Implementation - COMPLETED
 
-1. **FFmpeg reconnect flags investigation** - Result: `-reconnect` flags NOT supported for RTSP (HTTP/HTTPS only)
+**All implementation steps completed:**
 
-2. **Unified camera state tracking** - All MJPEG capture services now report state to CameraStateTracker via `update_mjpeg_capture_state()`
+1. [x] Created `services/stream_watchdog.py` - New unified watchdog (345 lines)
+2. [x] Added `restart_stream()` to StreamManager
+3. [x] Added `restart_capture()` to all 4 MJPEG services
+4. [x] Removed old watchdog code from StreamManager (~140 lines deleted)
+5. [x] Updated app.py integration (import, start, cleanup)
+6. [x] Updated .env: `STREAM_WATCHDOG_ENABLED=1` (replaces `ENABLE_WATCHDOG`)
 
-3. **Stream Watchdog Redesign Plan** - Complete and ready for implementation
+### Files Modified This Session
 
-### Current Task: Stream Watchdog Implementation
+| File | Action | Description |
+|------|--------|-------------|
+| `services/stream_watchdog.py` | **CREATED** | Unified watchdog using CameraStateTracker |
+| `streaming/stream_manager.py` | Modified | Added restart_stream(), removed old watchdog |
+| `services/reolink_mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `services/amcrest_mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `services/unifi_mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `services/mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `app.py` | Modified | Integrated StreamWatchdog startup/cleanup |
+| `.env` | Modified | Added STREAM_WATCHDOG_ENABLED=1 (gitignored) |
 
-**Plan location:** `/home/elfege/.claude/plans/jolly-whistling-parnas.md`
+### Architecture Summary
 
-**Implementation steps:**
+```
+CameraStateTracker (polls MediaMTX every 5s)
+         |
+         v
+StreamWatchdog (polls every 10s)
+         |
+         +---> StreamManager.restart_stream() for LL-HLS
+         +---> MJPEG service.restart_capture() for MJPEG
+```
 
-1. [ ] Create `services/stream_watchdog.py` - New unified watchdog
-2. [ ] Add `restart_stream()` to StreamManager
-3. [ ] Add `restart_capture()` to MJPEG services (4 files)
-4. [ ] Remove old watchdog code from StreamManager
-5. [ ] Update app.py integration
-6. [ ] Update .env configuration
-
-### Key Files to Reference
-
-- `services/camera_state_tracker.py` - State management (has `can_retry()`, callbacks)
-- `streaming/stream_manager.py` - Old watchdog code to remove (lines 856-984)
-- `services/*_mjpeg_capture_service.py` - 4 MJPEG services need `restart_capture()`
+**Key features:**
+- Uses CameraStateTracker.can_retry() for exponential backoff
+- Reports restart success/failure back to CameraStateTracker
+- Configurable via `STREAM_WATCHDOG_ENABLED` env var
+- Coexists with UI Health monitoring (UI detects browser/network, backend detects server)
 
 ---
 
 ### TODO List
 
-**Stream Watchdog Redesign (CURRENT):**
+**Stream Watchdog Redesign - COMPLETED:**
 
 - [x] FFmpeg reconnect flags investigation
 - [x] Unified MJPEG/LL-HLS state tracking
 - [x] Plan new watchdog architecture
-- [ ] **NEXT**: Create `services/stream_watchdog.py`
-- [ ] Add restart methods to StreamManager and MJPEG services
-- [ ] Remove old watchdog from StreamManager
-- [ ] Integrate and test
+- [x] Create `services/stream_watchdog.py`
+- [x] Add restart methods to StreamManager and MJPEG services
+- [x] Remove old watchdog from StreamManager
+- [x] Integrate and test
+
+**Next Steps:**
+
+- [ ] Container restart to apply changes
+- [ ] Verify watchdog starts (check logs)
+- [ ] Test: Kill FFmpeg process → verify auto-restart
+- [ ] Test: Disconnect MJPEG camera → verify detection and recovery
+- [ ] Verify exponential backoff on repeated failures
 
 **Deferred:**
 

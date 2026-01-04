@@ -88,12 +88,19 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 
 - Commit immediately with detailed message
 - Push immediately
-- Never batch multiple file changes into one commit
-- Ensure to preserve all essential untracked files (such as `CLAUDE.md`) when checking back out to main.
+- When done with a task/issue, or when I say `time to update the history`:
+      - commit and push current branch
+      - make a copy of modified untracked files into /tmp (such as `CLAUDE.md`, `docs/README_handoff.md`, ``docs/README_handoff.md``)
+      - checkout to main
+      - merge the branch you just commited and pushed, into main
+      - restore untracked files from /tmp
+      - create new branch as described below
+      - wipe clean `docs/README_handoff.md` preserving its essential structure. 
+      - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_handoff.md` to resume the work with proper context knowledge to ensure a smooth transition. 
 
 **Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
 
-- Use `_b`, `_c` suffixes for continued work after context compaction
+- Use `_b`, `_c` suffixes for continued work after we are done with one significant aspect of our work plan. 
 
 **CRITICAL - Commit Message Rules:**
 

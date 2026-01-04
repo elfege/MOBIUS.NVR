@@ -591,17 +591,18 @@ class StreamManager:
                 return self.get_stream_url(stream_key)
 
         except Exception as e:
-            # CRITICAL: Clean up the reservation slot on failure
+            # CRITICAL: Clean up the stream entry on failure (regardless of status)
             logger.error(f"❌ Failed to start stream for {camera_name}: {e}")
             print(traceback.print_exc())
 
-            # Remove the 'starting' reservation
+            # Remove the stream entry - could be 'starting' or 'active' depending on
+            # when the failure occurred. Either way, the stream is not working.
             with self._streams_lock:
                 if stream_key in self.active_streams:
                     entry = self.active_streams.get(stream_key, {})
-                    if entry.get('status') == 'starting':
-                        logger.warning(f"Removing failed 'starting' slot for {stream_key}")
-                        self.active_streams.pop(stream_key, None)
+                    status = entry.get('status', 'unknown')
+                    logger.warning(f"Removing failed stream slot for {stream_key} (status was: {status})")
+                    self.active_streams.pop(stream_key, None)
 
             return None
         

@@ -2184,28 +2184,24 @@ def _get_int(name: str, default: int) -> int:
 
 def _resolve_ui_vs_watchdog():
     """
-    Mutual exclusion policy:
-      - If UI_HEALTH_ENABLED is explicitly set, honor it.
-      - Else, if ENABLE_WATCHDOG is true, disable UI health.
-      - Else, enable UI health.
-      - If both explicitly true, prefer UI health (disable watchdog) and warn.
+    DEPRECATED: Old mutual exclusion policy for UI Health vs per-stream watchdog.
+
+    As of Jan 4, 2026:
+    - Old per-stream watchdog (ENABLE_WATCHDOG) removed from StreamManager
+    - New StreamWatchdog service COEXISTS with UI Health
+    - UI Health: detects browser/network issues (frontend)
+    - StreamWatchdog: detects server/camera issues (backend)
+
+    This function is kept for backward compatibility but no longer enforces
+    mutual exclusion. Use STREAM_WATCHDOG_ENABLED for new watchdog.
+
     Returns (ui_health_enabled, watchdog_enabled)
     """
-    wd = _get_bool("ENABLE_WATCHDOG", default=False)
-    ui = _get_bool("UI_HEALTH_ENABLED", default=None)  # tri-state
+    # UI Health always available now (no conflict with new watchdog)
+    ui_enabled = _get_bool("UI_HEALTH_ENABLED", default=True)
 
-    if ui is None:
-        # UI not explicitly set → infer from watchdog
-        ui_enabled = not wd
-        wd_enabled = wd
-    else:
-        ui_enabled = ui
-        wd_enabled = _get_bool("ENABLE_WATCHDOG", default=False)
-        if ui_enabled and wd_enabled:
-            # conflict: prefer UI health to avoid dueling restarts
-            print(
-                "WARN: UI_HEALTH_ENABLED and ENABLE_WATCHDOG both true; disabling watchdog.")
-            wd_enabled = False
+    # Old ENABLE_WATCHDOG is deprecated - check new STREAM_WATCHDOG_ENABLED
+    wd_enabled = _get_bool("STREAM_WATCHDOG_ENABLED", default=False)
 
     return ui_enabled, wd_enabled
 

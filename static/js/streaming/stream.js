@@ -1257,5 +1257,6 @@ export class MultiStreamManager {
 
 // Initialize when page loads
 $(document).ready(() => {
-    new MultiStreamManager();
+    // Expose globally for debugging and console access
+    window.streamManager = new MultiStreamManager();
 });

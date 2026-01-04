@@ -47,6 +47,13 @@ hlsSegmentCount: 7              # keep very small live window beware of: "ERR [H
 # No transcoding = MediaMTX received pre-encoded H.264 frames directly from cameras.
 # The muxer could easily keep up with 100ms part durations.
 #
+# WHY WE STOPPED USING DIRECT RTSP PASSTHROUGH:
+# Budget cameras (Eufy, SV3C, some Reolink) only support ONE RTSP connection.
+# With passthrough, each consumer (UI, recordings, motion detection) opened its
+# own RTSP connection → cameras dropped streams or refused connections entirely.
+# Solution: Single FFmpeg process connects to camera, splits to sub/main streams,
+# publishes both to MediaMTX. All consumers tap MediaMTX, not the camera directly.
+#
 # WHY 200ms/100ms FAILS NOW:
 # We now transcode via FFmpeg for several reasons:
 #   1. NEOLINK cameras: Baichuan→RTSP bridge requires re-encoding

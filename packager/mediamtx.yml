@@ -39,8 +39,32 @@ hls: yes
 hlsAddress: :8888
 hlsVariant: lowLatency          # emit #EXT-X-PART + PRELOAD-HINT
 hlsSegmentCount: 7              # keep very small live window beware of: "ERR [HLS] [muxer REOLINK_OFFICE] Low-Latency HLS requires at least 7 segments"
-hlsSegmentDuration: 1000ms       # Instead of 1s - creates 7×0.5s = 3.5s buffer (200ms is the MINIMUM supported by MediaMTX)
-hlsPartDuration: 500ms          # partial segment duration (ALLWAYS HALF OF hlsSegmentDuration)
+#
+# LATENCY TUNING NOTES (Jan 2026):
+#
+# WHY 200ms/100ms WORKED BEFORE (Oct 2025):
+# Back then we used direct RTSP passthrough (copy codec) from cameras to MediaMTX.
+# No transcoding = MediaMTX received pre-encoded H.264 frames directly from cameras.
+# The muxer could easily keep up with 100ms part durations.
+#
+# WHY 200ms/100ms FAILS NOW:
+# We now transcode via FFmpeg for several reasons:
+#   1. NEOLINK cameras: Baichuan→RTSP bridge requires re-encoding
+#   2. Single-source architecture: FFmpeg splits sub/main streams to prevent
+#      budget cameras from failing under multiple RTSP connections
+#   3. Keyframe control: Force keyframes for reliable HLS segment boundaries
+# The FFmpeg transcode pipeline adds ~200-500ms latency. With 100ms parts,
+# MediaMTX HLS muxer times out waiting for segments → "muxer destroyed: terminated"
+#
+# CURRENT VALUES:
+# - 500ms/250ms: Works with transcoded streams, ~2-4s latency
+# - 1000ms/500ms: Very stable but 5-8s felt latency (unacceptable)
+# - 200ms/100ms: Only works with direct RTSP passthrough (no transcode)
+#
+# For browser sub-second latency, WebRTC would be needed (future enhancement).
+#
+hlsSegmentDuration: 500ms
+hlsPartDuration: 250ms          # MUST be half of hlsSegmentDuration
 hlsAllowOrigin: "*"             # allow browser clients
 hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
 
@@ -101,6 +125,10 @@ paths:
   C6F0SgZ0N0PoL2:
     source: publisher
   C6F0SgZ0N0PoL2_main:
+    source: publisher
+  95270001CSO4BPDZ:
+    source: publisher
+  95270001CSO4BPDZ_main:
     source: publisher
   95270001NT3KNA67:
     source: publisher

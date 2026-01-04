@@ -172,7 +172,8 @@ services:
       - ./packager/mediamtx.yml:/mediamtx.yml:ro
     # expose only its HTTP port to nginx (no direct internet)
     ports:
-      - "8888:8888"   # HTTP (HLS/LL-HLS/WebRTC signaling)
+      - "8888:8888"   # HTTP (HLS/LL-HLS)
+      - "8889:8889"   # WebRTC WHEP signaling + media (TCP/UDP)
     # leave RTSP/RTMP internal for now; we can open them later if needed
     # - "8554:8554"   # RTSP (optional)
     # - "1935:1935"   # RTMP (optional)

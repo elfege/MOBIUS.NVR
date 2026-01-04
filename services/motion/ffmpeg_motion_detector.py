@@ -26,7 +26,7 @@ class FFmpegMotionDetector:
     Works with any camera that provides an RTSP stream.
     """
 
-    def __init__(self, camera_repository, recording_service, recording_config=None):
+    def __init__(self, camera_repository, recording_service, recording_config=None, camera_state_tracker=None):
         """
         Initialize FFmpeg motion detector.
 
@@ -34,10 +34,12 @@ class FFmpegMotionDetector:
             camera_repository: CameraRepository instance
             recording_service: RecordingService instance
             recording_config: Optional RecordingConfig instance for camera settings
+            camera_state_tracker: Optional CameraStateTracker instance for health checks
         """
         self.camera_repo = camera_repository
         self.recording_service = recording_service
         self.recording_config = recording_config
+        self._state_tracker = camera_state_tracker
         self.active_detectors: Dict[str, Dict] = {}
         self.detector_threads: Dict[str, threading.Thread] = {}
         self.ffmpeg_processes: Dict[str, subprocess.Popen] = {}
@@ -153,20 +155,36 @@ class FFmpegMotionDetector:
         logger.info("Stopped all FFmpeg detectors")
 
 
-    def _check_mediamtx_path_ready(self, path: str, timeout: int = 2) -> bool:
+    def _check_mediamtx_path_ready(self, camera_id: str, timeout: int = 2) -> bool:
         """
-        Check if a MediaMTX path is ready and has an active publisher.
+        Check if a camera's MediaMTX path is ready and has an active publisher.
 
-        Uses ffprobe to quickly test if the path exists and has a stream.
+        Uses CameraStateTracker (if available) to check publisher_active status
+        without creating additional RTSP connections. Falls back to ffprobe if
+        no state tracker is configured.
 
         Args:
-            path: MediaMTX path (e.g., "68d49398005cf203e400043f")
-            timeout: Timeout in seconds for the check
+            camera_id: Camera serial number (used as MediaMTX path)
+            timeout: Timeout in seconds for fallback ffprobe check
 
         Returns:
             True if path is ready, False otherwise
         """
-        rtsp_url = f"rtsp://nvr-packager:8554/{path}"
+        # Use CameraStateTracker if available - no extra RTSP connections needed
+        if self._state_tracker:
+            try:
+                state = self._state_tracker.get_camera_state(camera_id)
+                if state.publisher_active:
+                    return True
+                else:
+                    logger.debug(f"CameraStateTracker reports publisher inactive for {camera_id}")
+                    return False
+            except Exception as e:
+                logger.warning(f"Error checking state tracker for {camera_id}: {e}")
+                # Fall through to ffprobe fallback
+
+        # Fallback: ffprobe check (creates RTSP connection - not ideal)
+        rtsp_url = f"rtsp://nvr-packager:8554/{camera_id}"
         cmd = [
             'ffprobe',
             '-v', 'error',
@@ -290,10 +308,10 @@ class FFmpegMotionDetector:
                     continue
 
                 # For LL_HLS/NEOLINK cameras, check if MediaMTX path is ready before connecting
+                # Uses CameraStateTracker (no extra RTSP connections) if available
                 stream_type = camera.get('stream_type', '').upper()
                 if stream_type in ('LL_HLS', 'NEOLINK'):
-                    packager_path = camera.get('packager_path') or camera.get('serial')
-                    if packager_path and not self._check_mediamtx_path_ready(packager_path):
+                    if not self._check_mediamtx_path_ready(camera_id):
                         logger.debug(f"MediaMTX path not ready for {camera_name}, waiting {retry_delay}s...")
                         time.sleep(retry_delay)
                         retry_delay = min(retry_delay * 2, max_retry_delay)
@@ -453,7 +471,7 @@ class FFmpegMotionDetector:
         return status
 
 
-def create_ffmpeg_detector(camera_repository, recording_service, recording_config=None) -> FFmpegMotionDetector:
+def create_ffmpeg_detector(camera_repository, recording_service, recording_config=None, camera_state_tracker=None) -> FFmpegMotionDetector:
     """
     Factory function to create FFmpeg detector instance.
 
@@ -461,8 +479,9 @@ def create_ffmpeg_detector(camera_repository, recording_service, recording_confi
         camera_repository: CameraRepository instance
         recording_service: RecordingService instance
         recording_config: Optional RecordingConfig instance
+        camera_state_tracker: Optional CameraStateTracker instance for health checks
 
     Returns:
         FFmpegMotionDetector instance
     """
-    return FFmpegMotionDetector(camera_repository, recording_service, recording_config)
+    return FFmpegMotionDetector(camera_repository, recording_service, recording_config, camera_state_tracker)

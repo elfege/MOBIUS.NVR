@@ -5,7 +5,8 @@
 1. Have I checked if context compaction occurred? (phrase: "from a previous conversation that ran out of context")
 2. If yes → Did I commit/push current work, create new branch with next suffix (_b,_c), update docs/README_handoff.md noting the compaction?
 3. Have I read `/home/elfege/0_NVR/CLAUDE.md` for project-specific instructions?
-4. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
+4. Have I read: `docs/nvr_engineering_architecture.html`?
+5. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
 
 ---
 
@@ -94,13 +95,17 @@ Multi-camera NVR (Network Video Recorder) system supporting:
       - checkout to main
       - merge the branch you just commited and pushed, into main
       - restore untracked files from /tmp
-      - create new branch as described below
-      - wipe clean `docs/README_handoff.md` preserving its essential structure. 
-      - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_handoff.md` to resume the work with proper context knowledge to ensure a smooth transition. 
+      - create new branch as described below (Unless it's a final wrap-up request)
+      - port `docs/README_handoff.md` contents to `docs/README_project_history.md`
+      - wipe clean `docs/README_handoff.md` preserving its essential structure (verify you ported correctly the contents to `docs/README_project_history.md`)
+      - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_project_history.md` to resume the work with proper context knowledge to ensure a smooth transition.
+      - Update `docs/nvr_engineering_architecture.html`
+
+
 
 **Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
 
-- Use `_b`, `_c` suffixes for continued work after we are done with one significant aspect of our work plan. 
+- Use `_b`, `_c` suffixes for continued work after we are done with one significant aspect of our work plan.
 
 **CRITICAL - Commit Message Rules:**
 
@@ -114,7 +119,7 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 **Update docs/README_handoff.md after EVERY file modification:**
 
 - Record: file changed, what was done, why
-- Include timestamps: `date + time (EST)`
+- Include timestamps: `date + time (EST)` - 24h format
 - Verify system time with `date` command before recording timestamps (internal clock drift is common)
 - Update session end-times when adding new entries (e.g., `(12:30-13:15)` → `(12:30-14:00)`)
 

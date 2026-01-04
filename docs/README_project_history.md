@@ -14211,4 +14211,92 @@ From original plan in `/home/elfege/.claude/plans/scalable-knitting-floyd.md`:
 
 ---
 
+## January 4, 2026: Stream Watchdog Redesign
+
+### Branch: `stream_watchdog_redesign_JAN_4_2026_a`
+
+**Previous branch merged:** `stream_watchdog_backend_restart_JAN_3_2026_a`
+
+### Problem Statement
+
+The old watchdog implementation in `StreamManager` was unreliable:
+
+- Per-stream watchdog threads caused "nutdog" behavior (rapid restart cycling)
+- No coordination between LL-HLS and MJPEG stream monitoring
+- Race conditions during startup and restart attempts
+- No exponential backoff for persistent failures
+
+### Solution: Unified StreamWatchdog Service
+
+Created `services/stream_watchdog.py` - a single daemon thread that:
+
+- Uses `CameraStateTracker` as single source of truth for camera health
+- Polls every 10 seconds (instead of per-stream threads)
+- Handles both LL-HLS and MJPEG streams
+- Respects exponential backoff from CameraStateTracker
+
+### Architecture
+
+```
+CameraStateTracker (polls MediaMTX every 5s)
+         |
+         v
+StreamWatchdog (polls every 10s)
+         |
+         +---> StreamManager.restart_stream() for LL-HLS
+         +---> MJPEG service.restart_capture() for MJPEG
+```
+
+### Race Condition Prevention
+
+- `STARTUP_WARMUP_SECONDS=60`: Wait before first check (streams initializing)
+- `RESTART_COOLDOWN_SECONDS=30`: Per-camera cooldown after restart attempt
+- Skips cameras in STARTING state (still initializing)
+- Respects CameraStateTracker's exponential backoff (5s→10s→20s→40s→80s→120s max, retries indefinitely)
+
+### Implementation Steps
+
+1. Created `services/stream_watchdog.py` (400 lines)
+2. Added `restart_stream()` to StreamManager
+3. Added `restart_capture()` to all 4 MJPEG services
+4. Removed old watchdog code from StreamManager (~140 lines deleted)
+5. Updated app.py integration (import, start, cleanup)
+6. Updated .env: `STREAM_WATCHDOG_ENABLED=1` (replaces `ENABLE_WATCHDOG`)
+
+### Files Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `services/stream_watchdog.py` | **CREATED** | Unified watchdog using CameraStateTracker |
+| `streaming/stream_manager.py` | Modified | Added restart_stream(), removed old watchdog |
+| `services/reolink_mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `services/amcrest_mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `services/unifi_mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `services/mjpeg_capture_service.py` | Modified | Added restart_capture() |
+| `app.py` | Modified | Integrated StreamWatchdog startup/cleanup |
+| `docker-compose.yml` | Modified | Changed ENABLE_WATCHDOG to STREAM_WATCHDOG_ENABLED |
+
+### Testing Results (03:35 EST)
+
+- Container restart successful
+- StreamWatchdog started correctly
+- Auto-restart verified on stream failures:
+  - `C6F0SgZ0N0PoL2`: publisher died → DEGRADED → restart successful → ONLINE
+  - `T8416P0023352DA9` (Living Room): publisher died → restart successful → ONLINE
+  - `T8441P12242302AC` (Terrace Shed): restart successful → ONLINE
+- UI vs Backend watchdog coexistence verified:
+  - `T8419P0024110C6A` (STAIRS): UI-only issue, STOP/START in UI fixed it (backend stream was fine)
+
+### Key Design Decisions
+
+1. **Backend StreamWatchdog** handles actual stream failures (FFmpeg dies, MediaMTX publisher down)
+2. **UI Health monitoring** handles browser/network issues (stale data, WebSocket disconnects)
+3. The two coexist - UI issues don't trigger backend restarts
+
+### Status
+
+✅ **StreamWatchdog Implementation Complete** - Unified, stable watchdog with proper backoff
+
+---
+
 {% endraw %}

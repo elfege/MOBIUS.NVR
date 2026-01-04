@@ -50,6 +50,7 @@ from services.credentials.reolink_credential_provider import ReolinkCredentialPr
 from services.motion.reolink_motion_service import create_reolink_motion_service
 from services.motion.ffmpeg_motion_detector import create_ffmpeg_detector
 from services.camera_state_tracker import camera_state_tracker
+from services.stream_watchdog import StreamWatchdog
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -388,6 +389,27 @@ try:
     print("✅ Camera State Tracker started (polling MediaMTX API every 5s)")
 except Exception as e:
     print(f"⚠️  Camera State Tracker startup warning: {e}")
+
+# ===== Start Stream Watchdog =====
+# Initialize StreamWatchdog for unified stream health monitoring
+stream_watchdog = None
+try:
+    print("\n🔄 Initializing Stream Watchdog...")
+    # Configure MJPEG services for watchdog to use
+    mjpeg_services = {
+        'reolink': reolink_mjpeg_capture_service,
+        'amcrest': amcrest_mjpeg_capture_service,
+        'unifi': unifi_mjpeg_capture_service,
+    }
+    stream_watchdog = StreamWatchdog(
+        stream_manager=stream_manager,
+        camera_state_tracker=camera_state_tracker,
+        mjpeg_services=mjpeg_services
+    )
+    stream_watchdog.start()
+    print("✅ Stream Watchdog started (polling every 10s, uses CameraStateTracker)")
+except Exception as e:
+    print(f"⚠️  Stream Watchdog startup warning: {e}")
 
 # ===== Auto-start Reolink Motion Detection =====
 if reolink_motion_service:
@@ -2267,6 +2289,11 @@ def cleanup_handler(signum=None, frame=None):
 
     print("\n🛑 Shutting down... cleaning up streams and resources")
     try:
+        # Stop stream watchdog first (prevents restart attempts during cleanup)
+        if stream_watchdog:
+            print("  Stopping Stream Watchdog...")
+            stream_watchdog.stop()
+
         # Stop motion detection services
         if onvif_listener:
             print("  Stopping ONVIF listeners...")

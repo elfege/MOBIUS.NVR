@@ -164,15 +164,17 @@ try:
             onvif_listener = None
 
     # FFmpeg motion detector for cameras without ONVIF or Baichuan support
+    # Uses CameraStateTracker for health checks instead of ffprobe (avoids extra RTSP connections)
     ffmpeg_motion_detector = None
     if recording_service:
         try:
             ffmpeg_motion_detector = create_ffmpeg_detector(
                 camera_repo,
                 recording_service,
-                recording_config
+                recording_config,
+                camera_state_tracker  # Pass state tracker for health checks
             )
-            print("✅ FFmpeg motion detector initialized")
+            print("✅ FFmpeg motion detector initialized (with CameraStateTracker)")
         except Exception as e:
             print(f"⚠️  FFmpeg motion detector initialization failed: {e}")
             ffmpeg_motion_detector = None

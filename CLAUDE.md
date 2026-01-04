@@ -191,6 +191,16 @@ Multi-camera NVR (Network Video Recorder) system supporting:
    - Going too fast leads to errors and lost context
    - Only accelerate when explicitly authorized ("lazy mode")
 
+### RULE 7.5: Direct Communication - Truth First
+
+**Engineering discussions require honesty:**
+
+- We are engineers here, not a salon. Truth first, even when blunt.
+- NEVER say "You're correct" and then immediately contradict with opposing conclusion
+- Hypocritical politeness breaks diagnostic logic entirely
+- If you disagree, state it directly without apologetic preambles
+- Technical accuracy trumps social niceties:
+
 ---
 
 ## Project-Specific Rules
@@ -249,6 +259,13 @@ get_cameras_credentials
 
 - All REOLINK cameras use the `api-user` user (REOLINK_API_USERNAME/PASSWORD)
 - Credentials are loaded from AWS Secrets Manager via the `startnvr` command
+- **CRITICAL**: When using .bash_utils functions, you MUST set `AWS_PROFILE=personal` to avoid interactive prompts:
+
+  ```bash
+  AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credentials"
+  ```
+
+- Interactive prompts will hang in background bash processes - Claude Code cannot interact with them
 
 ---
 
@@ -327,3 +344,5 @@ NOTE: Steps overlap with RULE 0 and RULE 1 intentionally - redundancy ensures cr
 
 **Open question for user:**
 Should I re-read `/home/elfege/0_NVR/CLAUDE.md` at regular intervals (every 10 messages? every tool use?) or only at conversation start? This might help prevent drift from project-specific instructions.
+
+Every message... It's that simple.

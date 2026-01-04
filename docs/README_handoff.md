@@ -15,94 +15,61 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 03:35 EST*
+*Last updated: January 4, 2026 03:34 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: January 4, 2026 (continued)
+## Current Session: January 4, 2026
 
-### Branch: `stream_watchdog_redesign_JAN_4_2026_a`
+### Branch: `ui_health_refactor_JAN_4_2026_a`
 
 ### Context from Previous Session
 
-**Previous branch merged to main:** `stream_watchdog_backend_restart_JAN_3_2026_a`
+**Previous branch merged to main:** `stream_watchdog_redesign_JAN_4_2026_a`
 
-### Stream Watchdog Implementation - COMPLETED
+**What was completed:**
 
-**All implementation steps completed:**
+- Created unified `services/stream_watchdog.py` (400 lines)
+- StreamWatchdog uses CameraStateTracker as single source of truth
+- Successfully auto-restarts failed LL-HLS streams (verified with Living Room, Terrace Shed, C6F0SgZ0N0PoL2)
+- Proper race condition prevention: 60s warmup, 30s cooldown, exponential backoff
 
-1. [x] Created `services/stream_watchdog.py` - New unified watchdog (345 lines)
-2. [x] Added `restart_stream()` to StreamManager
-3. [x] Added `restart_capture()` to all 4 MJPEG services
-4. [x] Removed old watchdog code from StreamManager (~140 lines deleted)
-5. [x] Updated app.py integration (import, start, cleanup)
-6. [x] Updated .env: `STREAM_WATCHDOG_ENABLED=1` (replaces `ENABLE_WATCHDOG`)
+**The problem now:**
 
-### Files Modified This Session
+1. StreamWatchdog fixes streams on the backend
+2. UI doesn't know when a stream was fixed by backend
+3. UI Health monitoring has too many false positives
+4. When watchdog restarts a stream, UI still shows it as failed until user manually refreshes
 
-| File | Action | Description |
-|------|--------|-------------|
-| `services/stream_watchdog.py` | **CREATED** | Unified watchdog using CameraStateTracker |
-| `streaming/stream_manager.py` | Modified | Added restart_stream(), removed old watchdog |
-| `services/reolink_mjpeg_capture_service.py` | Modified | Added restart_capture() |
-| `services/amcrest_mjpeg_capture_service.py` | Modified | Added restart_capture() |
-| `services/unifi_mjpeg_capture_service.py` | Modified | Added restart_capture() |
-| `services/mjpeg_capture_service.py` | Modified | Added restart_capture() |
-| `app.py` | Modified | Integrated StreamWatchdog startup/cleanup |
-| `.env` | Modified | Added STREAM_WATCHDOG_ENABLED=1 (gitignored) |
+### Current Task: UI Health Refactor
 
-### Architecture Summary
+**Goal:** Make UI aware of backend stream recovery without the false-positive-prone UI Health checks.
 
-```
-CameraStateTracker (polls MediaMTX every 5s)
-         |
-         v
-StreamWatchdog (polls every 10s)
-         |
-         +---> StreamManager.restart_stream() for LL-HLS
-         +---> MJPEG service.restart_capture() for MJPEG
-```
+**Key files to investigate:**
 
-**Key features:**
+- `static/js/health.js` - UI health monitoring logic
+- `static/js/main.js` - Stream player management
+- `app.py` - API endpoints for health status
+- `services/camera_state_tracker.py` - Backend state (already solid)
 
-- Uses CameraStateTracker.can_retry() for exponential backoff (5s→120s max)
-- Reports restart success/failure back to CameraStateTracker
-- Configurable via `STREAM_WATCHDOG_ENABLED` env var
-- Coexists with UI Health monitoring (UI detects browser/network, backend detects server)
+**Architecture question:**
 
-**Race condition prevention:**
-
-- `STARTUP_WARMUP_SECONDS=60`: Wait before first check (streams initializing)
-- `RESTART_COOLDOWN_SECONDS=30`: Per-camera cooldown after restart attempt
-- Skips cameras in STARTING state (still initializing)
-- Respects exponential backoff from CameraStateTracker
+- Should UI poll backend for camera state changes?
+- Or should backend push state via WebSocket/SSE?
+- Or should UI just trust the stream and remove proactive health checks?
 
 ---
 
 ### TODO List
 
-**Stream Watchdog Redesign - COMPLETED:**
+**UI Health Refactor:**
 
-- [x] FFmpeg reconnect flags investigation
-- [x] Unified MJPEG/LL-HLS state tracking
-- [x] Plan new watchdog architecture
-- [x] Create `services/stream_watchdog.py`
-- [x] Add restart methods to StreamManager and MJPEG services
-- [x] Remove old watchdog from StreamManager
-- [x] Integrate and test
-
-**Testing - VERIFIED (03:35 EST):**
-
-- [x] Container restart to apply changes
-- [x] Verify watchdog starts (check logs)
-- [x] Test: Auto-restart on stream failure
-  - `C6F0SgZ0N0PoL2`: publisher died → DEGRADED → restart successful → ONLINE
-  - `T8416P0023352DA9` (Living Room): publisher died → restart successful → ONLINE
-  - `T8441P12242302AC` (Terrace Shed): restart successful → ONLINE
-- [x] UI vs Backend watchdog coexistence verified
-  - `T8419P0024110C6A` (STAIRS): UI-only issue, STOP/START in UI fixed it (backend stream was fine)
+- [ ] Investigate current UI health monitoring code
+- [ ] Design approach to sync UI with backend state
+- [ ] Remove/reduce false positive health checks
+- [ ] Implement UI notification when watchdog restarts stream
 
 **Deferred:**
 

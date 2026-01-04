@@ -28,11 +28,23 @@ export class MJPEGStreamManager {
 
         return new Promise((resolve, reject) => {
             const $streamElement = $(streamElement);
+            let resolved = false;
+            let checkInterval = null;
 
-            // Set up jQuery event handlers
-            $streamElement.on('load.mjpeg', () => {
-                // Remove the event handler after success
+            // Cleanup function to remove handlers and intervals
+            const cleanup = () => {
                 $streamElement.off('load.mjpeg error.mjpeg');
+                if (checkInterval) {
+                    clearInterval(checkInterval);
+                    checkInterval = null;
+                }
+            };
+
+            // Success handler - register in activeStreams and resolve
+            const onSuccess = () => {
+                if (resolved) return;
+                resolved = true;
+                cleanup();
 
                 this.activeStreams.set(cameraId, {
                     element: streamElement,
@@ -40,18 +52,43 @@ export class MJPEGStreamManager {
                     startTime: Date.now()
                 });
 
+                console.log(`[MJPEG] ${cameraId}: Stream started successfully`);
                 resolve(true);
-            });
+            };
+
+            // Set up jQuery event handlers
+            $streamElement.on('load.mjpeg', onSuccess);
 
             $streamElement.on('error.mjpeg', () => {
-                // Remove the event handler after error
-                $streamElement.off('load.mjpeg error.mjpeg');
-
+                if (resolved) return;
+                resolved = true;
+                cleanup();
                 reject(new Error('MJPEG stream failed to load'));
             });
 
             // Set the source to start loading
             $streamElement.attr('src', mjpegUrl);
+
+            // MJPEG streams may not fire 'load' event reliably in all browsers.
+            // Poll for naturalWidth/naturalHeight to detect when first frame arrives.
+            // This handles cases where the multipart MJPEG response doesn't trigger load.
+            checkInterval = setInterval(() => {
+                if (resolved) return;
+
+                const el = streamElement;
+                if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+                    console.log(`[MJPEG] ${cameraId}: Detected frame via naturalWidth check`);
+                    onSuccess();
+                }
+            }, 200);
+
+            // Timeout fallback - if no success or error after 10 seconds, fail
+            setTimeout(() => {
+                if (resolved) return;
+                resolved = true;
+                cleanup();
+                reject(new Error('MJPEG stream timeout - no frames received'));
+            }, 10000);
         });
     }
 

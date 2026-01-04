@@ -234,6 +234,23 @@ export class HealthMonitor {
   attachMjpeg(serial, el) {
     return this.attach(serial, el);
   }
+
+  /**
+   * Attach health monitor to WebRTC stream
+   * WebRTC uses the same video element monitoring as HLS
+   * The RTCPeerConnection is passed for potential future ICE state monitoring
+   *
+   * @param {string} serial - Camera ID
+   * @param {HTMLVideoElement} el - Video element
+   * @param {RTCPeerConnection} pc - Peer connection (optional, for future use)
+   */
+  attachWebRTC(serial, el, pc = null) {
+    // Store pc reference for potential future ICE state monitoring
+    const t = this.ensure(serial);
+    t.peerConnection = pc;
+
+    return this.attach(serial, el);
+  }
 }
 
 // Factory function for existing code

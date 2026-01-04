@@ -773,14 +773,15 @@ def api_camera_state(camera_id):
         # LL-HLS cameras get state from MediaMTX API polling
         state = camera_state_tracker.get_camera_state(camera_id)
 
-        # Check if camera is MJPEG type for ffmpeg_process_alive field
+        # Get camera config for stream_type field
         camera = camera_repo.get_camera(camera_id)
-        is_mjpeg = camera and camera.get('stream_type') == 'MJPEG'
+        camera_stream_type = camera.get('stream_type', 'LL_HLS') if camera else 'LL_HLS'
+        is_mjpeg = camera_stream_type == 'MJPEG'
 
         return jsonify({
             'success': True,
             'camera_id': camera_id,
-            'stream_type': 'MJPEG' if is_mjpeg else 'LL_HLS',
+            'stream_type': camera_stream_type,
             'availability': state.availability.value,
             'publisher_active': state.publisher_active,  # For MJPEG: "capture active"
             'ffmpeg_process_alive': state.publisher_active if not is_mjpeg else False,  # Derive from publisher_active for LL-HLS

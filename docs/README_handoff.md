@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 03:34 EST*
+*Last updated: January 4, 2026 03:39 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -29,47 +29,60 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Previous branch merged to main:** `stream_watchdog_redesign_JAN_4_2026_a`
 
-**What was completed:**
+### UI Health Refactor - IN PROGRESS
 
-- Created unified `services/stream_watchdog.py` (400 lines)
-- StreamWatchdog uses CameraStateTracker as single source of truth
-- Successfully auto-restarts failed LL-HLS streams (verified with Living Room, Terrace Shed, C6F0SgZ0N0PoL2)
-- Proper race condition prevention: 60s warmup, 30s cooldown, exponential backoff
+**Problem solved:**
 
-**The problem now:**
+When StreamWatchdog (backend) restarts a failed stream, the UI didn't know about it. User had to manually refresh.
 
-1. StreamWatchdog fixes streams on the backend
-2. UI doesn't know when a stream was fixed by backend
-3. UI Health monitoring has too many false positives
-4. When watchdog restarts a stream, UI still shows it as failed until user manually refreshes
+**Solution implemented:**
 
-### Current Task: UI Health Refactor
+1. Modified `CameraStateMonitor` to detect state transitions (degraded/offline → online)
+2. Added `onRecovery` callback to `CameraStateMonitor` constructor
+3. Added `handleBackendRecovery()` method to `MultiStreamManager`
+4. When backend recovers a stream, UI automatically refreshes the video element
 
-**Goal:** Make UI aware of backend stream recovery without the false-positive-prone UI Health checks.
+### Files Modified This Session
 
-**Key files to investigate:**
+| File | Action | Description |
+|------|--------|-------------|
+| `static/js/streaming/camera-state-monitor.js` | Modified | Added recovery detection + onRecovery callback |
+| `static/js/streaming/stream.js` | Modified | Added handleBackendRecovery() method |
+| `docs/README_project_history.md` | Modified | Added StreamWatchdog implementation docs |
 
-- `static/js/health.js` - UI health monitoring logic
-- `static/js/main.js` - Stream player management
-- `app.py` - API endpoints for health status
-- `services/camera_state_tracker.py` - Backend state (already solid)
+### Architecture
 
-**Architecture question:**
-
-- Should UI poll backend for camera state changes?
-- Or should backend push state via WebSocket/SSE?
-- Or should UI just trust the stream and remove proactive health checks?
+```
+CameraStateTracker (backend, polls MediaMTX every 5s)
+         |
+         v
+StreamWatchdog (backend, polls every 10s, restarts failed streams)
+         |
+         v
+CameraStateMonitor (frontend, polls /api/camera/state every 10s)
+         |
+         +---> detects degraded/offline → online transition
+         +---> calls onRecovery callback
+         +---> MultiStreamManager.handleBackendRecovery()
+         +---> refreshes video element
+```
 
 ---
 
 ### TODO List
 
-**UI Health Refactor:**
+**UI Health Refactor - PROGRESS:**
 
-- [ ] Investigate current UI health monitoring code
-- [ ] Design approach to sync UI with backend state
-- [ ] Remove/reduce false positive health checks
-- [ ] Implement UI notification when watchdog restarts stream
+- [x] Investigate current UI health monitoring code
+- [x] Design approach to sync UI with backend state
+- [x] Implement UI notification when watchdog restarts stream
+- [ ] Remove/reduce false positive health checks (optional - current HealthMonitor still runs but backend recovery takes precedence)
+
+**Testing needed:**
+
+- [ ] Container restart to apply JS changes
+- [ ] Verify recovery detection works (watch console for `[Recovery]` and `[CameraState]` logs)
+- [ ] Confirm stream auto-refreshes when backend watchdog fixes it
 
 **Deferred:**
 

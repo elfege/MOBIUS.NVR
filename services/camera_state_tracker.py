@@ -331,6 +331,14 @@ class CameraStateTracker:
             old_active = state.publisher_active
             state.publisher_active = active
 
+            # If publisher becomes active and camera is STARTING, mark as ONLINE
+            # This allows automatic transition when MediaMTX reports publisher as ready
+            if active and state.availability == CameraAvailability.STARTING:
+                state.availability = CameraAvailability.ONLINE
+                state.failure_count = 0
+                state.last_seen = datetime.now()
+                logger.info(f"Camera {camera_id} publisher ready, state: STARTING → ONLINE")
+
             # If publisher just became active and camera was OFFLINE, mark as STARTING
             # (not yet verified healthy by actual stream/connection)
             if active and not old_active and state.availability == CameraAvailability.OFFLINE:

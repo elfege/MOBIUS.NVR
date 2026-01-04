@@ -424,6 +424,7 @@ class CameraStateTracker:
         try:
             response = requests.get(
                 f"{self._mediamtx_api_url}/v3/paths/list",
+                auth=('nvr-api', ''),  # Username: nvr-api, Password: empty
                 timeout=3
             )
 

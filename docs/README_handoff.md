@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 10:45 EST*
+*Last updated: January 4, 2026 05:00 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -41,7 +41,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Branch:** `stream_watchdog_investigation_JAN_4_2026_a`
 **Started:** January 4, 2026 04:15 EST
-**Context compactions:** 04:15 EST, 10:30 EST
+**Context compactions:** 04:15 EST, 10:30 EST, 05:00 EST
 
 ### Fixes Applied This Session
 
@@ -57,7 +57,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 |------|--------|
 | `services/motion/ffmpeg_motion_detector.py` | Use CameraStateTracker.publisher_active instead of ffprobe |
 | `app.py` | Pass camera_state_tracker to FFmpegMotionDetector |
-| `static/js/streaming/stream.js` | handleBackendRecovery uses full stop+start cycle |
+| `static/js/streaming/stream.js` | handleBackendRecovery uses full stop+start cycle; exposed window.streamManager for debugging |
 | `streaming/stream_manager.py` | Disabled nuclear cleanup in _start_stream() |
 
 ---
@@ -72,9 +72,11 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Ready to Test:**
 
-- [ ] Re-enable watchdog (STREAM_WATCHDOG_ENABLED=1) and restart container
+- [x] Re-enable watchdog (STREAM_WATCHDOG_ENABLED=1) - already enabled
+- [ ] Hard refresh browser to load new JS with window.streamManager exposed
+- [ ] Verify console tests pass (streamManager accessible, handleBackendRecovery uses stopIndividualStream)
 - [ ] Monitor for "torn down" messages in MediaMTX logs
-- [ ] Test motion detection with watchdog enabled
+- [ ] Test UI auto-recovery when backend watchdog restarts a stream
 
 **Optional:**
 

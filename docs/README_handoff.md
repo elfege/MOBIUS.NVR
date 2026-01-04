@@ -49,11 +49,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 2. **UI Recovery Full Stop+Start** - Fixed `handleBackendRecovery()` in `stream.js` to perform full stop+start cycle instead of just HLS.js refresh. User confirmed manual stop+start works reliably; HLS.js refresh alone may stay connected to stale MediaMTX session.
 
-### Key Finding: Nuclear Cleanup
-
-Found that `_kill_all_ffmpeg_for_camera()` ("Nuclear cleanup") is called at the START of every `_start_stream()` (line 376 in stream_manager.py). This means every watchdog restart triggers nuclear cleanup, which may be overly aggressive. The cleanup was intended as a fallback, but it's being called proactively.
-
-**Current observation:** Streams are healthy when watchdog is disabled (STREAM_WATCHDOG_ENABLED=0).
+3. **Nuclear Cleanup Disabled** - Commented out unconditional `_kill_all_ffmpeg_for_camera()` call in `_start_stream()`. This was being called on EVERY stream start, causing "torn down" messages in MediaMTX. Now MediaMTX handles stream lifecycle; `stop_stream()` does graceful termination.
 
 ### Files Modified
 
@@ -62,6 +58,7 @@ Found that `_kill_all_ffmpeg_for_camera()` ("Nuclear cleanup") is called at the 
 | `services/motion/ffmpeg_motion_detector.py` | Use CameraStateTracker.publisher_active instead of ffprobe |
 | `app.py` | Pass camera_state_tracker to FFmpegMotionDetector |
 | `static/js/streaming/stream.js` | handleBackendRecovery uses full stop+start cycle |
+| `streaming/stream_manager.py` | Disabled nuclear cleanup in _start_stream() |
 
 ---
 
@@ -71,13 +68,13 @@ Found that `_kill_all_ffmpeg_for_camera()` ("Nuclear cleanup") is called at the 
 
 - [x] Fix motion detector to use CameraStateTracker (no extra RTSP connections)
 - [x] Fix UI recovery to use stop+start instead of refresh
+- [x] Disable aggressive nuclear cleanup in _start_stream()
 
-**Pending:**
+**Ready to Test:**
 
-- [ ] Investigate nuclear cleanup being called on every stream start
-- [ ] Re-enable watchdog after nuclear cleanup investigation
-- [ ] Test motion detection with watchdog enabled
+- [ ] Re-enable watchdog (STREAM_WATCHDOG_ENABLED=1) and restart container
 - [ ] Monitor for "torn down" messages in MediaMTX logs
+- [ ] Test motion detection with watchdog enabled
 
 **Optional:**
 

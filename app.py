@@ -781,7 +781,7 @@ def api_camera_state(camera_id):
             'stream_type': 'MJPEG' if is_mjpeg else 'LL_HLS',
             'availability': state.availability.value,
             'publisher_active': state.publisher_active,  # For MJPEG: "capture active"
-            'ffmpeg_process_alive': False if is_mjpeg else state.ffmpeg_process_alive,  # N/A for MJPEG
+            'ffmpeg_process_alive': state.publisher_active if not is_mjpeg else False,  # Derive from publisher_active for LL-HLS
             'last_seen': state.last_seen.isoformat() if state.last_seen else None,
             'failure_count': state.failure_count,
             'next_retry': state.next_retry.isoformat() if state.next_retry else None,

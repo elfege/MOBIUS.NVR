@@ -13894,4 +13894,321 @@ Added positioning properties that PTZ controls lost when moved out of their pare
 - `b5908a4` - Add positioning CSS to PTZ controls after moving them out of stream-controls
 
 ---
+
+## January 3, 2026: Enhanced Camera State Tracking and UI Status Display
+
+### Branch: `recording_motion_detection_isolation_JAN_3_2026_b`
+
+### Overview
+
+Implemented centralized camera state tracking system to provide real-time visibility into camera health, publisher status, and connection state across the NVR system. This phase establishes the foundation for coordinated retry logic to prevent redundant connection attempts when cameras are offline.
+
+### Problem Statement
+
+- Camera streams showing "Starting..." or dead state in UI despite publishers running
+- No visibility into MediaMTX publisher status from UI
+- Unable to distinguish between UI problems (browser/network) vs backend problems (FFmpeg/MediaMTX) vs camera hardware issues
+- Multiple services attempting to connect to offline cameras simultaneously without coordination
+
+### Implementation
+
+#### Phase 1: MediaMTX API Configuration
+
+**File**: `packager/mediamtx.yml`
+
+**Changes**:
+
+- Enabled REST API on port 9997 for publisher state queries
+- Configured two-user authentication system:
+  - `nvr-api` user for API access from CameraStateTracker (Docker network)
+  - `user: any` for anonymous HLS/RTSP access (browsers, FFmpeg)
+- No browser authentication popups required
+- Endpoint: `GET /v3/paths/list` returns publisher state for all paths
+
+**Authentication Configuration**:
+
+```yaml
+authMethod: internal
+authInternalUsers:
+  # API access for CameraStateTracker
+  - user: nvr-api
+    pass: ""
+    ips: []
+    permissions:
+      - action: api
+        path: ""
+  # Anonymous access for HLS streaming and RTSP publishing
+  - user: any
+    pass: ""
+    ips: []
+    permissions:
+      - action: read
+        path: ""
+      - action: playback
+        path: ""
+      - action: publish
+        path: ""
+```
+
+#### Phase 2: CameraStateTracker Service
+
+**File**: `services/camera_state_tracker.py` (511 lines)
+
+**Architecture**:
+
+- **Thread-safe singleton** using RLock for concurrent service access
+- **Background daemon** polling MediaMTX API every 5 seconds
+- **Exponential backoff**: 5s → 10s → 20s → 40s → 80s → 120s max
+- **State change callbacks** for reactive service updates
+
+**State Model**:
+
+```python
+class CameraAvailability(Enum):
+    ONLINE = "online"          # Publisher active, stream healthy
+    STARTING = "starting"      # Publisher initializing
+    OFFLINE = "offline"        # Camera unreachable (3+ failures)
+    DEGRADED = "degraded"      # Intermittent issues (1-2 failures)
+
+@dataclass
+class CameraState:
+    camera_id: str
+    availability: CameraAvailability
+    publisher_active: bool          # MediaMTX has active publisher
+    ffmpeg_process_alive: bool      # FFmpeg process running
+    last_seen: datetime
+    failure_count: int
+    next_retry: datetime
+    backoff_seconds: int
+    error_message: Optional[str]
+```
+
+**Core Methods**:
+
+- `can_retry(camera_id)` - Check if connection attempt allowed (respects backoff)
+- `register_failure(camera_id, error)` - Increment failure count, apply exponential backoff
+- `register_success(camera_id)` - Reset failure counters, mark as ONLINE
+- `update_publisher_state(camera_id, active)` - Update from MediaMTX API polling
+- `register_callback(camera_id, callback)` - Subscribe to state changes
+
+**Global Singleton**:
+
+```python
+camera_state_tracker = CameraStateTracker()
+```
+
+Services import this instance for coordinated state tracking.
+
+#### Phase 3: REST API Endpoint
+
+**File**: `app.py:746-763`
+
+**Endpoint**: `GET /api/camera/state/<camera_id>`
+
+**Response Format**:
+
+```json
+{
+  "success": true,
+  "camera_id": "T8416P0023352DA9",
+  "availability": "online",
+  "publisher_active": true,
+  "ffmpeg_process_alive": true,
+  "last_seen": "2026-01-03T19:00:00",
+  "failure_count": 0,
+  "next_retry": null,
+  "backoff_seconds": 0,
+  "error_message": null,
+  "can_retry": true
+}
+```
+
+**Special Case - MJPEG Cameras**:
+
+MJPEG cameras stream directly from hardware (not via MediaMTX), so the endpoint returns hardcoded 'online' status:
+
+```python
+if camera and camera.get('stream_type') == 'MJPEG':
+    return jsonify({
+        'success': True,
+        'availability': 'online',
+        'publisher_active': True,  # N/A for MJPEG
+        'ffmpeg_process_alive': False,  # MJPEG doesn't use FFmpeg
+        # ... rest of response
+    })
+```
+
+#### Phase 4: Enhanced UI Status Display
+
+**Files Modified**:
+
+- `templates/streams.html:87-110` - Added detailed state indicators to stream overlay
+- `static/css/components/stream-overlay.css:59-140` - Styling for state badges
+- `static/js/streaming/camera-state-monitor.js` (210 lines) - New state monitor module
+- `static/js/streaming/stream.js:11,20,139-141` - Integration
+
+**UI Components**:
+
+1. **Main Status Indicator** (existing, enhanced):
+   - "Live" with green pulsing dot (ONLINE)
+   - "Starting..." with yellow pulsing dot (STARTING)
+   - "Degraded (2 failures)" with orange pulsing dot (DEGRADED)
+   - "Offline (retry in 45s)" with gray dot (OFFLINE)
+
+2. **Detailed State Badges** (new, shown on hover or issues):
+   - **Publisher State**: Broadcast icon (green=active, red=inactive)
+   - **FFmpeg Process**: Film icon (green=running, red=stopped)
+   - **Backoff Timer**: Clock icon with countdown (e.g., "15s")
+
+**JavaScript State Monitor**:
+
+- Polls `/api/camera/state/<camera_id>` every 10 seconds for all cameras
+- Updates main status indicator based on availability
+- Updates detailed state badges (publisher, FFmpeg, backoff timer)
+- Calculates and displays retry countdown timers
+- Shows error messages as tooltips on detailed state section
+
+**User Experience**:
+
+| Camera State | Status Display | Detailed Badges |
+|--------------|----------------|-----------------|
+| Healthy (ONLINE) | "Live" (green pulsing dot) | Hidden by default, shown on hover |
+| Degraded (1-2 failures) | "Degraded (2 failures)" (orange pulsing) | Auto-visible showing exact issue |
+| Offline (3+ failures) | "Offline (retry in 45s)" (gray) | Auto-visible with full diagnostics |
+
+**Diagnostic Benefits**:
+
+- **UI Problem**: Status shows "Live" but no video → Browser/network issue
+- **Backend Problem**: Publisher inactive OR FFmpeg dead → MediaMTX/FFmpeg issue
+- **Camera Problem**: Publisher active, FFmpeg running, but status offline → Camera hardware/network issue
+
+### Critical Bug Fixes
+
+#### Issue 1: LL-HLS Streams Stuck at "Starting..."
+
+**Symptom**: All live LL-HLS streams showing "Starting..." status despite being visible and low-latency (2-3 seconds) in UI
+
+**Root Cause**:
+
+- MediaMTX API correctly reported 8/11 cameras as `"ready": true`
+- CameraStateTracker correctly updated `publisher_active: true` flag
+- BUT `availability` stayed at STARTING - no automatic transition to ONLINE
+- Only way to reach ONLINE was through `register_success()` (not yet integrated with StreamManager)
+
+**Fix Applied** (`services/camera_state_tracker.py:334-340`):
+
+Added automatic STARTING → ONLINE transition when MediaMTX reports publisher as ready:
+
+```python
+# If publisher becomes active and camera is STARTING, mark as ONLINE
+# This allows automatic transition when MediaMTX reports publisher as ready
+if active and state.availability == CameraAvailability.STARTING:
+    state.availability = CameraAvailability.ONLINE
+    state.failure_count = 0
+    state.last_seen = datetime.now()
+    logger.info(f"Camera {camera_id} publisher ready, state: STARTING → ONLINE")
+```
+
+**Result**: ✅ All live LL-HLS streams now show "Live" status correctly
+
+#### Issue 2: MJPEG Cameras Showing "Starting..."
+
+**Root Cause**: MJPEG cameras stream directly from hardware (no MediaMTX), so CameraStateTracker had no publisher state to report
+
+**Fix Applied** (`app.py:746-763`):
+
+Added camera type detection in API endpoint to return hardcoded 'online' status for MJPEG cameras
+
+**Result**: ✅ MJPEG cameras now show "Live" status
+
+#### Issue 3: NameError - Undefined Variable
+
+**Error**:
+
+```python
+NameError: name 'cameras_data' is not defined
+```
+
+**Root Cause**: Used wrong variable name in API endpoint
+
+**Fix Applied**: Changed `cameras_data.get('devices', {}).get(camera_id)` to `camera_repo.get_camera(camera_id)`
+
+**Result**: ✅ API endpoint returns camera data correctly
+
+### Files Modified Summary
+
+| File | Change |
+|------|--------|
+| `packager/mediamtx.yml` | Added API configuration + two-user authentication |
+| `services/camera_state_tracker.py` | Complete new service (511 lines) |
+| `app.py` | Added `/api/camera/state/<camera_id>` endpoint + MJPEG exception |
+| `templates/streams.html` | Added detailed state indicator HTML |
+| `static/css/components/stream-overlay.css` | Added state badge styling |
+| `static/js/streaming/camera-state-monitor.js` | New state monitor module (210 lines) |
+| `static/js/streaming/stream.js` | Integrated state monitor |
+
+### Commits (Branch recording_motion_detection_isolation_JAN_3_2026_b)
+
+**Original branch (_a):**
+
+- `e9cd653` - Enable MediaMTX API for publisher state monitoring
+- `343a294` - Disable MediaMTX API authentication for internal use
+- `898af7e` - Configure MediaMTX API authentication for Docker network
+- `391705a` - Create CameraStateTracker service for coordinated camera state management
+
+**After context compaction (_b):**
+
+- `424a04c` - Add API endpoint for camera state from CameraStateTracker
+- `00a3d82` - Add detailed state indicators to stream status overlay
+- `7feb32d` - Add CSS styling for detailed camera state indicators
+- `f5ea2f4` - Add CameraStateMonitor for real-time state updates
+- `bbebc68` - Integrate CameraStateMonitor into MultiStreamManager
+- `3740bfb` - Fix NameError: use camera_repo instead of undefined cameras_data
+- `5e3d3cd` - Add automatic STARTING → ONLINE transition when MediaMTX reports publisher ready
+
+### Testing & Validation
+
+✅ **MediaMTX API**: Port 9997 accessible from Docker containers, authentication working
+✅ **CameraStateTracker**: Background polling working (5-second interval), thread-safe
+✅ **REST API**: `/api/camera/state/<camera_id>` returns correct data for LL-HLS and MJPEG
+✅ **UI State Monitor**: Polling every 10 seconds, updating status indicators correctly
+✅ **Status Display**: All LL-HLS streams show "Live" when active, "Starting..." when initializing
+✅ **MJPEG Exception**: MJPEG cameras show "Live" status (hardcoded)
+✅ **Detailed Badges**: Show on hover, auto-visible when camera has issues
+✅ **Browser Authentication**: No popups (anonymous access via `user: any` works)
+
+### Status
+
+✅ **Phase 1 Complete**: Enhanced UI Status Display fully functional
+
+- All camera streams show correct status in real-time
+- Detailed diagnostics available on hover
+- MediaMTX API integration working seamlessly
+- Foundation established for future service coordination
+
+### Future Work (Not Yet Implemented)
+
+**Phase 2: StreamManager Integration**
+
+- Update `streaming/stream_manager.py` to call `camera_state_tracker.register_success()` when publishers start
+- Call `camera_state_tracker.register_failure()` when publishers crash
+- Respect `can_retry()` before attempting publisher restart
+
+**Phase 3: Motion Detection & Recording Integration**
+
+- Motion detection services check `can_retry()` before connecting
+- Recording services respect backoff timers
+- All services coordinate through CameraStateTracker singleton
+
+**Phase 4: Recording/Motion Detection Isolation**
+
+From original plan in `/home/elfege/.claude/plans/scalable-knitting-floyd.md`:
+
+- Disable pre-buffer globally (reduces MediaMTX consumers)
+- Prefer Reolink Baichuan motion detection over FFmpeg (eliminates RTSP tapping)
+- Validate all LL-HLS cameras use MediaMTX as recording source
+- Prevent resource contention causing publisher failures
+
+---
+
 {% endraw %}

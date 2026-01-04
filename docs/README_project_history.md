@@ -10,6 +10,39 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 4, 2026: Stream Watchdog Investigation & UI Auto-Recovery
+
+**Branch merged:** `stream_watchdog_investigation_JAN_4_2026_a`
+
+### Fixes Applied
+
+1. **Motion Detector Health Check** - Modified `ffmpeg_motion_detector.py` to use CameraStateTracker instead of ffprobe for health checks. ffprobe was creating additional RTSP connections to MediaMTX, causing stream disruptions.
+
+2. **UI Recovery Full Stop+Start** - Fixed `handleBackendRecovery()` in `stream.js` to perform full stop+start cycle instead of just HLS.js refresh. User confirmed manual stop+start works reliably; HLS.js refresh alone may stay connected to stale MediaMTX session.
+
+3. **Nuclear Cleanup Disabled** - Commented out unconditional `_kill_all_ffmpeg_for_camera()` call in `_start_stream()`. This was being called on EVERY stream start, causing "torn down" messages in MediaMTX. Now MediaMTX handles stream lifecycle.
+
+4. **MJPEG Stream Status Fix** - Fixed MJPEG streams showing "Starting" when live. The browser `load` event doesn't fire reliably for MJPEG multipart streams. Now polls for `naturalWidth > 0` to detect first frame arrival.
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `services/motion/ffmpeg_motion_detector.py` | Use CameraStateTracker.publisher_active instead of ffprobe |
+| `app.py` | Pass camera_state_tracker to FFmpegMotionDetector |
+| `static/js/streaming/stream.js` | handleBackendRecovery uses full stop+start cycle; exposed window.streamManager for debugging |
+| `streaming/stream_manager.py` | Disabled nuclear cleanup in _start_stream() |
+| `static/js/streaming/mjpeg-stream.js` | Poll for naturalWidth to detect MJPEG frames instead of unreliable load event |
+
+### Testing Confirmed
+
+- Backend watchdog detects dead FFmpeg and restarts stream
+- UI CameraStateMonitor detects `degraded → online` transition
+- UI performs automatic stop+start cycle to reconnect cleanly
+- Stream resumes without manual intervention
+
+---
+
 ## September 16: Container Architecture and Docker Modernization (NOW REMOVED FROM PROJECT UNTIL FURTHER NOTICE)
 
 ### Project Rediscovery

@@ -1597,7 +1597,7 @@ if active and state.availability == CameraAvailability.STARTING:
 
 ---
 
-*Last updated: January 4, 2026 03:05 EST*
+*Last updated: January 4, 2026 03:20 EST*
 
 ---
 
@@ -1750,16 +1750,43 @@ Multiple context compactions occurred during this session:
 
 ---
 
+### Session: January 4, 2026 (03:05-03:20 EST)
+
+#### Stream Watchdog Redesign - Plan Complete
+
+**Decisions Made:**
+
+- Scope: Both LL-HLS and MJPEG streams
+- Old watchdog: Remove entirely from StreamManager (tightly coupled, duplicates state)
+- UI Health: Coexist (different purposes)
+- Eufy Bridge: Keep separate (not in use)
+
+**Plan Location:** `/home/elfege/.claude/plans/jolly-whistling-parnas.md`
+
+**Implementation Steps (Ready to Execute):**
+
+1. Create `services/stream_watchdog.py` - New unified watchdog
+2. Add `restart_stream()` to StreamManager
+3. Add `restart_capture()` to MJPEG services (4 files)
+4. Remove old watchdog code from StreamManager
+5. Update app.py integration
+6. Update .env configuration
+
+---
+
 ### TODO List (Updated)
 
-**Stream Watchdog Investigation:**
+**Stream Watchdog Redesign (CURRENT):**
 
-- [x] Create FFmpeg test command for reconnect flags
-- [x] Evaluate FFmpeg test results → **RESULT: -reconnect flags not supported for RTSP**
-- [x] Unified camera state tracking for MJPEG and LL-HLS cameras
+- [x] FFmpeg reconnect flags investigation → Not supported for RTSP
+- [x] Unified MJPEG/LL-HLS state tracking via CameraStateTracker
+- [x] Plan new watchdog architecture
+- [ ] **NEXT**: Create `services/stream_watchdog.py`
+- [ ] Add restart methods to StreamManager and MJPEG services
+- [ ] Remove old watchdog from StreamManager
+- [ ] Integrate and test
 
-**Phase 2+ Tasks:**
+**Deferred:**
 
-- [ ] StreamManager Integration: Use CameraStateTracker for retry coordination
-- [ ] Service Integration: Motion detection and recording services respect can_retry()
-- [ ] Validation: Monitor MediaMTX "torn down" logs after integration
+- [ ] Motion detection/recording services respect can_retry()
+- [ ] Monitor MediaMTX "torn down" logs

@@ -310,6 +310,64 @@ class CameraStateTracker:
             self._trigger_callbacks(camera_id, state)
 
 
+    def update_mjpeg_capture_state(self, camera_id: str, active: bool, error: Optional[str] = None):
+        """
+        Update MJPEG capture state from MJPEG capture services.
+
+        Called by:
+        - ReolinkMJPEGCaptureService when capture starts/stops/fails
+        - AmcrestMJPEGCaptureService when capture starts/stops/fails
+        - UnifiMJPEGCaptureService when capture starts/stops/fails
+
+        MJPEG cameras don't use MediaMTX - they stream directly from hardware.
+        This method tracks their state separately from MediaMTX-based LL-HLS cameras.
+
+        Args:
+            camera_id: Camera serial number
+            active: True if MJPEG capture thread is running and receiving frames
+            error: Optional error message if capture failed
+        """
+        with self._lock:
+            state = self._states.get(camera_id)
+            if not state:
+                state = self._create_default_state(camera_id)
+                self._states[camera_id] = state
+
+            old_availability = state.availability
+
+            if active:
+                # Capture is running and receiving frames
+                state.publisher_active = True  # Repurpose for MJPEG "capture active"
+                state.availability = CameraAvailability.ONLINE
+                state.failure_count = 0
+                state.last_seen = datetime.now()
+                state.error_message = None
+                if old_availability != CameraAvailability.ONLINE:
+                    logger.info(f"MJPEG camera {camera_id} capture active, state: {old_availability.value} → ONLINE")
+            else:
+                # Capture stopped or failed
+                state.publisher_active = False
+                if error:
+                    state.error_message = error
+                    state.failure_count += 1
+                    state.backoff_seconds = min(120, 5 * (2 ** (state.failure_count - 1)))
+                    state.next_retry = datetime.now() + timedelta(seconds=state.backoff_seconds)
+
+                    if state.failure_count >= 3:
+                        state.availability = CameraAvailability.OFFLINE
+                        logger.warning(f"MJPEG camera {camera_id} marked OFFLINE after {state.failure_count} failures: {error}")
+                    else:
+                        state.availability = CameraAvailability.DEGRADED
+                        logger.info(f"MJPEG camera {camera_id} marked DEGRADED after {state.failure_count} failure(s)")
+                else:
+                    # Graceful stop (no error)
+                    state.availability = CameraAvailability.STARTING
+                    logger.debug(f"MJPEG camera {camera_id} capture stopped (no error)")
+
+            # Trigger callbacks if state changed
+            if old_availability != state.availability:
+                self._trigger_callbacks(camera_id, state)
+
     def update_publisher_state(self, camera_id: str, active: bool):
         """
         Update publisher active state from MediaMTX API or stream manager.

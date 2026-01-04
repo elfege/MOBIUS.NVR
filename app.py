@@ -744,33 +744,22 @@ def api_camera_state(camera_id):
         JSON with camera state details or error
     """
     try:
-        # Check if this is an MJPEG camera (streams directly, doesn't use MediaMTX)
-        camera = camera_repo.get_camera(camera_id)
-        if camera and camera.get('stream_type') == 'MJPEG':
-            # MJPEG cameras stream directly from hardware - always report as ONLINE
-            return jsonify({
-                'success': True,
-                'camera_id': camera_id,
-                'availability': 'online',
-                'publisher_active': True,  # N/A for MJPEG but report as true
-                'ffmpeg_process_alive': False,  # MJPEG doesn't use FFmpeg publishers
-                'last_seen': None,
-                'failure_count': 0,
-                'next_retry': None,
-                'backoff_seconds': 0,
-                'error_message': None,
-                'can_retry': True
-            })
-
-        # For LL-HLS cameras, use CameraStateTracker
+        # All cameras (LL-HLS and MJPEG) now use CameraStateTracker
+        # MJPEG capture services report their state via update_mjpeg_capture_state()
+        # LL-HLS cameras get state from MediaMTX API polling
         state = camera_state_tracker.get_camera_state(camera_id)
+
+        # Check if camera is MJPEG type for ffmpeg_process_alive field
+        camera = camera_repo.get_camera(camera_id)
+        is_mjpeg = camera and camera.get('stream_type') == 'MJPEG'
 
         return jsonify({
             'success': True,
             'camera_id': camera_id,
+            'stream_type': 'MJPEG' if is_mjpeg else 'LL_HLS',
             'availability': state.availability.value,
-            'publisher_active': state.publisher_active,
-            'ffmpeg_process_alive': state.ffmpeg_process_alive,
+            'publisher_active': state.publisher_active,  # For MJPEG: "capture active"
+            'ffmpeg_process_alive': False if is_mjpeg else state.ffmpeg_process_alive,  # N/A for MJPEG
             'last_seen': state.last_seen.isoformat() if state.last_seen else None,
             'failure_count': state.failure_count,
             'next_retry': state.next_retry.isoformat() if state.next_retry else None,

@@ -173,7 +173,8 @@ services:
     # expose only its HTTP port to nginx (no direct internet)
     ports:
       - "8888:8888"   # HTTP (HLS/LL-HLS)
-      - "8889:8889"   # WebRTC WHEP signaling + media (TCP/UDP)
+      - "8889:8889"   # WebRTC WHEP signaling (HTTP)
+      - "8189:8189/udp"  # WebRTC media (UDP)
     # leave RTSP/RTMP internal for now; we can open them later if needed
     # - "8554:8554"   # RTSP (optional)
     # - "1935:1935"   # RTMP (optional)

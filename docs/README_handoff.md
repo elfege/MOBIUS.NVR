@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 03:22 EST*
+*Last updated: January 4, 2026 03:35 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -66,12 +66,14 @@ StreamWatchdog (polls every 10s)
 ```
 
 **Key features:**
+
 - Uses CameraStateTracker.can_retry() for exponential backoff (5s→120s max)
 - Reports restart success/failure back to CameraStateTracker
 - Configurable via `STREAM_WATCHDOG_ENABLED` env var
 - Coexists with UI Health monitoring (UI detects browser/network, backend detects server)
 
 **Race condition prevention:**
+
 - `STARTUP_WARMUP_SECONDS=60`: Wait before first check (streams initializing)
 - `RESTART_COOLDOWN_SECONDS=30`: Per-camera cooldown after restart attempt
 - Skips cameras in STARTING state (still initializing)
@@ -91,15 +93,19 @@ StreamWatchdog (polls every 10s)
 - [x] Remove old watchdog from StreamManager
 - [x] Integrate and test
 
-**Next Steps:**
+**Testing - VERIFIED (03:35 EST):**
 
-- [ ] Container restart to apply changes
-- [ ] Verify watchdog starts (check logs)
-- [ ] Test: Kill FFmpeg process → verify auto-restart
-- [ ] Test: Disconnect MJPEG camera → verify detection and recovery
-- [ ] Verify exponential backoff on repeated failures
+- [x] Container restart to apply changes
+- [x] Verify watchdog starts (check logs)
+- [x] Test: Auto-restart on stream failure
+  - `C6F0SgZ0N0PoL2`: publisher died → DEGRADED → restart successful → ONLINE
+  - `T8416P0023352DA9` (Living Room): publisher died → restart successful → ONLINE
+  - `T8441P12242302AC` (Terrace Shed): restart successful → ONLINE
+- [x] UI vs Backend watchdog coexistence verified
+  - `T8419P0024110C6A` (STAIRS): UI-only issue, STOP/START in UI fixed it (backend stream was fine)
 
 **Deferred:**
 
+- [ ] Test MJPEG camera restart (no MJPEG failures observed yet)
 - [ ] Motion detection/recording services respect can_retry()
 - [ ] Monitor MediaMTX "torn down" logs

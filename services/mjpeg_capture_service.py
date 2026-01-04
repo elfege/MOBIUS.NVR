@@ -13,6 +13,20 @@ from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
+# Import CameraStateTracker for state reporting (lazy import to avoid circular deps)
+_camera_state_tracker = None
+
+def _get_state_tracker():
+    """Lazy import of camera_state_tracker to avoid circular imports"""
+    global _camera_state_tracker
+    if _camera_state_tracker is None:
+        try:
+            from services.camera_state_tracker import camera_state_tracker
+            _camera_state_tracker = camera_state_tracker
+        except ImportError:
+            logger.warning("CameraStateTracker not available - MJPEG state reporting disabled")
+    return _camera_state_tracker
+
 class MJPEGCaptureService:
     """
     Manages single camera capture processes serving multiple clients
@@ -65,15 +79,23 @@ class MJPEGCaptureService:
         """
         camera_service = capture_info['camera_service']
         stop_flag = capture_info['stop_flag']
-        
+
         logger.info(f"MJPEG capture loop started for {camera_id} ({camera_service.name})")
-        
+
+        # Report initial state to CameraStateTracker
+        tracker = _get_state_tracker()
+        if tracker:
+            tracker.update_mjpeg_capture_state(camera_id, active=True)
+
+        consecutive_errors = 0
+        max_consecutive_errors = 5  # Report offline after this many consecutive failures
+
         while not stop_flag.is_set():
             try:
                 # Single snapshot request regardless of client count
                 # This prevents the N-browser = N-camera-connections problem
                 snapshot = camera_service.get_snapshot()
-                
+
                 if snapshot:
                     # Update shared buffer with latest frame
                     with self.lock:
@@ -86,23 +108,39 @@ class MJPEGCaptureService:
                         capture_info['frame_count'] += 1
                         capture_info['last_frame_time'] = time.time()
                         capture_info['last_error'] = None
+
+                    # Reset error counter on successful frame
+                    if consecutive_errors > 0:
+                        consecutive_errors = 0
+                        if tracker:
+                            tracker.update_mjpeg_capture_state(camera_id, active=True)
                 else:
                     with self.lock:
                         capture_info['last_error'] = "Snapshot failed"
+                    consecutive_errors += 1
                     logger.warning(f"Snapshot failed for {camera_id}")
-                
+                    if consecutive_errors >= max_consecutive_errors and tracker:
+                        tracker.update_mjpeg_capture_state(camera_id, active=False, error="Snapshot failed")
+
                 # 2 FPS interval - same as original implementation
                 stop_flag.wait(0.5)
-                
+
             except Exception as e:
                 error_msg = str(e)
                 with self.lock:
                     capture_info['last_error'] = error_msg
+                consecutive_errors += 1
                 logger.error(f"Capture error for {camera_id}: {e}")
-                
+                if consecutive_errors >= max_consecutive_errors and tracker:
+                    tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
+
                 # Longer wait on error to prevent spam
                 stop_flag.wait(2.0)
-        
+
+        # Report capture stopped to CameraStateTracker
+        if tracker:
+            tracker.update_mjpeg_capture_state(camera_id, active=False)
+
         logger.info(f"MJPEG capture loop ended for {camera_id}")
     
     def add_client(self, camera_id: str, camera_service) -> bool:

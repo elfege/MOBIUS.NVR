@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 03:17 EST*
+*Last updated: January 4, 2026 03:22 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -66,10 +66,16 @@ StreamWatchdog (polls every 10s)
 ```
 
 **Key features:**
-- Uses CameraStateTracker.can_retry() for exponential backoff
+- Uses CameraStateTracker.can_retry() for exponential backoff (5s→120s max)
 - Reports restart success/failure back to CameraStateTracker
 - Configurable via `STREAM_WATCHDOG_ENABLED` env var
 - Coexists with UI Health monitoring (UI detects browser/network, backend detects server)
+
+**Race condition prevention:**
+- `STARTUP_WARMUP_SECONDS=60`: Wait before first check (streams initializing)
+- `RESTART_COOLDOWN_SECONDS=30`: Per-camera cooldown after restart attempt
+- Skips cameras in STARTING state (still initializing)
+- Respects exponential backoff from CameraStateTracker
 
 ---
 

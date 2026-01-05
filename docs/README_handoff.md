@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 03:46 EST*
+*Last updated: January 5, 2026 03:53 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -131,7 +131,11 @@ Camera uses Baichuan PTZ when ANY of these are true:
 
 **Testing Needed:**
 
-- [ ] Test ONVIF pre-warming at container startup (verify logs show successful pre-warming)
+- [x] Test ONVIF pre-warming at container startup - **VERIFIED** (03:53 EST)
+  - Pre-warming logs: 4 cameras warmed (Living_REOLINK, SV3C_Living_3, LAUNDRY ROOM, AMCREST LOBBY)
+  - Eufy cameras (no host) correctly skipped with warning
+  - PTZ timing on Living_REOLINK: get_camera=0ms, get_ptz_service=0ms, get_profile_token=0ms
+  - PTZ timing on AMCREST: immediate response confirmed
 - [ ] Test Baichuan PTZ with E1 camera (95270000YPTKLLD6 - has no ONVIF port)
 
 **Future Enhancements:**

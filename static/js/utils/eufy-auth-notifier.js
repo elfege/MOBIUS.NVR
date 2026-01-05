@@ -113,9 +113,9 @@ eufyAuthNotifier = new EufyAuthNotifier();
 
 $(() => {
     console.log('[Eufy Auth] Initializing notification system');
-    eufyAuthNotifier.start();
+    // eufyAuthNotifier.start(); # Disabled by default since Eufy Bridge is not in use for now
 });
 
 $(window).on('beforeunload', () => {
-    eufyAuthNotifier.stop();
+    // eufyAuthNotifier.stop(); # Disabled by default since Eufy Bridge is not in use for now
 });

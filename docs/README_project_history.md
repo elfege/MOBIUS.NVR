@@ -10,6 +10,38 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 5, 2026 (02:07 EST): E1 Camera via Neolink, ONVIF Null Port Fix
+
+**Branch merged:** `neolink_e1_JAN_5_2026_a`
+
+### What Was Accomplished
+
+1. **Added Reolink E1 Camera via Neolink:**
+   - Camera: REOLINK Cat Feeders (serial: `95270000YPTKLLD6`)
+   - IP: 192.168.10.123
+   - Protocol: Baichuan (port 9000) via Neolink bridge
+   - Stream type: NEOLINK
+
+2. **Fixed ONVIF PTZ Handler Crash:**
+   - E1 camera has `onvif_port: null` (correct - E1 doesn't support ONVIF)
+   - Bug: Code passed `None` to `ONVIFClient.get_camera()` causing `int(None)` crash
+   - Fix: Added null check in 5 methods in `onvif_ptz_handler.py`
+
+3. **Added `notes` field to all 17 camera entries in cameras.json**
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `config/cameras.json` | Added E1 camera, added `notes` field to all cameras |
+| `services/onvif/onvif_ptz_handler.py` | Added null check for onvif_port in 5 methods |
+
+### Known Issue (Not Fixed)
+
+PTZ presets failing to load (HTTP 500) for all cameras. Browser shows `[PTZ] Updated UI for XCPTP369388MNVTG: 0 presets`. Suspected race conditions in frontend/backend.
+
+---
+
 ## January 5, 2026: WebRTC Latency, Database Schema Fix, Neolink Config
 
 **Branch merged:** `ui_performance_JAN_5_2026_b`

@@ -1,0 +1,2390 @@
+{
+  "last_updated": "2025-10-01T20:00:00.000Z",
+  "total_devices": 17,
+  "__notes": {
+    "notes_on_all_params": "see: ./config/cameras_json_notes.json"
+  },
+  "devices": {
+    "68d49398005cf203e400043f": {
+      "notes": "",
+      "packager_path": "68d49398005cf203e400043f",
+      "type": "unifi",
+      "name": "OFFICE KITCHEN",
+      "camera_id": "68d49398005cf203e400043f",
+      "serial": "68d49398005cf203e400043f",
+      "rtsp_alias": "this value is exported into the environment by get_cameras_credentials function in .bash_utils, called by start.sh",
+      "capabilities": [
+        "ONVIF",
+        "streaming"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "68d49398005cf203e400043f",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8416P0023352DA9": {
+      "notes": "",
+      "packager_path": "T8416P0023352DA9",
+      "name": "Living Room",
+      "model": "T8416",
+      "type": "eufy",
+      "serial": "T8416P0023352DA9",
+      "station": "T8416P0023352DA9",
+      "image_mirrored": true,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8416P0023352DA9",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.84",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8416P0023370398": {
+      "notes": "",
+      "packager_path": "T8416P0023370398",
+      "name": "Office Desk",
+      "model": "T8416",
+      "type": "eufy",
+      "serial": "T8416P0023370398",
+      "station": "T8416P0023370398",
+      "image_mirrored": false,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 80,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8416P0023370398",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 500000,
+        "probesize": 500000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.87",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8416P00233717CB": {
+      "notes": "",
+      "packager_path": "T8416P00233717CB",
+      "name": "Entryway",
+      "model": "T8416",
+      "type": "eufy",
+      "serial": "T8416P00233717CB",
+      "station": "T8416P00233717CB",
+      "image_mirrored": false,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8416P00233717CB",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.182",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8416P0023390DE9": {
+      "notes": "",
+      "packager_path": "T8416P0023390DE9",
+      "name": "Kitchen",
+      "model": "T8416",
+      "type": "eufy",
+      "serial": "T8416P0023390DE9",
+      "station": "T8416P0023390DE9",
+      "image_mirrored": true,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8416P0023390DE9",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.117",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8416P6024350412": {
+      "notes": "",
+      "packager_path": "T8416P6024350412",
+      "name": "HALLWAY",
+      "model": "T8416",
+      "type": "eufy",
+      "serial": "T8416P6024350412",
+      "station": "T8416P6024350412",
+      "image_mirrored": false,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8416P6024350412",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.181",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8419P0024110C6A": {
+      "notes": "",
+      "packager_path": "T8419P0024110C6A",
+      "name": "STAIRS",
+      "model": "T8419",
+      "type": "eufy",
+      "serial": "T8419P0024110C6A",
+      "station": "T8419P0024110C6A",
+      "image_mirrored": false,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8419P0024110C6A",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.119",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8441P12242302AC": {
+      "notes": "",
+      "packager_path": "T8441P12242302AC",
+      "name": "Terrace Shed",
+      "model": "T8441",
+      "type": "eufy",
+      "serial": "T8441P12242302AC",
+      "station": "T8441P12242302AC",
+      "image_mirrored": false,
+      "capabilities": [
+        "streaming"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8441P12242302AC",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.184",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T8441P122428038A": {
+      "notes": "",
+      "packager_path": "T8441P122428038A",
+      "name": "Hot Tub",
+      "model": "T8441",
+      "type": "eufy",
+      "serial": "T8441P122428038A",
+      "station": "T8441P122428038A",
+      "image_mirrored": false,
+      "capabilities": [
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "T8441P122428038A",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "rtsp": {
+        "host": "192.168.10.183",
+        "port": 554,
+        "path": "/live0"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "T821451024233587": {
+      "notes": "",
+      "packager_path": "T821451024233587",
+      "name": "Entrance door",
+      "model": "T8214",
+      "type": "eufy",
+      "serial": "T821451024233587",
+      "station": "T821451024233587",
+      "image_mirrored": false,
+      "capabilities": [
+        "doorbell"
+      ],
+      "stream_type": null,
+      "onvif_port": 8000,
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "rtsp": null,
+      "hidden": true,
+      "ui_health_monitor": true
+    },
+    "95270001Q3D82PF7": {
+      "notes": "",
+      "packager_path": "95270001Q3D82PF7",
+      "name": "MEBO",
+      "model": "E1 Pro",
+      "type": "reolink",
+      "serial": "95270001Q3D82PF7",
+      "host": "192.168.10.121",
+      "mac": "68:39:43:BD:A5:6F",
+      "capabilities": [
+        "ONVIF",
+        "streaming"
+      ],
+      "stream_type": "MJPEG",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "95270001Q3D82PF7",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": true,
+      "ui_health_monitor": true
+    },
+    "XCPTP369388MNVTG": {
+      "notes": "",
+      "packager_path": "XCPTP369388MNVTG",
+      "name": "Living_REOLINK",
+      "model": "RLC-423WS",
+      "type": "reolink",
+      "serial": "XCPTP369388MNVTG",
+      "host": "192.168.10.186",
+      "mac": "EC:71:DB:AD:0D:70",
+      "capabilities": [
+        "ONVIF",
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 7,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 15,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "XCPTP369388MNVTG",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "C6F0SgZ0N0PoL2": {
+      "notes": "",
+      "packager_path": "C6F0SgZ0N0PoL2",
+      "name": "SV3C_Living_3",
+      "model": "IPCAM SV3C 1080P DEAS",
+      "type": "sv3c",
+      "serial": "C6F0SgZ0N0PoL2",
+      "host": "192.168.10.90",
+      "mac": "EC:71:DB:AD:0D:70",
+      "capabilities": [
+        "ONVIF",
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8080,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 7,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 15,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "C6F0SgZ0N0PoL2",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "95270000D1B5FBEW": {
+      "notes": "",
+      "packager_path": "95270000D1B5FBEW",
+      "name": "Former CAM STAIRS",
+      "model": "RLC-410W",
+      "type": "reolink",
+      "serial": "95270000D1B5FBEW",
+      "host": "192.168.10.187",
+      "mac": "b0:41:1d:5c:e8:7a",
+      "capabilities": [
+        "ONVIF",
+        "streaming"
+      ],
+      "stream_type": "MJPEG",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "95270000D1B5FBEW",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": true,
+      "ui_health_monitor": true
+    },
+    "95270001CSO4BPDZ": {
+      "notes": "",
+      "packager_path": "95270001CSO4BPDZ",
+      "name": "REOLINK OFFICE",
+      "model": "RLC-410-5MP",
+      "type": "reolink",
+      "serial": "95270001CSO4BPDZ",
+      "host": "192.168.10.88",
+      "mac": "ec:71:db:3e:93:f5",
+      "capabilities": [
+        "ONVIF",
+        "streaming"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 11,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "95270001CSO4BPDZ",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "udp",
+        "timeout": 5000000,
+        "analyzeduration": 500000,
+        "probesize": 500000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "95270001CSHLPO74": {
+      "notes": "",
+      "packager_path": "95270001CSHLPO74",
+      "name": "Terrace South",
+      "model": "RLC-410-5MP",
+      "type": "reolink",
+      "serial": "95270001CSHLPO74",
+      "host": "192.168.10.89",
+      "mac": "ec:71:db:c3:1a:14",
+      "capabilities": [
+        "ONVIF",
+        "streaming"
+      ],
+      "stream_type": "MJPEG",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 10
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "95270001CSHLPO74",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "udp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "95270001NT3KNA67": {
+      "notes": "",
+      "packager_path": "95270001NT3KNA67",
+      "name": "LAUNDRY ROOM",
+      "model": "Reolink E1 Zoom",
+      "type": "reolink",
+      "serial": "95270001NT3KNA67",
+      "host": "192.168.10.118",
+      "mac": "40:AA:56:07:98:C0",
+      "capabilities": [
+        "ONVIF",
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 8000,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "95270001NT3KNA67",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "udp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "AMC043145A67EFBF79": {
+      "notes": "",
+      "packager_path": "AMC043145A67EFBF79",
+      "name": "AMCREST LOBBY",
+      "model": "Reolink E1 Zoom",
+      "type": "amcrest",
+      "serial": "AMC043145A67EFBF79",
+      "host": "192.168.10.34",
+      "mac": "40:AA:56:07:98:C0",
+      "capabilities": [
+        "ONVIF",
+        "streaming",
+        "ptz"
+      ],
+      "stream_type": "WEBRTC",
+      "onvif_port": 80,
+      "true_mjpeg": true,
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "mjpeg_snap": {
+        "sub": {
+          "enabled": true,
+          "width": 640,
+          "height": 480,
+          "fps": 5,
+          "timeout_ms": 5000
+        },
+        "main": {
+          "enabled": true,
+          "width": 1280,
+          "height": 720,
+          "fps": 5,
+          "timeout_ms": 8000
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "AMC043145A67EFBF79",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "rtsp_output": {
+        "map": [
+          "0:v:0"
+        ],
+        "c:v": "libx264",
+        "profile:v": "baseline",
+        "pix_fmt": "yuv420p",
+        "r": 15,
+        "vf": "scale=320:240",
+        "tune": "zerolatency",
+        "g": 7,
+        "keyint_min": 7,
+        "preset": "ultrafast",
+        "f": "HLS",
+        "hls_time": "0.5",
+        "hls_list_size": "1",
+        "hls_flags": "independent_segments+program_date_time+append_list+delete_segments+split_by_time",
+        "hls_fmp4_init_resend": 1,
+        "muxpreload": 0,
+        "muxdelay": 0,
+        "hls_segment_type": "fmp4",
+        "hls_fmp4_init_filename": "init.mp4",
+        "movflags": "+frag_keyframe+empty_moov+default_base_moof",
+        "hls_delete_threshold": "1"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    },
+    "95270000YPTKLLD6": {
+      "notes": "Reolink E1 - no ONVIF, no direct RTSP. Streaming via Baichuan/NEOLINK. PTZ: direct reolink_aio not supported; Neolink MQTT PTZ TBD",
+      "packager_path": "95270000YPTKLLD6",
+      "name": "REOLINK Cat Feeders",
+      "model": "Reolink E1",
+      "type": "reolink",
+      "serial": "95270000YPTKLLD6",
+      "host": "192.168.10.123",
+      "mac": "44:ef:bf:27:0d:30",
+      "capabilities": [
+        "streaming"
+      ],
+      "stream_type": "NEOLINK",
+      "onvif_port": null,
+      "true_mjpeg": "false",
+      "player_settings": {
+        "hls_js": {
+          "enableWorker": true,
+          "lowLatencyMode": true,
+          "liveSyncDurationCount": 0.5,
+          "liveMaxLatencyDurationCount": 3,
+          "maxLiveSyncPlaybackRate": 1.5,
+          "backBufferLength": 3
+        }
+      },
+      "neolink": {
+        "port": 8554,
+        "buffer_size": 20,
+        "stream": "subStream"
+      },
+      "ll_hls": {
+        "publisher": {
+          "protocol": "rtsp",
+          "host": "nvr-packager",
+          "port": 8554,
+          "path": "95270000YPTKLLD6",
+          "rtsp_transport": "tcp"
+        },
+        "audio": {
+          "enabled": false,
+          "codec": "aac",
+          "bitrate": "64k",
+          "rate": 44100,
+          "channels": 1
+        },
+        "video_sub": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "800k",
+          "maxrate": "800k",
+          "bufsize": "1600k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=320:240"
+        },
+        "video_main": {
+          "c:v": "libx264",
+          "preset": "veryfast",
+          "tune": "zerolatency",
+          "profile:v": "baseline",
+          "pix_fmt": "yuv420p",
+          "r": 15,
+          "g": 15,
+          "keyint_min": 15,
+          "b:v": "2000k",
+          "maxrate": "2000k",
+          "bufsize": "4000k",
+          "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
+          "force_key_frames": "expr:gte(t,n_forced*1)",
+          "vf": "scale=1280:720"
+        }
+      },
+      "rtsp_input": {
+        "rtsp_transport": "tcp",
+        "timeout": 5000000,
+        "analyzeduration": 1000000,
+        "probesize": 1000000,
+        "use_wallclock_as_timestamps": 1,
+        "fflags": "nobuffer"
+      },
+      "hidden": false,
+      "ui_health_monitor": true
+    }
+  },
+  "ui_health_global_settings": {
+    "__notes": {
+      "UI_HEALTH_ENABLED": "Master switch: enables/disables entire UI health monitoring system. When false, no frame checks occur.",
+      "UI_HEALTH_BLANK_AVG": "Luminance threshold (0-255 scale). Frame flagged blank if avg brightness < this value. Detects black/very dark screens. Uses ITU-R BT.601: Y = 0.299\u00d7R + 0.587\u00d7G + 0.114\u00d7B",
+      "UI_HEALTH_BLANK_STD": "Standard deviation threshold for pixel brightness uniformity. Frames must have BOTH avg < BLANK_AVG AND std < BLANK_STD to trigger blank detection. Filters out grainy darkness and startup loading screens.",
+      "UI_HEALTH_SAMPLE_INTERVAL_MS": "Milliseconds between frame samples. Lower = faster detection but higher CPU. Time to detect black screen = CONSECUTIVE_BLANK_NEEDED \u00d7 this value.",
+      "UI_HEALTH_STALE_AFTER_MS": "Milliseconds of no frame signature change before marking stream stale. Detects frozen frames (same image for N milliseconds). Independent of black screen check.",
+      "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": "How many consecutive black samples required to trigger restart. Prevents false positives from brief stalls. Formula: detection_time = this \u00d7 SAMPLE_INTERVAL_MS",
+      "UI_HEALTH_COOLDOWN_MS": "Milliseconds to wait after health alert before allowing next restart attempt. Prevents restart loops if stream keeps failing immediately.",
+      "UI_HEALTH_WARMUP_MS": "Milliseconds to wait after attaching monitor before checking health. Allows stream initial buffering/startup without false triggers. Monitoring suppressed for this duration.",
+      "UI_HEALTH_MAX_ATTEMPTS": "Maximum restart attempts before giving up. Set to 0 for infinite attempts (not recommended - may cause endless restart loops for permanently failed cameras)."
+    },
+    "UI_HEALTH_ENABLED": false,
+    "UI_HEALTH_BLANK_AVG": 2,
+    "UI_HEALTH_BLANK_STD": 5,
+    "UI_HEALTH_SAMPLE_INTERVAL_MS": 3000,
+    "UI_HEALTH_STALE_AFTER_MS": 30000,
+    "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": 100,
+    "UI_HEALTH_COOLDOWN_MS": 60000,
+    "UI_HEALTH_WARMUP_MS": 60000,
+    "UI_HEALTH_MAX_ATTEMPTS": 3
+  }
+}

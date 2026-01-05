@@ -348,12 +348,21 @@ class BaichuanPTZHandler:
         """
         Check if camera should use Baichuan for PTZ.
 
+        This function determines PTZ routing only - not streaming capability.
+        NEOLINK streaming works independently of this check.
+
         Args:
             camera_config: Camera configuration dict
 
         Returns:
             True if camera should use Baichuan PTZ
         """
+        # First check: camera must have PTZ capability at all
+        # If 'ptz' not in capabilities array, no PTZ control is possible
+        capabilities = camera_config.get('capabilities', [])
+        if 'ptz' not in capabilities:
+            return False
+
         # Check for explicit ptz_method setting
         ptz_method = camera_config.get('ptz_method', 'auto')
 

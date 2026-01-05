@@ -856,6 +856,90 @@ def api_stream_stop(camera_serial):
             'camera_serial': camera_serial
         }), 500
 
+@app.route('/api/stream/restart/<camera_serial>', methods=['POST'])
+@csrf.exempt
+def api_stream_restart(camera_serial):
+    """
+    Restart stream for camera - stops FFmpeg process and starts fresh.
+
+    This is a 'nuclear' restart that kills the backend FFmpeg and creates
+    a new one. Use when stream is stuck, looping, or frozen.
+
+    Unlike the UI refresh which just reconnects HLS.js, this actually
+    terminates the FFmpeg publisher and starts a new process.
+
+    Args (JSON body):
+        type: 'sub' or 'main' (optional, defaults to 'sub')
+
+    Returns:
+        JSON with success status and new stream URL
+    """
+    try:
+        camera_name = camera_repo.get_camera_name(camera_serial)
+        camera = camera_repo.get_camera(camera_serial)
+
+        if not camera:
+            return jsonify({
+                'success': False,
+                'error': f'Camera {camera_serial} not found'
+            }), 404
+
+        # Get resolution from request (defaults to 'sub')
+        data = request.get_json() or {}
+        resolution = data.get('type', 'sub')
+
+        # Check stream type - only support non-MJPEG for now
+        stream_type = camera.get('stream_type', 'HLS').upper()
+        if stream_type == 'MJPEG':
+            return jsonify({
+                'success': False,
+                'error': 'MJPEG streams do not support restart (stateless)'
+            }), 400
+
+        logger.info(f"[RESTART] Restarting stream for {camera_name} ({camera_serial})")
+
+        # Step 1: Stop the stream (kills FFmpeg)
+        was_running = stream_manager.is_stream_alive(camera_serial)
+        if was_running:
+            stop_success = stream_manager.stop_stream(camera_serial)
+            if not stop_success:
+                logger.warning(f"[RESTART] Stop returned False for {camera_name}, continuing anyway")
+
+            # Brief pause to let sockets release
+            import time
+            time.sleep(0.5)
+
+        # Step 2: Start fresh stream
+        stream_url = stream_manager.start_stream(camera_serial, resolution=resolution)
+
+        if not stream_url:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to restart stream',
+                'camera_serial': camera_serial
+            }), 500
+
+        logger.info(f"[RESTART] Stream restarted for {camera_name}: {stream_url}")
+
+        return jsonify({
+            'success': True,
+            'camera_serial': camera_serial,
+            'camera_name': camera_name,
+            'stream_url': stream_url,
+            'was_running': was_running,
+            'message': f'Stream restarted for {camera_name}'
+        })
+
+    except Exception as e:
+        logger.error(f"[RESTART] Failed for {camera_serial}: {e}")
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'camera_serial': camera_serial
+        }), 500
+
+
 @app.route('/api/stream/status/<camera_serial>')
 def api_stream_status(camera_serial):
     """Get stream status for camera"""

@@ -90,19 +90,19 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 - Commit immediately with detailed message
 - Push immediately
 - When done with a task/issue, or when I say `time to update the history`:
-      - commit and push current branch
-      - make a copy of modified untracked files into `/tmp`
-      - such files include, but are not limited to, `CLAUDE.md`, `docs/README_handoff.md`, ``docs/README_handoff.md`, [ + any other returned byt the `git status` command: it could be one that I personnaly edited!])
-      - checkout to main
-      - merge the branch you just commited and pushed, into main
-      - restore untracked files from `/tmp`
-      - create new branch as described below (Unless it's a final wrap-up request)
-      - port `docs/README_handoff.md` contents to `docs/README_project_history.md`
-      - Archive `docs/README_handoff.md` to `docs/archive/handoffs/[branch_name_dir]/README_handoff_[timestamp].md` and then wipe the original file while preserving its essential structure (verify you ported correctly its contents to `docs/README_project_history.md`)
-      - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_project_history.md` to resume the work with proper context knowledge to ensure a smooth transition.
-      - Update `docs/nvr_engineering_architecture.html`
-
-
+  - commit and push current branch
+  - make a copy of modified untracked files into `/tmp`
+  - such files include, but are not limited to, `CLAUDE.md`, `docs/README_handoff.md`, ``docs/README_handoff.md`, [ + any other returned byt the`git status` command: it could be one that I personnaly edited!])
+  - checkout to main
+  - merge the branch you just commited and pushed, into main
+  - restore untracked files from `/tmp`
+  - create new branch as described below (Unless it's a final wrap-up request)
+  - port `docs/README_handoff.md` contents to `docs/README_project_history.md`
+  - Archive `docs/README_handoff.md` to `docs/history/handoffs/[branch_name_dir]/README_handoff_[timestamp].md` and then wipe the original file while preserving its essential structure (verify you ported correctly its contents to `docs/README_project_history.md`)
+  - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_project_history.md` to resume the work with proper context knowledge to ensure a smooth transition.
+  - Update `docs/nvr_engineering_architecture.html`
+  - Update `REAMDME.md` to better reflect current architecture & functionalities, if relevant.
+  - Update `docs/nvr_engineering_architecture.html` to better reflect current architecture, if relevant.
 
 **Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
 

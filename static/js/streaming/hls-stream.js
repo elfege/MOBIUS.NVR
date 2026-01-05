@@ -114,6 +114,8 @@ export class HLSStreamManager {
      */
     async startStream(cameraId, videoElement, streamType = 'sub') {
         try {
+            console.log(`[HLS] Starting ${streamType} stream for ${cameraId}...`);
+
             // Start stream on backend
             const response = await fetch(`/api/stream/start/${cameraId}`, {
                 method: 'POST',
@@ -124,13 +126,17 @@ export class HLSStreamManager {
             if (!response.ok) throw new Error('Failed to start stream');
             const startInfo = await response.json().catch(() => ({}));
 
+            console.log(`[HLS] Backend response for ${cameraId}:`, startInfo);
+
             // Choose playlist URL
             let playlistUrl;
             if (typeof startInfo?.stream_url === 'string' && startInfo.stream_url.startsWith('/hls/')) {
                 playlistUrl = startInfo.stream_url;
+                console.log(`[HLS] Using backend stream_url: ${playlistUrl}`);
             } else {
                 const ts = Date.now();
                 playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${ts}`;
+                console.log(`[HLS] Using fallback URL: ${playlistUrl}`);
                 await new Promise(r => setTimeout(r, 200));
             }
 

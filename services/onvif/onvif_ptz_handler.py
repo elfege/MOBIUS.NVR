@@ -94,10 +94,16 @@ class ONVIFPTZHandler:
             if not username or not password:
                 return False, "Missing credentials for camera"
 
+            # Get ONVIF port - skip if None (camera doesn't support ONVIF)
+            onvif_port = camera_config.get('onvif_port')
+            if onvif_port is None:
+                logger.debug(f"Camera {camera_serial} has no ONVIF port configured, skipping PTZ move")
+                return False, "Camera does not support ONVIF"
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
-                port=camera_config.get('onvif_port', 80),
+                port=onvif_port,
                 username=username,
                 password=password,
                 camera_serial=camera_serial
@@ -190,11 +196,17 @@ class ONVIFPTZHandler:
             username, password = cls._get_credentials(camera_serial, camera_type)
             if not username or not password:
                 return False, []
-            
+
+            # Get ONVIF port - skip if None (camera doesn't support ONVIF)
+            onvif_port = camera_config.get('onvif_port')
+            if onvif_port is None:
+                logger.debug(f"Camera {camera_serial} has no ONVIF port configured, skipping preset lookup")
+                return False, []
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
-                port=camera_config.get('onvif_port', 80),
+                port=onvif_port,
                 username=username,
                 password=password,
                 camera_serial=camera_serial
@@ -258,35 +270,41 @@ class ONVIFPTZHandler:
             host = camera_config.get('host')
             if not host:
                 return False, "No host configured for camera"
-            
+
             # Get credentials via provider
             camera_type = camera_config.get('type')
             username, password = cls._get_credentials(camera_serial, camera_type)
             if not username or not password:
                 return False, "Missing credentials for camera"
-            
+
+            # Get ONVIF port - skip if None (camera doesn't support ONVIF)
+            onvif_port = camera_config.get('onvif_port')
+            if onvif_port is None:
+                logger.debug(f"Camera {camera_serial} has no ONVIF port configured, skipping goto_preset")
+                return False, "Camera does not support ONVIF"
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
-                port=camera_config.get('onvif_port', 80),
+                port=onvif_port,
                 username=username,
                 password=password,
                 camera_serial=camera_serial
             )
-            
+
             if not camera:
                 return False, "Failed to connect to camera via ONVIF"
-            
+
             # Get PTZ service
             ptz_service = ONVIFClient.get_ptz_service(camera)
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
-            
+
             # Get profile token
             profile_token = ONVIFClient.get_profile_token(camera)
             if not profile_token:
                 return False, "Could not get media profile token"
-            
+
             # Create goto preset request
             request = ptz_service.create_type('GotoPreset')
             request.ProfileToken = profile_token
@@ -337,35 +355,41 @@ class ONVIFPTZHandler:
             host = camera_config.get('host')
             if not host:
                 return False, "No host configured for camera"
-            
+
             # Get credentials via provider
             camera_type = camera_config.get('type')
             username, password = cls._get_credentials(camera_serial, camera_type)
             if not username or not password:
                 return False, "Missing credentials for camera"
-            
+
+            # Get ONVIF port - skip if None (camera doesn't support ONVIF)
+            onvif_port = camera_config.get('onvif_port')
+            if onvif_port is None:
+                logger.debug(f"Camera {camera_serial} has no ONVIF port configured, skipping set_preset")
+                return False, "Camera does not support ONVIF"
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
-                port=camera_config.get('onvif_port', 80),
+                port=onvif_port,
                 username=username,
                 password=password,
                 camera_serial=camera_serial
             )
-            
+
             if not camera:
                 return False, "Failed to connect to camera via ONVIF"
-            
+
             # Get PTZ service
             ptz_service = ONVIFClient.get_ptz_service(camera)
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
-            
+
             # Get profile token
             profile_token = ONVIFClient.get_profile_token(camera)
             if not profile_token:
                 return False, "Could not get media profile token"
-            
+
             # Create set preset request
             request = ptz_service.create_type('SetPreset')
             request.ProfileToken = profile_token
@@ -406,35 +430,41 @@ class ONVIFPTZHandler:
             host = camera_config.get('host')
             if not host:
                 return False, "No host configured for camera"
-            
+
             # Get credentials via provider
             camera_type = camera_config.get('type')
             username, password = cls._get_credentials(camera_serial, camera_type)
             if not username or not password:
                 return False, "Missing credentials for camera"
-            
+
+            # Get ONVIF port - skip if None (camera doesn't support ONVIF)
+            onvif_port = camera_config.get('onvif_port')
+            if onvif_port is None:
+                logger.debug(f"Camera {camera_serial} has no ONVIF port configured, skipping remove_preset")
+                return False, "Camera does not support ONVIF"
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
-                port=camera_config.get('onvif_port', 80),
+                port=onvif_port,
                 username=username,
                 password=password,
                 camera_serial=camera_serial
             )
-            
+
             if not camera:
                 return False, "Failed to connect to camera via ONVIF"
-            
+
             # Get PTZ service
             ptz_service = ONVIFClient.get_ptz_service(camera)
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
-            
+
             # Get profile token
             profile_token = ONVIFClient.get_profile_token(camera)
             if not profile_token:
                 return False, "Could not get media profile token"
-            
+
             # Create remove preset request
             request = ptz_service.create_type('RemovePreset')
             request.ProfileToken = profile_token

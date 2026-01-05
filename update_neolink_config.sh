@@ -34,6 +34,7 @@ if [[ -z "$REOLINK_USERNAME" ]] || [[ -z "$REOLINK_PASSWORD" ]]; then
 fi
 
 # Extract NEOLINK cameras from cameras.json
+# Now includes neolink.stream field (defaults to "subStream" for backward compatibility)
 NEOLINK_CAMERAS=$(jq -r '
     .devices | to_entries[] |
     select(.value.stream_type == "NEOLINK") |
@@ -43,7 +44,8 @@ NEOLINK_CAMERAS=$(jq -r '
         name: .value.name,
         host: .value.host,
         port: (.value.neolink.port // 8554),
-        buffer_size: (.value.neolink.buffer_size // 100)
+        buffer_size: (.value.neolink.buffer_size // 100),
+        stream: (.value.neolink.stream // "subStream")
     } | @json
 ' "$CAMERAS_JSON")
 
@@ -95,6 +97,7 @@ echo "$NEOLINK_CAMERAS" | while read -r camera_json; do
     name=$(echo "$camera_json" | jq -r '.name')
     host=$(echo "$camera_json" | jq -r '.host')
     buffer_size=$(echo "$camera_json" | jq -r '.buffer_size')
+    stream=$(echo "$camera_json" | jq -r '.stream')
 
     echo "" >> "$NEOLINK_TOML"
     cat >> "$NEOLINK_TOML" << EOF
@@ -110,7 +113,7 @@ username = "$REOLINK_USERNAME"
 password = "$REOLINK_PASSWORD"
 uid = ""
 address = "$host:9000"
-stream = "subStream"
+stream = "$stream"
 
 # Buffer settings
 # - buffer_size: Number of frames to keep in memory before overflow

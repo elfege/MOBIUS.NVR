@@ -48,7 +48,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -82,7 +83,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -178,7 +179,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -212,7 +214,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -313,7 +315,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -347,7 +350,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -448,7 +451,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -482,7 +486,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -583,7 +587,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -617,7 +622,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -718,7 +723,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -752,7 +758,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -853,7 +859,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -887,7 +894,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -987,7 +994,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1021,7 +1029,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1122,7 +1130,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1156,7 +1165,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1255,7 +1264,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "rtsp": null,
       "hidden": true,
@@ -1309,7 +1319,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1406,7 +1416,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1440,7 +1451,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1453,7 +1464,7 @@
           "bufsize": "4000k",
           "x264-params": "scenecut=0:min-keyint=15:open_gop=0",
           "force_key_frames": "expr:gte(t,n_forced*1)",
-          "vf": "scale=1280:720"
+          "vf": "scale=2560:1440"
         }
       },
       "rtsp_input": {
@@ -1537,7 +1548,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1571,7 +1583,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1667,7 +1679,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1701,7 +1714,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1797,7 +1810,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1831,7 +1845,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -1927,7 +1941,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -1961,7 +1976,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -2058,7 +2073,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -2092,7 +2108,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -2189,7 +2205,8 @@
       },
       "neolink": {
         "port": 8554,
-        "buffer_size": 20
+        "buffer_size": 20,
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -2223,7 +2240,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",
@@ -2303,7 +2320,7 @@
       "neolink": {
         "port": 8554,
         "buffer_size": 20,
-        "stream": "subStream"
+        "stream": "mainStream"
       },
       "ll_hls": {
         "publisher": {
@@ -2326,9 +2343,9 @@
           "tune": "zerolatency",
           "profile:v": "baseline",
           "pix_fmt": "yuv420p",
-          "r": 15,
-          "g": 15,
-          "keyint_min": 15,
+          "r": 8,
+          "g": 8,
+          "keyint_min": 8,
           "b:v": "800k",
           "maxrate": "800k",
           "bufsize": "1600k",
@@ -2337,7 +2354,7 @@
           "vf": "scale=320:240"
         },
         "video_main": {
-          "c:v": "libx264",
+          "c:v": "copy",
           "preset": "veryfast",
           "tune": "zerolatency",
           "profile:v": "baseline",

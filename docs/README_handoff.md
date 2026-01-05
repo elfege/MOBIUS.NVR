@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 21:57 EST*
+*Last updated: January 4, 2026 22:05 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -23,22 +23,29 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Previous Session Summary
 
-**Branch merged to main:** `mjpeg_status_fix_JAN_4_2026_b`
+**Branch merged to main:** `webrtc_implementation_JAN_4_2026_a`
 
 **What was accomplished:**
 
-1. **MJPEG Reolink Status Fix** - Pass 'sub' stream parameter to fix "Starting" stuck status
-2. **Latency Documentation** - Explained why 200ms/100ms no longer works with transcoding
-3. **active_streams Cleanup** - Fixed FFmpeg failure cleanup (removed status check)
+1. **WebRTC Implementation** - Added WEBRTC as stream_type option for sub-second latency (~200-500ms)
+2. **Backend Pipeline** - Added WEBRTC to LL_HLS/NEOLINK FFmpeg→MediaMTX branch in stream_manager.py
+3. **ICE Fix** - Added host IP to webrtcAdditionalHosts for proper ICE connectivity from Docker
 
 ---
 
 ## Current Session
 
-**Branch:** `webrtc_implementation_JAN_4_2026_a`
-**Date:** January 4, 2026 (16:35 - 21:57 EST)
+**Branch:** `docs_update_JAN_4_2026_a`
+**Date:** January 4, 2026 (22:05 - EST)
 
-### WebRTC Implementation - COMPLETE AND TESTED
+### Plan for This Session
+
+1. **Test motion detection** - Verify still working after WebRTC changes
+2. **Test recording** - Verify continuous/motion recording still working
+3. **Update README.md** - Add WebRTC documentation, update outdated sections
+4. **Update nvr_engineering_architecture.html** - Add WebRTC to architecture diagrams
+
+### WebRTC Implementation (Previous Session) - COMPLETE AND TESTED
 
 Added WEBRTC as a `stream_type` option for sub-second latency (~200-500ms vs 2-4s LL-HLS).
 

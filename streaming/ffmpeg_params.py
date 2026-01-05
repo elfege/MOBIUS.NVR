@@ -354,7 +354,10 @@ def build_ll_hls_dual_output_publish_params(
         out: List[str] = []
 
         # Check if main stream should be passthrough (c:v = "copy")
-        main_is_passthrough = str(vid_main.get("c:v", "")).lower() == "copy"
+        main_cv = vid_main.get("c:v", "")
+        logger.debug(f"DEBUG {camera_name}: vid_main = {vid_main}, c:v = '{main_cv}'")
+        main_is_passthrough = str(main_cv).lower() == "copy"
+        logger.info(f"{camera_name}: main_is_passthrough = {main_is_passthrough}")
 
         # Video encoding params (excluding vf which is handled separately)
         video_key_order = [

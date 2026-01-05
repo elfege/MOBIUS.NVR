@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 14:39 EST*
+*Last updated: January 5, 2026 15:50 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,34 +24,45 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `reolink_aio_stability_JAN_5_2026_b`
-**Date:** January 5, 2026 (14:39-ongoing EST)
+**Date:** January 5, 2026 (14:39-15:50 EST)
 
-**Context compaction occurred at 14:39 EST** - Continuing from `_a` branch.
+**Context compaction occurred at 15:37 EST** - Continuing E1 mainStream work.
 
-### Work Completed in `_a` Branch
+### Work Completed This Session
 
-1. **reolink_aio AttributeError fix** - Defensive cleanup for `_transport.close()` errors
-2. **UnexpectedDataError exponential backoff** - Reduces log spam for transient camera errors
-3. **E1 Latency Passthrough Support** - Modified `streaming/ffmpeg_params.py` to support main stream passthrough
+#### 1. Configurable Neolink Stream Selection
 
-### Issue 3: E1 Latency (~7-8 seconds behind native app)
+**Problem:** E1 camera showed wrong resolution (704x480 subStream instead of 2304x1296 mainStream)
 
-**Root Cause:** FFmpeg re-encoding the main stream adds ~2-3 seconds of latency.
+**Root Cause:** `update_neolink_config.sh` was hardcoding `stream = "subStream"` in neolink.toml
 
-**Solution Implemented:** Added passthrough mode to `build_ll_hls_dual_output_publish_params()`:
+**Fix:** Modified script to read `neolink.stream` from cameras.json:
 
-- Detects `video_main.c:v == "copy"` in camera config
-- In passthrough mode: main stream maps directly from input (no transcode)
-- Sub stream still transcoded for grid thumbnails
-- Commit: `7d46da4`
+- `update_neolink_config.sh` lines 48, 98, 114 - Now uses `neolink.stream` field
+- Commit: `f946a63`
 
-**Next Step:** User needs to update E1's `cameras.json` to test passthrough:
+#### 2. Neolink URL Builder Fix
 
-```json
-"video_main": {
-  "c:v": "copy"
-}
+**Problem:** After setting `neolink.stream = "mainStream"`, FFmpeg failed with `Error opening input file rtsp://neolink:8554/.../sub`
+
+**Root Cause:** When Neolink is configured for mainStream, it ONLY exposes `/main` RTSP paths - NOT `/sub`. But the URL builder was still requesting `/sub`.
+
+**Fix:** Modified `streaming/handlers/reolink_stream_handler.py` `_build_NEOlink_url()`:
+
+- Checks `neolink.stream` config
+- When "mainStream", forces `/main` path regardless of requested stream_type
+- Commit: `6c193db`
+
+**Result:** E1 now streaming successfully via mainStream:
+
+```text
+Built Neolink bridge URL for REOLINK Cat Feeders: rtsp://neolink:8554/95270000YPTKLLD6/main
+✅ Started: REOLINK Cat Feeders
 ```
+
+#### 3. User Configured All Cameras for Passthrough
+
+User set `video_main.c:v = "copy"` for all cameras in cameras.json (not just Reolink)
 
 ---
 

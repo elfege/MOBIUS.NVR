@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Dict, Optional
 from reolink_aio.api import Host
+from reolink_aio.exceptions import UnexpectedDataError
 
 logger = logging.getLogger(__name__)
 
@@ -159,18 +160,27 @@ class ReolinkMotionService:
             logger.error(f"Missing credentials for {camera_id}")
             return
         
-        # Connection retry loop
-        retry_delay = 10  # seconds
+        # Connection retry loop with exponential backoff
+        base_retry_delay = 10  # seconds
+        max_retry_delay = 300  # 5 minutes max
+        retry_delay = base_retry_delay
+        consecutive_data_errors = 0  # Track UnexpectedDataError specifically
+
         while self.running:
             try:
                 logger.info(f"Connecting to {camera_name} ({camera_ip})...")
-                
+
                 # Create Host instance
                 host = Host(host=camera_ip, username=username, password=password)
                 self.hosts[camera_id] = host
-                
-                # Get device capabilities
+
+                # Get device capabilities - may raise UnexpectedDataError
                 await host.get_host_data()
+
+                # Success - reset backoff counters
+                retry_delay = base_retry_delay
+                consecutive_data_errors = 0
+
                 logger.info(
                     f"Connected to {camera_name}: "
                     f"{host.camera_model(0) if hasattr(host, 'camera_model') else 'Unknown'}"
@@ -212,8 +222,40 @@ class ReolinkMotionService:
 
                 logger.info(f"Disconnected from {camera_name}")
                 
+            except UnexpectedDataError as e:
+                # Camera responded with fewer items than requested - common transient error
+                # Apply exponential backoff to reduce log spam and camera load
+                consecutive_data_errors += 1
+                retry_delay = min(retry_delay * 2, max_retry_delay)
+
+                # Only log at WARNING level for first few errors, then DEBUG
+                if consecutive_data_errors <= 3:
+                    logger.warning(
+                        f"Camera {camera_name} response mismatch (attempt {consecutive_data_errors}): {e}"
+                    )
+                else:
+                    logger.debug(
+                        f"Camera {camera_name} response mismatch (attempt {consecutive_data_errors}): {e}"
+                    )
+
+                # Cleanup partial connection
+                if camera_id in self.hosts:
+                    try:
+                        await self.hosts[camera_id].logout()
+                    except Exception:
+                        pass
+                    del self.hosts[camera_id]
+
+                if self.running:
+                    logger.info(f"Retrying {camera_name} in {retry_delay}s (backoff due to data errors)")
+                    await asyncio.sleep(retry_delay)
+
             except Exception as e:
                 logger.error(f"Error monitoring {camera_name}: {e}", exc_info=True)
+
+                # Reset data error counter on different error type
+                consecutive_data_errors = 0
+                retry_delay = base_retry_delay
 
                 # Cleanup host instance - defensive checks for partially initialized connections
                 if camera_id in self.hosts:

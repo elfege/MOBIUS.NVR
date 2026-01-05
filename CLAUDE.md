@@ -101,7 +101,7 @@ Multi-camera NVR (Network Video Recorder) system supporting:
   - Archive `docs/README_handoff.md` to `docs/history/handoffs/[branch_name_dir]/README_handoff_[timestamp].md` and then wipe the original file while preserving its essential structure (verify you ported correctly its contents to `docs/README_project_history.md`)
   - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_project_history.md` to resume the work with proper context knowledge to ensure a smooth transition.
   - Update `docs/nvr_engineering_architecture.html`
-  - Update `REAMDME.md` to better reflect current architecture & functionalities, if relevant.
+  - Update `README.md` to better reflect current architecture & functionalities, if relevant.
   - Update `docs/nvr_engineering_architecture.html` to better reflect current architecture, if relevant.
 
 **Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`

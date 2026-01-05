@@ -15,9 +15,59 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 04:15 EST*
+*Last updated: January 5, 2026 10:26 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Current Session
+
+**Branch:** `fix_e1_stream_restart_btn_JAN_5_2026_a`
+**Date:** January 5, 2026 (10:15-10:26 EST)
+
+### Issue: E1 Stream Looping + Missing Restart Button
+
+User reported:
+
+1. E1 camera (95270000YPTKLLD6) playing same content in loops
+2. Need a "restart camera" button that restarts backend FFmpeg (like Blue-Iris)
+
+### Implementation
+
+**1. Backend API Endpoint:** `app.py` (10:20 EST)
+
+Added `/api/stream/restart/<camera_serial>` endpoint:
+
+- Stops FFmpeg process
+- Brief socket release delay (0.5s)
+- Starts fresh stream
+- Returns new stream URL
+- Excludes MJPEG (stateless protocol)
+
+**2. Frontend Restart Button:** `templates/streams.html`, `static/js/streaming/stream.js` (10:25 EST)
+
+- Added orange "restart" button (`fa-redo-alt` icon) to stream controls
+- Click handler calls `/api/stream/restart` then reconnects HLS.js/WebRTC
+- Shows "Restarting..." status during operation
+
+**3. CSS Styling:** `static/css/components/buttons.css`
+
+- Added `.btn-warning` style (orange color)
+
+### Button Differences
+
+| Button | Icon | Action |
+|--------|------|--------|
+| Play (green) | fa-play | Start stream (backend + frontend) |
+| Stop (red) | fa-stop | Stop stream (backend + frontend) |
+| Refresh (blue) | fa-sync-alt | HLS.js client reconnect only |
+| Restart (orange) | fa-redo-alt | Kill FFmpeg + restart + reconnect |
+
+### Commits
+
+- `81097c3` - Add /api/stream/restart endpoint for backend FFmpeg restart
+- `8307bfa` - Add restart button to camera UI for backend FFmpeg restart
 
 ---
 

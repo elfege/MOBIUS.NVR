@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 22:35 EST*
+*Last updated: January 5, 2026 03:30 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -23,114 +23,78 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Previous Session Summary
 
-**Branch merged to main:** `webrtc_implementation_JAN_4_2026_a`
+**Branch merged to main:** `docs_update_JAN_4_2026_a`
 
 **What was accomplished:**
 
-1. **WebRTC Implementation** - Added WEBRTC as stream_type option for sub-second latency (~200-500ms)
-2. **Backend Pipeline** - Added WEBRTC to LL_HLS/NEOLINK FFmpeg→MediaMTX branch in stream_manager.py
-3. **ICE Fix** - Added host IP to webrtcAdditionalHosts for proper ICE connectivity from Docker
+1. **Motion Detection Fix for WEBRTC** - Added WEBRTC to MediaMTX stream checks in ffmpeg_motion_detector.py and recording_service.py
+2. **README.md Update** - Added WebRTC documentation, updated architecture diagram
+3. **Engineering Architecture Update** - Added WebRTC to all diagrams in nvr_engineering_architecture.html
 
 ---
 
 ## Current Session
 
-**Branch:** `docs_update_JAN_4_2026_a`
-**Date:** January 4, 2026 (22:05 - 22:35 EST)
+**Branch:** `ui_performance_JAN_5_2026_a`
+**Date:** January 5, 2026 (03:30 - EST)
 
 ### Plan for This Session
 
-1. **Test motion detection** - Verify still working after WebRTC changes
-2. **Test recording** - Verify continuous/motion recording still working
-3. **Update README.md** - Add WebRTC documentation, update outdated sections
-4. **Update nvr_engineering_architecture.html** - Add WebRTC to architecture diagrams
+1. **Fix slow UI startup** - UI takes forever to load after restart (71+ retry attempts observed)
+   - Root cause: Flask takes long to become ready while starting all FFmpeg processes
+   - Multiple clients (192.168.10.47, 192.168.10.110, 192.168.10.15) all waiting
+   - All get "Connection refused" from upstream (172.19.0.6:5000)
 
-### WebRTC Implementation (Previous Session) - COMPLETE AND TESTED
+2. **Fix WebRTC latency** - Currently 4-5s instead of expected ~200ms
+   - User changed mediamtx.yml hlsSegmentDuration to 200ms/100ms
+   - This is documented as only working with direct RTSP passthrough (no transcode)
+   - With FFmpeg transcoding, these settings cause MediaMTX instability
+   - Need to investigate why WebRTC latency is so high despite being UDP-based
 
-Added WEBRTC as a `stream_type` option for sub-second latency (~200-500ms vs 2-4s LL-HLS).
+### Observed Issues from Logs
 
-**Phase 1: MediaMTX Configuration**
-- [mediamtx.yml:109-119](packager/mediamtx.yml#L109-L119) - WebRTC global settings
-- [mediamtx.yml:117](packager/mediamtx.yml#L117) - `webrtcAdditionalHosts: [192.168.10.20]` for ICE
-- [docker-compose.yml:176-177](docker-compose.yml#L176-L177) - Exposed ports 8889 (HTTP), 8189 (UDP)
+**nvr-edge logs during startup:**
+```
+[error] connect() failed (111: Connection refused) while connecting to upstream
+client: 192.168.10.110, request: "GET /api/status", attempt=74
+client: 192.168.10.47, request: "GET /api/camera/state/T8416P0023370398", attempt=3
+```
 
-**Phase 2: Frontend WebRTC Manager**
-- [webrtc-stream.js](static/js/streaming/webrtc-stream.js) - NEW FILE
-  - WebRTCStreamManager class using WHEP protocol
-  - Green latency badge (~200ms display)
-  - ICE state monitoring for health
+**High CPU FFmpeg processes:**
+- T8416P0023370398 (Office Desk): 73% CPU
+- T8416P00233717CB: 69% CPU
+- C6F0SgZ0N0PoL2 (SV3C_Living_3): 45% CPU
 
-**Phase 3: Stream.js Integration (7 locations)**
-- [stream.js:11](static/js/streaming/stream.js#L11) - Import WebRTCStreamManager
-- [stream.js:20](static/js/streaming/stream.js#L20) - Instantiate webrtcManager
-- [stream.js:335-336](static/js/streaming/stream.js#L335-L336) - Refresh handler
-- [stream.js:640-642](static/js/streaming/stream.js#L640-L642) - startStream dispatch
-- [stream.js:702-703](static/js/streaming/stream.js#L702-L703) - stopIndividualStream
-- [stream.js:727](static/js/streaming/stream.js#L727) - stopAllStreams
-- [stream.js:800-801](static/js/streaming/stream.js#L800-L801) - restartStream
-- [stream.js:916-920](static/js/streaming/stream.js#L916-L920) - restartWebRTCStream method
-- [stream.js:968-970](static/js/streaming/stream.js#L968-L970) - attachHealthMonitor
-- [stream.js:1071-1088](static/js/streaming/stream.js#L1071-L1088) - Fullscreen main stream switch
-- [stream.js:1154-1170](static/js/streaming/stream.js#L1154-L1170) - Fullscreen pause
-- [stream.js:1225-1243](static/js/streaming/stream.js#L1225-L1243) - Fullscreen switch back
-- [stream.js:1289-1303](static/js/streaming/stream.js#L1289-L1303) - Fullscreen resume
+### Key Files to Investigate
 
-**Phase 4: Health Monitor**
-- [health.js:238-253](static/js/streaming/health.js#L238-L253) - attachWebRTC method
+- [app.py](app.py) - Flask startup, camera initialization
+- [stream_manager.py](streaming/stream_manager.py) - Stream startup sequencing
+- [mediamtx.yml](packager/mediamtx.yml) - HLS segment settings (200ms/100ms may be too aggressive)
+- [webrtc-stream.js](static/js/streaming/webrtc-stream.js) - WebRTC latency measurement
 
-**Phase 5: Backend Recognition**
-- [app.py:777-784](app.py#L777-L784) - Return actual stream_type in state API
-- [stream_manager.py:279,299,475](streaming/stream_manager.py#L279) - Add WEBRTC to LL_HLS/NEOLINK FFmpeg pipeline
-- [update_mediamtx_paths.sh:28](update_mediamtx_paths.sh#L28) - Include WEBRTC in path generation
+### Potential Solutions to Explore
 
-### How to Test WEBRTC
+**For slow UI startup:**
+1. Add `/api/health` endpoint that returns quickly before all cameras are ready
+2. Start streams in background, let UI show "starting" state
+3. Implement graceful degradation - show UI immediately, streams populate as ready
 
-1. In `cameras.json`, set a camera to `"stream_type": "WEBRTC"`
-2. Refresh the streams page
-3. Camera should connect via WebRTC with green latency badge showing ~200ms
-4. The backend FFmpeg→MediaMTX pipeline is unchanged (WebRTC is delivery method)
-
-### Architecture Notes
-
-- **WHEP Protocol**: Browser sends SDP offer to `http://host:8889/{camera_id}/whep`
-- **MediaMTX handles WebRTC**: No new container needed
-- **Port 8889**: HTTP for WHEP signaling
-- **Port 8189/UDP**: WebRTC media (RTP)
-- **Same backend**: FFmpeg publishes RTSP to MediaMTX, MediaMTX serves both HLS and WebRTC
+**For WebRTC latency:**
+1. Revert mediamtx.yml to stable 500ms/250ms settings
+2. Check if WebRTC is actually using UDP or falling back to TCP
+3. Verify ICE candidates are being exchanged correctly
+4. Check browser network tab for actual WebRTC connection stats
 
 ---
 
 ## TODO List
 
-**Testing (COMPLETED):**
+**This Session:**
 
-- [x] Test WEBRTC with cameras to verify sub-second latency
-  - Tested with 95270001CSO4BPDZ (REOLINK OFFICE) and T8416P0023370398 (Office Desk)
-  - Both working with WebRTC sub-second latency
-- [x] Test motion detection with WEBRTC cameras
-  - Found bug: WEBRTC cameras weren't included in MediaMTX stream checks
-  - Fixed in ffmpeg_motion_detector.py and recording_service.py
-  - WEBRTC cameras now use correct 0.002 sensitivity threshold
-  - Motion recordings verified for both test cameras (timestamps 22:11-22:15)
-- [x] Test recording with WEBRTC cameras
-  - Motion recordings working via MediaMTX RTSP tap
-  - Verified files being written to /mnt/sdc/NVR_Recent/motion/
-
-**Documentation Updated:**
-
-- [x] Update README.md with WebRTC documentation
-  - Added WebRTC (~200ms) as primary streaming option
-  - Updated architecture diagram with detailed flow
-  - Added WebRTC to Streaming Protocols section
-  - Updated Docker Services with port mappings
-  - Updated Performance Considerations
-
-- [x] Update docs/nvr_engineering_architecture.html
-  - Added WebRTC to system overview and key metrics
-  - Updated architecture diagrams with WebRTC WHEP flow
-  - Added webrtc-stream.js to frontend module diagram
-  - Updated Latency Characteristics section
-  - Updated Development Timeline
+- [ ] Investigate Flask startup time and why it blocks UI
+- [ ] Add health check endpoint that responds before cameras ready
+- [ ] Revert mediamtx.yml HLS settings if causing WebRTC issues
+- [ ] Measure actual WebRTC latency with browser dev tools
 
 **Future Enhancements:**
 

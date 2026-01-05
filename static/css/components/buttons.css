@@ -59,6 +59,14 @@
     background: #138496;
 }
 
+.btn-warning {
+    background: #fd7e14;
+}
+
+.btn-warning:hover {
+    background: #e76500;
+}
+
 .btn-primary {
     background: #007bff;
 }

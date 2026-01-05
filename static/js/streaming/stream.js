@@ -337,6 +337,59 @@ export class MultiStreamManager {
             }
         });
 
+        // Restart stream handler (backend FFmpeg restart)
+        // Unlike refresh which just reconnects HLS.js, this kills and restarts FFmpeg
+        this.$container.on('click', '.restart-stream-btn', async (e) => {
+            e.stopPropagation();
+            const $streamItem = $(e.target).closest('.stream-item');
+            const cameraId = $streamItem.data('camera-serial');
+            const streamType = $streamItem.data('stream-type');
+            const videoElement = $streamItem.find('.stream-video')[0];
+
+            // MJPEG streams don't support restart (stateless)
+            if (streamType === 'MJPEG') {
+                console.log(`[Restart] ${cameraId}: MJPEG streams do not support restart`);
+                return;
+            }
+
+            console.log(`[Restart] ${cameraId}: Initiating backend FFmpeg restart...`);
+            this.setStreamStatus($streamItem, 'loading', 'Restarting...');
+
+            try {
+                // Call backend restart endpoint
+                const response = await fetch(`/api/stream/restart/${cameraId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'sub' })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.error || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log(`[Restart] ${cameraId}: Backend restart successful, stream_url: ${result.stream_url}`);
+
+                // Brief delay for FFmpeg to stabilize
+                await new Promise(r => setTimeout(r, 1000));
+
+                // Reconnect HLS.js to new stream
+                if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                    await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+                } else if (streamType === 'WEBRTC') {
+                    await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                }
+
+                this.setStreamStatus($streamItem, 'active', '');
+                console.log(`[Restart] ${cameraId}: Stream fully restarted`);
+
+            } catch (error) {
+                console.error(`[Restart] ${cameraId}: Failed - ${error.message}`);
+                this.setStreamStatus($streamItem, 'error', `Restart failed: ${error.message}`);
+            }
+        });
+
         // ESC key to exit CSS fullscreen
         $(document).on('keydown', (e) => {
             if (e.key === 'Escape') {

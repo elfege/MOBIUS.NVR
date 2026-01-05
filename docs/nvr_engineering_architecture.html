@@ -196,7 +196,7 @@
         <h1>Unified NVR System - Engineering Architecture</h1>
         
         <div class="critical-note">
-            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via LL-HLS, HLS, MJPEG, RTMP, and Neolink (Baichuan) protocols. <em>Last updated: January 3, 2026.</em>
+            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, and Neolink (Baichuan) protocols. <em>Last updated: January 4, 2026.</em>
         </div>
 
         <div class="key-metrics">
@@ -209,8 +209,8 @@
                 <div class="metric-label">Vendor Types</div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">~1.8s</div>
-                <div class="metric-label">LL-HLS Latency Floor</div>
+                <div class="metric-value">~200ms</div>
+                <div class="metric-label">WebRTC Latency</div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">3</div>
@@ -222,18 +222,19 @@
         <h2>Level 1: System Overview</h2>
 
         <div class="architecture-note">
-            <strong>High-Level Architecture:</strong> User browsers connect to a Flask web application which orchestrates camera streams via vendor-specific handlers. FFmpeg processes transcode RTSP sources to LL-HLS segments, packaged by MediaMTX for low-latency delivery. MediaMTX also provides RTSP re-export, allowing motion detection and recording services to tap streams without opening additional camera connections. Credentials are managed via AWS Secrets Manager. Neolink provides Baichuan-to-RTSP translation for cameras with broken RTSP (e.g., Reolink E1 series).
+            <strong>High-Level Architecture:</strong> User browsers connect to a Flask web application which orchestrates camera streams via vendor-specific handlers. FFmpeg processes transcode RTSP sources and publish to MediaMTX, which serves multiple delivery formats: WebRTC (WHEP) for ~200ms latency, LL-HLS for ~2s latency, and RTSP re-export for motion detection and recording services. This allows multiple consumers without opening additional camera connections. Credentials are managed via AWS Secrets Manager. Neolink provides Baichuan-to-RTSP translation for cameras with broken RTSP (e.g., Reolink E1 series).
         </div>
 
         <div class="diagram-container">
             <div class="mermaid">
                 graph LR
-                    A[Web Browser<br/>ES6 + jQuery + HLS.js] -->|HTTP/WebSocket| B[Flask App<br/>app.py:5000]
+                    A[Web Browser<br/>WebRTC + HLS.js + MJPEG] -->|HTTP/WebRTC| B[Flask App<br/>app.py:5000]
                     B -->|API Calls| C[StreamManager<br/>Orchestrator]
                     C -->|Strategy Pattern| D[Vendor Handlers<br/>Eufy/Reolink/UniFi/Amcrest/SV3C]
                     D -->|RTSP Input| E[FFmpeg<br/>Dual-Output Transcoder]
-                    E -->|RTSP Publish| F[MediaMTX<br/>LL-HLS Packager:8889]
-                    F -->|HLS Segments| A
+                    E -->|RTSP Publish| F[MediaMTX<br/>WebRTC:8889 HLS:8888]
+                    F -->|WebRTC WHEP ~200ms| A
+                    F -->|HLS Segments ~2s| A
                     F -->|RTSP Re-export| J[Motion Detection<br/>Recording Service]
 
                     G[(AWS Secrets<br/>Manager)] -.->|Credentials| D
@@ -296,9 +297,9 @@
             <h3>Technology Stack</h3>
             <ul>
                 <li><strong>Backend:</strong> Python 3.11 + Flask + Threading</li>
-                <li><strong>Frontend:</strong> ES6 + jQuery + HLS.js + Axios</li>
+                <li><strong>Frontend:</strong> ES6 + jQuery + WebRTC (WHEP) + HLS.js + Axios</li>
                 <li><strong>Video Processing:</strong> FFmpeg 7+ with dual-output support (sub + main streams)</li>
-                <li><strong>HLS Packaging:</strong> MediaMTX for LL-HLS delivery with RTSP re-export</li>
+                <li><strong>Stream Delivery:</strong> MediaMTX for WebRTC (~200ms), LL-HLS (~2s), and RTSP re-export</li>
                 <li><strong>Protocol Bridge:</strong> Neolink v0.6.2 for Baichuan-to-RTSP translation</li>
                 <li><strong>Containerization:</strong> Docker + Docker Compose</li>
                 <li><strong>Credentials:</strong> AWS Secrets Manager integration</li>
@@ -395,7 +396,7 @@
         <h2>Level 3: Streaming Data Flow</h2>
 
         <div class="architecture-note">
-            <strong>Protocol Pipeline:</strong> Camera RTSP sources are ingested by FFmpeg, transcoded with vendor-specific parameters, then published to MediaMTX via RTSP. A single FFmpeg process produces dual outputs: sub-stream (transcoded, scaled for grid view) and main-stream (passthrough for fullscreen). MediaMTX packages as Low-Latency HLS segments served via HLS.js, and also re-exports RTSP for motion detection and recording services to tap without opening additional camera connections.
+            <strong>Protocol Pipeline:</strong> Camera RTSP sources are ingested by FFmpeg, transcoded with vendor-specific parameters, then published to MediaMTX via RTSP. A single FFmpeg process produces dual outputs: sub-stream (transcoded, scaled for grid view) and main-stream (passthrough for fullscreen). MediaMTX provides multiple delivery options: WebRTC via WHEP protocol (~200ms latency), LL-HLS segments (~2s latency via HLS.js), and RTSP re-export for motion detection and recording services—all without opening additional camera connections.
         </div>
 
         <div class="diagram-container">
@@ -414,12 +415,14 @@
 
                     subgraph MediaMTX["MediaMTX Packager"]
                         INGEST[RTSP Ingest<br/>:8554]
-                        PACK[LL-HLS Packaging<br/>part_duration: 200ms<br/>segment_duration: 500ms]
-                        HLS[HLS Output<br/>:8889/hls/*/index.m3u8]
+                        PACK[LL-HLS Packaging<br/>part_duration: 250ms<br/>segment_duration: 500ms]
+                        HLS[HLS Output<br/>:8888/*/index.m3u8]
+                        WEBRTC[WebRTC Output<br/>:8889/*/whep ~200ms]
                         RTSP_OUT[RTSP Re-export<br/>:8554 for consumers]
                     end
 
                     subgraph Browser["Browser"]
+                        WEBRTCJS[WebRTC Player<br/>RTCPeerConnection]
                         HLSJS[HLS.js Player<br/>lowLatencyMode: true]
                         VIDEO[HTML5 Video]
                         HEALTH[Health Monitor<br/>Blank Frame Detection]
@@ -439,8 +442,11 @@
                     MAIN --> INGEST
                     INGEST --> PACK
                     PACK --> HLS
+                    INGEST --> WEBRTC
                     INGEST --> RTSP_OUT
+                    WEBRTC --> WEBRTCJS
                     HLS --> HLSJS
+                    WEBRTCJS --> VIDEO
                     HLSJS --> VIDEO
                     VIDEO --> HEALTH
                     RTSP_OUT --> MOTION
@@ -454,7 +460,9 @@
                     style INGEST fill:#6f42c1,color:#fff
                     style PACK fill:#6f42c1,color:#fff
                     style HLS fill:#6f42c1,color:#fff
+                    style WEBRTC fill:#00b894,color:#fff
                     style RTSP_OUT fill:#6f42c1,color:#fff
+                    style WEBRTCJS fill:#00b894,color:#fff
                     style HLSJS fill:#e1f5ff
                     style VIDEO fill:#e1f5ff
                     style HEALTH fill:#17a2b8,color:#fff
@@ -466,10 +474,12 @@
         <div class="alert-note">
             <h3>Latency Characteristics</h3>
             <ul>
-                <li><strong>LL-HLS Latency Floor:</strong> ~1.8 seconds minimum due to segmentation and browser decoding pipeline</li>
-                <li><strong>LL-HLS Optimization:</strong> 200ms parts, 500ms segments reduce latency vs traditional HLS (6-30s)</li>
+                <li><strong>WebRTC (Lowest):</strong> ~200-500ms via WHEP protocol; best for real-time PTZ control and monitoring</li>
+                <li><strong>LL-HLS:</strong> ~2-4 seconds due to segmentation and browser buffering; more compatible than WebRTC</li>
+                <li><strong>Classic HLS:</strong> 4-8 seconds; maximum compatibility, good for archive playback</li>
+                <li><strong>MJPEG:</strong> Sub-second latency via direct proxy; works for cameras with native MJPEG support</li>
                 <li><strong>Dual-Output Design:</strong> Single camera connection, two MediaMTX paths (sub/main) for grid and fullscreen views</li>
-                <li><strong>MJPEG Alternative:</strong> Sub-second latency possible via direct MJPEG proxy (no HLS segmentation)</li>
+                <li><strong>WebRTC LAN-Only:</strong> Current config uses direct ICE without STUN/TURN (add STUN for remote access)</li>
                 <li><strong>Neolink Bridge:</strong> Adds ~100-200ms for Baichuan-to-RTSP translation; required for cameras with broken RTSP</li>
             </ul>
         </div>
@@ -490,10 +500,12 @@
                     
                     Protocol -->|MJPEG| Skip[Skip FFmpeg<br/>Use MJPEG Proxy]
                     Protocol -->|RTMP| RTMP[Start FFmpeg<br/>-f flv stdout]
+                    Protocol -->|WEBRTC| WEBRTC[Start FFmpeg<br/>Publish to MediaMTX<br/>Browser uses WHEP]
                     Protocol -->|LL_HLS| LLHLS[Start FFmpeg<br/>Publish to MediaMTX]
                     Protocol -->|HLS| HLS[Start FFmpeg<br/>Write Local Segments]
-                    
+
                     RTMP --> Register[Register Active Stream]
+                    WEBRTC --> Register
                     LLHLS --> Register
                     HLS --> Register
                     
@@ -788,6 +800,7 @@
 
                     subgraph Streaming["Streaming Modules"]
                         StreamJS[stream.js<br/>Stream lifecycle + recovery]
+                        WebRTCJS[webrtc-stream.js<br/>WHEP RTCPeerConnection]
                         HLSJS[hls-stream.js<br/>HLS.js wrapper]
                         MJPEGJS[mjpeg-stream.js<br/>MJPEG img refresh]
                         HealthJS[health.js<br/>Blank frame detection]
@@ -807,8 +820,10 @@
                     end
 
                     Grid --> StreamJS
+                    StreamJS --> WebRTCJS
                     StreamJS --> HLSJS
                     StreamJS --> MJPEGJS
+                    WebRTCJS --> HealthJS
                     HLSJS --> HealthJS
                     HealthJS -->|Escalating Recovery| StreamJS
 
@@ -820,6 +835,7 @@
                     ConnMon -->|Server down| Grid
 
                     style StreamJS fill:#667eea,color:#fff
+                    style WebRTCJS fill:#00b894,color:#fff
                     style HLSJS fill:#28a745,color:#fff
                     style HealthJS fill:#fd7e14,color:#fff
                     style ConnMon fill:#dc3545,color:#fff
@@ -870,7 +886,7 @@
             <ul>
                 <li><strong>Strategy Pattern:</strong> Vendor-specific handlers (Eufy, Reolink, UniFi, Amcrest, SV3C) enable clean separation of camera protocols while sharing common streaming infrastructure</li>
                 <li><strong>Dual-Output Streaming:</strong> Single FFmpeg process per camera produces sub-stream (grid view) and main-stream (fullscreen) to MediaMTX</li>
-                <li><strong>MediaMTX Hub:</strong> Central stream multiplexer providing LL-HLS packaging and RTSP re-export for motion detection and recording</li>
+                <li><strong>MediaMTX Hub:</strong> Central stream multiplexer providing WebRTC (~200ms), LL-HLS (~2s), and RTSP re-export for motion detection and recording</li>
                 <li><strong>Protocol Bridge:</strong> Neolink v0.6.2 translates Baichuan protocol for cameras with broken RTSP</li>
                 <li><strong>Thread-Safe Design:</strong> RLock-protected shared state with per-camera restart locks; race condition fixes for status queries</li>
                 <li><strong>Credential Security:</strong> AWS Secrets Manager integration with vendor-specific credential providers</li>
@@ -885,7 +901,7 @@
         <div class="danger-note">
             <h3>Known Limitations & Vendor Quirks</h3>
             <ul>
-                <li><strong>LL-HLS Latency Floor:</strong> Browser-based HLS has unavoidable ~1.8s latency due to segmentation</li>
+                <li><strong>WebRTC LAN-Only:</strong> Current WebRTC config uses direct ICE without STUN/TURN (add STUN server for remote access)</li>
                 <li><strong>Dual-Output Status:</strong> Single FFmpeg with dual outputs (sub/main) implemented Jan 2026; previous composite key approach reverted Nov 2025</li>
                 <li><strong>Single-Connection Cameras:</strong> SV3C, Eufy, some Reolink support only one RTSP connection; must use MediaMTX RTSP re-export for motion/recording</li>
                 <li><strong>Eufy P2P Dependency:</strong> Eufy cameras require eufy-security-ws bridge; frequent WiFi disconnects observed</li>
@@ -929,7 +945,7 @@
                 <li><strong>Dec 31, 2025:</strong> SV3C camera integration, per-camera recording directories, motion detection fix</li>
                 <li><strong>Jan 1, 2026:</strong> MediaMTX centralization, pre-buffer recording, FFmpeg scene detection threshold fix, PTZ latency learning</li>
                 <li><strong>Jan 2, 2026:</strong> Neolink Baichuan bridge, NEOLINK → MediaMTX LL-HLS integration, dual-output FFmpeg, connection monitor</li>
-                <li><strong>Jan 3-4, 2026:</strong> CameraStateTracker service (MediaMTX API polling, exponential backoff), StreamWatchdog unified service (replaces per-stream watchdogs), UI recovery detection (auto-refresh on backend recovery)</li>
+                <li><strong>Jan 3-4, 2026:</strong> CameraStateTracker service (MediaMTX API polling, exponential backoff), StreamWatchdog unified service (replaces per-stream watchdogs), UI recovery detection (auto-refresh on backend recovery), WebRTC streaming via WHEP (~200ms latency)</li>
             </ul>
         </div>
 

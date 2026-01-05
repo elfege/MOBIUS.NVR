@@ -2,15 +2,25 @@
 """
 ONVIF Client - Base connection and authentication wrapper
 Handles ONVIF camera connections with connection pooling and error handling
+
+Note: Some cameras (especially Reolink) share ONVIF port with RTSP, causing
+intermittent BadStatusLine errors when RTSP interleaved data corrupts HTTP
+responses. This module includes retry logic to handle such cases.
 """
 
 import logging
+import time
 from typing import Optional, Dict
+from http.client import BadStatusLine
 from onvif import ONVIFCamera
 from onvif.exceptions import ONVIFError
 import zeep.exceptions
 
 logger = logging.getLogger(__name__)
+
+# Retry configuration for RTSP/ONVIF port collision issues
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 0.5
 
 
 class ONVIFClient:
@@ -178,35 +188,87 @@ class ONVIFClient:
             return None
     
     @classmethod
-    def get_profile_token(cls, camera: ONVIFCamera, profile_index: int = 0) -> Optional[str]:
+    def _is_rtsp_collision_error(cls, error: Exception) -> bool:
+        """
+        Check if error is caused by RTSP/ONVIF port collision
+
+        Some cameras share the same port for ONVIF and RTSP. When streaming is active,
+        RTSP interleaved binary data can corrupt HTTP responses, causing BadStatusLine
+        errors with binary data (indicated by '$' prefix in error message).
+
+        Args:
+            error: Exception to check
+
+        Returns:
+            True if error appears to be RTSP collision, False otherwise
+        """
+        error_str = str(error)
+        # RTSP interleaved data starts with '$' (0x24) followed by channel byte
+        # BadStatusLine errors containing binary data or '$' indicate collision
+        if 'BadStatusLine' in error_str:
+            return True
+        if 'Connection aborted' in error_str and '$' in error_str:
+            return True
+        return False
+
+    @classmethod
+    def get_profile_token(cls, camera: ONVIFCamera, profile_index: int = 0,
+                          camera_serial: Optional[str] = None) -> Optional[str]:
         """
         Get media profile token (required for most ONVIF operations)
-        
+
+        Includes retry logic for RTSP/ONVIF port collision errors. When BadStatusLine
+        errors occur (RTSP binary data corrupting HTTP response), the cached connection
+        is invalidated and retried.
+
         Args:
             camera: ONVIFCamera instance
             profile_index: Profile index (default: 0 = first profile)
-            
+            camera_serial: Optional camera serial for connection invalidation on retry
+
         Returns:
             Profile token string or None if not available
         """
-        try:
-            media_service = cls.get_media_service(camera)
-            if not media_service:
+        last_error = None
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                media_service = cls.get_media_service(camera)
+                if not media_service:
+                    return None
+
+                profiles = media_service.GetProfiles()
+
+                if not profiles or len(profiles) <= profile_index:
+                    logger.warning(f"Profile index {profile_index} not available")
+                    return None
+
+                token = profiles[profile_index].token
+                logger.debug(f"Got profile token: {token}")
+                return token
+
+            except Exception as e:
+                last_error = e
+
+                # Check if this is an RTSP collision error (retry-able)
+                if cls._is_rtsp_collision_error(e) and attempt < MAX_RETRIES - 1:
+                    logger.warning(
+                        f"RTSP/ONVIF collision detected (attempt {attempt + 1}/{MAX_RETRIES}), "
+                        f"retrying after {RETRY_DELAY_SECONDS}s..."
+                    )
+                    # Invalidate cached connection if we have the serial
+                    if camera_serial and camera_serial in cls._connections:
+                        logger.debug(f"Invalidating cached connection for {camera_serial}")
+                        del cls._connections[camera_serial]
+                    time.sleep(RETRY_DELAY_SECONDS)
+                    continue
+
+                # Non-retryable error or final attempt
+                logger.error(f"Failed to get profile token: {e}")
                 return None
-            
-            profiles = media_service.GetProfiles()
-            
-            if not profiles or len(profiles) <= profile_index:
-                logger.warning(f"Profile index {profile_index} not available")
-                return None
-            
-            token = profiles[profile_index].token
-            logger.debug(f"Got profile token: {token}")
-            return token
-            
-        except Exception as e:
-            logger.error(f"Failed to get profile token: {e}")
-            return None
+
+        logger.error(f"Failed to get profile token after {MAX_RETRIES} attempts: {last_error}")
+        return None
 
 
 # Module-level convenience function

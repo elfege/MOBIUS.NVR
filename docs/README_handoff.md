@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 05:06 EST*
+*Last updated: January 4, 2026 21:57 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -23,58 +23,88 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Previous Session Summary
 
-**Branch merged to main:** `stream_watchdog_investigation_JAN_4_2026_a`
+**Branch merged to main:** `mjpeg_status_fix_JAN_4_2026_b`
 
 **What was accomplished:**
 
-1. **Motion Detector Health Check** - Use CameraStateTracker instead of ffprobe (no extra RTSP connections)
-2. **UI Recovery Full Stop+Start** - handleBackendRecovery does full stop+start cycle instead of HLS.js refresh
-3. **Nuclear Cleanup Disabled** - Removed aggressive _kill_all_ffmpeg_for_camera() from _start_stream()
-4. **MJPEG Stream Status Fix** - Poll for naturalWidth to detect frames instead of unreliable load event
-
-**For context, see in `README_project_history.md`:**
-
-- "January 4, 2026: Stream Watchdog Investigation & UI Auto-Recovery" section
+1. **MJPEG Reolink Status Fix** - Pass 'sub' stream parameter to fix "Starting" stuck status
+2. **Latency Documentation** - Explained why 200ms/100ms no longer works with transcoding
+3. **active_streams Cleanup** - Fixed FFmpeg failure cleanup (removed status check)
 
 ---
 
 ## Current Session
 
-**Branch:** `mjpeg_status_fix_JAN_4_2026_b`
-**Date:** January 4, 2026 (05:16 - 16:30 EST)
+**Branch:** `webrtc_implementation_JAN_4_2026_a`
+**Date:** January 4, 2026 (16:35 - 21:57 EST)
 
-### Changes Made This Session
+### WebRTC Implementation - COMPLETE AND TESTED
 
-**05:22 - Fixed MJPEG Reolink streams stuck on "Starting" status**
-- [stream.js:630-631](static/js/streaming/stream.js#L630-L631) - Pass 'sub' stream parameter
-- [mjpeg-stream.js:14,20](static/js/streaming/mjpeg-stream.js#L14) - Default param `stream = 'sub'`
+Added WEBRTC as a `stream_type` option for sub-second latency (~200-500ms vs 2-4s LL-HLS).
 
-**05:26 - Latency documentation added to mediamtx.yml**
-- Why 200ms/100ms worked before (direct RTSP passthrough)
-- Why we stopped using passthrough (budget cameras = 1 RTSP connection only)
-- FFmpeg GOP size (-g) change from 3 to 15 impacts latency
-- Current config: 500ms/250ms segment durations
+**Phase 1: MediaMTX Configuration**
+- [mediamtx.yml:109-119](packager/mediamtx.yml#L109-L119) - WebRTC global settings
+- [mediamtx.yml:117](packager/mediamtx.yml#L117) - `webrtcAdditionalHosts: [192.168.10.20]` for ICE
+- [docker-compose.yml:176-177](docker-compose.yml#L176-L177) - Exposed ports 8889 (HTTP), 8189 (UDP)
 
-**16:25 - LAUNDRY ROOM camera unreachable**
-- Camera 192.168.10.118 (E1 Zoom) - all ports refusing connections
-- Needs physical reboot or network check
+**Phase 2: Frontend WebRTC Manager**
+- [webrtc-stream.js](static/js/streaming/webrtc-stream.js) - NEW FILE
+  - WebRTCStreamManager class using WHEP protocol
+  - Green latency badge (~200ms display)
+  - ICE state monitoring for health
 
-### PENDING FIX
+**Phase 3: Stream.js Integration (7 locations)**
+- [stream.js:11](static/js/streaming/stream.js#L11) - Import WebRTCStreamManager
+- [stream.js:20](static/js/streaming/stream.js#L20) - Instantiate webrtcManager
+- [stream.js:335-336](static/js/streaming/stream.js#L335-L336) - Refresh handler
+- [stream.js:640-642](static/js/streaming/stream.js#L640-L642) - startStream dispatch
+- [stream.js:702-703](static/js/streaming/stream.js#L702-L703) - stopIndividualStream
+- [stream.js:727](static/js/streaming/stream.js#L727) - stopAllStreams
+- [stream.js:800-801](static/js/streaming/stream.js#L800-L801) - restartStream
+- [stream.js:916-920](static/js/streaming/stream.js#L916-L920) - restartWebRTCStream method
+- [stream.js:968-970](static/js/streaming/stream.js#L968-L970) - attachHealthMonitor
+- [stream.js:1071-1088](static/js/streaming/stream.js#L1071-L1088) - Fullscreen main stream switch
+- [stream.js:1154-1170](static/js/streaming/stream.js#L1154-L1170) - Fullscreen pause
+- [stream.js:1225-1243](static/js/streaming/stream.js#L1225-L1243) - Fullscreen switch back
+- [stream.js:1289-1303](static/js/streaming/stream.js#L1289-L1303) - Fullscreen resume
 
-**active_streams cleanup on FFmpeg connection failure**
-- When FFmpeg fails to connect (camera unreachable), active_streams dict not cleaned
-- Watchdog thinks stream is "starting" forever instead of marking failed
-- File: [streaming/stream_manager.py](streaming/stream_manager.py)
-- Location: Exception handler around line 595-606 needs to clean up properly
+**Phase 4: Health Monitor**
+- [health.js:238-253](static/js/streaming/health.js#L238-L253) - attachWebRTC method
+
+**Phase 5: Backend Recognition**
+- [app.py:777-784](app.py#L777-L784) - Return actual stream_type in state API
+- [stream_manager.py:279,299,475](streaming/stream_manager.py#L279) - Add WEBRTC to LL_HLS/NEOLINK FFmpeg pipeline
+- [update_mediamtx_paths.sh:28](update_mediamtx_paths.sh#L28) - Include WEBRTC in path generation
+
+### How to Test WEBRTC
+
+1. In `cameras.json`, set a camera to `"stream_type": "WEBRTC"`
+2. Refresh the streams page
+3. Camera should connect via WebRTC with green latency badge showing ~200ms
+4. The backend FFmpeg→MediaMTX pipeline is unchanged (WebRTC is delivery method)
+
+### Architecture Notes
+
+- **WHEP Protocol**: Browser sends SDP offer to `http://host:8889/{camera_id}/whep`
+- **MediaMTX handles WebRTC**: No new container needed
+- **Port 8889**: HTTP for WHEP signaling
+- **Port 8189/UDP**: WebRTC media (RTP)
+- **Same backend**: FFmpeg publishes RTSP to MediaMTX, MediaMTX serves both HLS and WebRTC
 
 ---
 
 ## TODO List
 
-**Pending:**
+**Testing (COMPLETED):**
 
-- [ ] Monitor for "torn down" messages in MediaMTX logs (should be reduced now)
+- [x] Test WEBRTC with cameras to verify sub-second latency
+  - Tested with 95270001CSO4BPDZ (REOLINK OFFICE) and T8416P0023370398 (Office Desk)
+  - Both working with WebRTC sub-second latency
 
-**Optional:**
+**Future Enhancements:**
 
-- [ ] Remove/reduce false positive health checks in HealthMonitor
+- [ ] Add ICE state monitoring to health.js for better WebRTC health detection
+- [ ] Consider STUN server for remote access (currently LAN-only)
+- [ ] Test fullscreen main/sub stream switching with WEBRTC
+
+---

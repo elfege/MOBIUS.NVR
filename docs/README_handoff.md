@@ -23,10 +23,31 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-**Branch:** `[new branch TBD]`
-**Date:** January 5, 2026
+**Branch:** `fix_reolink_motion_errors_JAN_5_2026_a`
+**Date:** January 5, 2026 (13:58-14:05 EST)
 
-*No active work yet - new session starting*
+### Issue: reolink_aio AttributeError on _transport.close()
+
+**Error logs:**
+```
+reolink_aio.exceptions.UnexpectedDataError: Host 192.168.10.89:443 error mapping responses to requests
+ERROR:services.motion.reolink_motion_service:Error monitoring Living_REOLINK: 'NoneType' object has no attribute 'close'
+AttributeError: 'NoneType' object has no attribute 'close'
+```
+
+**Root Cause:** `reolink_aio` library calls `self._transport.close()` during logout, but `_transport` can be `None` if:
+1. Connection was never fully established
+2. Connection was already closed
+
+**Fix Applied:** Added defensive checks in `services/motion/reolink_motion_service.py`:
+- Check if `host.baichuan` exists before calling `unsubscribe_events()`
+- Wrap `logout()` calls in try/except for partially initialized hosts
+- Same pattern applied to `_cleanup_all()` method
+- Downgraded cleanup errors from ERROR to DEBUG level
+
+### Commits
+
+- `c1fef1e` - Add defensive cleanup for reolink_aio Baichuan connections
 
 ---
 

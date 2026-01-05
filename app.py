@@ -804,6 +804,8 @@ def api_stream_start(camera_serial):
         data = request.get_json() or {}
         resolution = data.get('type', 'sub')  # 'main' or 'sub'
 
+        logger.info(f"[API] /api/stream/start/{camera_serial} - resolution={resolution}")
+
         # Start the stream with specified resolution
         stream_url = stream_manager.start_stream(
             camera_serial, resolution=resolution)
@@ -811,11 +813,14 @@ def api_stream_start(camera_serial):
         if not stream_url:
             return jsonify({'success': False, 'error': 'Failed to start stream'}), 500
 
+        logger.info(f"[API] Returning stream_url={stream_url} for {camera_name} ({resolution})")
+
         return jsonify({
             'success': True,
             'camera_serial': camera_serial,
             'camera_name': camera_name,
             'stream_url': stream_url,
+            'resolution': resolution,  # Include for frontend debugging
             'message': f'Stream started for {camera_name}'
         })
 

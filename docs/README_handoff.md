@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 03:06 EST*
+*Last updated: January 5, 2026 03:46 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -55,7 +55,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session (Post-Compaction)
 
 **Branch:** `ptz_caching_JAN_5_2026_b`
-**Date:** January 5, 2026 (02:46-03:06 EST)
+**Date:** January 5, 2026 (02:46-03:46 EST)
 
 ### Completed This Session
 
@@ -84,10 +84,38 @@ Camera uses Baichuan PTZ when ANY of these are true:
 2. `camera_config.stream_type` contains 'NEOLINK'
 3. `camera_config.onvif_port` is None
 
+4. **Fixed PTZ Latency - ONVIF Service Caching** (03:35 EST)
+   - PTZ commands were taking 9-20 seconds due to SOAP calls on every request
+   - Modified [services/onvif/onvif_client.py](services/onvif/onvif_client.py):
+     - Added `_ptz_services`, `_media_services`, `_profile_tokens` caches
+     - `get_ptz_service()` now caches per camera_serial
+     - `get_media_service()` now caches per camera_serial
+     - `get_profile_token()` now caches per camera_serial
+     - `close_camera()` and `close_all()` clear caches
+   - First PTZ command still slow (~10s for SOAP), subsequent commands **~200ms**
+
+5. **Added Amcrest LL-HLS/WEBRTC Support** (03:30 EST)
+   - Modified [streaming/handlers/amcrest_stream_handler.py](streaming/handlers/amcrest_stream_handler.py)
+   - Added `_build_ll_hls_publish()` method for WEBRTC streaming
+   - Uses dual output: sub stream (transcoded) + main stream (passthrough)
+   - Amcrest camera can now use `stream_type: "WEBRTC"` in cameras.json
+
+6. **ONVIF Connection Pre-warming at Startup** (03:46 EST)
+   - Added `prewarm_onvif_connections()` function to [app.py](app.py)
+   - Runs during app initialization (after camera repo loads, before "Server ready!")
+   - Iterates all cameras with `ptz` capability AND `onvif_port` configured
+   - Populates caches: `_connections`, `_ptz_services`, `_media_services`, `_profile_tokens`
+   - **Result:** All PTZ commands are ~200ms from first use (no more 10s initial delay)
+   - Skips cameras without ONVIF port (they use Baichuan instead)
+   - Logs status for each camera: success, failure, or skipped
+
 ### Files Modified
 
 - [services/ptz/baichuan_ptz_handler.py](services/ptz/baichuan_ptz_handler.py) - NEW
-- [app.py](app.py) - Added Baichuan import and routing logic
+- [app.py](app.py) - Added Baichuan import, routing logic, PTZ timing, ONVIF pre-warming
+- [services/onvif/onvif_client.py](services/onvif/onvif_client.py) - Added service caching
+- [services/onvif/onvif_ptz_handler.py](services/onvif/onvif_ptz_handler.py) - Added timing instrumentation
+- [streaming/handlers/amcrest_stream_handler.py](streaming/handlers/amcrest_stream_handler.py) - Added `_build_ll_hls_publish()`
 
 ---
 
@@ -99,9 +127,11 @@ Camera uses Baichuan PTZ when ANY of these are true:
 - [x] Implement PTZ preset caching in PostgreSQL (6-day TTL)
 - [x] Create Baichuan PTZ handler (services/ptz/baichuan_ptz_handler.py)
 - [x] Add PTZ routing logic in app.py for Baichuan
+- [x] Pre-warm ONVIF connections at startup (eliminate first-command latency)
 
 **Testing Needed:**
 
+- [ ] Test ONVIF pre-warming at container startup (verify logs show successful pre-warming)
 - [ ] Test Baichuan PTZ with E1 camera (95270000YPTKLLD6 - has no ONVIF port)
 
 **Future Enhancements:**

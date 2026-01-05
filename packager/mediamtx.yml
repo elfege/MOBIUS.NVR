@@ -77,8 +77,8 @@ hlsSegmentCount: 7              # keep very small live window beware of: "ERR [H
 #
 # For browser sub-second latency, WebRTC is now available (see webrtc settings below).
 #
-hlsSegmentDuration: 200ms
-hlsPartDuration: 100ms          # MUST be half of hlsSegmentDuration
+hlsSegmentDuration: 500ms
+hlsPartDuration: 250ms          # MUST be half of hlsSegmentDuration
 hlsAllowOrigin: "*"             # allow browser clients
 hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
 

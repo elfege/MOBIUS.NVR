@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 04:35 EST*
+*Last updated: January 4, 2026 23:38 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -29,10 +29,10 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-**Branch:** `ui_performance_JAN_5_2026_b`
-**Date:** January 5, 2026 (03:30 - 04:35 EST)
+**Branch:** `mjpeg_status_fix_JAN_4_2026_b`
+**Date:** January 4, 2026 (23:30 - 23:38 EST)
 
-**Context compaction occurred at 03:30 EST** - Continued from `ui_performance_JAN_5_2026_a`
+**Context compaction occurred at 23:30 EST** - Continued from previous session
 
 ### What Was Accomplished This Session
 
@@ -51,6 +51,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
    - Added session management with auto re-authentication on 401
    - Camera 68d49398005cf203e400043f (OFFICE KITCHEN) now works with `stream_type: "MJPEG"`
    - Verified: 40+ frames captured, ~34KB per frame, no errors
+   - **CONFIRMED WORKING** after container restart - user confirmed stream visible (with expected MJPEG latency ~10s)
 
 4. **Fixed MJPEG restart capability:**
    - Added `_camera_services` dict to store camera_service references
@@ -83,6 +84,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - [ ] Add ICE state monitoring to health.js for better WebRTC health detection
 - [ ] Consider STUN server for remote access (currently LAN-only)
 - [ ] Test fullscreen main/sub stream switching with WEBRTC
+- [ ] Consider switching OFFICE KITCHEN from MJPEG to LL_HLS for lower latency (~2-3s vs ~10s)
 
 ---
 

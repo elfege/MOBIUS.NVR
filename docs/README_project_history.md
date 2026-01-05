@@ -10,6 +10,89 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 5, 2026 (10:15-13:58 EST): E1 Stream Restart Button + PTZ Capability Check
+
+**Branch merged:** `fix_e1_stream_restart_btn_JAN_5_2026_a`
+
+### Issue 1: E1 Stream Looping + Missing Restart Button
+
+User reported:
+
+1. E1 camera (95270000YPTKLLD6) playing same content in loops
+2. Need a "restart camera" button that restarts backend FFmpeg (like Blue-Iris)
+
+### Implementation
+
+**1. Backend API Endpoint:** `app.py`
+
+Added `/api/stream/restart/<camera_serial>` endpoint:
+
+- Stops FFmpeg process
+- Brief socket release delay (0.5s)
+- Starts fresh stream
+- Returns new stream URL
+- Excludes MJPEG (stateless protocol)
+
+**2. Frontend Restart Button:** `templates/streams.html`, `static/js/streaming/stream.js`
+
+- Added orange "restart" button (`fa-redo-alt` icon) to stream controls
+- Click handler calls `/api/stream/restart` then reconnects HLS.js/WebRTC
+- Shows "Restarting..." status during operation
+
+**3. CSS Styling:** `static/css/components/buttons.css`
+
+- Added `.btn-warning` style (orange color)
+
+### Button Differences
+
+| Button | Icon | Action |
+|--------|------|--------|
+| Play (green) | fa-play | Start stream (backend + frontend) |
+| Stop (red) | fa-stop | Stop stream (backend + frontend) |
+| Refresh (blue) | fa-sync-alt | HLS.js client reconnect only |
+| Restart (orange) | fa-redo-alt | Kill FFmpeg + restart + reconnect |
+
+### Issue 2: E1 PTZ Control
+
+**Decision**: E1 camera does NOT support direct PTZ via `reolink_aio` library.
+
+**Investigation Results**:
+
+- E1 camera model: IPC_517SD5 (build 20102200) - has PTZ hardware (360° pan/tilt)
+- PTZ works via Reolink app but not via `reolink_aio` Baichuan protocol
+- Camera has no ONVIF support (user tried custom firmware flash - unsuccessful)
+- Neolink MQTT PTZ is theoretical alternative but requires external Mosquitto broker
+
+**Fix Applied**: Updated `is_baichuan_capable()` in `services/ptz/baichuan_ptz_handler.py`:
+
+- Now checks `capabilities` array first
+- Returns `False` if `'ptz'` not in capabilities
+- E1 has `capabilities: ["streaming"]` only (no ptz)
+- This prevents PTZ routing attempts for non-PTZ cameras
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `app.py` | Added `/api/stream/restart` endpoint |
+| `templates/streams.html` | Added restart button to UI |
+| `static/js/streaming/stream.js` | Added restart click handler |
+| `static/css/components/buttons.css` | Added `.btn-warning` style |
+| `services/ptz/baichuan_ptz_handler.py` | Added capabilities check in `is_baichuan_capable()` |
+
+### Commits
+
+- `81097c3` - Add /api/stream/restart endpoint for backend FFmpeg restart
+- `8307bfa` - Add restart button to camera UI for backend FFmpeg restart
+- `147246e` - Disable PTZ for cameras without 'ptz' capability
+
+### Status
+
+✅ **E1 Stream Restart Complete** - Restart button functional
+✅ **PTZ Capability Check Complete** - Non-PTZ cameras correctly excluded
+
+---
+
 ## January 5, 2026 (04:10 EST): Connection Monitor Rapid Retry Fix
 
 **Branch merged:** `connection_monitor_fix_JAN_5_2026_a`

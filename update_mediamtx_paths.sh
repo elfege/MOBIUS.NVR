@@ -23,15 +23,16 @@ cp "$MEDIAMTX_YML" "${BACKUP_DIR}/mediamtx.yml.$(date +%Y%m%d_%H%M%S)"
 echo -e "${GREEN}✓${NC} Backup created"
 echo
 
-# Extract LL_HLS and NEOLINK camera IDs (both use MediaMTX LL-HLS path)
-LL_HLS_PATHS=$(jq -r '.devices | to_entries[] | select(.value.stream_type == "LL_HLS" or .value.stream_type == "NEOLINK") | .key' "$CAMERAS_JSON")
+# Extract LL_HLS, NEOLINK, and WEBRTC camera IDs (all use MediaMTX paths)
+# WEBRTC also needs MediaMTX paths - same FFmpeg→MediaMTX pipeline, different delivery to browser
+LL_HLS_PATHS=$(jq -r '.devices | to_entries[] | select(.value.stream_type == "LL_HLS" or .value.stream_type == "NEOLINK" or .value.stream_type == "WEBRTC") | .key' "$CAMERAS_JSON")
 
 if [[ -z "$LL_HLS_PATHS" ]]; then
-    echo -e "${YELLOW}No LL_HLS or NEOLINK cameras found${NC}"
+    echo -e "${YELLOW}No LL_HLS, NEOLINK, or WEBRTC cameras found${NC}"
     exit 0
 fi
 
-echo -e "${YELLOW}Found LL_HLS/NEOLINK cameras (creating sub + main paths):${NC}"
+echo -e "${YELLOW}Found LL_HLS/NEOLINK/WEBRTC cameras (creating sub + main paths):${NC}"
 echo "$LL_HLS_PATHS" | while read -r path; do
     echo "  - $path (sub)"
     echo "  - ${path}_main (main)"

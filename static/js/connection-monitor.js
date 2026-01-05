@@ -6,10 +6,13 @@
 export class ConnectionMonitor {
     constructor() {
         this.checkInterval = null;
+        this.retryInterval = null;  // Track retry interval to prevent duplicates
         this.failedChecks = 0;
         this.maxFailedChecks = 10; // Fail after 10 consecutive failures (~100s detection time)
         this.checkIntervalMs = 10000; // Check every 10 seconds (less frequent)
         this.isMonitoring = false;
+        this.isRedirecting = false;  // Guard against duplicate redirects/modals
+        this.modalShown = false;  // Track if modal is already displayed
 
         console.log('[ConnectionMonitor] Initialized - will check health every', this.checkIntervalMs / 1000, 'seconds');
     }
@@ -39,11 +42,16 @@ export class ConnectionMonitor {
 
     /**
      * Stop monitoring
+     * Clears both the main health check interval and any retry intervals
      */
     stop() {
         if (this.checkInterval) {
             clearInterval(this.checkInterval);
             this.checkInterval = null;
+        }
+        if (this.retryInterval) {
+            clearInterval(this.retryInterval);
+            this.retryInterval = null;
         }
         this.isMonitoring = false;
         this.failedChecks = 0;
@@ -116,10 +124,19 @@ export class ConnectionMonitor {
 
     /**
      * Redirect to the reloading page (or show modal if completely offline)
+     * Protected by isRedirecting flag to prevent duplicate calls from
+     * concurrent health check failures and fetch interceptor errors
      */
     async redirectToReloadingPage() {
-        console.log('[ConnectionMonitor] 📍 Current URL:', window.location.href);
-        console.log('[ConnectionMonitor] 💾 Saving return URL to localStorage');
+        // Guard against duplicate calls - critical to prevent multiple modals/intervals
+        if (this.isRedirecting) {
+            console.log('[ConnectionMonitor] Already handling redirect, ignoring duplicate call');
+            return;
+        }
+        this.isRedirecting = true;
+
+        console.log('[ConnectionMonitor] Current URL:', window.location.href);
+        console.log('[ConnectionMonitor] Saving return URL to localStorage');
 
         // Stop monitoring to prevent multiple redirects
         this.stop();
@@ -153,9 +170,17 @@ export class ConnectionMonitor {
 
     /**
      * Show an inline modal when server is completely unreachable
+     * Protected by modalShown flag to prevent duplicate modals
      */
     showOfflineModal() {
-        console.log('[ConnectionMonitor] 🎨 Creating offline modal');
+        // Guard against duplicate modals - each modal spawns its own retry interval
+        if (this.modalShown) {
+            console.log('[ConnectionMonitor] Modal already displayed, ignoring duplicate call');
+            return;
+        }
+        this.modalShown = true;
+
+        console.log('[ConnectionMonitor] Creating offline modal');
 
         // Create modal overlay
         const modal = document.createElement('div');
@@ -229,11 +254,16 @@ export class ConnectionMonitor {
         `;
 
         document.body.appendChild(modal);
-        console.log('[ConnectionMonitor] ✅ Offline modal displayed');
+        console.log('[ConnectionMonitor] Offline modal displayed');
 
-        // Retry every 5 seconds
-        const retryInterval = setInterval(async () => {
-            console.log('[ConnectionMonitor] 🔄 Retrying connection...');
+        // Clear any existing retry interval before creating new one (extra safety)
+        if (this.retryInterval) {
+            clearInterval(this.retryInterval);
+        }
+
+        // Retry every 5 seconds - store on this for cleanup via stop()
+        this.retryInterval = setInterval(async () => {
+            console.log('[ConnectionMonitor] Retrying connection...');
             try {
                 const response = await fetch('/api/health', {
                     method: 'GET',
@@ -242,11 +272,15 @@ export class ConnectionMonitor {
                 });
 
                 if (response.ok) {
-                    console.log('[ConnectionMonitor] 🎉 Server is back online, reloading page');
-                    clearInterval(retryInterval);
+                    console.log('[ConnectionMonitor] Server is back online, reloading page');
+                    clearInterval(this.retryInterval);
+                    this.retryInterval = null;
                     // Clear localStorage flags
                     localStorage.removeItem('nvr_return_url');
                     localStorage.removeItem('nvr_reconnect_attempt');
+                    // Reset flags before reload
+                    this.modalShown = false;
+                    this.isRedirecting = false;
                     // Hard reload to bypass cache
                     try {
                         location.reload(true);
@@ -255,7 +289,7 @@ export class ConnectionMonitor {
                     }
                 }
             } catch (error) {
-                console.log('[ConnectionMonitor] ⏳ Still offline, will retry in 5s');
+                console.log('[ConnectionMonitor] Still offline, will retry in 5s');
             }
         }, 5000);
     }

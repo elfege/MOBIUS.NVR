@@ -530,6 +530,18 @@ def prewarm_onvif_connections():
                 failed_count += 1
                 continue
 
+            # Send stop command to ensure camera isn't spinning from connection
+            # Some cameras resume last PTZ state on ONVIF connect
+            try:
+                stop_request = ptz_service.create_type('Stop')
+                stop_request.ProfileToken = profile_token
+                stop_request.PanTilt = True
+                stop_request.Zoom = True
+                ptz_service.Stop(stop_request)
+            except Exception as stop_err:
+                # Non-fatal - just log and continue
+                print(f"  ⚠️  {camera_config.get('name', camera_serial)}: Stop command failed: {stop_err}")
+
             print(f"  ✅ {camera_config.get('name', camera_serial)}: ONVIF pre-warmed")
             warmed_count += 1
 

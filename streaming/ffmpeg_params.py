@@ -307,15 +307,21 @@ def build_ll_hls_dual_output_publish_params(
     """
     Returns OUTPUT flags for DUAL publishing to MediaMTX:
     - Sub stream: transcoded (320x240, low bitrate) → /camera_serial
-    - Main stream: transcoded (1280x720, high bitrate) → /camera_serial_main
+    - Main stream: transcoded OR passthrough → /camera_serial_main
 
     This allows clients to receive low-res for grid view and high-res for fullscreen
     from a SINGLE FFmpeg process with ONE camera connection.
 
-    Both streams are now transcoded (not passthrough) to ensure:
+    PASSTHROUGH MODE (video_main.c:v = "copy"):
+    - Main stream is copied directly without re-encoding
+    - Significantly reduces latency (~2-3 seconds less)
+    - Sub stream is still transcoded for grid thumbnails
+    - filter_complex only scales sub stream, main uses raw input
+
+    TRANSCODE MODE (video_main.c:v = "libx264" or other encoder):
+    - Both streams are transcoded
     - Correct GOP alignment with MediaMTX 1-second segments
     - Format compatibility (fixes broken pipe issues)
-    - Consistent 1-2 second latency in both grid and fullscreen
 
     Args:
         camera_config: Full camera configuration from cameras.json
@@ -347,18 +353,10 @@ def build_ll_hls_dual_output_publish_params(
 
         out: List[str] = []
 
-        # ========== FILTER_COMPLEX: Split video into sub and main streams ==========
+        # Check if main stream should be passthrough (c:v = "copy")
+        main_is_passthrough = str(vid_main.get("c:v", "")).lower() == "copy"
 
-        # Extract scale resolutions from config
-        sub_scale = vid_sub.get("vf", "scale=320:240")
-        main_scale = vid_main.get("vf", "scale=1280:720")
-
-        # Build filter_complex to split input into two scaled outputs
-        # [0:v] split into [sub] and [main], then scale each independently
-        filter_complex = f"[0:v]split=2[vsub][vmain];[vsub]{sub_scale}[sub];[vmain]{main_scale}[main]"
-        out += ["-filter_complex", filter_complex]
-
-        # Video encoding params (excluding vf which is now in filter_complex)
+        # Video encoding params (excluding vf which is handled separately)
         video_key_order = [
             "c:v", "preset", "tune", "profile:v", "pix_fmt",
             "r", "g", "keyint_min",
@@ -366,82 +364,157 @@ def build_ll_hls_dual_output_publish_params(
             "x264-params", "force_key_frames"
         ]
 
-        # ========== OUTPUT 1: SUB STREAM (transcoded, low-res) ==========
+        if main_is_passthrough:
+            # ========== PASSTHROUGH MODE: Sub transcoded, Main passthrough ==========
+            # Only apply filter to sub stream, main stream copies raw input directly
 
-        out += ["-map", "[sub]"]  # Map filtered sub stream
-        for k in video_key_order:
-            if k in vid_sub and vid_sub[k] is not None:
-                out += [f"-{k}", str(vid_sub[k])]
+            # Extract scale resolution for sub stream only
+            sub_scale = vid_sub.get("vf", "scale=320:240")
 
-        # Audio for sub stream
-        if bool(aud.get("enabled", False)):
-            out += ["-map", "0:a:0?"]  # Map audio if present (? = optional)
-            c_a = aud.get("c:a", aud.get("codec", None))
-            b_a = aud.get("b:a", aud.get("bitrate", None))
-            ar = aud.get("ar", aud.get("rate", None))
-            ac = aud.get("ac", aud.get("channels", None))
-            if c_a: out += ["-c:a", str(c_a)]
-            if b_a: out += ["-b:a", str(b_a)]
-            if ar: out += ["-ar", str(ar)]
-            if ac is not None: out += ["-ac", str(ac)]
-            # Resync audio to handle timestamp discontinuities from budget cameras
-            out += ["-async", "1"]
+            # Filter complex: only scale sub stream from input
+            # Main stream will map directly from input (0:v)
+            filter_complex = f"[0:v]{sub_scale}[sub]"
+            out += ["-filter_complex", filter_complex]
+
+            # ========== OUTPUT 1: SUB STREAM (transcoded, low-res) ==========
+            out += ["-map", "[sub]"]  # Map filtered sub stream
+            for k in video_key_order:
+                if k in vid_sub and vid_sub[k] is not None:
+                    out += [f"-{k}", str(vid_sub[k])]
+
+            # Audio for sub stream
+            if bool(aud.get("enabled", False)):
+                out += ["-map", "0:a:0?"]  # Map audio if present (? = optional)
+                c_a = aud.get("c:a", aud.get("codec", None))
+                b_a = aud.get("b:a", aud.get("bitrate", None))
+                ar = aud.get("ar", aud.get("rate", None))
+                ac = aud.get("ac", aud.get("channels", None))
+                if c_a: out += ["-c:a", str(c_a)]
+                if b_a: out += ["-b:a", str(b_a)]
+                if ar: out += ["-ar", str(ar)]
+                if ac is not None: out += ["-ac", str(ac)]
+                out += ["-async", "1"]
+            else:
+                out += ["-an"]
+
+            out += ["-max_muxing_queue_size", "1024"]
+
+            # Sub stream sink
+            if protocol == "rtmp":
+                sub_sink = f"rtmp://{host}:{port}/{path}"
+                out += ["-f", "flv", sub_sink]
+            elif protocol == "rtsp":
+                sub_sink = f"rtsp://{host}:{port}/{path}"
+                rtsp_transport = pub.get("rtsp_transport", "tcp")
+                out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, sub_sink]
+            else:
+                raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
+
+            # ========== OUTPUT 2: MAIN STREAM (passthrough, native resolution) ==========
+            out += ["-map", "0:v"]  # Map raw video input directly (no filter)
+            out += ["-c:v", "copy"]  # Copy video codec (no re-encoding)
+
+            # Audio for main stream (also passthrough if available)
+            if bool(aud.get("enabled", False)):
+                out += ["-map", "0:a:0?"]
+                out += ["-c:a", "copy"]  # Copy audio too for lowest latency
+            else:
+                out += ["-an"]
+
+            out += ["-max_muxing_queue_size", "1024"]
+
+            # Main stream sink
+            main_path = f"{path}_main"
+            if protocol == "rtmp":
+                main_sink = f"rtmp://{host}:{port}/{main_path}"
+                out += ["-f", "flv", main_sink]
+            elif protocol == "rtsp":
+                main_sink = f"rtsp://{host}:{port}/{main_path}"
+                rtsp_transport = pub.get("rtsp_transport", "tcp")
+                out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, main_sink]
+
+            logger.info(f"Built dual LL-HLS output for {camera_name}: sub→{path} ({sub_scale}), main→{main_path} (PASSTHROUGH)")
+
         else:
-            out += ["-an"]
+            # ========== TRANSCODE MODE: Both streams transcoded ==========
+            # Original behavior - split and scale both streams
 
-        # Increase muxing queue size to handle timestamp discontinuities
-        out += ["-max_muxing_queue_size", "1024"]
+            # Extract scale resolutions from config
+            sub_scale = vid_sub.get("vf", "scale=320:240")
+            main_scale = vid_main.get("vf", "scale=1280:720")
 
-        # Sub stream sink (original path)
-        if protocol == "rtmp":
-            sub_sink = f"rtmp://{host}:{port}/{path}"
-            out += ["-f", "flv", sub_sink]
-        elif protocol == "rtsp":
-            sub_sink = f"rtsp://{host}:{port}/{path}"
-            rtsp_transport = pub.get("rtsp_transport", "tcp")
-            out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, sub_sink]
-        else:
-            raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
+            # Build filter_complex to split input into two scaled outputs
+            filter_complex = f"[0:v]split=2[vsub][vmain];[vsub]{sub_scale}[sub];[vmain]{main_scale}[main]"
+            out += ["-filter_complex", filter_complex]
 
-        # ========== OUTPUT 2: MAIN STREAM (transcoded, high-res) ==========
+            # ========== OUTPUT 1: SUB STREAM (transcoded, low-res) ==========
+            out += ["-map", "[sub]"]  # Map filtered sub stream
+            for k in video_key_order:
+                if k in vid_sub and vid_sub[k] is not None:
+                    out += [f"-{k}", str(vid_sub[k])]
 
-        out += ["-map", "[main]"]  # Map filtered main stream
-        for k in video_key_order:
-            if k in vid_main and vid_main[k] is not None:
-                out += [f"-{k}", str(vid_main[k])]
+            # Audio for sub stream
+            if bool(aud.get("enabled", False)):
+                out += ["-map", "0:a:0?"]
+                c_a = aud.get("c:a", aud.get("codec", None))
+                b_a = aud.get("b:a", aud.get("bitrate", None))
+                ar = aud.get("ar", aud.get("rate", None))
+                ac = aud.get("ac", aud.get("channels", None))
+                if c_a: out += ["-c:a", str(c_a)]
+                if b_a: out += ["-b:a", str(b_a)]
+                if ar: out += ["-ar", str(ar)]
+                if ac is not None: out += ["-ac", str(ac)]
+                out += ["-async", "1"]
+            else:
+                out += ["-an"]
 
-        # Audio for main stream
-        if bool(aud.get("enabled", False)):
-            out += ["-map", "0:a:0?"]  # Map audio if present
-            c_a = aud.get("c:a", aud.get("codec", None))
-            b_a = aud.get("b:a", aud.get("bitrate", None))
-            ar = aud.get("ar", aud.get("rate", None))
-            ac = aud.get("ac", aud.get("channels", None))
-            if c_a: out += ["-c:a", str(c_a)]
-            if b_a: out += ["-b:a", str(b_a)]
-            if ar: out += ["-ar", str(ar)]
-            if ac is not None: out += ["-ac", str(ac)]
-            out += ["-async", "1"]
-        else:
-            out += ["-an"]
+            out += ["-max_muxing_queue_size", "1024"]
 
-        # Increase muxing queue size for main stream as well
-        out += ["-max_muxing_queue_size", "1024"]
+            # Sub stream sink
+            if protocol == "rtmp":
+                sub_sink = f"rtmp://{host}:{port}/{path}"
+                out += ["-f", "flv", sub_sink]
+            elif protocol == "rtsp":
+                sub_sink = f"rtsp://{host}:{port}/{path}"
+                rtsp_transport = pub.get("rtsp_transport", "tcp")
+                out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, sub_sink]
+            else:
+                raise ValueError(f"LL-HLS: unsupported publisher.protocol '{protocol}'")
 
-        # Main stream sink (path + _main suffix)
-        main_path = f"{path}_main"
-        if protocol == "rtmp":
-            main_sink = f"rtmp://{host}:{port}/{main_path}"
-            out += ["-f", "flv", main_sink]
-        elif protocol == "rtsp":
-            main_sink = f"rtsp://{host}:{port}/{main_path}"
-            rtsp_transport = pub.get("rtsp_transport", "tcp")
-            out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, main_sink]
+            # ========== OUTPUT 2: MAIN STREAM (transcoded, high-res) ==========
+            out += ["-map", "[main]"]  # Map filtered main stream
+            for k in video_key_order:
+                if k in vid_main and vid_main[k] is not None:
+                    out += [f"-{k}", str(vid_main[k])]
 
-        # Extract resolutions for logging
-        sub_res = vid_sub.get('vf', 'unknown')
-        main_res = vid_main.get('vf', 'unknown')
-        logger.info(f"Built dual LL-HLS output for {camera_name}: sub→{path} ({sub_res}), main→{main_path} ({main_res})")
+            # Audio for main stream
+            if bool(aud.get("enabled", False)):
+                out += ["-map", "0:a:0?"]
+                c_a = aud.get("c:a", aud.get("codec", None))
+                b_a = aud.get("b:a", aud.get("bitrate", None))
+                ar = aud.get("ar", aud.get("rate", None))
+                ac = aud.get("ac", aud.get("channels", None))
+                if c_a: out += ["-c:a", str(c_a)]
+                if b_a: out += ["-b:a", str(b_a)]
+                if ar: out += ["-ar", str(ar)]
+                if ac is not None: out += ["-ac", str(ac)]
+                out += ["-async", "1"]
+            else:
+                out += ["-an"]
+
+            out += ["-max_muxing_queue_size", "1024"]
+
+            # Main stream sink
+            main_path = f"{path}_main"
+            if protocol == "rtmp":
+                main_sink = f"rtmp://{host}:{port}/{main_path}"
+                out += ["-f", "flv", main_sink]
+            elif protocol == "rtsp":
+                main_sink = f"rtsp://{host}:{port}/{main_path}"
+                rtsp_transport = pub.get("rtsp_transport", "tcp")
+                out += ["-f", "rtsp", "-rtsp_transport", rtsp_transport, main_sink]
+
+            logger.info(f"Built dual LL-HLS output for {camera_name}: sub→{path} ({sub_scale}), main→{main_path} ({main_scale})")
 
         return out
 

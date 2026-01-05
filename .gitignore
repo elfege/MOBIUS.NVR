@@ -21,10 +21,12 @@ TESTS/
 
 *.log
 
-eufy_bridge*
-
-ptz_*
-PTZ_*
+eufy_bridge.sh
+eufy_bridge.py
+eufy_bridge_client_verbose.py
+eufy_bridge_watchdog.py
+ptz_pan_right.py
+ptz_server.py
 
 tree.md
 
@@ -42,11 +44,13 @@ docs/*.md
 # Exceptions for tracked documentation
 !docs/README_handoff.md
 !docs/README_project_history.md
+!docs/history/handoffs/*
 
 DOCS/
 
 bootstrap.json
 
+PTZ_Discovery.py
 
 # package*.json
 

@@ -9,14 +9,15 @@ UNTESTED!
 import logging
 import traceback
 from pprint import pprint
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from ..stream_handler import StreamHandler
 from urllib.parse import quote
 from ..ffmpeg_params import (
     build_rtsp_output_params,
     build_rtsp_input_params,
     build_ll_hls_input_publish_params,
-    build_ll_hls_output_publish_params
+    build_ll_hls_output_publish_params,
+    build_ll_hls_dual_output_publish_params
 )
 
 logger = logging.getLogger(__name__)
@@ -127,3 +128,45 @@ class AmcrestStreamHandler(StreamHandler):
             return False
 
         return True
+
+    def _build_ll_hls_publish(self, camera_config: Dict, rtsp_url: str) -> Tuple[List[str], str]:
+        """
+        Build the full ffmpeg argv to publish LL-HLS to MediaMTX packager.
+
+        Uses DUAL OUTPUT mode: single FFmpeg process produces both:
+        - Sub stream (transcoded, scaled per cameras.json) → /camera_serial
+        - Main stream (passthrough, full resolution) → /camera_serial_main
+
+        Args:
+            camera_config: Camera configuration dict
+            rtsp_url: RTSP URL for the camera (already built)
+
+        Returns: (argv, play_url)
+        - argv: ["ffmpeg", <input flags>, "-i", <rtsp_url>, <dual output flags>]
+        - play_url: "/hls/<packager_path or serial>/index.m3u8" (sub stream for grid)
+        """
+        # INPUT side - use shared helper for consistent input params
+        in_args: List[str] = build_ll_hls_input_publish_params(camera_config=camera_config)
+
+        # OUTPUT side - DUAL outputs: sub (transcoded) + main (passthrough)
+        # Single camera connection, two MediaMTX paths
+        out_args: List[str] = build_ll_hls_dual_output_publish_params(
+            camera_config=camera_config,
+            vendor_prefix='AMCREST_'
+        )
+
+        # Assemble final argv
+        argv: List[str] = ["ffmpeg", *in_args, "-i", rtsp_url, *out_args]
+
+        # Compute the play URL for the UI/API (edge proxies /hls/ → packager)
+        # Returns sub stream URL - frontend will request _main when fullscreen
+        path = (
+            camera_config.get("packager_path") or
+            camera_config.get("serial") or
+            camera_config.get("id")
+        )
+        play_url = f"/hls/{path}/index.m3u8"
+
+        logger.info(f"Built LL-HLS publish command for {camera_config.get('name')}")
+
+        return argv, play_url

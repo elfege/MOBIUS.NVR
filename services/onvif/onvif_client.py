@@ -26,13 +26,25 @@ RETRY_DELAY_SECONDS = 0.5
 class ONVIFClient:
     """
     ONVIF connection manager with connection pooling
-    
+
     Handles authentication, connection lifecycle, and provides
     access to ONVIF services (PTZ, Media, Device, etc.)
+
+    Caches:
+    - _connections: ONVIFCamera instances per camera
+    - _ptz_services: PTZ service instances per camera
+    - _profile_tokens: Media profile tokens per camera
     """
-    
+
     # Connection pool: {camera_serial: ONVIFCamera instance}
     _connections: Dict[str, ONVIFCamera] = {}
+
+    # Service cache: {camera_serial: service instance}
+    _ptz_services: Dict[str, object] = {}
+    _media_services: Dict[str, object] = {}
+
+    # Profile token cache: {camera_serial: token string}
+    _profile_tokens: Dict[str, str] = {}
     
     # ONVIF default ports
     DEFAULT_PORT = 80
@@ -109,63 +121,98 @@ class ONVIFClient:
     @classmethod
     def close_camera(cls, camera_serial: str) -> bool:
         """
-        Close and remove camera connection from pool
-        
+        Close and remove camera connection from pool (also clears cached services)
+
         Args:
             camera_serial: Camera identifier
-            
+
         Returns:
             True if connection was closed, False if not found
         """
+        found = False
         if camera_serial in cls._connections:
             logger.info(f"Closing ONVIF connection for {camera_serial}")
             del cls._connections[camera_serial]
-            return True
-        return False
-    
+            found = True
+        # Also clear cached services for this camera
+        if camera_serial in cls._ptz_services:
+            del cls._ptz_services[camera_serial]
+        if camera_serial in cls._media_services:
+            del cls._media_services[camera_serial]
+        # Clear profile tokens (may have multiple keys like serial_0, serial_1)
+        keys_to_remove = [k for k in cls._profile_tokens if k.startswith(f"{camera_serial}_")]
+        for key in keys_to_remove:
+            del cls._profile_tokens[key]
+        return found
+
     @classmethod
     def close_all(cls) -> int:
         """
-        Close all cached ONVIF connections
-        
+        Close all cached ONVIF connections and clear all service caches
+
         Returns:
             Number of connections closed
         """
         count = len(cls._connections)
         cls._connections.clear()
-        logger.info(f"Closed {count} ONVIF connections")
+        cls._ptz_services.clear()
+        cls._media_services.clear()
+        cls._profile_tokens.clear()
+        logger.info(f"Closed {count} ONVIF connections and cleared service caches")
         return count
     
     @classmethod
-    def get_ptz_service(cls, camera: ONVIFCamera):
+    def get_ptz_service(cls, camera: ONVIFCamera, camera_serial: Optional[str] = None):
         """
-        Get PTZ service from camera
-        
+        Get PTZ service from camera (cached per camera_serial)
+
         Args:
             camera: ONVIFCamera instance
-            
+            camera_serial: Camera serial for caching (optional but recommended)
+
         Returns:
             PTZ service or None if not available
         """
+        # Check cache first
+        if camera_serial and camera_serial in cls._ptz_services:
+            logger.debug(f"Reusing cached PTZ service for {camera_serial}")
+            return cls._ptz_services[camera_serial]
+
         try:
-            return camera.create_ptz_service()
+            ptz_service = camera.create_ptz_service()
+            # Cache if we have a serial
+            if camera_serial and ptz_service:
+                cls._ptz_services[camera_serial] = ptz_service
+                logger.debug(f"Cached PTZ service for {camera_serial}")
+            return ptz_service
         except Exception as e:
             logger.error(f"Failed to create PTZ service: {e}")
             return None
     
     @classmethod
-    def get_media_service(cls, camera: ONVIFCamera):
+    def get_media_service(cls, camera: ONVIFCamera, camera_serial: Optional[str] = None):
         """
-        Get Media service from camera (for profiles, stream URIs, etc.)
-        
+        Get Media service from camera (cached per camera_serial)
+
         Args:
             camera: ONVIFCamera instance
-            
+            camera_serial: Camera serial for caching (optional but recommended)
+
         Returns:
             Media service or None if not available
         """
+        # Check cache first
+        if camera_serial and camera_serial in cls._media_services:
+            logger.debug(f"Reusing cached Media service for {camera_serial}")
+            return cls._media_services[camera_serial]
+
         try:
-            return camera.create_media_service()
+            media_service = camera.create_media_service()
+            # Cache if we have a serial
+            if camera_serial and media_service:
+                cls._media_services[camera_serial] = media_service
+                logger.debug(f"Cached Media service for {camera_serial}")
+            return media_service
         except Exception as e:
             logger.error(f"Failed to create Media service: {e}")
             return None
@@ -217,23 +264,28 @@ class ONVIFClient:
         """
         Get media profile token (required for most ONVIF operations)
 
-        Includes retry logic for RTSP/ONVIF port collision errors. When BadStatusLine
-        errors occur (RTSP binary data corrupting HTTP response), the cached connection
-        is invalidated and retried.
+        Profile tokens are cached per camera_serial to avoid repeated SOAP calls.
+        Includes retry logic for RTSP/ONVIF port collision errors.
 
         Args:
             camera: ONVIFCamera instance
             profile_index: Profile index (default: 0 = first profile)
-            camera_serial: Optional camera serial for connection invalidation on retry
+            camera_serial: Camera serial for caching and connection invalidation
 
         Returns:
             Profile token string or None if not available
         """
+        # Check cache first (use composite key for profile_index support)
+        cache_key = f"{camera_serial}_{profile_index}" if camera_serial else None
+        if cache_key and cache_key in cls._profile_tokens:
+            logger.debug(f"Reusing cached profile token for {camera_serial}")
+            return cls._profile_tokens[cache_key]
+
         last_error = None
 
         for attempt in range(MAX_RETRIES):
             try:
-                media_service = cls.get_media_service(camera)
+                media_service = cls.get_media_service(camera, camera_serial)
                 if not media_service:
                     return None
 
@@ -244,7 +296,10 @@ class ONVIFClient:
                     return None
 
                 token = profiles[profile_index].token
-                logger.debug(f"Got profile token: {token}")
+                # Cache the token
+                if cache_key:
+                    cls._profile_tokens[cache_key] = token
+                    logger.debug(f"Cached profile token for {camera_serial}: {token}")
                 return token
 
             except Exception as e:

@@ -23,31 +23,57 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-**Branch:** `fix_reolink_motion_errors_JAN_5_2026_a`
-**Date:** January 5, 2026 (13:58-14:05 EST)
+**Branch:** `reolink_aio_stability_JAN_5_2026_a`
+**Date:** January 5, 2026 (13:58-14:15 EST)
 
-### Issue: reolink_aio AttributeError on _transport.close()
+### Issue 1: reolink_aio AttributeError on _transport.close()
 
 **Error logs:**
-```
-reolink_aio.exceptions.UnexpectedDataError: Host 192.168.10.89:443 error mapping responses to requests
+
+```text
 ERROR:services.motion.reolink_motion_service:Error monitoring Living_REOLINK: 'NoneType' object has no attribute 'close'
 AttributeError: 'NoneType' object has no attribute 'close'
 ```
 
 **Root Cause:** `reolink_aio` library calls `self._transport.close()` during logout, but `_transport` can be `None` if:
+
 1. Connection was never fully established
 2. Connection was already closed
 
 **Fix Applied:** Added defensive checks in `services/motion/reolink_motion_service.py`:
+
 - Check if `host.baichuan` exists before calling `unsubscribe_events()`
 - Wrap `logout()` calls in try/except for partially initialized hosts
 - Same pattern applied to `_cleanup_all()` method
 - Downgraded cleanup errors from ERROR to DEBUG level
 
+### Issue 2: UnexpectedDataError response mismatch
+
+**Error logs:**
+
+```text
+reolink_aio.exceptions.UnexpectedDataError: Host 192.168.10.88:443 error mapping responses to requests, received 1 responses while requesting 20 responses
+```
+
+**Affected Cameras:**
+
+- REOLINK OFFICE (95270001CSO4BPDZ) - 192.168.10.88
+- Terrace South (95270001CSHLPO74) - 192.168.10.89 (same model/firmware)
+
+**Root Cause:** Camera responds with fewer items than `reolink_aio` requested during `get_host_data()`. Common transient error when camera is under load or network has latency.
+
+**Fix Applied:** Added exponential backoff specifically for `UnexpectedDataError`:
+
+- Import `UnexpectedDataError` from `reolink_aio.exceptions`
+- Track consecutive data errors separately
+- Double retry delay on each occurrence (10s → 20s → 40s... up to 5min max)
+- Reduce log verbosity: WARNING for first 3 errors, then DEBUG
+- Reset backoff counters on successful connection or different error type
+
 ### Commits
 
-- `c1fef1e` - Add defensive cleanup for reolink_aio Baichuan connections
+- `c1fef1e` - Add defensive cleanup for reolink_aio Baichuan connections (merged to main)
+- `5491e25` - Add exponential backoff for reolink_aio UnexpectedDataError
 
 ---
 

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 00:50 EST*
+*Last updated: January 5, 2026 01:00 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -30,7 +30,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `ui_performance_JAN_5_2026_b`
-**Date:** January 4-5, 2026 (23:30 - 00:50 EST)
+**Date:** January 4-5, 2026 (23:30 - 01:00 EST)
 
 **Context compaction occurred at ~00:35 EST** - Continued from previous session
 
@@ -132,23 +132,13 @@ Initial symptom: WebRTC showed still image refreshing every ~20s
 
 **Resolution:** Stream stabilized after warmup period (~30s). Watchdog cooldown mechanism eventually stopped the cycling.
 
-### UniFi WebRTC 90s Latency Investigation (In Progress)
+### UniFi WebRTC 90s Latency Investigation (RESOLVED)
 
 **Symptom:** User reports ~90s latency despite WebRTC badge showing ~250ms
 
-**Finding from MediaMTX logs:**
-- At 05:29:56: WebRTC session `3ce20e33` closed (terminated)
-- At 05:30:10: RTSP publisher re-established
-- No new WebRTC session was created for `68d49398005cf203e400043f`
-- MediaMTX shows 10 WebRTC sessions, but NONE for the UniFi camera
-- Camera IS reading via RTSP (motion detection processes), NOT WebRTC
+**Root cause:** Stale browser state from before FFmpeg restart. Browser was showing buffered video.
 
-**Hypothesis:** Browser WebRTC connection attempt failed or never happened. May be falling back to LL-HLS.
-
-**Next steps:**
-1. Check browser console for WebRTC errors
-2. Verify WHEP endpoint is accessible from browser
-3. Test manual WebRTC connection via browser dev tools
+**Resolution:** After browser reconnected, WebRTC session established with ~1s latency. Confirmed stable with light toggle test - zero packet loss.
 
 ### Neolink for Baichuan/Port 9000 Cameras
 
@@ -161,6 +151,49 @@ Initial symptom: WebRTC showed still image refreshing every ~20s
 - Older Reolink cameras without RTSP support
 
 To use: Configure camera in `config/neolink.toml`, set `stream_type: "NEOLINK"` in cameras.json.
+
+---
+
+## Next Session Plan: Add Reolink E1 Camera via Neolink
+
+**Camera Info (from screenshot):**
+- IP: 192.168.10.123
+- MAC: 44:ef:bf:27:0d:30
+- Type: Reolink E1 (Baichuan protocol, port 9000, no RTSP/ONVIF)
+
+**Implementation Steps:**
+
+1. **Update `config/neolink.toml`** - Replace placeholder with real E1 camera:
+```toml
+[[cameras]]
+name = "E1_CAMERA"  # Use a descriptive name or serial
+address = "192.168.10.123:9000"
+username = "admin"  # Or whatever the camera credentials are
+password = "${REOLINK_E1_PASSWORD}"  # Get from user or AWS Secrets
+channel_id = 0
+stream = "subStream"  # Use subStream for grid view
+```
+
+2. **Add entry to `config/cameras.json`:**
+```json
+"E1_CAMERA": {
+  "type": "reolink",
+  "name": "E1 Camera Name",
+  "serial": "E1_CAMERA",
+  "stream_type": "NEOLINK",
+  "ip": "192.168.10.123",
+  ...
+}
+```
+
+3. **Run `./update_mediamtx_paths.sh`** to add MediaMTX path
+
+4. **Restart containers:** `./start.sh`
+
+**Questions for user:**
+- What name/serial to use for this camera?
+- Camera credentials (username/password)?
+- Are there other E1 cameras to add?
 
 ---
 

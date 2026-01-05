@@ -10,6 +10,48 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 5, 2026 (04:10 EST): Connection Monitor Rapid Retry Fix
+
+**Branch merged:** `connection_monitor_fix_JAN_5_2026_a`
+
+### Issue
+
+User reported `connection-monitor.js` causing rapid console spam when server was offline:
+
+```text
+[ConnectionMonitor] Still offline, will retry in 5s
+[ConnectionMonitor] Retrying connection...
+[ConnectionMonitor] Fetch to /api/health FAILED: TimeoutError signal timed out
+```
+
+Messages were scrolling extremely fast, potentially causing SIGILL on Ubuntu machine with Chrome.
+
+### Root Cause
+
+The `showOfflineModal()` function (line 235) creates a `setInterval` for retries, but:
+
+1. No guard to prevent multiple modal/interval creations
+2. Both health check AND fetch interceptor can trigger `redirectToReloadingPage()` concurrently
+3. Each call to `showOfflineModal()` spawned a NEW `setInterval`
+4. Multiple parallel retry loops = console spam = browser performance issues
+
+### Fix Applied
+
+Added guards to prevent duplicate modal/interval spawning:
+
+- `isRedirecting` flag prevents concurrent `redirectToReloadingPage()` calls
+- `modalShown` flag prevents duplicate offline modals
+- `retryInterval` stored on `this` for proper cleanup via `stop()`
+- Existing retry interval cleared before creating new one
+
+### Files Modified
+
+| File                               | Change                            |
+|------------------------------------|-----------------------------------|
+| `static/js/connection-monitor.js`  | Added duplicate prevention guards |
+
+---
+
 ## January 5, 2026 (04:00 EST): PTZ Caching, Pre-warming, Baichuan Handler
 
 **Branch merged:** `ptz_caching_JAN_5_2026_b`

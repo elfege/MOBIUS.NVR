@@ -88,7 +88,7 @@ class FFmpegMotionDetector:
         if stream_type in ('LL_HLS', 'NEOLINK', 'WEBRTC') and sensitivity >= 0.1:
             # Only auto-adjust if not explicitly configured to a low value
             default_ll_hls_sensitivity = 0.002  # 0.2% scene change threshold (Eufy cameras produce very low scores ~0.001)
-            logger.info(f"LL_HLS camera detected, adjusting sensitivity from {sensitivity} to {default_ll_hls_sensitivity}")
+            logger.info(f"MediaMTX camera ({stream_type}) detected, adjusting sensitivity from {sensitivity} to {default_ll_hls_sensitivity}")
             sensitivity = default_ll_hls_sensitivity
 
         camera_name = camera.get('name', camera_id)

@@ -10,6 +10,58 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 5, 2026 (04:00 EST): PTZ Caching, Pre-warming, Baichuan Handler
+
+**Branch merged:** `ptz_caching_JAN_5_2026_b`
+
+### What Was Accomplished
+
+1. **Fixed PTZ Preset Loading (HTTP 500):**
+   - Root cause: RTSP/ONVIF port collision on Reolink cameras
+   - Added retry logic with `_is_rtsp_collision_error()` helper
+   - 3 retries with 0.5s delay, invalidates connection pool between attempts
+
+2. **Implemented PostgreSQL-backed PTZ Preset Caching:**
+   - Created `services/ptz/preset_cache.py` with 6-day TTL
+   - Created migration `psql/migrations/003_add_ptz_presets_cache.sql`
+   - Cache checked first, ONVIF only queried on miss/expired
+
+3. **Created Baichuan PTZ Handler:**
+   - New file: `services/ptz/baichuan_ptz_handler.py`
+   - Uses `reolink_aio` library (same pattern as motion detection)
+   - Routes to Baichuan when: `ptz_method='baichuan'`, `stream_type` contains 'NEOLINK', or no `onvif_port`
+
+4. **Fixed PTZ Latency - ONVIF Service Caching:**
+   - Added caches for PTZ services, Media services, and profile tokens
+   - Reduced PTZ latency from 9-20 seconds to ~200ms
+
+5. **ONVIF Connection Pre-warming at Startup:**
+   - Added `prewarm_onvif_connections()` function to `app.py`
+   - Populates all caches at startup so first PTZ command is fast
+   - Sends stop command after each camera to prevent PTZ spin
+
+6. **Added Amcrest LL-HLS/WEBRTC Support:**
+   - Added `_build_ll_hls_publish()` method to `amcrest_stream_handler.py`
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `app.py` | Baichuan routing, PTZ timing, ONVIF pre-warming |
+| `services/onvif/onvif_client.py` | Service caching, retry logic |
+| `services/onvif/onvif_ptz_handler.py` | Timing instrumentation, cache integration |
+| `services/ptz/baichuan_ptz_handler.py` | NEW - Baichuan PTZ handler |
+| `services/ptz/preset_cache.py` | NEW - PostgreSQL preset cache |
+| `streaming/handlers/amcrest_stream_handler.py` | LL-HLS/WEBRTC support |
+
+### Test Results
+
+- Pre-warming verified: 4 cameras warmed (Living_REOLINK, SV3C_Living_3, LAUNDRY ROOM, AMCREST LOBBY)
+- PTZ timing after pre-warming: get_camera=0ms, get_ptz_service=0ms, get_profile_token=0ms
+- Amcrest PTZ: immediate response confirmed
+
+---
+
 ## January 5, 2026 (02:07 EST): E1 Camera via Neolink, ONVIF Null Port Fix
 
 **Branch merged:** `neolink_e1_JAN_5_2026_a`

@@ -42,6 +42,7 @@ from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
 from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
 from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
+from services.ptz.baichuan_ptz_handler import BaichuanPTZHandler
 from services.recording.recording_service import RecordingService
 from config.recording_config_loader import RecordingConfig
 from services.recording.snapshot_service import SnapshotService
@@ -435,7 +436,7 @@ except Exception as e:
 
 # ===== Initialize Monitoring Services =====
 try:
-    restart_handler = AppRestartHandler(stream_manager, bridge_watchdog) #, eufy_bridge)
+    restart_handler = AppRestartHandler(stream_manager) #, bridge_watchdog) #, eufy_bridge)
 
     if unifi_cameras:
         unifi_resource_monitor = UniFiServiceResourceMonitor(
@@ -1378,6 +1379,7 @@ def eufy_auth_status():
     }
     """
     try:
+        raise # eufy bridge no longer in use for now.
         status = check_status_sync()
         
         if status.get('connected'):
@@ -1591,9 +1593,20 @@ def api_ptz_move(camera_serial, direction):
 
         success = False
         message = ""
-        
-        # Try ONVIF for Amcrest, Reolink, and SV3C cameras
-        if camera_type in ['amcrest', 'reolink', 'sv3c']:
+
+        # Check if camera should use Baichuan protocol (Reolink without ONVIF or NEOLINK streams)
+        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera)
+
+        if use_baichuan:
+            # Use Baichuan for Reolink cameras without ONVIF or configured for Baichuan
+            print(f"[APP.PY] Using Baichuan PTZ for {camera_type} camera (NEOLINK/no-ONVIF)")
+            success, message = BaichuanPTZHandler.move_camera(
+                camera_serial=camera_serial,
+                direction=direction,
+                camera_config=camera
+            )
+        elif camera_type in ['amcrest', 'reolink', 'sv3c']:
+            # Try ONVIF for Amcrest, Reolink (with ONVIF), and SV3C cameras
             print(f"[APP.PY] Attempting ONVIF PTZ for {camera_type} camera")
             success, message = ONVIFPTZHandler.move_camera(
                 camera_serial=camera_serial,
@@ -1601,21 +1614,30 @@ def api_ptz_move(camera_serial, direction):
                 camera_config=camera
             )
 
-            # If ONVIF fails, fall back to brand-specific handler (Amcrest only)
+            # If ONVIF fails for Reolink, try Baichuan as fallback
+            if not success and camera_type == 'reolink':
+                print(f"[APP.PY] ONVIF failed, falling back to Baichuan PTZ handler")
+                success, message = BaichuanPTZHandler.move_camera(
+                    camera_serial=camera_serial,
+                    direction=direction,
+                    camera_config=camera
+                )
+
+            # If ONVIF fails for Amcrest, fall back to CGI handler
             if not success and camera_type == 'amcrest':
                 print(f"[APP.PY] ONVIF failed, falling back to Amcrest CGI handler")
                 success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
                 message = f'Camera moved {direction} via CGI' if success else 'Movement failed'
 
         #######################################
-        # Eufy Bridge No longer in use for now. 
+        # Eufy Bridge No longer in use for now.
         #######################################
         # # Eufy uses bridge (no ONVIF support)
         # elif camera_type == 'eufy':
         #     print(f"[APP.PY] Dispatching PTZ to EUFY handler")
         #     success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
         #     message = f'Camera moved {direction}' if success else 'Movement failed'
-        
+
         else:
             return jsonify({'success': False, 'error': f'PTZ not supported for camera type: {camera_type}'}), 400
 
@@ -1652,12 +1674,19 @@ def api_ptz_get_presets(camera_serial):
 
         camera_type = camera.get('type')
 
-        # Only Amcrest, Reolink, and SV3C support ONVIF presets
+        # Only Amcrest, Reolink, and SV3C support presets
         if camera_type not in ['amcrest', 'reolink', 'sv3c']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
 
-        # Get presets via ONVIF (with caching)
-        success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera, force_refresh=force_refresh)
+        # Check if camera should use Baichuan protocol
+        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera)
+
+        if use_baichuan:
+            # Get presets via Baichuan (with caching)
+            success, presets = BaichuanPTZHandler.get_presets(camera_serial, camera, force_refresh=force_refresh)
+        else:
+            # Get presets via ONVIF (with caching)
+            success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera, force_refresh=force_refresh)
 
         if not success:
             return jsonify({'success': False, 'error': 'Failed to retrieve presets', 'presets': []}), 500
@@ -1666,7 +1695,8 @@ def api_ptz_get_presets(camera_serial):
             'success': True,
             'camera': camera_serial,
             'presets': presets,
-            'cached': not force_refresh  # Indicate if result may be from cache
+            'cached': not force_refresh,  # Indicate if result may be from cache
+            'method': 'baichuan' if use_baichuan else 'onvif'
         })
 
     except Exception as e:
@@ -1682,15 +1712,22 @@ def api_ptz_goto_preset(camera_serial, preset_token):
         camera = camera_repo.get_camera(camera_serial)
         if not camera:
             return jsonify({'success': False, 'error': 'Camera not found'}), 404
-        
+
         camera_type = camera.get('type')
 
-        # Only Amcrest, Reolink, and SV3C support ONVIF presets
+        # Only Amcrest, Reolink, and SV3C support presets
         if camera_type not in ['amcrest', 'reolink', 'sv3c']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
 
-        # Execute goto preset
-        success, message = ONVIFPTZHandler.goto_preset(camera_serial, preset_token, camera)
+        # Check if camera should use Baichuan protocol
+        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera)
+
+        if use_baichuan:
+            # Execute goto preset via Baichuan
+            success, message = BaichuanPTZHandler.goto_preset(camera_serial, preset_token, camera)
+        else:
+            # Execute goto preset via ONVIF
+            success, message = ONVIFPTZHandler.goto_preset(camera_serial, preset_token, camera)
         
         return jsonify({
             'success': success,

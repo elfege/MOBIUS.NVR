@@ -4,12 +4,12 @@ A multi-vendor Network Video Recorder built with Flask, FFmpeg, and MediaMTX. Pr
 
 ## Overview
 
-The Unified NVR abstracts vendor-specific camera protocols behind a common streaming interface. Camera RTSP sources are ingested by FFmpeg, transcoded as needed, and packaged as HLS streams via MediaMTX for browser playback. The system supports 17+ cameras with sub-2-second latency using Low-Latency HLS.
+The Unified NVR abstracts vendor-specific camera protocols behind a common streaming interface. Camera RTSP sources are ingested by FFmpeg, transcoded as needed, and packaged via MediaMTX for browser playback. The system supports 17+ cameras with multiple latency options: WebRTC (~200ms), Low-Latency HLS (~2s), or Classic HLS (~4s).
 
 ## Features
 
 - **Multi-Vendor Support**: Eufy, Reolink, UniFi Protect, Amcrest cameras
-- **Streaming Protocols**: HLS, Low-Latency HLS, MJPEG proxy, RTMP/FLV
+- **Streaming Protocols**: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS, MJPEG proxy
 - **PTZ Control**: ONVIF and vendor-specific (Amcrest CGI) pan/tilt/zoom
 - **Recording**: Continuous (24/7) and motion-triggered recording
 - **Snapshots**: Periodic JPEG capture from streams
@@ -20,13 +20,37 @@ The Unified NVR abstracts vendor-specific camera protocols behind a common strea
 ## Architecture
 
 ```
-Browser (HLS.js) --> Flask (app.py:5000) --> StreamManager --> Vendor Handlers
-                                                                    |
-                                                              FFmpeg Processes
-                                                                    |
-                                                              MediaMTX (:8889)
-                                                                    |
-                                                              IP Cameras (RTSP)
+                              ┌──────────────────────────────────────────────────────┐
+                              │                    Browser                            │
+                              │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
+                              │  │  WebRTC     │  │   HLS.js    │  │   MJPEG     │   │
+                              │  │  (~200ms)   │  │  (~2-4s)    │  │  (direct)   │   │
+                              │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘   │
+                              └─────────┼────────────────┼────────────────┼──────────┘
+                                        │                │                │
+                              ┌─────────▼────────────────▼────────────────▼──────────┐
+                              │                 Flask (app.py:5000)                   │
+                              │                   StreamManager                       │
+                              └───────────────────────┬───────────────────────────────┘
+                                                      │
+                              ┌───────────────────────▼───────────────────────────────┐
+                              │                  FFmpeg Processes                      │
+                              │    (transcode, split sub/main, publish to MediaMTX)   │
+                              └───────────────────────┬───────────────────────────────┘
+                                                      │
+                              ┌───────────────────────▼───────────────────────────────┐
+                              │              MediaMTX (nvr-packager)                   │
+                              │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐ │
+                              │  │  :8888   │  │  :8889   │  │      :8554           │ │
+                              │  │  HLS     │  │  WebRTC  │  │  RTSP (internal)     │ │
+                              │  │  LL-HLS  │  │  WHEP    │  │  motion/recording    │ │
+                              │  └──────────┘  └──────────┘  └──────────────────────┘ │
+                              └───────────────────────┬───────────────────────────────┘
+                                                      │
+                              ┌───────────────────────▼───────────────────────────────┐
+                              │                 IP Cameras (RTSP)                      │
+                              │      Eufy, Reolink, UniFi, Amcrest, SV3C, Neolink     │
+                              └───────────────────────────────────────────────────────┘
 ```
 
 Key design patterns:
@@ -107,7 +131,7 @@ Key design patterns:
 │       ├── eufy_bridge.py
 │       └── eufy_bridge_watchdog.py
 ├── static/js/
-│   ├── streaming/              # HLS, MJPEG, health modules
+│   ├── streaming/              # HLS, WebRTC, MJPEG, health modules
 │   ├── controllers/            # PTZ, recording controllers
 │   └── settings/               # UI settings handlers
 ├── templates/
@@ -237,32 +261,44 @@ FLASK_PORT=5000
 
 ## Streaming Protocols
 
-### Low-Latency HLS (Recommended)
+### WebRTC (Lowest Latency)
 
-- Latency: ~1.8 seconds (browser floor)
+- Latency: ~200-500ms (sub-second)
+- Config: `"stream_type": "WEBRTC"` in cameras.json
+- Flow: Camera → FFmpeg → MediaMTX → WebRTC (WHEP) → Browser
+- Ports: 8889 (WHEP signaling), 8189/UDP (media)
+- Best for: Real-time monitoring, PTZ control, interactive use
+- Limitation: LAN-only (no STUN/TURN configured)
+
+### Low-Latency HLS
+
+- Latency: ~2-4 seconds
 - Config: `"stream_type": "LL_HLS"` in cameras.json
 - Flow: Camera → FFmpeg → MediaMTX (RTMP) → HLS.js
+- Best for: Multi-device viewing, more compatible than WebRTC
 
 ### Classic HLS
 
-- Latency: 3-6 seconds
+- Latency: 4-8 seconds
 - Config: `"stream_type": "HLS"` in cameras.json
 - Flow: Camera → FFmpeg → Local segments → Browser
+- Best for: Maximum compatibility, archive playback
 
 ### MJPEG Proxy
 
 - Latency: Sub-second
 - Config: `"stream_type": "MJPEG"` in cameras.json
-- Use case: Legacy browsers, low-bandwidth scenarios
+- Use case: Legacy browsers, cameras with native MJPEG support (Reolink)
 
 ## Docker Services
 
 ```yaml
 services:
-  unified-nvr:        # Flask application
-  nvr-packager:       # MediaMTX HLS packager
-  postgrest:          # Recording metadata API
-  postgres:           # Recording database
+  unified-nvr:        # Flask application (:5000)
+  nvr-packager:       # MediaMTX - HLS (:8888), WebRTC (:8889), RTSP (:8554)
+  nvr-neolink:        # Neolink Baichuan→RTSP bridge
+  nvr-postgrest:      # Recording metadata API
+  nvr-postgres:       # Recording database
 ```
 
 ## Troubleshooting
@@ -304,7 +340,9 @@ docker exec unified-nvr python -c "from services.credentials.reolink_credential_
 
 ## Performance Considerations
 
-- **HLS Latency Floor**: Browser-based HLS has unavoidable ~1.8s minimum latency due to segmentation and decoding pipeline
+- **WebRTC for Lowest Latency**: Use `stream_type: "WEBRTC"` for ~200ms latency (vs 2-4s for LL-HLS)
+- **HLS Latency Floor**: Browser-based HLS has ~2s minimum latency due to segment buffering
+- **WebRTC LAN-Only**: Current config uses direct ICE without STUN/TURN (add STUN for remote access)
 - **Hardware Decoding**: Browser hardware acceleration is heuristic-based and cannot be forced
 - **Concurrent Streams**: Each camera spawns one FFmpeg process; monitor CPU/memory accordingly
 - **Audio Disable**: Set `"audio": {"enabled": false}` to reduce bandwidth and avoid codec issues

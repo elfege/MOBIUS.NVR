@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 22:05 EST*
+*Last updated: January 4, 2026 22:18 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -107,6 +107,14 @@ Added WEBRTC as a `stream_type` option for sub-second latency (~200-500ms vs 2-4
 - [x] Test WEBRTC with cameras to verify sub-second latency
   - Tested with 95270001CSO4BPDZ (REOLINK OFFICE) and T8416P0023370398 (Office Desk)
   - Both working with WebRTC sub-second latency
+- [x] Test motion detection with WEBRTC cameras
+  - Found bug: WEBRTC cameras weren't included in MediaMTX stream checks
+  - Fixed in ffmpeg_motion_detector.py and recording_service.py
+  - WEBRTC cameras now use correct 0.002 sensitivity threshold
+  - Motion recordings verified for both test cameras (timestamps 22:11-22:15)
+- [x] Test recording with WEBRTC cameras
+  - Motion recordings working via MediaMTX RTSP tap
+  - Verified files being written to /mnt/sdc/NVR_Recent/motion/
 
 **Future Enhancements:**
 

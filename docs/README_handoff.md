@@ -15,68 +15,22 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 04:10 EST*
+*Last updated: January 5, 2026 04:15 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session
-
-**Branch:** `connection_monitor_fix_JAN_5_2026_a`
-**Date:** January 5, 2026 (04:03-04:10 EST)
-**Context:** Continued from compacted session
-
-### Issue: Connection Monitor Rapid Retry Loop
-
-User reported connection-monitor.js causing rapid console spam:
-
-```text
-[ConnectionMonitor] Still offline, will retry in 5s
-[ConnectionMonitor] Retrying connection...
-[ConnectionMonitor] Fetch to /api/health FAILED: TimeoutError signal timed out
-```
-
-This was scrolling extremely fast, potentially causing SIGILL on Ubuntu machine with Chrome.
-
-### Root Cause Analysis
-
-The `showOfflineModal()` function creates a `setInterval` for retries (line 235), but:
-
-1. No guard to prevent multiple modal/interval creations
-2. Both health check AND fetch interceptor can trigger `redirectToReloadingPage()` concurrently
-3. Each call to `showOfflineModal()` spawns a NEW `setInterval`
-4. Multiple parallel retry loops = console spam = browser performance issues
-
-### Fix Applied
-
-**File modified:** `static/js/connection-monitor.js` (04:08 EST)
-
-Added guards to prevent duplicate modal/interval spawning:
-
-- `isRedirecting` flag prevents concurrent `redirectToReloadingPage()` calls
-- `modalShown` flag prevents duplicate offline modals
-- `retryInterval` stored on `this` for proper cleanup via `stop()`
-- Existing retry interval cleared before creating new one
-
-**Commit:** `2d3d290` - "Fix connection-monitor.js rapid retry loop causing console spam"
-
----
-
 ## Previous Session Reference
 
-**Branch merged:** `ptz_caching_JAN_5_2026_b`
-**Date:** January 5, 2026 (02:46-04:00 EST)
+**Branch merged:** `connection_monitor_fix_JAN_5_2026_a`
+**Date:** January 5, 2026 (04:03-04:15 EST)
 
 See `docs/README_project_history.md` for full session details including:
 
-- PTZ preset caching (PostgreSQL, 6-day TTL)
-- Baichuan PTZ handler for Reolink cameras
-- ONVIF service caching (reduced PTZ latency from 9-20s to ~200ms)
-- ONVIF connection pre-warming at startup
-- Amcrest LL-HLS/WEBRTC support
+- Connection monitor rapid retry loop fix (duplicate modal/interval prevention)
 
-Archived handoff: `docs/archive/handoffs/ptz_caching_JAN_5_2026_b/README_handoff_20260105_0400.md`
+Archived handoff: `docs/archive/handoffs/connection_monitor_fix_JAN_5_2026_a/README_handoff_20260105_0410.md`
 
 ---
 

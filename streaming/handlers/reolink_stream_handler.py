@@ -115,6 +115,10 @@ class ReolinkStreamHandler(StreamHandler):
 
         Uses camera serial as the Neolink path - neolink.toml must use
         the same serial as the 'name' field for consistency.
+
+        IMPORTANT: When neolink.stream is "mainStream" in cameras.json, Neolink
+        ONLY exposes /main paths (not /sub). The stream_type parameter is ignored
+        in this case - we must use /main regardless of what's requested.
         """
 
         neolink_config = camera_config.get('neolink', {})
@@ -123,9 +127,19 @@ class ReolinkStreamHandler(StreamHandler):
         # Use serial for the Neolink path (must match [[cameras]] name in neolink.toml)
         serial = camera_config.get('serial', 'UNKNOWN')
 
-        # Use the requested stream_type: 'main' or 'sub'
-        # Neolink accepts: main, Main, mainStream, sub, Sub, subStream, etc.
-        stream_path = stream_type if stream_type in ('main', 'sub') else 'sub'
+        # Check which stream Neolink is configured to pull from camera
+        # This determines which RTSP paths Neolink exposes
+        neolink_stream = neolink_config.get('stream', 'subStream')
+
+        if neolink_stream == 'mainStream':
+            # When configured for mainStream, Neolink ONLY exposes /main paths
+            # The stream_type parameter is ignored - /sub is not available
+            stream_path = 'main'
+            logger.debug(f"Neolink configured for mainStream - forcing /main path for {camera_config.get('name')}")
+        else:
+            # When configured for subStream (default), use requested stream_type
+            # Neolink accepts: main, Main, mainStream, sub, Sub, subStream, etc.
+            stream_path = stream_type if stream_type in ('main', 'sub') else 'sub'
 
         # Neolink bridge runs locally - no credentials needed
         neolink_url = f"rtsp://neolink:{port}/{serial}/{stream_path}"

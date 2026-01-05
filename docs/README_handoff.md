@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 02:46 EST*
+*Last updated: January 5, 2026 03:06 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -50,35 +50,44 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
      - `set_preset()` and `remove_preset()` invalidate cache
    - Modified [app.py](app.py) - Added `?refresh=true` parameter to bypass cache
 
-3. **Verified caching works:**
-
-   ```sql
-   docker exec nvr-postgres psql -h localhost -U nvr_api -d nvr -c "SELECT * FROM ptz_presets;"
-    id |  camera_serial   | preset_token |   preset_name   |           cached_at
-     3 | XCPTP369388MNVTG | 000          | 0               | 2026-01-05 02:43:59.234252+00
-     4 | XCPTP369388MNVTG | 001          | closeupsofa     | 2026-01-05 02:43:59.234252+00
-     5 | XCPTP369388MNVTG | 002          | sofacloser      | 2026-01-05 02:43:59.234252+00
-     6 | XCPTP369388MNVTG | 003          | kids_playground | 2026-01-05 02:43:59.234252+00
-     7 | XCPTP369388MNVTG | 004          | Piano_kitchen   | 2026-01-05 02:43:59.234252+00
-   ```
-
-**Plan documented for future work:**
-
-- Baichuan PTZ handler using `reolink_aio` library (same as motion detection)
-- Plan file: `/home/elfege/.claude/plans/fuzzy-tinkering-cherny.md`
-- Can use `host.ptz_control()`, `host.ptz_preset_goto()`, etc.
-
 ---
 
-## Current Session
+## Current Session (Post-Compaction)
 
 **Branch:** `ptz_caching_JAN_5_2026_b`
-**Date:** January 5, 2026
+**Date:** January 5, 2026 (02:46-03:06 EST)
 
-### Next Steps
+### Completed This Session
 
-1. Create Baichuan PTZ handler (Task 2 from plan) - OPTIONAL pending user direction
-2. Continue any further PTZ improvements as needed
+1. **Created Baichuan PTZ Handler** (03:04 EST)
+   - Created [services/ptz/baichuan_ptz_handler.py](services/ptz/baichuan_ptz_handler.py)
+   - Uses `reolink_aio` library (same pattern as motion detection)
+   - Methods: `move_camera()`, `get_presets()`, `goto_preset()`
+   - `is_baichuan_capable()` helper to determine routing
+   - Async operations wrapped for Flask compatibility
+   - Connection pooling with Host instances per camera
+
+2. **Added Baichuan PTZ Routing in app.py** (03:05 EST)
+   - Import added for `BaichuanPTZHandler`
+   - `/api/ptz/<serial>/<direction>` now routes to Baichuan when:
+     - `ptz_method='baichuan'` in camera config
+     - `stream_type` contains 'NEOLINK'
+     - No `onvif_port` configured
+   - Falls back to Baichuan if ONVIF fails for Reolink cameras
+   - Presets endpoint returns `method` field (baichuan/onvif)
+
+### Baichuan PTZ Trigger Conditions
+
+Camera uses Baichuan PTZ when ANY of these are true:
+
+1. `camera_config.ptz_method == 'baichuan'`
+2. `camera_config.stream_type` contains 'NEOLINK'
+3. `camera_config.onvif_port` is None
+
+### Files Modified
+
+- [services/ptz/baichuan_ptz_handler.py](services/ptz/baichuan_ptz_handler.py) - NEW
+- [app.py](app.py) - Added Baichuan import and routing logic
 
 ---
 
@@ -88,10 +97,12 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 - [x] Debug PTZ preset loading failures (HTTP 500 on all cameras) - Fixed with retry logic
 - [x] Implement PTZ preset caching in PostgreSQL (6-day TTL)
+- [x] Create Baichuan PTZ handler (services/ptz/baichuan_ptz_handler.py)
+- [x] Add PTZ routing logic in app.py for Baichuan
 
-**Pending:**
+**Testing Needed:**
 
-- [ ] Create Baichuan PTZ handler (services/ptz/baichuan_ptz_handler.py)
+- [ ] Test Baichuan PTZ with E1 camera (95270000YPTKLLD6 - has no ONVIF port)
 
 **Future Enhancements:**
 
@@ -101,5 +112,6 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - [ ] Consider STUN server for remote access
 - [ ] Test fullscreen main/sub stream switching with WEBRTC
 - [ ] Investigate watchdog cooldown clearing bug
+- [ ] Investigate UI freezes (health monitor canvas ops at 2s per camera)
 
 ---

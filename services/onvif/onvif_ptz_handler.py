@@ -117,8 +117,8 @@ class ONVIFPTZHandler:
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
 
-            # Get profile token
-            profile_token = ONVIFClient.get_profile_token(camera)
+            # Get profile token (pass camera_serial for retry logic on RTSP collision)
+            profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
             if not profile_token:
                 return False, "Could not get media profile token"
 
@@ -220,11 +220,11 @@ class ONVIFPTZHandler:
             if not ptz_service:
                 return False, []
             
-            # Get profile token
-            profile_token = ONVIFClient.get_profile_token(camera)
+            # Get profile token (pass camera_serial for retry logic on RTSP collision)
+            profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
             if not profile_token:
                 return False, []
-            
+
             # Get presets
             request = ptz_service.create_type('GetPresets')
             request.ProfileToken = profile_token
@@ -300,8 +300,8 @@ class ONVIFPTZHandler:
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
 
-            # Get profile token
-            profile_token = ONVIFClient.get_profile_token(camera)
+            # Get profile token (pass camera_serial for retry logic on RTSP collision)
+            profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
             if not profile_token:
                 return False, "Could not get media profile token"
 
@@ -385,8 +385,8 @@ class ONVIFPTZHandler:
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
 
-            # Get profile token
-            profile_token = ONVIFClient.get_profile_token(camera)
+            # Get profile token (pass camera_serial for retry logic on RTSP collision)
+            profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
             if not profile_token:
                 return False, "Could not get media profile token"
 
@@ -460,8 +460,8 @@ class ONVIFPTZHandler:
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
 
-            # Get profile token
-            profile_token = ONVIFClient.get_profile_token(camera)
+            # Get profile token (pass camera_serial for retry logic on RTSP collision)
+            profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
             if not profile_token:
                 return False, "Could not get media profile token"
 

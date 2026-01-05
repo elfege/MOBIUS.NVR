@@ -97,7 +97,7 @@ Multi-camera NVR (Network Video Recorder) system supporting:
       - restore untracked files from /tmp
       - create new branch as described below (Unless it's a final wrap-up request)
       - port `docs/README_handoff.md` contents to `docs/README_project_history.md`
-      - wipe clean `docs/README_handoff.md` preserving its essential structure (verify you ported correctly the contents to `docs/README_project_history.md`)
+      - Archive `docs/README_handoff.md` to `docs/archive/handoffs/[branch_name_dir]/README_handoff_[timestamp].md` and then wipe the original file while preserving its essential structure (verify you ported correctly its contents to `docs/README_project_history.md`)
       - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_project_history.md` to resume the work with proper context knowledge to ensure a smooth transition.
       - Update `docs/nvr_engineering_architecture.html`
 

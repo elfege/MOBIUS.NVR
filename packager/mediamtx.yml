@@ -37,8 +37,8 @@ authInternalUsers:
 # === HLS/LL-HLS (HTTP) ===
 hls: yes
 hlsAddress: :8888
-hlsVariant: lowLatency          # emit #EXT-X-PART + PRELOAD-HINT
-hlsSegmentCount: 7              # keep very small live window beware of: "ERR [HLS] [muxer REOLINK_OFFICE] Low-Latency HLS requires at least 7 segments"
+hlsVariant: lowLatency # emit #EXT-X-PART + PRELOAD-HINT
+hlsSegmentCount: 7 # keep very small live window beware of: "ERR [HLS] [muxer REOLINK_OFFICE] Low-Latency HLS requires at least 7 segments"
 #
 # LATENCY TUNING NOTES (Jan 2026):
 #
@@ -78,9 +78,9 @@ hlsSegmentCount: 7              # keep very small live window beware of: "ERR [H
 # For browser sub-second latency, WebRTC is now available (see webrtc settings below).
 #
 hlsSegmentDuration: 500ms
-hlsPartDuration: 250ms          # MUST be half of hlsSegmentDuration
-hlsAllowOrigin: "*"             # allow browser clients
-hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
+hlsPartDuration: 250ms # MUST be half of hlsSegmentDuration
+hlsAllowOrigin: "*" # allow browser clients
+hlsAlwaysRemux: yes # stable timing even if source timestamps wobble
 
 # === WebRTC Configuration ===
 # WebRTC provides sub-second latency (~200-500ms) by streaming directly to browser
@@ -107,16 +107,16 @@ hlsAlwaysRemux: yes             # stable timing even if source timestamps wobble
 #   webrtcICEServers2: [{url: "stun:stun.l.google.com:19302"}]
 #
 webrtc: yes
-webrtcAddress: :8889            # HTTP endpoint for WHEP signaling
-webrtcEncryption: no            # LAN-only, no DTLS needed (faster setup)
+webrtcAddress: :8889 # HTTP endpoint for WHEP signaling
+webrtcEncryption: no # LAN-only, no DTLS needed (faster setup)
 webrtcServerKey: ""
 webrtcServerCert: ""
-webrtcAllowOrigin: "*"          # Allow browser clients
+webrtcAllowOrigin: "*" # Allow browser clients
 webrtcTrustedProxies: []
-webrtcICEServers2: []           # No STUN/TURN for LAN-only use
-webrtcAdditionalHosts: [192.168.10.20]  # Host IP for ICE candidates (Docker container can't auto-detect host network)
-webrtcLocalUDPAddress: :8189    # UDP port for WebRTC media (required, replaces webrtcICEUDPMuxAddress)
-webrtcLocalTCPAddress: ""       # Disable TCP ICE (UDP preferred for latency)
+webrtcICEServers2: [] # No STUN/TURN for LAN-only use
+webrtcAdditionalHosts: [192.168.10.20] # Host IP for ICE candidates (Docker container can't auto-detect host network)
+webrtcLocalUDPAddress: :8189 # UDP port for WebRTC media (required, replaces webrtcICEUDPMuxAddress)
+webrtcLocalTCPAddress: "" # Disable TCP ICE (UDP preferred for latency)
 
 # Make sure at least one ingest is enabled that matches the NVR publisher.
 # If we publish RTMP from NVR:
@@ -131,9 +131,9 @@ rtspAddress: :8554
 # Dual-output FFmpeg publishes both sub and main streams constantly.
 # When main stream is unconsumed (grid mode), TCP buffers fill up.
 # These settings manage buffer overflow gracefully:
-readTimeout: 30s           # Close consumer if no data read for 30s
-writeTimeout: 10m          # Very long timeout - let writeQueueSize handle buffering instead
-writeQueueSize: 8192       # Large write queue to absorb unconsumed main stream (allows ~8 seconds of buffering at 2Mbps)
+readTimeout: 30s # Close consumer if no data read for 30s
+writeTimeout: 10m # Very long timeout - let writeQueueSize handle buffering instead
+writeQueueSize: 8192 # Large write queue to absorb unconsumed main stream (allows ~8 seconds of buffering at 2Mbps)
 
 paths:
   68d49398005cf203e400043f:

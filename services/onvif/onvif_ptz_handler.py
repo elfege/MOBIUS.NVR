@@ -82,6 +82,8 @@ class ONVIFPTZHandler:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        import time as _time
+        _t0 = _time.time()
         try:
             # Validate direction
             if direction not in cls.DIRECTION_VECTORS:
@@ -104,6 +106,9 @@ class ONVIFPTZHandler:
                 logger.debug(f"Camera {camera_serial} has no ONVIF port configured, skipping PTZ move")
                 return False, "Camera does not support ONVIF"
 
+            _t1 = _time.time()
+            logger.info(f"[PTZ TIMING] Pre-connection setup: {(_t1-_t0)*1000:.0f}ms")
+
             # Get ONVIF connection
             camera = ONVIFClient.get_camera(
                 host=host,
@@ -112,17 +117,23 @@ class ONVIFPTZHandler:
                 password=password,
                 camera_serial=camera_serial
             )
+            _t2 = _time.time()
+            logger.info(f"[PTZ TIMING] get_camera: {(_t2-_t1)*1000:.0f}ms")
 
             if not camera:
                 return False, "Failed to connect to camera via ONVIF"
 
-            # Get PTZ service
-            ptz_service = ONVIFClient.get_ptz_service(camera)
+            # Get PTZ service (cached per camera)
+            ptz_service = ONVIFClient.get_ptz_service(camera, camera_serial=camera_serial)
+            _t3 = _time.time()
+            logger.info(f"[PTZ TIMING] get_ptz_service: {(_t3-_t2)*1000:.0f}ms")
             if not ptz_service:
                 return False, "Camera does not support PTZ via ONVIF"
 
             # Get profile token (pass camera_serial for retry logic on RTSP collision)
             profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
+            _t4 = _time.time()
+            logger.info(f"[PTZ TIMING] get_profile_token: {(_t4-_t3)*1000:.0f}ms")
             if not profile_token:
                 return False, "Could not get media profile token"
 
@@ -157,6 +168,7 @@ class ONVIFPTZHandler:
             if velocity:
                 request.Velocity = velocity
             
+            _t5 = _time.time()
             # Execute movement
             if direction == 'stop':
                 # Stop all movement
@@ -165,13 +177,18 @@ class ONVIFPTZHandler:
                 stop_request.PanTilt = True
                 stop_request.Zoom = True
                 ptz_service.Stop(stop_request)
+                _t6 = _time.time()
+                logger.info(f"[PTZ TIMING] Stop command: {(_t6-_t5)*1000:.0f}ms")
                 logger.info(f"ONVIF PTZ stopped for {camera_serial}")
             else:
                 ptz_service.ContinuousMove(request)
+                _t6 = _time.time()
+                logger.info(f"[PTZ TIMING] ContinuousMove command: {(_t6-_t5)*1000:.0f}ms")
                 logger.info(f"ONVIF PTZ {direction} started for {camera_serial}")
-            
+
+            logger.info(f"[PTZ TIMING] TOTAL: {(_t6-_t0)*1000:.0f}ms")
             return True, "PTZ command executed successfully"
-            
+
         except Exception as e:
             logger.error(f"ONVIF PTZ move failed for {camera_serial}: {e}")
             return False, f"PTZ operation failed: {str(e)}"

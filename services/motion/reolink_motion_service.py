@@ -197,22 +197,41 @@ class ReolinkMotionService:
                         logger.warning(f"Connection lost to {camera_name}, reconnecting...")
                         break
                 
-                # Cleanup on exit
-                await host.baichuan.unsubscribe_events()
-                await host.logout()
+                # Cleanup on exit - defensive checks for partially initialized connections
+                try:
+                    if host and hasattr(host, 'baichuan') and host.baichuan:
+                        await host.baichuan.unsubscribe_events()
+                except Exception as cleanup_err:
+                    logger.debug(f"Error unsubscribing events for {camera_name}: {cleanup_err}")
+
+                try:
+                    if host:
+                        await host.logout()
+                except Exception as logout_err:
+                    logger.debug(f"Error logging out from {camera_name}: {logout_err}")
+
                 logger.info(f"Disconnected from {camera_name}")
                 
             except Exception as e:
                 logger.error(f"Error monitoring {camera_name}: {e}", exc_info=True)
-                
-                # Cleanup host instance
+
+                # Cleanup host instance - defensive checks for partially initialized connections
                 if camera_id in self.hosts:
+                    host_to_cleanup = self.hosts[camera_id]
                     try:
-                        await self.hosts[camera_id].logout()
-                    except:
-                        pass
+                        # Try to unsubscribe events first if baichuan is available
+                        if host_to_cleanup and hasattr(host_to_cleanup, 'baichuan') and host_to_cleanup.baichuan:
+                            try:
+                                await host_to_cleanup.baichuan.unsubscribe_events()
+                            except Exception:
+                                pass  # Ignore unsubscribe errors during cleanup
+                        # Then logout
+                        if host_to_cleanup:
+                            await host_to_cleanup.logout()
+                    except Exception as cleanup_err:
+                        logger.debug(f"Cleanup error for {camera_name}: {cleanup_err}")
                     del self.hosts[camera_id]
-                
+
                 # Wait before retry
                 if self.running:
                     logger.info(f"Retrying {camera_name} in {retry_delay}s...")
@@ -256,15 +275,23 @@ class ReolinkMotionService:
     async def _cleanup_all(self):
         """Cleanup all camera connections"""
         logger.info("Cleaning up all Baichuan connections...")
-        
+
         for camera_id, host in list(self.hosts.items()):
             try:
-                await host.baichuan.unsubscribe_events()
-                await host.logout()
+                # Defensive cleanup - check if baichuan is available
+                if host and hasattr(host, 'baichuan') and host.baichuan:
+                    try:
+                        await host.baichuan.unsubscribe_events()
+                    except Exception as unsub_err:
+                        logger.debug(f"Error unsubscribing {camera_id}: {unsub_err}")
+
+                if host:
+                    await host.logout()
+
                 logger.debug(f"Cleaned up connection for {camera_id}")
             except Exception as e:
-                logger.error(f"Error cleaning up {camera_id}: {e}")
-        
+                logger.debug(f"Error cleaning up {camera_id}: {e}")
+
         self.hosts.clear()
         logger.info("All Baichuan connections cleaned up")
     

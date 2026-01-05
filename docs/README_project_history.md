@@ -10,6 +10,57 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 5, 2026: WebRTC Latency, Database Schema Fix, Neolink Config
+
+**Branch merged:** `ui_performance_JAN_5_2026_b`
+
+### What Was Accomplished
+
+1. **Reduced FFmpeg analyzeduration/probesize** for two cameras:
+   - Office Desk (T8416P0023370398): 1000000 → 500000
+   - REOLINK OFFICE (95270001CSO4BPDZ): 1000000 → 500000
+
+2. **WebRTC Latency Testing Results:**
+   - Observed: ~6s initially, ~2s after warmup
+   - Expected: ~200ms (not achievable with FFmpeg transcoding)
+   - Root cause: FFmpeg transcoding adds ~2s latency floor
+
+3. **Implemented Protect Snapshot API for UniFi MJPEG:**
+   - Replaced `USE_PROTECT=true` bypass that returned None
+   - Uses Protect API: `https://{protect_host}/proxy/protect/api/cameras/{camera_id}/snapshot`
+   - Added session management with auto re-authentication on 401
+
+4. **Fixed MJPEG restart capability:**
+   - Added `_camera_services` dict to store camera_service references
+   - `restart_capture()` can now find camera_service for watchdog restarts
+
+5. **Switched OFFICE KITCHEN from MJPEG to WEBRTC:**
+   - WebRTC now streaming with ~2s latency (vs ~10s with MJPEG snapshots)
+
+6. **Fixed database schema - added missing `updated_at` column:**
+   - Created migration file: `psql/migrations/002_add_updated_at.sql`
+   - Ran migration against nvr-postgres container
+
+7. **Fixed Neolink config error:**
+   - Error: `missing field 'cameras'` in `/etc/neolink.toml`
+   - Added placeholder camera entry to satisfy config parser
+
+### Key Technical Findings
+
+- **Neolink supports Baichuan protocol (port 9000)** for Reolink cameras without RTSP/ONVIF (E1 series, Argus, etc.)
+- **WebRTC 90s latency issue** was stale browser state from before FFmpeg restart - resolved after browser reconnect
+- **UniFi `rtsp_alias`** in cameras.json is ignored - code reads from environment variable instead
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `services/unifi_protect_service.py` | Implemented Protect snapshot API with session auth |
+| `services/unifi_mjpeg_capture_service.py` | Store camera_service for restart capability |
+| `psql/migrations/002_add_updated_at.sql` | New migration for missing updated_at column |
+
+---
+
 ## January 4, 2026: Stream Watchdog Investigation & UI Auto-Recovery
 
 **Branch merged:** `stream_watchdog_investigation_JAN_4_2026_a`

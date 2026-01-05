@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 PRESET_CACHE_TTL_DAYS = 6
 
 # PostgREST URL (internal docker network)
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://nvr-postgrest:3001')
+# Default matches the container alias used in docker-compose
+POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
 
 
 class PresetCache:

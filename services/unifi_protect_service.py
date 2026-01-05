@@ -7,7 +7,12 @@ For cameras adopted into Protect - just provide pre-authenticated URLs
 import os
 import logging
 import traceback
+import requests
+import urllib3
 from .camera_base import CameraService
+
+# Suppress InsecureRequestWarning for self-signed certs
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +43,10 @@ class UniFiProtectService(CameraService):
         # Streaming mode
         self.stream_mode = camera_config.get('stream_mode', 'rtsps_transcode')  # or 'direct_proxy'
 
-        print(f"Protect Host: {self.protect_host}")
-        print(f"PROTECT_USERNAME: {self.username}")
-        print(f"PROTECT_SERVER_PASSWORD: {self.password}")
-        print(f"CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS: {self.protect_alias}")
-        
+        # HTTP session for Protect API calls (reused for efficiency)
+        self._session = None
+        self._authenticated = False
+
         logger.info(f"Initialized {self.name} in {self.stream_mode} mode")
         
     def authenticate(self) -> bool:
@@ -79,49 +83,85 @@ class UniFiProtectService(CameraService):
             # Our own HLS endpoint (stream_manager transcodes from RTSPS)
             return f"/api/streams/{self.camera_id}/playlist.m3u8"
     
-    def get_snapshot(self) -> bytes:
+    def _ensure_session(self) -> bool:
         """
-        Extract snapshot from RTSPS stream using FFmpeg
-        (Only needed if not using Protect's snapshot API)
+        Ensure we have an authenticated session with Protect API.
+        Creates session and logs in if needed.
         """
-        if os.getenv("USE_PROTECT", "false").lower() in ["1", "true"]:
-            print("ignoring mjpeg capture as USE_PROTECT=true")
-            return None
+        if self._session and self._authenticated:
+            return True
 
-        import subprocess
-        
-        
-        rtsp_url = self.get_rtsp_url()
-        if not rtsp_url:
-            return None
-        
         try:
-            # Use FFmpeg to extract single frame
-            cmd = [
-                'ffmpeg',
-                '-rtsp_transport', 'tcp',
-                '-i', rtsp_url,
-                '-frames:v', '1',
-                '-f', 'image2pipe',
-                '-vcodec', 'mjpeg',
-                '-'
-            ]
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
+            self._session = requests.Session()
+
+            # Login to Protect API
+            login_url = f"https://{self.protect_host}/api/auth/login"
+            login_data = {
+                "username": self.username,
+                "password": self.password
+            }
+
+            response = self._session.post(
+                login_url,
+                json=login_data,
+                verify=False,  # Self-signed certs
                 timeout=10
             )
-            
-            if result.returncode == 0:
-                return result.stdout
+
+            if response.status_code == 200:
+                self._authenticated = True
+                logger.info(f"Authenticated with Protect API for {self.name}")
+                return True
             else:
-                logger.error(f"FFmpeg snapshot failed: {result.stderr}")
+                logger.error(f"Protect API login failed: {response.status_code} - {response.text}")
+                self._session = None
+                return False
+
+        except Exception as e:
+            logger.error(f"Protect API authentication error: {e}")
+            self._session = None
+            return False
+
+    def get_snapshot(self) -> bytes:
+        """
+        Get snapshot from Protect API.
+        Uses authenticated session to fetch JPEG from Protect console.
+        """
+        try:
+            # Ensure we have an authenticated session
+            if not self._ensure_session():
+                logger.error(f"Cannot get snapshot - not authenticated with Protect")
                 return None
-                
+
+            # Build snapshot URL using Protect API
+            # Format: https://{protect_host}/proxy/protect/api/cameras/{camera_id}/snapshot
+            snapshot_url = f"https://{self.protect_host}/proxy/protect/api/cameras/{self.camera_id}/snapshot"
+
+            response = self._session.get(
+                snapshot_url,
+                verify=False,  # Self-signed certs
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                return response.content
+            elif response.status_code == 401:
+                # Session expired, re-authenticate and retry once
+                logger.warning(f"Protect session expired, re-authenticating...")
+                self._authenticated = False
+                if self._ensure_session():
+                    response = self._session.get(snapshot_url, verify=False, timeout=10)
+                    if response.status_code == 200:
+                        return response.content
+                logger.error(f"Snapshot failed after re-auth: {response.status_code}")
+                return None
+            else:
+                logger.error(f"Protect snapshot failed: {response.status_code} - {response.text[:200]}")
+                return None
+
         except Exception as e:
             logger.error(f"Snapshot error for {self.name}: {e}")
-            print(traceback.print_exc())
+            traceback.print_exc()
             return None
     
     def get_stats(self):
@@ -137,5 +177,12 @@ class UniFiProtectService(CameraService):
         }
     
     def cleanup(self):
-        """No cleanup needed - no persistent connections"""
-        logger.info(f"Cleanup called for {self.name} (nothing to clean)")
+        """Close HTTP session if open"""
+        if self._session:
+            try:
+                self._session.close()
+                self._session = None
+                self._authenticated = False
+                logger.info(f"Closed Protect API session for {self.name}")
+            except Exception as e:
+                logger.warning(f"Error closing session for {self.name}: {e}")

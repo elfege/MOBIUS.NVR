@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 4, 2026 22:18 EST*
+*Last updated: January 4, 2026 22:35 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -36,7 +36,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `docs_update_JAN_4_2026_a`
-**Date:** January 4, 2026 (22:05 - EST)
+**Date:** January 4, 2026 (22:05 - 22:35 EST)
 
 ### Plan for This Session
 
@@ -115,6 +115,22 @@ Added WEBRTC as a `stream_type` option for sub-second latency (~200-500ms vs 2-4
 - [x] Test recording with WEBRTC cameras
   - Motion recordings working via MediaMTX RTSP tap
   - Verified files being written to /mnt/sdc/NVR_Recent/motion/
+
+**Documentation Updated:**
+
+- [x] Update README.md with WebRTC documentation
+  - Added WebRTC (~200ms) as primary streaming option
+  - Updated architecture diagram with detailed flow
+  - Added WebRTC to Streaming Protocols section
+  - Updated Docker Services with port mappings
+  - Updated Performance Considerations
+
+- [x] Update docs/nvr_engineering_architecture.html
+  - Added WebRTC to system overview and key metrics
+  - Updated architecture diagrams with WebRTC WHEP flow
+  - Added webrtc-stream.js to frontend module diagram
+  - Updated Latency Characteristics section
+  - Updated Development Timeline
 
 **Future Enhancements:**
 

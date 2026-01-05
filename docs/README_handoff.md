@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 10:26 EST*
+*Last updated: January 5, 2026 13:42 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,9 +24,9 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `fix_e1_stream_restart_btn_JAN_5_2026_a`
-**Date:** January 5, 2026 (10:15-10:26 EST)
+**Date:** January 5, 2026 (10:15-13:42 EST)
 
-### Issue: E1 Stream Looping + Missing Restart Button
+### Issue 1: E1 Stream Looping + Missing Restart Button
 
 User reported:
 
@@ -64,10 +64,26 @@ Added `/api/stream/restart/<camera_serial>` endpoint:
 | Refresh (blue) | fa-sync-alt | HLS.js client reconnect only |
 | Restart (orange) | fa-redo-alt | Kill FFmpeg + restart + reconnect |
 
+---
+
+### Issue 2: E1 PTZ Control (13:35 EST)
+
+**Decision**: E1 camera does NOT support direct PTZ via `reolink_aio` library.
+
+**Fix Applied**: Updated `is_baichuan_capable()` in `services/ptz/baichuan_ptz_handler.py`:
+
+- Now checks `capabilities` array first
+- Returns `False` if `'ptz'` not in capabilities
+- E1 has `capabilities: ["streaming"]` only (no ptz)
+- This prevents PTZ routing attempts for non-PTZ cameras
+
+**Note**: Neolink MQTT-based PTZ still TBD as alternative approach.
+
 ### Commits
 
 - `81097c3` - Add /api/stream/restart endpoint for backend FFmpeg restart
 - `8307bfa` - Add restart button to camera UI for backend FFmpeg restart
+- `147246e` - Disable PTZ for cameras without 'ptz' capability
 
 ---
 
@@ -88,7 +104,7 @@ Archived handoff: `docs/archive/handoffs/connection_monitor_fix_JAN_5_2026_a/REA
 
 **Future Enhancements:**
 
-- [ ] Test Baichuan PTZ with E1 camera (95270000YPTKLLD6 - has no ONVIF port)
+- [ ] Research Neolink MQTT PTZ for E1 camera (direct reolink_aio doesn't work)
 - [ ] Add `max_rtsp_connections` field to cameras.json for direct passthrough support
 - [ ] Add blank-frame detection to health monitor
 - [ ] Add ICE state monitoring to health.js

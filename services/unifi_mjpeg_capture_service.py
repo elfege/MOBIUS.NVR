@@ -44,6 +44,11 @@ class UNIFIMJPEGCaptureService:
     def start_capture(self, camera_id: str, camera_service) -> bool:
         """Start single capture process for camera if not already running"""
         with self.lock:
+            # Store camera_service reference for restart capability
+            if not hasattr(self, '_camera_services'):
+                self._camera_services = {}
+            self._camera_services[camera_id] = camera_service
+
             if camera_id not in self.active_captures:
                 capture_info = {
                     'camera_service': camera_service,
@@ -256,8 +261,12 @@ class UNIFIMJPEGCaptureService:
                 self.client_counts[camera_id] = client_count
 
             # For UniFi, we need the camera_service object
-            # Try to get it from camera_config or active_captures backup
-            camera_service = camera_config.get('_camera_service')
+            # Try to get it from stored reference, then camera_config
+            camera_service = None
+            if hasattr(self, '_camera_services'):
+                camera_service = self._camera_services.get(camera_id)
+            if not camera_service:
+                camera_service = camera_config.get('_camera_service')
             if not camera_service:
                 logger.error(f"[RESTART] UniFi camera_service not available for {camera_id}")
                 return False

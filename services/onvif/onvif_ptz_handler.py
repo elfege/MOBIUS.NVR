@@ -2,6 +2,9 @@
 """
 ONVIF PTZ Handler - PTZ operations and preset management
 Handles pan/tilt/zoom control and preset positions via ONVIF protocol
+
+Preset caching: Presets are cached in PostgreSQL via PresetCache with 6-day TTL
+to reduce ONVIF queries. Cache is automatically invalidated when presets change.
 """
 
 import logging
@@ -9,6 +12,7 @@ from typing import Optional, List, Dict, Tuple
 from services.onvif.onvif_client import ONVIFClient
 from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
 from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
+from services.ptz.preset_cache import PresetCache
 
 logger = logging.getLogger(__name__)
 
@@ -173,24 +177,39 @@ class ONVIFPTZHandler:
             return False, f"PTZ operation failed: {str(e)}"
     
     @classmethod
-    def get_presets(cls, camera_serial: str, camera_config: Dict) -> Tuple[bool, List[Dict]]:
+    def get_presets(cls, camera_serial: str, camera_config: Dict,
+                    force_refresh: bool = False) -> Tuple[bool, List[Dict]]:
         """
-        Get list of available PTZ presets
-        
+        Get list of available PTZ presets with database caching.
+
+        Presets are cached in PostgreSQL with 6-day TTL. Cache is checked first
+        unless force_refresh=True, then ONVIF is queried and cache is updated.
+
         Args:
             camera_serial: Camera serial number
             camera_config: Camera configuration dict
-            
+            force_refresh: If True, bypass cache and query ONVIF directly
+
         Returns:
             Tuple of (success: bool, presets: List[Dict])
             Preset dict format: {'token': str, 'name': str}
         """
         try:
+            # Check cache first (unless force refresh requested)
+            if not force_refresh:
+                cached_presets = PresetCache.get_cached_presets(camera_serial)
+                if cached_presets is not None:
+                    logger.debug(f"Using cached presets for {camera_serial}: {len(cached_presets)} presets")
+                    return True, cached_presets
+
+            # Cache miss or force refresh - query ONVIF
+            logger.debug(f"Querying ONVIF for presets: {camera_serial} (force_refresh={force_refresh})")
+
             # Get camera host
             host = camera_config.get('host')
             if not host:
                 return False, []
-            
+
             # Get credentials via provider
             camera_type = camera_config.get('type')
             username, password = cls._get_credentials(camera_serial, camera_type)
@@ -211,26 +230,26 @@ class ONVIFPTZHandler:
                 password=password,
                 camera_serial=camera_serial
             )
-            
+
             if not camera:
                 return False, []
-            
+
             # Get PTZ service
             ptz_service = ONVIFClient.get_ptz_service(camera)
             if not ptz_service:
                 return False, []
-            
+
             # Get profile token (pass camera_serial for retry logic on RTSP collision)
             profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
             if not profile_token:
                 return False, []
 
-            # Get presets
+            # Get presets from ONVIF
             request = ptz_service.create_type('GetPresets')
             request.ProfileToken = profile_token
-            
+
             presets_response = ptz_service.GetPresets(request)
-            
+
             # Parse presets
             presets = []
             if presets_response:
@@ -240,9 +259,13 @@ class ONVIFPTZHandler:
                         'name': preset.Name if hasattr(preset, 'Name') else preset.token
                     })
 
-            logger.info(f"Retrieved {len(presets)} presets for {camera_serial}: {presets[:10]}...(truncated)")
+            logger.info(f"Retrieved {len(presets)} presets for {camera_serial} from ONVIF")
+
+            # Cache the presets (skips if empty)
+            PresetCache.cache_presets(camera_serial, presets)
+
             return True, presets
-            
+
         except Exception as e:
             logger.error(f"Failed to get presets for {camera_serial}: {e}")
             return False, []
@@ -403,12 +426,16 @@ class ONVIFPTZHandler:
             
             token = response if isinstance(response, str) else getattr(response, 'PresetToken', 'unknown')
             logger.info(f"Preset '{preset_name}' saved for {camera_serial} (token: {token})")
+
+            # Invalidate cache so next get_presets() fetches fresh data
+            PresetCache.invalidate_cache(camera_serial)
+
             return True, f"Preset '{preset_name}' saved successfully"
-            
+
         except Exception as e:
             logger.error(f"Failed to set preset for {camera_serial}: {e}")
             return False, f"Failed to save preset: {str(e)}"
-    
+
     @classmethod
     def remove_preset(cls,
                      camera_serial: str,
@@ -472,10 +499,14 @@ class ONVIFPTZHandler:
             
             # Execute remove preset
             ptz_service.RemovePreset(request)
-            
+
             logger.info(f"Preset {preset_token} removed from {camera_serial}")
+
+            # Invalidate cache so next get_presets() fetches fresh data
+            PresetCache.invalidate_cache(camera_serial)
+
             return True, f"Preset removed successfully"
-            
+
         except Exception as e:
             logger.error(f"Failed to remove preset for {camera_serial}: {e}")
             return False, f"Failed to remove preset: {str(e)}"

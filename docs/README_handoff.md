@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 13:58 EST*
+*Last updated: January 5, 2026 14:39 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -23,10 +23,41 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-**Branch:** `reolink_aio_stability_JAN_5_2026_a`
-**Date:** January 5, 2026 (13:58-14:15 EST)
+**Branch:** `reolink_aio_stability_JAN_5_2026_b`
+**Date:** January 5, 2026 (14:39-ongoing EST)
 
-### Issue 1: reolink_aio AttributeError on _transport.close()
+**Context compaction occurred at 14:39 EST** - Continuing from `_a` branch.
+
+### Work Completed in `_a` Branch
+
+1. **reolink_aio AttributeError fix** - Defensive cleanup for `_transport.close()` errors
+2. **UnexpectedDataError exponential backoff** - Reduces log spam for transient camera errors
+3. **E1 Latency Passthrough Support** - Modified `streaming/ffmpeg_params.py` to support main stream passthrough
+
+### Issue 3: E1 Latency (~7-8 seconds behind native app)
+
+**Root Cause:** FFmpeg re-encoding the main stream adds ~2-3 seconds of latency.
+
+**Solution Implemented:** Added passthrough mode to `build_ll_hls_dual_output_publish_params()`:
+
+- Detects `video_main.c:v == "copy"` in camera config
+- In passthrough mode: main stream maps directly from input (no transcode)
+- Sub stream still transcoded for grid thumbnails
+- Commit: `7d46da4`
+
+**Next Step:** User needs to update E1's `cameras.json` to test passthrough:
+
+```json
+"video_main": {
+  "c:v": "copy"
+}
+```
+
+---
+
+### Previous Issues (from `_a` branch)
+
+#### Issue 1: reolink_aio AttributeError on _transport.close()
 
 **Error logs:**
 

@@ -20,7 +20,7 @@ from low_level_handlers.process_reaper import kill_processes_by_pattern, reap_ch
 ######################### -#########################
 def stop_all_services(stream_manager,
                       bridge_watchdog,
-                      eufy_bridge,
+                    #   eufy_bridge,  # Eufy Bridge no longer in use for now
                       unifi_cameras,
                       unifi_resource_monitor,
                       unifi_mjpeg_capture_service

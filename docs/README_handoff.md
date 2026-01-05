@@ -72,7 +72,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-**Branch:** main (post-compaction continuation)
+**Branch:** `ptz_caching_JAN_5_2026_b`
 **Date:** January 5, 2026
 
 ### Next Steps

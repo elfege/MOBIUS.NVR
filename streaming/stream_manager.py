@@ -273,9 +273,10 @@ class StreamManager:
         camera = self.camera_repo.get_camera(camera_serial)
         protocol = (camera or {}).get('stream_type', 'HLS').upper()
 
-        # For LL_HLS/NEOLINK with dual-output: main stream is always available if sub is running
+        # For LL_HLS/NEOLINK/WEBRTC with dual-output: main stream is always available if sub is running
         # The single FFmpeg process publishes to both /camera and /camera_main
-        if protocol in ('LL_HLS', 'NEOLINK') and resolution == 'main':
+        # WEBRTC uses same FFmpeg→MediaMTX pipeline, just different delivery to browser
+        if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC') and resolution == 'main':
             # Check if sub stream (the actual FFmpeg process) is running
             sub_entry = self.active_streams.get(camera_serial)
             if sub_entry and (sub_entry.get('status') == 'active' or sub_entry.get('status') == 'starting'):
@@ -294,8 +295,8 @@ class StreamManager:
             if entry and entry.get('status') == 'starting':
                 print(f"... Stream already starting for {stream_key} ...")
 
-                # NEOLINK uses LL_HLS path through MediaMTX
-                if protocol in ('LL_HLS', 'NEOLINK'):
+                # LL_HLS/NEOLINK/WEBRTC use MediaMTX path
+                if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC'):
                     path = camera.get('packager_path') or camera_serial
                     # Main resolution uses different MediaMTX path
                     if resolution == 'main':
@@ -470,7 +471,8 @@ class StreamManager:
             # ===== LL_HLS publisher path =====
             # NEOLINK uses LL_HLS through MediaMTX for lower latency and
             # motion detection support (MediaMTX provides RTSP output for tapping)
-            if protocol in ('LL_HLS', 'NEOLINK'):
+            # WEBRTC also uses this path - same FFmpeg→MediaMTX pipeline, WebRTC delivery to browser
+            if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC'):
                 # Ask the vendor handler to build the publish argv and the play URL
                 argv, play_url = handler._build_ll_hls_publish(camera_config=camera, rtsp_url=source_url)
 

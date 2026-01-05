@@ -898,12 +898,26 @@ def api_stream_restart(camera_serial):
 
         logger.info(f"[RESTART] Restarting stream for {camera_name} ({camera_serial})")
 
-        # Step 1: Stop the stream (kills FFmpeg)
+        # Step 1: Stop the stream (kills FFmpeg) or clear zombie slot
+        # NOTE: We must clear ANY slot (even 'starting' status) to prevent zombie slots
+        # from blocking new stream starts. is_stream_alive() returns False for 'starting'
+        # status, but those slots still need to be cleared.
         was_running = stream_manager.is_stream_alive(camera_serial)
-        if was_running:
-            stop_success = stream_manager.stop_stream(camera_serial)
-            if not stop_success:
-                logger.warning(f"[RESTART] Stop returned False for {camera_name}, continuing anyway")
+        has_slot = camera_serial in stream_manager.active_streams
+
+        if has_slot:
+            slot_status = stream_manager.active_streams.get(camera_serial, {}).get('status', 'unknown')
+            logger.info(f"[RESTART] Found existing slot for {camera_name} (status: {slot_status}, alive: {was_running})")
+
+            if was_running:
+                stop_success = stream_manager.stop_stream(camera_serial)
+                if not stop_success:
+                    logger.warning(f"[RESTART] Stop returned False for {camera_name}, continuing anyway")
+            else:
+                # Zombie slot: has entry but process isn't running
+                # Force remove the slot to allow fresh start
+                logger.warning(f"[RESTART] Removing zombie slot for {camera_name} (status: {slot_status})")
+                stream_manager.active_streams.pop(camera_serial, None)
 
             # Brief pause to let sockets release
             import time

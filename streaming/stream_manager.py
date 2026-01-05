@@ -277,13 +277,21 @@ class StreamManager:
         # The single FFmpeg process publishes to both /camera and /camera_main
         # WEBRTC uses same FFmpeg→MediaMTX pipeline, just different delivery to browser
         if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC') and resolution == 'main':
-            # Check if sub stream (the actual FFmpeg process) is running
+            # Check if sub stream (the actual FFmpeg process) is ACTUALLY running
+            # NOTE: We must verify the process is alive, not just that a slot exists.
+            # A zombie slot with 'starting' status but dead/no process should not return main URL.
             sub_entry = self.active_streams.get(camera_serial)
-            if sub_entry and (sub_entry.get('status') == 'active' or sub_entry.get('status') == 'starting'):
-                path = camera.get('packager_path') or camera_serial
-                main_url = f"/hls/{path}_main/index.m3u8"
-                print(f"[DUAL-OUTPUT] Main stream already available via dual-output FFmpeg: {main_url}")
-                return main_url
+            if sub_entry and sub_entry.get('status') == 'active':
+                # Verify FFmpeg process is actually running
+                process = sub_entry.get('process')
+                if process and process.poll() is None:
+                    path = camera.get('packager_path') or camera_serial
+                    main_url = f"/hls/{path}_main/index.m3u8"
+                    print(f"[DUAL-OUTPUT] Main stream already available via dual-output FFmpeg: {main_url}")
+                    return main_url
+                else:
+                    # Process died but slot wasn't cleaned up - log and continue to restart
+                    print(f"[DUAL-OUTPUT] Zombie slot detected for {camera_serial} - process not running")
 
         # Derive stream_key from camera_serial + resolution
         # For non-LL_HLS cameras, this allows separate sub and main streams
@@ -293,19 +301,30 @@ class StreamManager:
             # Check if already running
             entry = self.active_streams.get(stream_key)
             if entry and entry.get('status') == 'starting':
-                print(f"... Stream already starting for {stream_key} ...")
+                # Check if this is a stale 'starting' slot (older than 30 seconds)
+                # This can happen if FFmpeg failed to start but exception wasn't caught
+                start_time = entry.get('start_time') or 0
+                slot_age = time.time() - start_time if start_time else float('inf')
 
-                # LL_HLS/NEOLINK/WEBRTC use MediaMTX path
-                if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC'):
-                    path = camera.get('packager_path') or camera_serial
-                    # Main resolution uses different MediaMTX path
+                if slot_age > 30:
+                    # Stale slot - remove it and allow fresh start
+                    print(f"[ZOMBIE] Removing stale 'starting' slot for {stream_key} (age: {slot_age:.1f}s)")
+                    self.active_streams.pop(stream_key, None)
+                    # Continue to create new slot below
+                else:
+                    print(f"... Stream already starting for {stream_key} (age: {slot_age:.1f}s) ...")
+
+                    # LL_HLS/NEOLINK/WEBRTC use MediaMTX path
+                    if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC'):
+                        path = camera.get('packager_path') or camera_serial
+                        # Main resolution uses different MediaMTX path
+                        if resolution == 'main':
+                            return f"/hls/{path}_main/index.m3u8"
+                        return f"/hls/{path}/index.m3u8"
+
                     if resolution == 'main':
-                        return f"/hls/{path}_main/index.m3u8"
-                    return f"/hls/{path}/index.m3u8"
-
-                if resolution == 'main':
-                    return f"/api/streams/{camera_serial}_main/playlist.m3u8"
-                return f"/api/streams/{camera_serial}/playlist.m3u8"
+                        return f"/api/streams/{camera_serial}_main/playlist.m3u8"
+                    return f"/api/streams/{camera_serial}/playlist.m3u8"
 
             if entry and self.is_stream_alive(stream_key):
                 print("═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-═-")

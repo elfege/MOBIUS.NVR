@@ -434,6 +434,123 @@ except Exception as e:
     print(f"⚠️  UniFi camera initialization warning: {e}")
 
 
+# ===== Pre-warm ONVIF Connections for PTZ Cameras =====
+# Eliminates first-command latency by populating service caches at startup
+def prewarm_onvif_connections():
+    """
+    Pre-warm ONVIF connections for all PTZ-capable cameras with ONVIF ports.
+
+    Populates caches for:
+    - ONVIFClient._connections (camera connections)
+    - ONVIFClient._ptz_services (PTZ service instances)
+    - ONVIFClient._media_services (Media service instances)
+    - ONVIFClient._profile_tokens (profile tokens)
+
+    This ensures first PTZ command is fast (~200ms) instead of slow (~10s).
+    """
+    from services.onvif.onvif_client import ONVIFClient
+    from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
+    from services.credentials.amcrest_credential_provider import AmcrestCredentialProvider
+    from services.credentials.sv3c_credential_provider import SV3CCredentialProvider
+
+    # Credential providers (reuse if already initialized)
+    reolink_creds = ReolinkCredentialProvider()
+    amcrest_creds = AmcrestCredentialProvider()
+    sv3c_creds = SV3CCredentialProvider()
+
+    warmed_count = 0
+    failed_count = 0
+
+    for camera_serial, camera_config in camera_repo.get_all_cameras().items():
+        # Skip cameras without PTZ capability
+        capabilities = camera_config.get('capabilities', [])
+        if 'ptz' not in capabilities:
+            continue
+
+        # Skip cameras without ONVIF port (use Baichuan instead)
+        onvif_port = camera_config.get('onvif_port')
+        if onvif_port is None:
+            print(f"  ⏭️  {camera_config.get('name', camera_serial)}: No ONVIF port (uses Baichuan)")
+            continue
+
+        camera_type = camera_config.get('type', 'unknown')
+        host = camera_config.get('host')
+
+        if not host:
+            print(f"  ⚠️  {camera_config.get('name', camera_serial)}: No host configured")
+            failed_count += 1
+            continue
+
+        # Get credentials based on camera type
+        username, password = None, None
+        if camera_type == 'reolink':
+            username, password = reolink_creds.get_credentials(camera_serial)
+        elif camera_type == 'amcrest':
+            username, password = amcrest_creds.get_credentials(camera_serial)
+        elif camera_type == 'sv3c':
+            username, password = sv3c_creds.get_credentials(camera_serial)
+        elif camera_type == 'eufy':
+            # Eufy uses Reolink credentials (same credential structure)
+            username, password = reolink_creds.get_credentials(camera_serial)
+        else:
+            print(f"  ⏭️  {camera_config.get('name', camera_serial)}: Unknown type '{camera_type}'")
+            continue
+
+        if not username or not password:
+            print(f"  ⚠️  {camera_config.get('name', camera_serial)}: Missing credentials")
+            failed_count += 1
+            continue
+
+        try:
+            # Connect to camera (populates _connections cache)
+            camera = ONVIFClient.get_camera(
+                host=host,
+                port=onvif_port,
+                username=username,
+                password=password,
+                camera_serial=camera_serial
+            )
+
+            if not camera:
+                print(f"  ⚠️  {camera_config.get('name', camera_serial)}: Connection failed")
+                failed_count += 1
+                continue
+
+            # Pre-warm PTZ service (populates _ptz_services cache)
+            ptz_service = ONVIFClient.get_ptz_service(camera, camera_serial=camera_serial)
+            if not ptz_service:
+                print(f"  ⚠️  {camera_config.get('name', camera_serial)}: No PTZ service")
+                failed_count += 1
+                continue
+
+            # Pre-warm profile token (populates _profile_tokens cache)
+            profile_token = ONVIFClient.get_profile_token(camera, camera_serial=camera_serial)
+            if not profile_token:
+                print(f"  ⚠️  {camera_config.get('name', camera_serial)}: No profile token")
+                failed_count += 1
+                continue
+
+            print(f"  ✅ {camera_config.get('name', camera_serial)}: ONVIF pre-warmed")
+            warmed_count += 1
+
+        except Exception as e:
+            print(f"  ⚠️  {camera_config.get('name', camera_serial)}: {e}")
+            failed_count += 1
+
+    return warmed_count, failed_count
+
+try:
+    print("\n🔥 Pre-warming ONVIF connections for PTZ cameras...")
+    warmed, failed = prewarm_onvif_connections()
+    if warmed > 0:
+        print(f"✅ ONVIF pre-warmed: {warmed} cameras ready, {failed} failed")
+    elif failed > 0:
+        print(f"⚠️  ONVIF pre-warming: 0 cameras ready, {failed} failed")
+    else:
+        print("ℹ️  No PTZ cameras with ONVIF ports found")
+except Exception as e:
+    print(f"⚠️  ONVIF pre-warming warning: {e}")
+
 # ===== Initialize Monitoring Services =====
 try:
     restart_handler = AppRestartHandler(stream_manager) #, bridge_watchdog) #, eufy_bridge)

@@ -31,8 +31,8 @@ from streaming.stream_manager import StreamManager
 
 from low_level_handlers.process_reaper import install_sigchld_handler
 
-from services.eufy.eufy_bridge import EufyBridge
-from services.eufy.eufy_bridge_client import submit_captcha_sync, submit_2fa_sync, check_status_sync
+# from services.eufy.eufy_bridge import EufyBridge
+# from services.eufy.eufy_bridge_client import submit_captcha_sync, submit_2fa_sync, check_status_sync
 from services.eufy.eufy_bridge_watchdog import BridgeWatchdog
 from services.unifi_protect_service import UniFiProtectService
 from services.unifi_service_resource_monitor import UniFiServiceResourceMonitor
@@ -1632,31 +1632,43 @@ def api_ptz_move(camera_serial, direction):
 
 @app.route('/api/ptz/<camera_serial>/presets', methods=['GET'])
 def api_ptz_get_presets(camera_serial):
-    """Get list of PTZ presets for camera"""
+    """
+    Get list of PTZ presets for camera.
+
+    Presets are cached in PostgreSQL with 6-day TTL. Use ?refresh=true to
+    bypass cache and fetch fresh data from ONVIF.
+
+    Query params:
+        refresh: Set to 'true' to bypass cache and query ONVIF directly
+    """
     try:
+        # Check for force refresh parameter
+        force_refresh = request.args.get('refresh', 'false').lower() == 'true'
+
         # Validate camera
         camera = camera_repo.get_camera(camera_serial)
         if not camera:
             return jsonify({'success': False, 'error': 'Camera not found'}), 404
-        
+
         camera_type = camera.get('type')
-        
+
         # Only Amcrest, Reolink, and SV3C support ONVIF presets
         if camera_type not in ['amcrest', 'reolink', 'sv3c']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
 
-        # Get presets via ONVIF
-        success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera)
-        
+        # Get presets via ONVIF (with caching)
+        success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera, force_refresh=force_refresh)
+
         if not success:
             return jsonify({'success': False, 'error': 'Failed to retrieve presets', 'presets': []}), 500
-        
+
         return jsonify({
             'success': True,
             'camera': camera_serial,
-            'presets': presets
+            'presets': presets,
+            'cached': not force_refresh  # Indicate if result may be from cache
         })
-        
+
     except Exception as e:
         logger.error(f"Get presets API error: {e}")
         return jsonify({'success': False, 'error': str(e), 'presets': []}), 500

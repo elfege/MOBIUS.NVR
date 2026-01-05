@@ -1578,6 +1578,8 @@ def api_amcrest_stream_mjpeg_main(camera_id):
 @csrf.exempt
 def api_ptz_move(camera_serial, direction):
     """Execute PTZ movement with ONVIF priority"""
+    import time as _time
+    _ptz_start = _time.time()
     try:
         # Validate camera
         if not ptz_validator.is_ptz_capable(camera_serial):
@@ -1587,9 +1589,10 @@ def api_ptz_move(camera_serial, direction):
         camera = camera_repo.get_camera(camera_serial)
         if not camera:
             return jsonify({'success': False, 'error': 'Camera not found'}), 404
-        
+
         camera_type = camera.get('type')
-        print(f"[APP.PY] PTZ request for camera: {camera_serial}, type: {camera_type}, direction: {direction}")
+        _ptz_setup_time = _time.time() - _ptz_start
+        print(f"[APP.PY] PTZ request for camera: {camera_serial}, type: {camera_type}, direction: {direction} (setup: {_ptz_setup_time*1000:.0f}ms)")
 
         success = False
         message = ""
@@ -1607,12 +1610,15 @@ def api_ptz_move(camera_serial, direction):
             )
         elif camera_type in ['amcrest', 'reolink', 'sv3c']:
             # Try ONVIF for Amcrest, Reolink (with ONVIF), and SV3C cameras
+            _onvif_start = _time.time()
             print(f"[APP.PY] Attempting ONVIF PTZ for {camera_type} camera")
             success, message = ONVIFPTZHandler.move_camera(
                 camera_serial=camera_serial,
                 direction=direction,
                 camera_config=camera
             )
+            _onvif_time = _time.time() - _onvif_start
+            print(f"[APP.PY] ONVIF PTZ completed in {_onvif_time*1000:.0f}ms (success={success})")
 
             # If ONVIF fails for Reolink, try Baichuan as fallback
             if not success and camera_type == 'reolink':
@@ -1641,6 +1647,8 @@ def api_ptz_move(camera_serial, direction):
         else:
             return jsonify({'success': False, 'error': f'PTZ not supported for camera type: {camera_type}'}), 400
 
+        _total_time = _time.time() - _ptz_start
+        print(f"[APP.PY] PTZ request TOTAL: {_total_time*1000:.0f}ms")
         return jsonify({
             'success': success,
             'camera': camera_serial,

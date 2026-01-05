@@ -114,7 +114,7 @@ webrtcServerCert: ""
 webrtcAllowOrigin: "*"          # Allow browser clients
 webrtcTrustedProxies: []
 webrtcICEServers2: []           # No STUN/TURN for LAN-only use
-webrtcAdditionalHosts: []       # Auto-detect local IPs (replaces webrtcICEHostNAT1To1IPs)
+webrtcAdditionalHosts: [192.168.10.20]  # Host IP for ICE candidates (Docker container can't auto-detect host network)
 webrtcLocalUDPAddress: :8189    # UDP port for WebRTC media (required, replaces webrtcICEUDPMuxAddress)
 webrtcLocalTCPAddress: ""       # Disable TCP ICE (UDP preferred for latency)
 

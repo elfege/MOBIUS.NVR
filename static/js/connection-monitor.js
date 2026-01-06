@@ -309,24 +309,38 @@ export class ConnectionMonitor {
 
         // Override fetch
         window.fetch = async (...args) => {
-            const url = args[0];
+            const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+
+            // Skip monitoring for media/streaming URLs - these fail for content reasons, not connection issues
+            const isMediaUrl = url.includes('.m3u8') ||
+                               url.includes('.ts') ||
+                               url.includes('.m4s') ||
+                               url.includes('.mp4') ||
+                               url.includes('/hls/') ||
+                               url.includes('/whep');
+
             try {
                 const fetchStartTime = Date.now();
                 const response = await originalFetch(...args);
                 const fetchLatency = Date.now() - fetchStartTime;
 
-                // Reset error counter on successful response
-                if (response.ok) {
+                // Reset error counter on successful response (skip media URLs)
+                if (response.ok && !isMediaUrl) {
                     if (consecutiveErrors > 0) {
                         console.log(`[ConnectionMonitor] 🔌 Fetch to ${url} succeeded (${fetchLatency}ms) - resetting error count from ${consecutiveErrors}`);
                     }
                     consecutiveErrors = 0;
-                } else {
+                } else if (!response.ok && !isMediaUrl) {
                     console.warn(`[ConnectionMonitor] 🔌 Fetch to ${url} returned ${response.status} (${fetchLatency}ms)`);
                 }
 
                 return response;
             } catch (error) {
+                // Skip media URL errors - these are stream errors, not connection errors
+                if (isMediaUrl) {
+                    throw error;
+                }
+
                 console.error(`[ConnectionMonitor] 🔌 Fetch to ${url} FAILED:`, error.name, error.message);
 
                 // Check if it's a network error (not a programmer error)

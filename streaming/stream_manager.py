@@ -427,13 +427,33 @@ class StreamManager:
                 raise Exception(f"No handler for camera type: {camera_type}")
             
             # Step 3: Build URL (resolution determines main/sub stream path)
-            print(f"════════ Building URL for {camera_name} ({resolution}) ════════")
-            source_url = handler.build_rtsp_url(camera, stream_type=resolution)
-            
+            # IMPORTANT: For dual-output LL_HLS/NEOLINK/WEBRTC with passthrough mode,
+            # we MUST use the camera's MAIN stream as input, not sub stream.
+            # This allows:
+            #   - Sub output: Scale down from main → 320x240 (transcoded)
+            #   - Main output: Passthrough main → native resolution (copy)
+            # If we used sub stream as input, passthrough would just copy the sub stream!
+            protocol = camera.get('stream_type', 'HLS').upper()
+            ll_cfg = camera.get('ll_hls', {})
+            main_cv = (ll_cfg.get('video_main') or {}).get('c:v', '')
+            main_is_passthrough = str(main_cv).lower() == 'copy'
+
+            # Determine which camera stream to use as input
+            if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC') and main_is_passthrough:
+                # Dual-output with passthrough: ALWAYS use camera's main stream
+                url_stream_type = 'main'
+                print(f"════════ Building URL for {camera_name} (MAIN for passthrough dual-output) ════════")
+            else:
+                # Non-passthrough or single-output: use requested resolution
+                url_stream_type = resolution
+                print(f"════════ Building URL for {camera_name} ({resolution}) ════════")
+
+            source_url = handler.build_rtsp_url(camera, stream_type=url_stream_type)
+
             if not source_url:
                 logger.error(f"Failed to build URL for {camera_name}")
                 raise Exception(f"Failed to build URL for {camera_name}")
-            
+
             print(f"✅ URL built: {source_url}")
             
             # Protocol branching (RTMP vs HLS)

@@ -116,7 +116,7 @@
         </div>
         <p class="retry-count">Attempt <span id="attempt">1</span></p>
         <div class="manual-retry">
-            <button onclick="location.reload()">Retry Now</button>
+            <button onclick="window.location.replace(window.location.pathname + '?_t=' + Date.now())">Retry Now</button>
         </div>
     </div>
 
@@ -194,9 +194,12 @@
                             clearInterval(healthCheck);
                             localStorage.removeItem('nvr_reconnect_attempt');
                             // Go back to where we came from (stored in localStorage)
-                            const returnUrl = localStorage.getItem('nvr_return_url') || '/';
+                            // Add cache-busting param for iOS Safari
+                            let returnUrl = localStorage.getItem('nvr_return_url') || '/';
                             localStorage.removeItem('nvr_return_url');
-                            window.location.href = returnUrl;
+                            const url = new URL(returnUrl, window.location.origin);
+                            url.searchParams.set('_t', Date.now());
+                            window.location.replace(url.pathname + url.search);
                         }
                     })
                     .catch(() => {});

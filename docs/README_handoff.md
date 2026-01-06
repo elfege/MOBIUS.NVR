@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 19:20 EST*
+*Last updated: January 5, 2026 19:35 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,7 +24,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `reolink_aio_stability_JAN_5_2026_b`
-**Date:** January 5, 2026 (14:39-19:20 EST)
+**Date:** January 5, 2026 (14:39-19:35 EST)
 
 **Context compaction occurred at 15:37 EST** - Continuing E1 mainStream work.
 **Second context compaction occurred at ~16:00 EST** - Continuing fullscreen investigation.
@@ -201,6 +201,20 @@ if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC') and main_is_passthrough:
 - Ensures FFmpeg is publishing to `_main` path for fullscreen
 
 **Commit:** `bb35e2a`
+
+#### 9. iOS Safari WebRTC Fallback to HLS
+
+**Problem:** iOS devices showed no streams in grid or fullscreen for WebRTC cameras.
+
+**Root Cause:** iOS Safari requires encrypted WebRTC (DTLS-SRTP). Our MediaMTX config has `webrtcEncryption: no` for LAN-only performance.
+
+**Fix:** Added iOS detection in `static/js/streaming/stream.js`:
+
+- Detects iOS via user agent and platform check
+- When iOS detected for WEBRTC stream type, falls back to HLS
+- Updates `stream-type` data attribute so fullscreen/recovery works correctly
+
+**Commit:** `c1ac72a`
 
 ---
 

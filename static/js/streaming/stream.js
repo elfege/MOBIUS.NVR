@@ -11,6 +11,17 @@ import { MJPEGStreamManager } from './mjpeg-stream.js';
 import { WebRTCStreamManager } from './webrtc-stream.js';
 import { CameraStateMonitor } from './camera-state-monitor.js';
 
+/**
+ * Detect iOS devices (iPhone, iPad, iPod)
+ * iOS Safari requires encrypted WebRTC (DTLS-SRTP), which our MediaMTX config
+ * doesn't have enabled (webrtcEncryption: no for LAN-only use).
+ * Fall back to HLS on iOS for reliable playback.
+ */
+function isIOSDevice() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 
 export class MultiStreamManager {
     constructor() {
@@ -692,7 +703,16 @@ export class MultiStreamManager {
                 success = await this.flvManager.startStream(cameraId, streamElement);
             } else if (streamType === 'WEBRTC') {
                 // WebRTC via MediaMTX WHEP protocol - sub-second latency
-                success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
+                // iOS Safari requires encrypted WebRTC (DTLS-SRTP) which we don't have
+                // enabled. Fall back to HLS for iOS devices.
+                if (isIOSDevice()) {
+                    console.log(`[Stream] iOS detected - falling back to HLS for ${cameraId} (WebRTC requires DTLS on iOS)`);
+                    success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
+                    // Update the stream type on the element so fullscreen/recovery works correctly
+                    $streamItem.data('stream-type', 'LL_HLS');
+                } else {
+                    success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
+                }
             } else {
                 throw new Error(`Unknown stream type: ${streamType}`);
             }

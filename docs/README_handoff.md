@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 15:50 EST*
+*Last updated: January 5, 2026 16:20 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,9 +24,10 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `reolink_aio_stability_JAN_5_2026_b`
-**Date:** January 5, 2026 (14:39-15:50 EST)
+**Date:** January 5, 2026 (14:39-16:20 EST)
 
 **Context compaction occurred at 15:37 EST** - Continuing E1 mainStream work.
+**Second context compaction occurred at ~16:00 EST** - Continuing fullscreen investigation.
 
 ### Work Completed This Session
 
@@ -63,6 +64,65 @@ Built Neolink bridge URL for REOLINK Cat Feeders: rtsp://neolink:8554/95270000YP
 #### 3. User Configured All Cameras for Passthrough
 
 User set `video_main.c:v = "copy"` for all cameras in cameras.json (not just Reolink)
+
+#### 4. Stream Slot Zombie Bug Fix
+
+**Problem:** Restart API and stream starts failed because dead slots weren't cleared
+
+**Root Cause:** `is_stream_alive()` returns False for slots with status 'starting', but those zombie slots still blocked new starts
+
+**Fix:** Added three improvements in `app.py` and `stream_manager.py`:
+
+1. Restart API checks for ANY slot and force-removes zombies
+2. Dual-output check verifies FFmpeg process is actually running (`process.poll() is None`)
+3. Stale 'starting' slots (>30 seconds old) auto-removed
+
+Commit: `cfdd166`
+
+#### 5. Fullscreen Main Stream URL Investigation
+
+**User Report:** "looks like neolink is still playing sub when in full screen: all neolink cameras"
+
+**Investigation Results:**
+
+1. **Backend - WORKING CORRECTLY:**
+   - API returns `/hls/{serial}_main/index.m3u8` for `type: 'main'` requests
+   - MediaMTX serves both sub (320x240) and main (2304x1296) paths correctly
+   - Dual-output FFmpeg correctly publishes both streams
+
+2. **Frontend - APPEARS CORRECT:**
+   - `stream.js` `openFullscreen()` checks `streamType === 'NEOLINK'`
+   - Calls `hlsManager.startStream(cameraId, videoEl, 'main')`
+   - Uses backend-returned `stream_url` with `_main` suffix
+
+3. **Real Issue - Neolink/E1 Connection Instability:**
+   - Neolink logs show "Broken pipe" errors reconnecting to camera
+   - Creates zombie slots in stream manager
+   - Stream keeps dying and restarting
+   - Fallback to sub stream on error
+
+**Debug Logging Added:**
+
+- `app.py` lines 807, 816 - Print statements for resolution and stream_url
+- `hls-stream.js` lines 117, 129, 134-140 - Console logs for stream type and URLs
+- Commit: `ae2b2b5`
+
+**Verified via API tests:**
+
+```bash
+# Sub stream returns correct URL:
+curl -X POST -d '{"type":"sub"}' /api/stream/start/95270000YPTKLLD6
+# → stream_url: /hls/95270000YPTKLLD6/index.m3u8
+
+# Main stream returns correct URL:
+curl -X POST -d '{"type":"main"}' /api/stream/start/95270000YPTKLLD6
+# → stream_url: /hls/95270000YPTKLLD6_main/index.m3u8
+```
+
+**MediaMTX verification:**
+
+- Sub: `RESOLUTION=320x240` at `/95270000YPTKLLD6/`
+- Main: `RESOLUTION=2304x1296` at `/95270000YPTKLLD6_main/`
 
 ---
 

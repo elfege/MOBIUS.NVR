@@ -116,7 +116,7 @@
         </div>
         <p class="retry-count">Attempt <span id="attempt">1</span></p>
         <div class="manual-retry">
-            <button onclick="try { location.reload(true); } catch(e) { location.reload(); }">Retry Now</button>
+            <button onclick="window.location.replace(window.location.pathname + '?_t=' + Date.now())">Retry Now</button>
         </div>
     </div>
 
@@ -309,17 +309,18 @@
             }, 1000);
 
             // Background health check - polls every 2 seconds
+            // iOS Safari requires cache: 'no-store' to prevent cached responses
             const healthCheck = setInterval(() => {
-                fetch('/api/status', { method: 'GET' })
+                fetch('/api/status', { method: 'GET', cache: 'no-store' })
                     .then(r => {
                         if (r.ok) {
-                            // App is up, hard reload to bypass cache
+                            // App is up - redirect with cache-busting query param
+                            // (location.reload(true) is deprecated and ignored by iOS Safari)
                             clearInterval(healthCheck);
-                            try {
-                                location.reload(true);
-                            } catch (e) {
-                                location.reload();
-                            }
+                            const url = new URL(window.location.href);
+                            url.searchParams.delete('attempt');
+                            url.searchParams.set('_t', Date.now());
+                            window.location.replace(url.pathname + url.search);
                         }
                     })
                     .catch(() => {});

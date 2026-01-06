@@ -115,6 +115,27 @@ export class WebRTCStreamManager {
         console.log(`[WebRTC] Starting stream for ${cameraId} (${streamType})`);
 
         try {
+            // IMPORTANT: Notify backend to ensure FFmpeg is running and publishing
+            // For dual-output FFmpeg, both sub and main streams come from ONE process
+            // The backend needs to know we want main so it can return the correct MediaMTX path
+            // and verify the FFmpeg is actually publishing to the _main path
+            try {
+                const apiResponse = await fetch(`/api/stream/start/${cameraId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: streamType })
+                });
+                if (apiResponse.ok) {
+                    const startInfo = await apiResponse.json();
+                    console.log(`[WebRTC] Backend confirmed stream for ${cameraId}:`, startInfo);
+                } else {
+                    console.warn(`[WebRTC] Backend API returned ${apiResponse.status} for ${cameraId}, continuing anyway`);
+                }
+            } catch (apiError) {
+                console.warn(`[WebRTC] Backend API call failed for ${cameraId}:`, apiError);
+                // Continue anyway - MediaMTX might still have the stream available
+            }
+
             // Build WHEP URL - MediaMTX serves WebRTC on separate port
             // Path format: camera_id for sub stream, camera_id_main for main stream
             const streamPath = streamType === 'main' ? `${cameraId}_main` : cameraId;

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 19:03 EST*
+*Last updated: January 5, 2026 19:20 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,10 +24,11 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `reolink_aio_stability_JAN_5_2026_b`
-**Date:** January 5, 2026 (14:39-19:03 EST)
+**Date:** January 5, 2026 (14:39-19:20 EST)
 
 **Context compaction occurred at 15:37 EST** - Continuing E1 mainStream work.
 **Second context compaction occurred at ~16:00 EST** - Continuing fullscreen investigation.
+**Third context compaction occurred at ~19:05 EST** - Continuing passthrough fix.
 
 ### Work Completed This Session
 
@@ -146,6 +147,60 @@ curl -X POST -d '{"type":"main"}' /api/stream/start/95270000YPTKLLD6
   - Replace `location.reload(true)` with cache-busting URL in offline modal recovery
 
 **Commit:** `350e214`
+
+#### 7. WebRTC Fullscreen Main Stream Fix (CRITICAL BUG FIX)
+
+**Problem:** WebRTC cameras showed low-res (320x240) in fullscreen despite requesting main stream.
+
+**User Report:** "This doesn't look HD to me" (Living_REOLINK in fullscreen)
+
+**Investigation:**
+
+1. Frontend correctly calls `/api/stream/start/{camera}` with `type: 'main'`
+2. Backend correctly returns `_main` URL
+3. WebRTC correctly connects to `{camera}_main/whep`
+4. But video was still 320x240 scaled up!
+
+**Root Cause:** FFmpeg dual-output with passthrough was using **camera's sub stream** as input:
+
+- Input: `h264Preview_01_sub` (320x240 on Reolink)
+- Sub output: scale down (no-op, already 320x240)
+- Main output: passthrough copies input → still 320x240!
+
+When `video_main.c:v = "copy"` (passthrough), FFmpeg copies the INPUT directly. But if input is sub stream, passthrough just copies sub stream - NOT the camera's main stream.
+
+**Fix:** Modified `streaming/stream_manager.py` to detect passthrough mode and use camera's main stream as input:
+
+```python
+# When dual-output with passthrough detected:
+if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC') and main_is_passthrough:
+    url_stream_type = 'main'  # ALWAYS use camera's main stream
+```
+
+**Result:** FFmpeg now uses:
+
+- Input: `h264Preview_01_main` (2304x1296 native)
+- Sub output: scale to 320x240 (transcoded)
+- Main output: passthrough → 2304x1296 (copy)
+
+**Commit:** `39e53e1`
+
+**Verification:** After restart, FFmpeg commands show:
+
+```text
+-i rtsp://...192.168.10.186:554/h264Preview_01_main (BEFORE: _sub)
+```
+
+#### 8. WebRTC Backend API Integration
+
+**Problem:** WebRTC manager went directly to WHEP endpoint without notifying backend.
+
+**Fix:** Added backend API call in `static/js/streaming/webrtc-stream.js`:
+
+- Calls `/api/stream/start/{cameraId}` with `type: streamType` before WHEP connection
+- Ensures FFmpeg is publishing to `_main` path for fullscreen
+
+**Commit:** `bb35e2a`
 
 ---
 

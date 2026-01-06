@@ -314,13 +314,11 @@
                 fetch('/api/status', { method: 'GET', cache: 'no-store' })
                     .then(r => {
                         if (r.ok) {
-                            // App is up - redirect with cache-busting query param
-                            // (location.reload(true) is deprecated and ignored by iOS Safari)
+                            // App is up - redirect to /streams with cache-busting
+                            // Always go to /streams directly to avoid iOS caching issues
+                            // with error pages served at other paths
                             clearInterval(healthCheck);
-                            const url = new URL(window.location.href);
-                            url.searchParams.delete('attempt');
-                            url.searchParams.set('_t', Date.now());
-                            window.location.replace(url.pathname + url.search);
+                            window.location.replace('/streams?_t=' + Date.now());
                         }
                     })
                     .catch(() => {});

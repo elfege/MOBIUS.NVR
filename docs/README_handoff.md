@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 16:20 EST*
+*Last updated: January 5, 2026 19:03 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,7 +24,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `reolink_aio_stability_JAN_5_2026_b`
-**Date:** January 5, 2026 (14:39-16:20 EST)
+**Date:** January 5, 2026 (14:39-19:03 EST)
 
 **Context compaction occurred at 15:37 EST** - Continuing E1 mainStream work.
 **Second context compaction occurred at ~16:00 EST** - Continuing fullscreen investigation.
@@ -123,6 +123,29 @@ curl -X POST -d '{"type":"main"}' /api/stream/start/95270000YPTKLLD6
 
 - Sub: `RESOLUTION=320x240` at `/95270000YPTKLLD6/`
 - Main: `RESOLUTION=2304x1296` at `/95270000YPTKLLD6_main/`
+
+#### 6. iOS Safari 502/Reloading Loop Fix
+
+**Problem:** On iOS devices, the UI would cycle through 502.html → reloading.html → main page → back to reloading, creating an infinite loop. This worked fine on desktop Chrome/Firefox.
+
+**Root Cause:** Two iOS Safari-specific issues:
+
+1. `location.reload(true)` is deprecated and iOS Safari ignores the `true` parameter (no cache bypass)
+2. Missing `cache: 'no-store'` in fetch calls causes iOS to return cached responses
+
+**Fix:** Modified 4 files to use cache-busting query params instead of `location.reload(true)`:
+
+- `nginx/502.html`:
+  - Added `cache: 'no-store'` to `/api/status` fetch
+  - Replace `location.reload(true)` with `window.location.replace(url + '?_t=' + Date.now())`
+
+- `nginx/reloading.html` and `templates/reloading.html`:
+  - Add cache-busting param to return URL navigation
+
+- `static/js/connection-monitor.js`:
+  - Replace `location.reload(true)` with cache-busting URL in offline modal recovery
+
+**Commit:** `350e214`
 
 ---
 

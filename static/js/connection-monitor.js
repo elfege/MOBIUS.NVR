@@ -232,7 +232,7 @@ export class ConnectionMonitor {
                     color: #888;
                     margin-bottom: 1.5rem;
                 ">Attempting to reconnect...</p>
-                <button onclick="try { location.reload(true); } catch(e) { location.reload(); }" style="
+                <button onclick="window.location.replace(window.location.pathname + '?_t=' + Date.now())" style="
                     background: transparent;
                     border: 1px solid #ff9800;
                     color: #ff9800;
@@ -281,12 +281,11 @@ export class ConnectionMonitor {
                     // Reset flags before reload
                     this.modalShown = false;
                     this.isRedirecting = false;
-                    // Hard reload to bypass cache
-                    try {
-                        location.reload(true);
-                    } catch (error) {
-                        location.reload();
-                    }
+                    // Reload with cache-busting param for iOS Safari
+                    // (location.reload(true) is deprecated and ignored by iOS)
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('_t', Date.now());
+                    window.location.replace(url.pathname + url.search);
                 }
             } catch (error) {
                 console.log('[ConnectionMonitor] Still offline, will retry in 5s');

@@ -23,30 +23,31 @@ function isIOSDevice() {
 }
 
 /**
- * Detect if current device is a portable/mobile device
- * Mobile devices always use MJPEG in grid view (no forceMJPEG setting needed)
+ * Detect portable/mobile devices that should use MJPEG for grid view.
+ * These devices have limited resources and benefit from MJPEG's lighter decode overhead.
+ * MJPEG uses simple <img> tags instead of <video> elements, avoiding:
+ * - iOS Safari's simultaneous video decode limits (~4-8 streams)
+ * - Mobile devices' memory/CPU constraints
+ *
+ * Returns true for:
+ * - iOS devices (iPhone, iPad, iPod)
+ * - Android mobile devices
+ * - Any touch-enabled mobile device
  */
 function isPortableDevice() {
-    return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) ||
-           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
+    // iOS devices
+    if (isIOSDevice()) return true;
 
-/**
- * Check if Force MJPEG mode is enabled (desktop only setting)
- * Checks both URL param and localStorage
- */
-function isForceMJPEGEnabled() {
-    // Portable devices always use MJPEG in grid - setting doesn't apply
-    if (isPortableDevice()) {
-        return true;  // Always force MJPEG on mobile
-    }
-    // Check URL param first
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('forceMJPEG') === 'true') {
-        return true;
-    }
-    // Fall back to localStorage
-    return localStorage.getItem('forceMJPEG') === 'true';
+    // Android mobile/tablet
+    if (/Android/i.test(navigator.userAgent)) return true;
+
+    // Generic mobile detection (webOS, BlackBerry, Windows Phone, etc.)
+    if (/webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) return true;
+
+    // Touch device with small screen (likely mobile)
+    if ('ontouchstart' in window && window.innerWidth < 1024) return true;
+
+    return false;
 }
 
 
@@ -57,6 +58,15 @@ export class MultiStreamManager {
         this.flvManager = new FLVStreamManager();
         this.webrtcManager = new WebRTCStreamManager();
         this.ptzController = new PTZController();
+
+        // iOS pagination state - limit streams per page to avoid Safari video decode limits
+        this.iosPagination = {
+            enabled: isIOSDevice(),
+            camerasPerPage: 6,
+            currentPage: 0,
+            totalPages: 0,
+            allCameraIds: []  // All camera IDs in order
+        };
 
         // CameraStateMonitor polls backend state and detects when watchdog recovers streams
         this.cameraStateMonitor = new CameraStateMonitor({
@@ -174,6 +184,11 @@ export class MultiStreamManager {
         this.setupLayout();
         this.setupEventListeners();
         this.updateStreamCount();
+
+        // Initialize iOS pagination if enabled
+        if (this.iosPagination.enabled) {
+            this.initIOSPagination();
+        }
 
         // Start all streams (fire and forget - don't await)
         console.log('[Init] Starting streams in background...');
@@ -720,14 +735,36 @@ export class MultiStreamManager {
         }
     }
 
-    async startAllStreams() {
-        console.log('[StartAll] Beginning startAllStreams...');
-        const $streamItems = this.$container.find('.stream-item');
-        console.log(`[StartAll] Found ${$streamItems.length} stream items`);
+    /**
+     * Start all streams with sequential loading to prevent resource exhaustion.
+     * Uses a delay between stream starts to allow each video element to initialize
+     * before the next one starts. This is especially important for:
+     * - iOS Safari (hard limit on simultaneous video decodes ~4-8)
+     * - Mobile devices with limited resources
+     * - Systems with many cameras (11+)
+     *
+     * @param {number} delayMs - Delay between stream starts in milliseconds (default: 300)
+     */
+    async startAllStreams(delayMs = 300) {
+        console.log('[StartAll] Beginning startAllStreams (sequential loading)...');
 
-        // Start all streams in parallel instead of sequential
-        const startPromises = $streamItems.toArray().map(async (item, index) => {
-            const $item = $(item);
+        // iOS pagination: only start streams on current page (others are hidden)
+        // This avoids overwhelming Safari's video decode limits
+        if (this.iosPagination.enabled) {
+            console.log('[StartAll] iOS pagination enabled - starting only current page streams');
+            await this.startCurrentPageStreams();
+            console.log('[StartAll] ✓✓✓ iOS PAGE STREAMS COMPLETE ✓✓✓');
+            return;
+        }
+
+        // Non-iOS: start all streams sequentially
+        const $streamItems = this.$container.find('.stream-item');
+        console.log(`[StartAll] Found ${$streamItems.length} stream items, delay=${delayMs}ms`);
+
+        // Sequential loading with delays to prevent resource exhaustion
+        // This applies to all UIs (desktop, mobile, iOS) for consistent behavior
+        for (let index = 0; index < $streamItems.length; index++) {
+            const $item = $($streamItems[index]);
             const cameraId = $item.data('camera-serial');
             const cameraType = $item.data('camera-type');
             const streamType = $item.data('stream-type');
@@ -741,16 +778,69 @@ export class MultiStreamManager {
                 console.error(`[StartAll] ✗ Stream ${index + 1} failed: ${cameraId}`, error);
                 this.setStreamStatus($item, 'error', 'Failed to load');
             }
-        });
 
-        console.log(`[StartAll] Waiting for ${startPromises.length} promises...`);
-        await Promise.allSettled(startPromises);
+            // Delay between stream starts to let browser initialize each video element
+            // Skip delay after last stream
+            if (index < $streamItems.length - 1) {
+                await new Promise(r => setTimeout(r, delayMs));
+            }
+        }
+
         console.log('[StartAll] ✓✓✓ ALL STREAMS COMPLETE ✓✓✓');
     }
 
     async startStream(cameraId, $streamItem, cameraType, streamType) {
-        const streamElement = $streamItem.find('.stream-video')[0];
+        let streamElement = $streamItem.find('.stream-video')[0];
         const $loadingIndicator = $streamItem.find('.loading-indicator');
+
+        // Portable device MJPEG override for grid view
+        // iOS/mobile devices have limited video decode resources. MJPEG uses <img> tags
+        // which are much lighter than <video> elements and bypass Safari's decode limits.
+        // This only applies to grid view (not fullscreen where we want HLS for audio support).
+        //
+        // All camera types now support MJPEG:
+        // - Native MJPEG: reolink, unifi, amcrest (direct camera endpoints)
+        // - MediaServer MJPEG: eufy, sv3c, neolink (taps MediaMTX RTSP output)
+        //
+        // DEBUG: Add ?forceMJPEG=true to URL to test MJPEG on desktop
+        const urlParams = new URLSearchParams(window.location.search);
+        const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
+        const isGridView = !$streamItem.hasClass('fullscreen-stream');
+        const forcePortableMJPEG = (isPortableDevice() || debugForceMJPEG) && isGridView;
+
+        if (forcePortableMJPEG && streamType !== 'MJPEG' && streamType !== 'mjpeg_proxy') {
+            console.log(`[Stream] Portable device detected - using MJPEG for ${cameraId} grid view`);
+            streamType = 'MJPEG';  // Override to MJPEG for lighter resource usage
+            // Store original stream type for fullscreen switching
+            $streamItem.data('original-stream-type', $streamItem.data('stream-type'));
+            $streamItem.data('stream-type', 'MJPEG');
+
+            // CRITICAL: MJPEG requires an <img> element, not <video>
+            // If the template rendered a <video> element (for HLS/WebRTC cameras),
+            // we need to swap it with an <img> element for MJPEG to work.
+            // Browsers handle multipart/x-mixed-replace only on <img> elements.
+            if (streamElement && streamElement.tagName === 'VIDEO') {
+                console.log(`[Stream] ${cameraId}: Swapping <video> for <img> element for MJPEG`);
+                const $video = $(streamElement);
+
+                // Create <img> element with same styling as the original video
+                const $img = $('<img>', {
+                    class: 'stream-video stream-mjpeg-img',
+                    style: 'object-fit: cover; width: 100%; height: 100%;',
+                    alt: 'MJPEG Stream'
+                });
+
+                // Insert img before video and hide video
+                $video.before($img);
+                $video.hide();
+
+                // Use the new img element
+                streamElement = $img[0];
+
+                // Store reference for later cleanup/restoration
+                $streamItem.data('mjpeg-swapped', true);
+            }
+        }
 
         try {
             $loadingIndicator.show();
@@ -760,14 +850,7 @@ export class MultiStreamManager {
 
             // Use streamType to determine which manager to use
             // NOTE: mjpeg_proxy is only for direct access to UNIFI MJPEG streams (when not using Protect)
-            // Force MJPEG mode: Desktop setting or portable device - use MJPEG for all cameras in grid
-            const forceMJPEG = isForceMJPEGEnabled();
-            if (forceMJPEG && streamType !== 'MJPEG' && streamType !== 'mjpeg_proxy') {
-                console.log(`[Stream] Force MJPEG enabled - using MJPEG for ${cameraId} (was ${streamType})`);
-                success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
-                // Store original stream type for fullscreen switching
-                $streamItem.data('original-stream-type', streamType);
-            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+            if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
                 // Pass 'sub' as stream parameter for grid view (Reolink requires this for MJPEG endpoint)
                 success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
             } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
@@ -1195,6 +1278,45 @@ export class MultiStreamManager {
             localStorage.setItem('fullscreenCameraSerial', cameraId);
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
+            // Portable device MJPEG→HLS switch for fullscreen
+            // In grid view, portable devices use MJPEG for lighter resource usage.
+            // In fullscreen, we want HLS for audio support and better quality.
+            const originalStreamType = $streamItem.data('original-stream-type');
+            if (isPortableDevice() && streamType === 'MJPEG' && originalStreamType) {
+                console.log(`[Fullscreen] Portable: Switching ${cameraId} from MJPEG to ${originalStreamType} for fullscreen`);
+
+                // Stop MJPEG stream
+                this.mjpegManager.stopStream(cameraId);
+
+                // If we swapped video→img for MJPEG, restore the original video element
+                let videoEl;
+                if ($streamItem.data('mjpeg-swapped')) {
+                    console.log(`[Fullscreen] ${cameraId}: Restoring <video> element from MJPEG swap`);
+                    // Remove the img we created and show the original video
+                    $streamItem.find('.stream-mjpeg-img').remove();
+                    const $video = $streamItem.find('video.stream-video');
+                    $video.show();
+                    videoEl = $video[0];
+                    $streamItem.data('mjpeg-swapped', false);
+                } else {
+                    videoEl = $streamItem.find('.stream-video')[0];
+                }
+
+                // Start HLS stream (main resolution for fullscreen)
+                try {
+                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                    console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                    $streamItem.data('switched-from-mjpeg', true);
+                    $streamItem.data('switched-to-main', true);
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch to HLS main:`, e);
+                    // Fall back to HLS sub
+                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
+                    $streamItem.data('switched-from-mjpeg', true);
+                }
+                return; // Don't process other stream type switches
+            }
+
             // For LL_HLS/NEOLINK/WEBRTC cameras: Switch to main stream (high-res)
             // The backend dual-output FFmpeg provides both sub and main streams
             if (streamType === 'LL_HLS' || streamType === 'NEOLINK') {
@@ -1341,7 +1463,10 @@ export class MultiStreamManager {
 
             const fullscreenCameraId = $fullscreenItem.data('camera-serial');
             const switchedToMain = $fullscreenItem.data('switched-to-main');
+            const switchedFromMJPEG = $fullscreenItem.data('switched-from-mjpeg');
+            const originalStreamType = $fullscreenItem.data('original-stream-type');
             const streamType = $fullscreenItem.data('stream-type');
+            const cameraType = $fullscreenItem.data('camera-type');
 
             // Remove CSS fullscreen class
             $fullscreenItem.removeClass('css-fullscreen');
@@ -1351,8 +1476,53 @@ export class MultiStreamManager {
             localStorage.removeItem('fullscreenCameraSerial');
             console.log('[Fullscreen] Cleared localStorage');
 
+            // Portable device: Switch back from HLS to MJPEG for grid view
+            if (switchedFromMJPEG && originalStreamType) {
+                console.log(`[Fullscreen] Portable: Switching ${fullscreenCameraId} back to MJPEG for grid view`);
+
+                // Stop HLS stream
+                this.hlsManager.stopStream(fullscreenCameraId);
+
+                // MJPEG requires <img> element, not <video>
+                // We need to swap video→img for MJPEG to work
+                const $video = $fullscreenItem.find('video.stream-video');
+                let imgEl;
+
+                // Check if we need to create an <img> element
+                let $existingImg = $fullscreenItem.find('.stream-mjpeg-img');
+                if ($existingImg.length === 0) {
+                    console.log(`[Fullscreen] ${fullscreenCameraId}: Creating <img> element for MJPEG`);
+                    const $img = $('<img>', {
+                        class: 'stream-video stream-mjpeg-img',
+                        style: 'object-fit: cover; width: 100%; height: 100%;',
+                        alt: 'MJPEG Stream'
+                    });
+                    $video.before($img);
+                    $existingImg = $img;
+                    $fullscreenItem.data('mjpeg-swapped', true);
+                }
+
+                // Hide video, show img
+                $video.hide();
+                $existingImg.show();
+                imgEl = $existingImg[0];
+
+                // Start MJPEG stream (sub resolution for grid)
+                try {
+                    await this.mjpegManager.startStream(fullscreenCameraId, imgEl, cameraType, 'sub');
+                    console.log(`[Fullscreen] ✓ Switched back to MJPEG for ${fullscreenCameraId}`);
+                    // Restore stream-type to MJPEG for grid view
+                    $fullscreenItem.data('stream-type', 'MJPEG');
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch back to MJPEG:`, e);
+                }
+
+                // Clear flags
+                $fullscreenItem.removeData('switched-from-mjpeg');
+                $fullscreenItem.removeData('switched-to-main');
+            }
             // If we switched to main stream, switch back to sub stream
-            if (switchedToMain && (streamType === 'LL_HLS' || streamType === 'NEOLINK')) {
+            else if (switchedToMain && (streamType === 'LL_HLS' || streamType === 'NEOLINK')) {
                 console.log(`[Fullscreen] Switching ${fullscreenCameraId} back to sub stream...`);
 
                 const $video = $fullscreenItem.find('.stream-video');
@@ -1541,6 +1711,216 @@ export class MultiStreamManager {
         await this.openFullscreen(savedCameraId, name, cameraType, streamType);
 
         console.log('[Fullscreen] CSS fullscreen restored successfully');
+    }
+
+    // =========================================================================
+    // iOS PAGINATION METHODS
+    // iOS Safari has hard limits on simultaneous video decodes (~4-8).
+    // This pagination system shows max 6 cameras per page on iOS devices.
+    // =========================================================================
+
+    /**
+     * Initialize iOS pagination system.
+     * Creates page controls, collects camera IDs, and sets up initial page view.
+     */
+    initIOSPagination() {
+        console.log('[iOS Pagination] Initializing...');
+
+        // Collect all camera IDs in DOM order
+        const $streamItems = this.$container.find('.stream-item');
+        this.iosPagination.allCameraIds = $streamItems.toArray().map(
+            item => $(item).data('camera-serial')
+        );
+
+        const totalCameras = this.iosPagination.allCameraIds.length;
+        this.iosPagination.totalPages = Math.ceil(totalCameras / this.iosPagination.camerasPerPage);
+
+        console.log(`[iOS Pagination] ${totalCameras} cameras, ${this.iosPagination.totalPages} pages (${this.iosPagination.camerasPerPage} per page)`);
+
+        // Create pagination controls UI
+        this.createPaginationControls();
+
+        // Show only first page cameras, hide the rest
+        this.showPage(0);
+    }
+
+    /**
+     * Create pagination controls (prev/next buttons, page indicator).
+     * Inserted above the streams container.
+     */
+    createPaginationControls() {
+        // Remove existing controls if any (for re-initialization)
+        $('#ios-pagination-controls').remove();
+
+        const $controls = $(`
+            <div id="ios-pagination-controls" class="ios-pagination-controls">
+                <button id="ios-prev-page" class="ios-page-btn" aria-label="Previous page">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <span id="ios-page-indicator" class="ios-page-indicator">
+                    Page 1 / ${this.iosPagination.totalPages}
+                </span>
+                <button id="ios-next-page" class="ios-page-btn" aria-label="Next page">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        `);
+
+        // Insert before streams container
+        this.$container.before($controls);
+
+        // Bind button events
+        $('#ios-prev-page').on('click', () => this.goToPage(this.iosPagination.currentPage - 1));
+        $('#ios-next-page').on('click', () => this.goToPage(this.iosPagination.currentPage + 1));
+
+        // Update button states
+        this.updatePaginationButtons();
+    }
+
+    /**
+     * Navigate to a specific page.
+     * Stops streams on current page, shows new page, starts streams on new page.
+     *
+     * @param {number} pageIndex - Zero-based page index
+     */
+    async goToPage(pageIndex) {
+        // Bounds check
+        if (pageIndex < 0 || pageIndex >= this.iosPagination.totalPages) {
+            console.log(`[iOS Pagination] Page ${pageIndex} out of bounds`);
+            return;
+        }
+
+        if (pageIndex === this.iosPagination.currentPage) {
+            console.log(`[iOS Pagination] Already on page ${pageIndex}`);
+            return;
+        }
+
+        console.log(`[iOS Pagination] Navigating from page ${this.iosPagination.currentPage} to ${pageIndex}`);
+
+        // Stop streams on current page before switching
+        await this.stopCurrentPageStreams();
+
+        // Update page and show new cameras
+        this.showPage(pageIndex);
+
+        // Start streams on new page
+        await this.startCurrentPageStreams();
+    }
+
+    /**
+     * Show cameras for the specified page, hide all others.
+     *
+     * @param {number} pageIndex - Zero-based page index
+     */
+    showPage(pageIndex) {
+        this.iosPagination.currentPage = pageIndex;
+
+        const start = pageIndex * this.iosPagination.camerasPerPage;
+        const end = start + this.iosPagination.camerasPerPage;
+        const visibleCameras = this.iosPagination.allCameraIds.slice(start, end);
+
+        console.log(`[iOS Pagination] Showing page ${pageIndex}: cameras ${start}-${end - 1}`);
+
+        // Show/hide stream items based on page
+        this.$container.find('.stream-item').each((_, item) => {
+            const $item = $(item);
+            const cameraId = $item.data('camera-serial');
+
+            if (visibleCameras.includes(cameraId)) {
+                $item.removeClass('ios-hidden').show();
+            } else {
+                $item.addClass('ios-hidden').hide();
+            }
+        });
+
+        // Update UI
+        this.updatePaginationButtons();
+        $('#ios-page-indicator').text(`Page ${pageIndex + 1} / ${this.iosPagination.totalPages}`);
+    }
+
+    /**
+     * Stop all streams on the current page.
+     * Called before page navigation to free up video decode resources.
+     */
+    async stopCurrentPageStreams() {
+        const start = this.iosPagination.currentPage * this.iosPagination.camerasPerPage;
+        const end = start + this.iosPagination.camerasPerPage;
+        const currentPageCameras = this.iosPagination.allCameraIds.slice(start, end);
+
+        console.log(`[iOS Pagination] Stopping ${currentPageCameras.length} streams on page ${this.iosPagination.currentPage}`);
+
+        for (const cameraId of currentPageCameras) {
+            const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
+            if ($streamItem.length) {
+                const cameraType = $streamItem.data('camera-type');
+                const streamType = $streamItem.data('stream-type');
+                await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+            }
+        }
+    }
+
+    /**
+     * Start streams on the current page.
+     * Uses sequential loading with delays to avoid overwhelming iOS Safari.
+     */
+    async startCurrentPageStreams() {
+        const start = this.iosPagination.currentPage * this.iosPagination.camerasPerPage;
+        const end = start + this.iosPagination.camerasPerPage;
+        const currentPageCameras = this.iosPagination.allCameraIds.slice(start, end);
+
+        console.log(`[iOS Pagination] Starting ${currentPageCameras.length} streams on page ${this.iosPagination.currentPage}`);
+
+        // Sequential with 500ms delay between each for iOS
+        for (let i = 0; i < currentPageCameras.length; i++) {
+            const cameraId = currentPageCameras[i];
+            const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
+
+            if ($streamItem.length) {
+                const cameraType = $streamItem.data('camera-type');
+                const streamType = $streamItem.data('stream-type');
+
+                console.log(`[iOS Pagination] Starting stream ${i + 1}/${currentPageCameras.length}: ${cameraId}`);
+
+                try {
+                    await this.startStream(cameraId, $streamItem, cameraType, streamType);
+                } catch (error) {
+                    console.error(`[iOS Pagination] Failed to start ${cameraId}:`, error);
+                    this.setStreamStatus($streamItem, 'error', 'Failed to load');
+                }
+
+                // Delay between starts (except for last one)
+                if (i < currentPageCameras.length - 1) {
+                    await new Promise(r => setTimeout(r, 500));
+                }
+            }
+        }
+    }
+
+    /**
+     * Update prev/next button enabled states based on current page.
+     */
+    updatePaginationButtons() {
+        const { currentPage, totalPages } = this.iosPagination;
+
+        $('#ios-prev-page').prop('disabled', currentPage === 0);
+        $('#ios-next-page').prop('disabled', currentPage >= totalPages - 1);
+    }
+
+    /**
+     * Get cameras visible on current page.
+     * Used by startAllStreams to only start visible cameras on iOS.
+     *
+     * @returns {string[]} Array of camera IDs on current page
+     */
+    getVisibleCameraIds() {
+        if (!this.iosPagination.enabled) {
+            // Non-iOS: all cameras are visible
+            return this.iosPagination.allCameraIds;
+        }
+
+        const start = this.iosPagination.currentPage * this.iosPagination.camerasPerPage;
+        const end = start + this.iosPagination.camerasPerPage;
+        return this.iosPagination.allCameraIds.slice(start, end);
     }
 
     updateStreamCount() {

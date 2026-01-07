@@ -40,6 +40,7 @@ from services.app_restart_handler import AppRestartHandler
 from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
 from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
+from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
 from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
 from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
 from services.ptz.baichuan_ptz_handler import BaichuanPTZHandler
@@ -591,11 +592,7 @@ class PTZControlForm(FlaskForm):
 # ===== Main UI Routes =====
 @app.route('/')
 def index():
-    """Redirect to streams page (main interface), preserving query params"""
-    from flask import request
-    query_string = request.query_string.decode('utf-8')
-    if query_string:
-        return redirect(f'/streams?{query_string}')
+    """Redirect to streams page (main interface)"""
     return redirect('/streams')
 
 @app.route('/streams')
@@ -1317,6 +1314,147 @@ def api_recycle_unifi_sessions():
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+########################################################-########################################################
+#                                    MEDIASERVER MJPEG (tap MediaMTX)
+########################################################-########################################################
+@app.route('/api/mediaserver/<camera_id>/stream/mjpeg')
+@csrf.exempt
+def api_mediaserver_stream_mjpeg(camera_id):
+    """
+    MJPEG stream for cameras with mjpeg_source: "mediaserver"
+
+    Taps the existing MediaMTX RTSP output (from dual-output FFmpeg) and
+    extracts JPEG frames. Used for single-connection cameras (Eufy, SV3C,
+    Neolink) that can't open a second connection for native MJPEG.
+
+    This enables MJPEG grid view on iOS/portable devices for ALL camera types.
+    """
+    logger.info(f"Client requesting MediaServer MJPEG stream for {camera_id}")
+
+    try:
+        # Get camera configuration
+        camera_config = camera_repo.get_camera(camera_id)
+        if not camera_config:
+            return jsonify({'error': 'Camera not found'}), 404
+
+        # Verify this camera should use mediaserver MJPEG
+        mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
+        if mjpeg_source != 'mediaserver':
+            logger.warning(f"Camera {camera_id} has mjpeg_source='{mjpeg_source}', not 'mediaserver'")
+            # Still allow it - frontend may be forcing mediaserver for portable devices
+
+        # Add client to capture service
+        if not mediaserver_mjpeg_service.add_client(camera_id, camera_config):
+            return jsonify({'error': 'Failed to start mediaserver MJPEG capture'}), 503
+
+        def generate():
+            """Generator serves frames from shared buffer"""
+            frame_count = 0
+            last_frame_number = -1
+            no_frame_retries = 0
+            max_no_frame_retries = 20  # 10 seconds max wait for first frame
+            try:
+                # Log when generator starts
+                logger.info(f"MediaServer MJPEG {camera_id}: Generator started, waiting for frames...")
+
+                while True:
+                    frame_data = mediaserver_mjpeg_service.get_latest_frame(camera_id)
+
+                    if frame_data and frame_data['data']:
+                        # Reset retry counter on success
+                        no_frame_retries = 0
+
+                        # Skip if same frame (avoid duplicate sends)
+                        current_frame_number = frame_data.get('frame_number', 0)
+                        if current_frame_number == last_frame_number and frame_count > 0:
+                            time.sleep(0.1)  # Short sleep when waiting for new frame
+                            continue
+
+                        last_frame_number = current_frame_number
+
+                        # Frame data is always JPEG (either real or error frame with text)
+                        snapshot = frame_data['data']
+                        frame_count += 1
+                        is_error = frame_data.get('is_error', False)
+
+                        # Log first 5 frames for debugging iOS issues
+                        if frame_count <= 5:
+                            logger.info(f"MediaServer MJPEG {camera_id}: Sending frame #{frame_count} ({len(snapshot)} bytes, error={is_error})")
+
+                        yield (b'--jpgboundary\r\n'
+                               b'Content-Type: image/jpeg\r\n' +
+                               f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                               snapshot + b'\r\n')
+                    else:
+                        no_frame_retries += 1
+                        if frame_count == 0:
+                            if no_frame_retries <= 3:
+                                logger.info(f"MediaServer MJPEG {camera_id}: Waiting for first frame (attempt {no_frame_retries})...")
+                            elif no_frame_retries == max_no_frame_retries:
+                                logger.warning(f"MediaServer MJPEG {camera_id}: Gave up waiting for frames after {max_no_frame_retries} attempts")
+                                # Create and send a "No Signal" frame before giving up
+                                from services.mediaserver_mjpeg_service import _create_error_frame
+                                no_signal_frame = _create_error_frame(f"No signal from {camera_id}")
+                                yield (b'--jpgboundary\r\n'
+                                       b'Content-Type: image/jpeg\r\n' +
+                                       f'Content-Length: {len(no_signal_frame)}\r\n\r\n'.encode() +
+                                       no_signal_frame + b'\r\n')
+                                return  # End generator
+
+                    time.sleep(0.5)  # 2 FPS
+
+            except GeneratorExit:
+                mediaserver_mjpeg_service.remove_client(camera_id)
+                logger.info(f"Client disconnected from MediaServer MJPEG stream {camera_id} after {frame_count} frames")
+            except Exception as e:
+                logger.error(f"MediaServer MJPEG stream error for {camera_id}: {e}")
+                mediaserver_mjpeg_service.remove_client(camera_id)
+
+        response = Response(generate(),
+                            mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+        # Disable buffering at all layers for streaming
+        response.headers['X-Accel-Buffering'] = 'no'
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+        return response
+
+    except Exception as e:
+        mediaserver_mjpeg_service.remove_client(camera_id)
+        return jsonify({'error': f'Stream error: {e}'}), 500
+
+
+@app.route('/api/status/mediaserver-mjpeg')
+def api_mediaserver_mjpeg_status():
+    """Get status of all MediaServer MJPEG capture processes"""
+    try:
+        status = mediaserver_mjpeg_service.get_all_status()
+        return jsonify({
+            'success': True,
+            'captures': status,
+            'active_count': len(status)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/status/mediaserver-mjpeg/<camera_id>')
+def api_mediaserver_mjpeg_status_single(camera_id):
+    """Get status of specific MediaServer MJPEG capture process"""
+    try:
+        status = mediaserver_mjpeg_service.get_status(camera_id)
+        if status:
+            return jsonify({
+                'success': True,
+                'status': status
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Capture not found'
+            }), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 ########################################################-########################################################
 #                                          ⚙️⚙️⚙️⚙️ REOLINK ⚙️⚙️⚙️⚙️

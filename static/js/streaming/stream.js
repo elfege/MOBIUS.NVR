@@ -428,15 +428,54 @@ export class MultiStreamManager {
             }
         });
 
-        // ESC key to exit CSS fullscreen
+        // ESC key to exit CSS fullscreen or expanded modal
         $(document).on('keydown', (e) => {
             if (e.key === 'Escape') {
+                // First check fullscreen (higher priority)
                 const $fullscreenItem = $('.stream-item.css-fullscreen');
                 if ($fullscreenItem.length > 0) {
                     console.log('[Fullscreen] ESC key pressed, exiting fullscreen');
                     this.closeFullscreen();
+                    return;
+                }
+                // Then check expanded modal
+                const $expandedItem = $('.stream-item.expanded');
+                if ($expandedItem.length > 0) {
+                    console.log('[Expanded] ESC key pressed, collapsing modal');
+                    this.collapseExpandedCamera();
                 }
             }
+        });
+
+        // ============================================================================
+        // EXPANDED MODAL MODE HANDLERS
+        // Tap/click on camera card to expand to larger modal view
+        // ============================================================================
+
+        // Click on stream item (not buttons) to expand
+        this.$container.on('click', '.stream-item', (e) => {
+            // Don't expand if clicking on a button or interactive element
+            if ($(e.target).closest('button, .ptz-controls, .stream-controls, a, input, select').length) {
+                return;
+            }
+
+            // Don't expand if already in fullscreen
+            const $streamItem = $(e.currentTarget);
+            if ($streamItem.hasClass('css-fullscreen')) {
+                return;
+            }
+
+            // Toggle expanded state
+            if ($streamItem.hasClass('expanded')) {
+                this.collapseExpandedCamera();
+            } else {
+                this.expandCamera($streamItem);
+            }
+        });
+
+        // Click backdrop to collapse expanded camera
+        $('#expanded-backdrop').on('click', () => {
+            this.collapseExpandedCamera();
         });
 
         // Audio mute/unmute toggle handler
@@ -1139,6 +1178,9 @@ export class MultiStreamManager {
                 return;
             }
 
+            // Close expanded modal if open (entering fullscreen from expanded mode)
+            this.collapseExpandedCamera();
+
             console.log(`[Fullscreen] Opening CSS fullscreen for camera: ${name} (${cameraId})`);
 
             // Find the stream-item element for this camera
@@ -1418,6 +1460,57 @@ export class MultiStreamManager {
         } catch (error) {
             console.error('[Fullscreen] Error closing fullscreen:', error);
         }
+    }
+
+    // ============================================================================
+    // EXPANDED MODAL MODE
+    // Intermediate view between grid and fullscreen.
+    // Tap camera to expand for easier control access.
+    // ============================================================================
+
+    /**
+     * Expand a camera card to modal view
+     * Shows all control buttons for easy access
+     * @param {jQuery} $streamItem - The stream item to expand
+     */
+    expandCamera($streamItem) {
+        // First collapse any already expanded camera
+        this.collapseExpandedCamera();
+
+        const cameraId = $streamItem.data('camera-serial');
+        console.log(`[Expanded] Opening modal for ${cameraId}`);
+
+        // Show backdrop
+        $('#expanded-backdrop').addClass('visible');
+
+        // Add expanded class to stream item
+        $streamItem.addClass('expanded');
+
+        // Prevent body scroll while modal is open
+        $('body').css('overflow', 'hidden');
+    }
+
+    /**
+     * Collapse the expanded camera back to grid view
+     */
+    collapseExpandedCamera() {
+        const $expandedItem = $('.stream-item.expanded');
+
+        if ($expandedItem.length === 0) {
+            return;
+        }
+
+        const cameraId = $expandedItem.data('camera-serial');
+        console.log(`[Expanded] Collapsing modal for ${cameraId}`);
+
+        // Hide backdrop
+        $('#expanded-backdrop').removeClass('visible');
+
+        // Remove expanded class
+        $expandedItem.removeClass('expanded');
+
+        // Restore body scroll
+        $('body').css('overflow', '');
     }
 
     async restoreFullscreenFromLocalStorage() {

@@ -120,3 +120,126 @@
     transform: translate(-50%, -50%) !important;
     z-index: 10000 !important;
 }
+
+/* ============================================================================
+   EXPANDED MODAL MODE
+   Intermediate view between grid and fullscreen.
+   Tap camera to expand to a larger modal with all controls visible.
+   ============================================================================ */
+
+/* Backdrop overlay when a stream is expanded */
+.expanded-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 998;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    backdrop-filter: blur(4px);
+}
+
+.expanded-backdrop.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Expanded stream item - modal style */
+.stream-item.expanded {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) scale(1) !important;
+    width: 85vw !important;
+    max-width: 1000px !important;
+    height: auto !important;
+    aspect-ratio: 16 / 9 !important;
+    z-index: 999 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6) !important;
+    transition: transform 0.3s ease, box-shadow 0.3s ease !important;
+}
+
+/* Disable hover scale effect in expanded mode */
+.stream-item.expanded:hover {
+    transform: translate(-50%, -50%) scale(1) !important;
+}
+
+/* Video fills the expanded container */
+.stream-item.expanded .stream-video {
+    border-radius: 12px !important;
+}
+
+/* ============================================================================
+   SHOW ALL BUTTONS IN EXPANDED MODE
+   Override the grid mode hiding rules when expanded
+   ============================================================================ */
+
+.stream-item.expanded .stream-fullscreen-btn,
+.stream-item.expanded .stream-audio-btn,
+.stream-item.expanded .stream-ptz-toggle-btn,
+.stream-item.expanded .stream-controls-toggle-btn,
+.stream-item.expanded .camera-record-btn,
+.stream-item.expanded .camera-settings-btn {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+/* Slightly larger buttons in expanded mode for easier touch */
+.stream-item.expanded .stream-fullscreen-btn,
+.stream-item.expanded .stream-audio-btn,
+.stream-item.expanded .stream-ptz-toggle-btn,
+.stream-item.expanded .stream-controls-toggle-btn {
+    width: 50px !important;
+    height: 50px !important;
+}
+
+.stream-item.expanded .stream-fullscreen-btn i,
+.stream-item.expanded .stream-audio-btn i,
+.stream-item.expanded .stream-ptz-toggle-btn i,
+.stream-item.expanded .stream-controls-toggle-btn i {
+    font-size: 1.3rem !important;
+}
+
+/* Stream overlay (title) more prominent in expanded mode */
+.stream-item.expanded .stream-overlay {
+    padding: 12px 16px !important;
+}
+
+.stream-item.expanded .stream-title {
+    font-size: 1.2rem !important;
+}
+
+/* PTZ controls visible and larger in expanded mode */
+.stream-item.expanded .ptz-controls.ptz-visible {
+    display: block !important;
+}
+
+.stream-item.expanded .ptz-btn {
+    width: 45px !important;
+    height: 45px !important;
+}
+
+/* Stream controls panel in expanded mode */
+.stream-item.expanded .stream-controls {
+    padding: 12px !important;
+}
+
+.stream-item.expanded .stream-controls .stream-btn {
+    padding: 10px 16px !important;
+}
+
+/* ============================================================================
+   ALSO SHOW BUTTONS IN FULLSCREEN MODE
+   Same overrides for css-fullscreen class
+   ============================================================================ */
+
+.stream-item.css-fullscreen .stream-fullscreen-btn,
+.stream-item.css-fullscreen .stream-audio-btn,
+.stream-item.css-fullscreen .stream-ptz-toggle-btn,
+.stream-item.css-fullscreen .stream-controls-toggle-btn,
+.stream-item.css-fullscreen .camera-record-btn,
+.stream-item.css-fullscreen .camera-settings-btn {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}

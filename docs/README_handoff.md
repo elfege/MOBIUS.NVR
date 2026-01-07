@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 6, 2026 22:50 EST*
+*Last updated: January 6, 2026 23:18 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,9 +24,9 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `mjpeg_load_optimization_JAN_7_2026_a`
-**Date:** January 6, 2026 (22:47- EST)
+**Date:** January 6, 2026 (22:47-23:18 EST)
 
-**Context compaction occurred at session start** - Continuing from `ios_hls_traditional_buffering_JAN_5_2026_b` branch.
+**Context compaction occurred mid-session** - Continued work on MJPEG load optimization.
 
 ### Work Completed This Session
 
@@ -46,7 +46,48 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Commit:** `4f63c17`
 
-**Expected Improvement:** ~900ms faster MJPEG stream start per camera
+#### 2. Restored Missing iOS MJPEG Code
+
+**Problem:** After Phase 1 optimizations, iOS MJPEG stopped working entirely (only UniFi came up).
+
+**Root Cause:** Branch was created from main which had old `mjpeg-stream.js` without mediaserver fallback. The ios_hls_traditional_buffering_JAN_5_2026_b branch had the working code but was never merged.
+
+**Fix:** Restored files from ios branch:
+- `static/js/streaming/mjpeg-stream.js` - mediaserver fallback for eufy/sv3c/neolink
+- `static/js/streaming/stream.js` - iOS MJPEG detection
+- `services/mediaserver_mjpeg_service.py` - backend service
+- `app.py` - `/api/mediaserver/<camera_id>/stream/mjpeg` endpoint was missing!
+
+**Commits:** `b1a13a1`, `12a3d92`, `e4f7af0`
+
+#### 3. Adaptive MediaMTX Polling
+
+**Problem:** Fixed 5s wait per camera was too slow (5s × 16 cameras = 80s total)
+
+**Fix:** Added `waitForMediaMTXStream()` method in `mjpeg-stream.js`:
+- Polls `/hls/{cameraId}/index.m3u8` every 500ms instead of fixed wait
+- Returns immediately when stream is ready
+- Max timeout 10s (vs fixed 5s regardless of readiness)
+
+**Commit:** `f0472c7`
+
+#### 4. Parallel HLS Pre-warm for MJPEG
+
+**Problem:** Even with adaptive polling, streams loaded sequentially. Each camera:
+1. Started HLS (API call)
+2. Polled MediaMTX up to 10s
+3. Started MJPEG
+4. Moved to next camera
+
+**Fix:** Added `preWarmHLSStreams()` method in `stream.js`:
+- Fires ALL HLS start requests in parallel at page load
+- Identifies mediaserver cameras (eufy, sv3c, neolink) vs native MJPEG (reolink, unifi, amcrest)
+- 1s pause after pre-warm to let MediaMTX register streams
+- By time MJPEG connections start, streams are already publishing
+
+**Commit:** `b2ed6dc`
+
+**Expected Result:** Total load time reduced from O(n × wait_per_camera) to O(wait_once + n × small_delay)
 
 ---
 

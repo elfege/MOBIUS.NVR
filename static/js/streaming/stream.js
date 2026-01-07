@@ -736,6 +736,78 @@ export class MultiStreamManager {
     }
 
     /**
+     * Pre-warm HLS streams for all mediaserver-based MJPEG cameras.
+     * For portable devices using MJPEG, the mediaserver endpoint taps MediaMTX RTSP,
+     * which requires the HLS FFmpeg to be publishing first. This fires off all HLS
+     * start requests in parallel so streams are ready by the time MJPEG needs them.
+     *
+     * @returns {Promise<void>}
+     */
+    async preWarmHLSStreams() {
+        const $streamItems = this.$container.find('.stream-item');
+
+        // Only pre-warm if portable device (will use MJPEG)
+        const urlParams = new URLSearchParams(window.location.search);
+        const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
+        if (!isPortableDevice() && !debugForceMJPEG) {
+            return;  // Desktop uses HLS/WebRTC directly, no pre-warm needed
+        }
+
+        // Identify cameras that will use mediaserver MJPEG (eufy, sv3c, neolink)
+        // These need HLS running first. Native MJPEG cameras (reolink, unifi, amcrest) don't need pre-warm.
+        const mediaserverCameras = [];
+
+        $streamItems.each((_, item) => {
+            const $item = $(item);
+            const cameraId = $item.data('camera-serial');
+            const cameraType = ($item.data('camera-type') || '').toLowerCase();
+            const streamType = $item.data('stream-type') || '';
+
+            // Skip cameras that have native MJPEG endpoints
+            const hasNativeMJPEG = ['reolink', 'unifi', 'amcrest'].includes(cameraType);
+            // NEOLINK cameras don't have native MJPEG even though they're Reolink
+            const isNeolink = streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS';
+
+            if (!hasNativeMJPEG || isNeolink) {
+                mediaserverCameras.push(cameraId);
+            }
+        });
+
+        if (mediaserverCameras.length === 0) {
+            console.log('[PreWarm] No mediaserver cameras to pre-warm');
+            return;
+        }
+
+        console.log(`[PreWarm] Starting HLS pre-warm for ${mediaserverCameras.length} mediaserver cameras in parallel`);
+
+        // Fire off all HLS start requests in parallel (don't wait for completion)
+        const startPromises = mediaserverCameras.map(async (cameraId) => {
+            try {
+                const response = await fetch(`/api/stream/start/${cameraId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'sub' })
+                });
+                if (response.ok) {
+                    console.log(`[PreWarm] ✓ HLS started for ${cameraId}`);
+                } else {
+                    console.warn(`[PreWarm] HLS start returned ${response.status} for ${cameraId}`);
+                }
+            } catch (e) {
+                console.warn(`[PreWarm] Failed to start HLS for ${cameraId}: ${e.message}`);
+            }
+        });
+
+        // Wait for all HLS starts to complete (or fail) before proceeding
+        await Promise.allSettled(startPromises);
+        console.log(`[PreWarm] All HLS start requests completed`);
+
+        // Brief pause to let MediaMTX register the streams
+        await new Promise(r => setTimeout(r, 1000));
+        console.log('[PreWarm] Pre-warm complete, proceeding with MJPEG loading');
+    }
+
+    /**
      * Start all streams with sequential loading to prevent resource exhaustion.
      * Uses a delay between stream starts to allow each video element to initialize
      * before the next one starts. This is especially important for:
@@ -747,6 +819,11 @@ export class MultiStreamManager {
      */
     async startAllStreams(delayMs = 300) {
         console.log('[StartAll] Beginning startAllStreams (sequential loading)...');
+
+        // Pre-warm HLS streams for portable devices before starting MJPEG connections
+        // This fires off all HLS start requests in parallel so MediaMTX has the streams
+        // ready by the time each MJPEG connection needs to tap into them.
+        await this.preWarmHLSStreams();
 
         // iOS pagination: only start streams on current page (others are hidden)
         // This avoids overwhelming Safari's video decode limits

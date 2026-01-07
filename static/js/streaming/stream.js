@@ -22,6 +22,33 @@ function isIOSDevice() {
            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+/**
+ * Detect if current device is a portable/mobile device
+ * Mobile devices always use MJPEG in grid view (no forceMJPEG setting needed)
+ */
+function isPortableDevice() {
+    return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) ||
+           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * Check if Force MJPEG mode is enabled (desktop only setting)
+ * Checks both URL param and localStorage
+ */
+function isForceMJPEGEnabled() {
+    // Portable devices always use MJPEG in grid - setting doesn't apply
+    if (isPortableDevice()) {
+        return true;  // Always force MJPEG on mobile
+    }
+    // Check URL param first
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('forceMJPEG') === 'true') {
+        return true;
+    }
+    // Fall back to localStorage
+    return localStorage.getItem('forceMJPEG') === 'true';
+}
+
 
 export class MultiStreamManager {
     constructor() {
@@ -694,7 +721,14 @@ export class MultiStreamManager {
 
             // Use streamType to determine which manager to use
             // NOTE: mjpeg_proxy is only for direct access to UNIFI MJPEG streams (when not using Protect)
-            if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+            // Force MJPEG mode: Desktop setting or portable device - use MJPEG for all cameras in grid
+            const forceMJPEG = isForceMJPEGEnabled();
+            if (forceMJPEG && streamType !== 'MJPEG' && streamType !== 'mjpeg_proxy') {
+                console.log(`[Stream] Force MJPEG enabled - using MJPEG for ${cameraId} (was ${streamType})`);
+                success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
+                // Store original stream type for fullscreen switching
+                $streamItem.data('original-stream-type', streamType);
+            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
                 // Pass 'sub' as stream parameter for grid view (Reolink requires this for MJPEG endpoint)
                 success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
             } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {

@@ -410,19 +410,9 @@ except Exception as e:
 #     print(f"⚠️  Bridge startup warning: {e}")
 
 # ===== Auto-start Streams =====
-try:
-    print("\n🎬 Auto-starting camera streams...")
-    for serial, camera in camera_repo.get_streaming_cameras().items():
-        try:
-            Thread(target=stream_manager.start_stream,
-                   args=(serial,), daemon=True).start()
-            time.sleep(0.4)
-            print(f"  ✅ Started: {camera['name']}")
-        except Exception as e:
-            print(f"  ⚠️  Failed to start {camera['name']}: {e}")
-
-except Exception as e:
-    print(f"⚠️  streaming startup warning: {e}")
+# REMOVED: Duplicate auto-start block was here (lines 413-425)
+# Stream auto-start is now handled ONLY by auto_start_all_streams() at line ~121
+# Having two auto-start blocks caused duplicate MediaMTX publishers and broken pipes
 
 # ===== Start Camera State Tracker =====
 try:

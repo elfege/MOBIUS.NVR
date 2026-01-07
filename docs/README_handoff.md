@@ -15,9 +15,51 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 6, 2026 23:45 EST*
+*Last updated: January 7, 2026 00:20 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Current Session
+
+**Branch:** `main` (direct commits)
+**Date:** January 7, 2026 (00:00-00:20 EST)
+
+### Issue: FFmpeg Broken Pipe Errors for AMCREST LOBBY
+
+**Symptoms:**
+- `[vost#1:0/copy @ ...] Error submitting a packet to the muxer: Broken pipe` on `_main` stream
+- `LL-HLS publisher died (code 0)` errors at startup
+- MediaMTX logs showing `closing existing publisher` multiple times
+- `🎬 Auto-starting HLS streams` appearing 2-3 times in logs
+
+**Root Cause Analysis:**
+1. **Flask debug=True** in `app.run()` spawns TWO processes (parent + reloader child)
+2. **Duplicate auto-start blocks** in app.py:
+   - Lines 121-153: `auto_start_all_streams()` inside `with app.app_context()`
+   - Lines 413-425: Another loop at module level
+3. Combined: 2 processes × 2 code blocks = up to 4 auto-start attempts
+4. Race condition: Multiple FFmpeg processes try to publish to same MediaMTX path → broken pipe
+
+**Fix Applied:**
+1. Created `/home/elfege/0_NVR/entrypoint.sh` - Gunicorn startup script
+2. Updated Dockerfile to use `ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]`
+3. Added `gunicorn` to requirements.txt
+4. Removed duplicate auto-start block (lines 413-425) from app.py
+
+**Files Modified:**
+| File | Change |
+|------|--------|
+| `entrypoint.sh` | Created - Gunicorn startup (1 worker, 8 threads) |
+| `Dockerfile` | Changed from `CMD ["python3", "app.py"]` to ENTRYPOINT with Gunicorn |
+| `requirements.txt` | Added `gunicorn` |
+| `app.py` | Removed duplicate auto-start block (was lines 413-425) |
+
+**Result:**
+- Only ONE `🎬 Auto-starting HLS streams` message in logs
+- AMCREST LOBBY starts successfully without broken pipe errors
+- Significantly fewer `closing existing publisher` in MediaMTX
 
 ---
 
@@ -26,25 +68,9 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 **Branch merged:** `mjpeg_load_optimization_JAN_7_2026_a`
 **Date:** January 6, 2026 (22:47-23:38 EST)
 
-See `docs/README_project_history.md` section "MJPEG Load Time Optimization - January 6, 2026" for full details including:
-
-- Phase 1 MJPEG load time optimization (initial_wait, polling interval)
-- Restored missing iOS MJPEG code from ios branch
-- Adaptive MediaMTX polling (waitForMediaMTXStream)
-- Parallel HLS pre-warm (preWarmHLSStreams)
-- Skip HLS start for already-publishing streams
-- Auto-start all HLS streams at container startup
-- Pre-warm polling loop
-
-**Outcome:** MJPEG fast loading NOT fully achieved - streams still load slowly despite multiple optimizations. Further investigation needed.
+See `docs/README_project_history.md` section "MJPEG Load Time Optimization - January 6, 2026" for full details.
 
 Archived handoff: `docs/archive/handoffs/mjpeg_load_optimization_JAN_7_2026_a/README_handoff_20260106_2338.md`
-
----
-
-## Current Session
-
-*(No active session)*
 
 ---
 

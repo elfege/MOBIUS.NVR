@@ -34,6 +34,9 @@ RUN mkdir -p /app/logs \
     /app/templates \
     /app/services
 
+# Make entrypoint executable (before user switch)
+RUN chmod +x /app/entrypoint.sh
+
 # Create non-root user and set ownership
 RUN useradd -r -s /bin/false -u 1000 appuser && \
     chown -R appuser:appuser /app
@@ -48,5 +51,7 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:5000/api/status || exit 1
 
-# Run the application
-CMD ["python3", "app.py"]
+# Run the application via Gunicorn (entrypoint.sh)
+# This avoids Flask debug=True double-process issues
+# Using shell form to ensure proper bash execution
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]

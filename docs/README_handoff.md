@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 5, 2026 19:35 EST*
+*Last updated: January 6, 2026 22:50 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -23,12 +23,47 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
+**Branch:** `mjpeg_load_optimization_JAN_7_2026_a`
+**Date:** January 6, 2026 (22:47- EST)
+
+**Context compaction occurred at session start** - Continuing from `ios_hls_traditional_buffering_JAN_5_2026_b` branch.
+
+### Work Completed This Session
+
+#### 1. Phase 1 MJPEG Load Time Optimization
+
+**Problem:** MJPEG streams loading too slowly (5-10 seconds per camera)
+
+**Changes Made:**
+
+1. **MediaServer initial_wait reduced** (1.0s → 0.2s)
+   - File: `services/mediaserver_mjpeg_service.py` line 279
+   - Reduces delay before FFmpeg starts reading from MediaMTX
+
+2. **MJPEG frame polling interval reduced** (200ms → 100ms)
+   - File: `static/js/streaming/mjpeg-stream.js` line 84
+   - Faster detection of first frame via naturalWidth check
+
+**Commit:** `4f63c17`
+
+**Expected Improvement:** ~900ms faster MJPEG stream start per camera
+
+---
+
+### Previous Session Summary (ios_hls_traditional_buffering_JAN_5_2026_b)
+
+Completed iOS MJPEG support:
+- Fixed nginx buffering for MJPEG (proxy_buffering off)
+- Fixed MJPEG element swap (video→img) - commit `fc9eda7`
+- Fixed NEOLINK MJPEG routing - commit `03aadd0`
+- Created MediaServer MJPEG service for iOS Safari
+
+---
+
+## Previous Session Reference (reolink_aio_stability_JAN_5_2026_b)
+
 **Branch:** `reolink_aio_stability_JAN_5_2026_b`
 **Date:** January 5, 2026 (14:39-19:35 EST)
-
-**Context compaction occurred at 15:37 EST** - Continuing E1 mainStream work.
-**Second context compaction occurred at ~16:00 EST** - Continuing fullscreen investigation.
-**Third context compaction occurred at ~19:05 EST** - Continuing passthrough fix.
 
 ### Work Completed This Session
 

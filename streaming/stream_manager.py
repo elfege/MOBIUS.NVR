@@ -358,7 +358,9 @@ class StreamManager:
         ).start()
 
         # Return placeholder URL immediately
-        if protocol in ('LL_HLS', 'NEOLINK'):
+        # WEBRTC cameras also use FFmpeg→MediaMTX dual-output pipeline (same as LL_HLS/NEOLINK)
+        # so they return /hls/ URLs too - WebRTC is just the delivery method to browser
+        if protocol in ('LL_HLS', 'NEOLINK', 'WEBRTC'):
             path = camera.get('packager_path') or camera_serial
             if resolution == 'main':
                 return f"/hls/{path}_main/index.m3u8"

@@ -130,12 +130,17 @@ export class HLSStreamManager {
 
             // Choose playlist URL
             let playlistUrl;
-            if (typeof startInfo?.stream_url === 'string' && startInfo.stream_url.startsWith('/hls/')) {
+            if (typeof startInfo?.stream_url === 'string' && (startInfo.stream_url.startsWith('/hls/') || startInfo.stream_url.startsWith('/api/'))) {
+                // Backend provided a valid URL - use it directly
+                // Handles both /hls/{serial}_main/index.m3u8 (MediaMTX) and /api/streams/{serial}_main/playlist.m3u8
                 playlistUrl = startInfo.stream_url;
                 console.log(`[HLS] Using backend stream_url: ${playlistUrl}`);
             } else {
+                // Fallback: construct URL manually (should rarely happen)
+                // IMPORTANT: Include _main suffix for main stream requests
                 const ts = Date.now();
-                playlistUrl = `/api/streams/${cameraId}/playlist.m3u8?t=${ts}`;
+                const suffix = streamType === 'main' ? '_main' : '';
+                playlistUrl = `/api/streams/${cameraId}${suffix}/playlist.m3u8?t=${ts}`;
                 console.log(`[HLS] Using fallback URL: ${playlistUrl}`);
                 await new Promise(r => setTimeout(r, 200));
             }

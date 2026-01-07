@@ -28,4 +28,5 @@ python-dotenv
 websockets
 requests
 onvif-zeep
-reolink_aio 
+reolink_aio
+gunicorn

@@ -112,7 +112,46 @@ try:
     stream_manager._ensure_streams_directory_ownership()
     # stream_manager._remove_recreate_stream_dir() # DEPRECATED but keep so we remember this.
     print("✅ Stream manager initialized")
-    
+
+    # Auto-start HLS streams for all cameras at container startup
+    # This ensures streams are ready before any client connects, providing:
+    # 1. Instant page loads (no wait for HLS startup)
+    # 2. Buffer overfill defense (streams always running)
+    # 3. Better MJPEG experience on iOS (mediaserver can tap immediately)
+    def auto_start_all_streams():
+        """Start HLS streams for all cameras in background threads"""
+        all_cameras = camera_repo.get_all_cameras(include_hidden=False)
+        print(f"🎬 Auto-starting HLS streams for {len(all_cameras)} cameras...")
+
+        started = 0
+        for serial, config in all_cameras.items():
+            try:
+                # Start in background thread to not block app startup
+                def start_camera_stream(cam_serial, cam_config):
+                    try:
+                        stream_manager.start_stream(cam_serial, resolution='sub')
+                        print(f"   ✓ Started stream: {cam_config.get('name', cam_serial)}")
+                    except Exception as e:
+                        print(f"   ✗ Failed to start {cam_config.get('name', cam_serial)}: {e}")
+
+                Thread(
+                    target=start_camera_stream,
+                    args=(serial, config),
+                    daemon=True
+                ).start()
+                started += 1
+
+                # Small stagger to avoid overwhelming cameras/network
+                time.sleep(0.5)
+
+            except Exception as e:
+                print(f"   ✗ Error starting {config.get('name', serial)}: {e}")
+
+        print(f"🎬 Initiated {started} stream starts (running in background)")
+
+    # Start streams in a separate thread so app startup isn't blocked
+    Thread(target=auto_start_all_streams, daemon=True).start()
+
     # Recording service
     try:
         recording_service = RecordingService(

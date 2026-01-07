@@ -1,6 +1,11 @@
 /**
  * MJPEG Stream Manager - ES6 + jQuery
- * Handles MJPEG streaming for UniFi cameras
+ * Handles MJPEG streaming for all camera types
+ *
+ * Supports three MJPEG sources based on camera configuration:
+ * 1. Native endpoints (reolink, unifi, amcrest) - direct camera MJPEG
+ * 2. MediaServer - taps MediaMTX RTSP output for single-connection cameras
+ * 3. Snapshots - polls Snap API (handled by reolink endpoint)
  */
 
 export class MJPEGStreamManager {
@@ -10,20 +15,82 @@ export class MJPEGStreamManager {
 
     /**
      * Start MJPEG stream for a camera
+     *
+     * For cameras with native MJPEG endpoints (reolink, unifi, amcrest),
+     * uses the camera-specific endpoint. For all other cameras (eufy, sv3c,
+     * neolink), uses the mediaserver endpoint which taps MediaMTX RTSP.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {HTMLElement} streamElement - IMG element to display stream
+     * @param {string} cameraType - Camera type (eufy, reolink, unifi, etc.)
+     * @param {string} stream - Stream quality ('sub' or 'main')
      */
     async startStream(cameraId, streamElement, cameraType, stream = 'sub') {
         console.log(`[MJPEG] startStream called: cameraId=${cameraId}, cameraType=${cameraType}, stream=${stream}`);
+        console.log(`[MJPEG] Element type: ${streamElement ? streamElement.tagName : 'null'}`);
+
+        // MJPEG requires <img> element - warn if we got a <video>
+        if (streamElement && streamElement.tagName === 'VIDEO') {
+            console.warn(`[MJPEG] WARNING: Got <video> element instead of <img>! MJPEG will not work.`);
+        }
 
         // Build URL based on camera type
+        // Cameras with native MJPEG endpoints use their specific API
+        // All other cameras use mediaserver (taps MediaMTX RTSP output)
         let mjpegUrl;
-        if (cameraType === 'reolink') {
+        const normalizedType = cameraType ? cameraType.toLowerCase() : '';
+        let usesMediaserver = false;
+
+        // Check if this is a NEOLINK camera (Reolink E1 uses Neolink bridge, not native MJPEG)
+        // NEOLINK cameras don't have native MJPEG endpoints - must use mediaserver
+        const streamItem = document.querySelector(`[data-camera-serial="${cameraId}"]`);
+        const originalStreamType = streamItem ? streamItem.dataset.streamType : '';
+        const isNeolink = originalStreamType === 'NEOLINK' || originalStreamType === 'NEOLINK_LL_HLS';
+
+        if (normalizedType === 'reolink' && !isNeolink) {
+            // Native Reolink cameras with direct RTSP access
             mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?stream=${stream || 'sub'}&t=${Date.now()}`;
-        } else if (cameraType === 'unifi') {
+        } else if (isNeolink) {
+            // NEOLINK cameras (Reolink E1 via Neolink bridge) - use mediaserver
+            usesMediaserver = true;
+            console.log(`[MJPEG] ${cameraId} is NEOLINK camera - using mediaserver endpoint`);
+            mjpegUrl = `/api/mediaserver/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        } else if (normalizedType === 'unifi') {
             mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
-        } else if (cameraType === 'amcrest') {
+        } else if (normalizedType === 'amcrest') {
             mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;
         } else {
-            throw new Error(`Unsupported camera type for MJPEG: ${cameraType}`);
+            // All other camera types (eufy, sv3c, neolink, etc.) use mediaserver
+            // This taps the existing MediaMTX RTSP stream and extracts JPEG frames
+            // CRITICAL: MediaMTX must have the stream published first (via HLS FFmpeg)
+            usesMediaserver = true;
+            console.log(`[MJPEG] Using mediaserver endpoint for ${cameraType} camera ${cameraId}`);
+            mjpegUrl = `/api/mediaserver/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        }
+
+        // For mediaserver cameras, ensure HLS stream is started first
+        // MediaServer MJPEG taps the MediaMTX RTSP output from the HLS FFmpeg
+        if (usesMediaserver) {
+            console.log(`[MJPEG] ${cameraId}: Starting HLS first (required for mediaserver MJPEG)`);
+            try {
+                const response = await fetch(`/api/stream/start/${cameraId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'sub' })
+                });
+                if (!response.ok) {
+                    console.warn(`[MJPEG] ${cameraId}: HLS start returned ${response.status}`);
+                } else {
+                    const data = await response.json();
+                    console.log(`[MJPEG] ${cameraId}: HLS started: ${data.stream_url}`);
+                    // Give FFmpeg time to start publishing to MediaMTX
+                    // Eufy cameras can take 5-10s to establish RTSP connection
+                    await new Promise(r => setTimeout(r, 5000));
+                }
+            } catch (e) {
+                console.warn(`[MJPEG] ${cameraId}: Failed to start HLS: ${e.message}`);
+                // Continue anyway - maybe HLS was already running
+            }
         }
 
         return new Promise((resolve, reject) => {
@@ -59,11 +126,27 @@ export class MJPEGStreamManager {
             // Set up jQuery event handlers
             $streamElement.on('load.mjpeg', onSuccess);
 
+            // Track if we ever received a frame - used to distinguish real errors from startup noise
+            let hadFrame = false;
+            let errorCount = 0;
+
             $streamElement.on('error.mjpeg', () => {
                 if (resolved) return;
-                resolved = true;
-                cleanup();
-                reject(new Error('MJPEG stream failed to load'));
+                errorCount++;
+
+                // iOS Safari can fire error events during multipart MJPEG connection establishment.
+                // Only treat as fatal if we've never had a frame AND this is a repeated error.
+                // The naturalWidth polling will detect actual frames arriving.
+                console.log(`[MJPEG] ${cameraId}: Error event #${errorCount} (hadFrame=${hadFrame})`);
+
+                // If we already had a frame, this is a real disconnection
+                if (hadFrame) {
+                    resolved = true;
+                    cleanup();
+                    reject(new Error('MJPEG stream disconnected'));
+                }
+                // Otherwise, don't reject yet - let timeout handle it
+                // This allows time for the "Connecting..." frame to arrive
             });
 
             // Set the source to start loading
@@ -72,24 +155,25 @@ export class MJPEGStreamManager {
             // MJPEG streams may not fire 'load' event reliably in all browsers.
             // Poll for naturalWidth/naturalHeight to detect when first frame arrives.
             // This handles cases where the multipart MJPEG response doesn't trigger load.
-            // Reduced polling interval from 200ms to 100ms for faster frame detection
             checkInterval = setInterval(() => {
                 if (resolved) return;
 
                 const el = streamElement;
                 if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+                    hadFrame = true;
                     console.log(`[MJPEG] ${cameraId}: Detected frame via naturalWidth check`);
                     onSuccess();
                 }
-            }, 100);
+            }, 200);
 
-            // Timeout fallback - if no success or error after 10 seconds, fail
+            // Timeout fallback - if no success or error after 30 seconds, fail
+            // MediaServer MJPEG needs time for: HLS start + MediaMTX publish + MJPEG capture start
             setTimeout(() => {
                 if (resolved) return;
                 resolved = true;
                 cleanup();
                 reject(new Error('MJPEG stream timeout - no frames received'));
-            }, 10000);
+            }, 30000);
         });
     }
 

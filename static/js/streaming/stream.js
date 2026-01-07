@@ -778,10 +778,39 @@ export class MultiStreamManager {
             return;
         }
 
-        console.log(`[PreWarm] Starting HLS pre-warm for ${mediaserverCameras.length} mediaserver cameras in parallel`);
+        console.log(`[PreWarm] Checking ${mediaserverCameras.length} mediaserver cameras...`);
 
-        // Fire off all HLS start requests in parallel (don't wait for completion)
-        const startPromises = mediaserverCameras.map(async (cameraId) => {
+        // First, check which streams are already publishing (survives page reload)
+        // This avoids unnecessary API calls and speeds up reload significantly
+        const checkPromises = mediaserverCameras.map(async (cameraId) => {
+            try {
+                const resp = await fetch(`/hls/${cameraId}/index.m3u8`, {
+                    method: 'HEAD',
+                    cache: 'no-store'
+                });
+                return { cameraId, ready: resp.ok };
+            } catch (e) {
+                return { cameraId, ready: false };
+            }
+        });
+
+        const checkResults = await Promise.all(checkPromises);
+        const alreadyReady = checkResults.filter(r => r.ready).map(r => r.cameraId);
+        const needsStart = checkResults.filter(r => !r.ready).map(r => r.cameraId);
+
+        if (alreadyReady.length > 0) {
+            console.log(`[PreWarm] ✓ ${alreadyReady.length} streams already publishing (reload detected)`);
+        }
+
+        if (needsStart.length === 0) {
+            console.log('[PreWarm] All streams already ready - skipping HLS start');
+            return;
+        }
+
+        console.log(`[PreWarm] Starting HLS for ${needsStart.length} cameras in parallel`);
+
+        // Fire off HLS start requests only for cameras that need it
+        const startPromises = needsStart.map(async (cameraId) => {
             try {
                 const response = await fetch(`/api/stream/start/${cameraId}`, {
                     method: 'POST',

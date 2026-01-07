@@ -831,8 +831,45 @@ export class MultiStreamManager {
         await Promise.allSettled(startPromises);
         console.log(`[PreWarm] All HLS start requests completed`);
 
-        // Brief pause to let MediaMTX register the streams
-        await new Promise(r => setTimeout(r, 1000));
+        // Poll until streams are actually publishing to MediaMTX
+        // The API returns immediately but FFmpeg takes time to connect and publish
+        console.log(`[PreWarm] Waiting for ${needsStart.length} streams to publish...`);
+        const maxWaitMs = 15000;  // 15 seconds max
+        const pollInterval = 500;
+        const startTime = Date.now();
+
+        while (Date.now() - startTime < maxWaitMs) {
+            // Check which streams are now ready
+            const pollPromises = needsStart.map(async (cameraId) => {
+                try {
+                    const resp = await fetch(`/hls/${cameraId}/index.m3u8`, {
+                        method: 'HEAD',
+                        cache: 'no-store'
+                    });
+                    return { cameraId, ready: resp.ok };
+                } catch (e) {
+                    return { cameraId, ready: false };
+                }
+            });
+
+            const results = await Promise.all(pollPromises);
+            const readyCount = results.filter(r => r.ready).length;
+            const notReady = results.filter(r => !r.ready).map(r => r.cameraId);
+
+            if (notReady.length === 0) {
+                const elapsed = Date.now() - startTime;
+                console.log(`[PreWarm] ✓ All ${needsStart.length} streams ready after ${elapsed}ms`);
+                break;
+            }
+
+            // Log progress every few polls
+            if ((Date.now() - startTime) % 2000 < pollInterval) {
+                console.log(`[PreWarm] ${readyCount}/${needsStart.length} streams ready, waiting for: ${notReady.slice(0, 3).join(', ')}${notReady.length > 3 ? '...' : ''}`);
+            }
+
+            await new Promise(r => setTimeout(r, pollInterval));
+        }
+
         console.log('[PreWarm] Pre-warm complete, proceeding with MJPEG loading');
     }
 

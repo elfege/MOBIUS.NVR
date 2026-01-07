@@ -70,32 +70,51 @@ export class MJPEGStreamManager {
 
         // For mediaserver cameras, ensure HLS stream is started first
         // MediaServer MJPEG taps the MediaMTX RTSP output from the HLS FFmpeg
+        // NOTE: preWarmHLSStreams() in stream.js starts all HLS streams in parallel
+        // before calling startStream(), so this is usually a no-op on page load.
+        // Still needed for: manual restarts, fullscreen switches, error recovery.
         if (usesMediaserver) {
-            console.log(`[MJPEG] ${cameraId}: Starting HLS first (required for mediaserver MJPEG)`);
+            // Quick check if stream is already publishing (pre-warm succeeded or page reload)
+            let streamAlreadyReady = false;
             try {
-                const response = await fetch(`/api/stream/start/${cameraId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'sub' })
+                const checkResp = await fetch(`/hls/${cameraId}/index.m3u8`, {
+                    method: 'HEAD',
+                    cache: 'no-store'
                 });
-                if (!response.ok) {
-                    console.warn(`[MJPEG] ${cameraId}: HLS start returned ${response.status}`);
-                } else {
-                    const data = await response.json();
-                    console.log(`[MJPEG] ${cameraId}: HLS started: ${data.stream_url}`);
-
-                    // Adaptive wait: poll MediaMTX until stream is ready instead of fixed 5s
-                    // If HLS already running (desktop keeps streams alive), this returns instantly
-                    const streamReady = await this.waitForMediaMTXStream(cameraId, 10000);
-                    if (streamReady) {
-                        console.log(`[MJPEG] ${cameraId}: MediaMTX stream ready`);
-                    } else {
-                        console.warn(`[MJPEG] ${cameraId}: MediaMTX poll timeout, trying MJPEG anyway`);
-                    }
-                }
+                streamAlreadyReady = checkResp.ok;
             } catch (e) {
-                console.warn(`[MJPEG] ${cameraId}: Failed to start HLS: ${e.message}`);
-                // Continue anyway - maybe HLS was already running
+                // Network error - stream not ready
+            }
+
+            if (streamAlreadyReady) {
+                console.log(`[MJPEG] ${cameraId}: HLS already publishing, skipping start`);
+            } else {
+                console.log(`[MJPEG] ${cameraId}: Starting HLS first (required for mediaserver MJPEG)`);
+                try {
+                    const response = await fetch(`/api/stream/start/${cameraId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'sub' })
+                    });
+                    if (!response.ok) {
+                        console.warn(`[MJPEG] ${cameraId}: HLS start returned ${response.status}`);
+                    } else {
+                        const data = await response.json();
+                        console.log(`[MJPEG] ${cameraId}: HLS started: ${data.stream_url}`);
+
+                        // Adaptive wait: poll MediaMTX until stream is ready instead of fixed 5s
+                        // If HLS already running (desktop keeps streams alive), this returns instantly
+                        const streamReady = await this.waitForMediaMTXStream(cameraId, 10000);
+                        if (streamReady) {
+                            console.log(`[MJPEG] ${cameraId}: MediaMTX stream ready`);
+                        } else {
+                            console.warn(`[MJPEG] ${cameraId}: MediaMTX poll timeout, trying MJPEG anyway`);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[MJPEG] ${cameraId}: Failed to start HLS: ${e.message}`);
+                    // Continue anyway - maybe HLS was already running
+                }
             }
         }
 

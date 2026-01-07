@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 7, 2026 07:33 EST*
+*Last updated: January 7, 2026 07:45 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,7 +24,37 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `main` (direct commits)
-**Date:** January 7, 2026 (00:00-07:33 EST)
+**Date:** January 7, 2026 (00:00-07:45 EST)
+
+### Issue: Gunicorn Caused Thread Starvation (REVERTED)
+
+**Symptoms:**
+
+- Container became unhealthy after a few minutes
+- "Server Unavailable" errors in UI
+- API endpoints timing out
+- All Gunicorn threads getting blocked
+
+**Root Cause:**
+
+Gunicorn with 1 worker + 8 threads was getting all threads stuck on blocking operations (likely MJPEG streaming or long FFmpeg startups). When all 8 threads were blocked, no new requests could be handled.
+
+**Fix Applied (commit a524583):**
+
+| File | Change |
+|------|--------|
+| `Dockerfile` | Reverted to `CMD ["python3", "app.py"]` from Gunicorn ENTRYPOINT |
+| `app.py:2821` | Changed to `debug=False, use_reloader=False, threaded=True` |
+
+**Result:**
+
+- Container stays healthy
+- API responds consistently
+- Flask's threaded mode handles concurrent requests without the thread pool limitation
+
+**Note:** The Gunicorn switch was initially meant to fix duplicate process spawning from Flask debug=True. The real fix was simply setting `debug=False` and `use_reloader=False`.
+
+---
 
 ### Issue: Fullscreen Black Stream (WEBRTC cameras)
 
@@ -60,12 +90,14 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ### Issue: FFmpeg Broken Pipe Errors for AMCREST LOBBY
 
 **Symptoms:**
+
 - `[vost#1:0/copy @ ...] Error submitting a packet to the muxer: Broken pipe` on `_main` stream
 - `LL-HLS publisher died (code 0)` errors at startup
 - MediaMTX logs showing `closing existing publisher` multiple times
 - `🎬 Auto-starting HLS streams` appearing 2-3 times in logs
 
 **Root Cause Analysis:**
+
 1. **Flask debug=True** in `app.run()` spawns TWO processes (parent + reloader child)
 2. **Duplicate auto-start blocks** in app.py:
    - Lines 121-153: `auto_start_all_streams()` inside `with app.app_context()`
@@ -73,13 +105,15 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 3. Combined: 2 processes × 2 code blocks = up to 4 auto-start attempts
 4. Race condition: Multiple FFmpeg processes try to publish to same MediaMTX path → broken pipe
 
-**Fix Applied:**
+**Fix Applied (then REVERTED - see above):**
+
 1. Created `/home/elfege/0_NVR/entrypoint.sh` - Gunicorn startup script
 2. Updated Dockerfile to use `ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]`
 3. Added `gunicorn` to requirements.txt
 4. Removed duplicate auto-start block (lines 413-425) from app.py
 
 **Files Modified:**
+
 | File | Change |
 |------|--------|
 | `entrypoint.sh` | Created - Gunicorn startup (1 worker, 8 threads) |
@@ -87,10 +121,13 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 | `requirements.txt` | Added `gunicorn` |
 | `app.py` | Removed duplicate auto-start block (was lines 413-425) |
 
-**Result:**
+**Initial Result (before Gunicorn revert):**
+
 - Only ONE `🎬 Auto-starting HLS streams` message in logs
 - AMCREST LOBBY starts successfully without broken pipe errors
 - Significantly fewer `closing existing publisher` in MediaMTX
+
+**BUT:** Gunicorn caused thread starvation - see issue above for final fix.
 
 ---
 

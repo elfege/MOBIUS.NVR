@@ -311,3 +311,48 @@
 .stream-controls-toggle-btn.controls-active:hover {
     background: rgba(76, 175, 80, 0.9);
 }
+
+/* ============================================================================
+   GRID MODE - HIDE BUTTONS BY DEFAULT
+   Buttons are hidden in grid view for a clean look.
+   They reappear in expanded modal or fullscreen mode.
+   Exception: settings button stays visible for quick access.
+   ============================================================================ */
+
+/* Hide all control buttons in grid mode by default */
+.stream-fullscreen-btn,
+.stream-audio-btn,
+.stream-ptz-toggle-btn,
+.stream-controls-toggle-btn,
+.camera-record-btn {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 0.3s ease;
+}
+
+/* Remove hover-based visibility in grid mode - buttons stay hidden */
+.stream-item:hover .stream-fullscreen-btn,
+.stream-item:hover .stream-audio-btn,
+.stream-item:hover .stream-ptz-toggle-btn,
+.stream-item:hover .stream-controls-toggle-btn,
+.stream-item:hover .camera-record-btn {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* Settings button exception - always visible in grid mode */
+.camera-settings-btn {
+    opacity: 0.7 !important;
+    pointer-events: auto !important;
+}
+
+.stream-item:hover .camera-settings-btn {
+    opacity: 1 !important;
+}
+
+/* Touch devices - settings button more visible */
+@media (hover: none) {
+    .camera-settings-btn {
+        opacity: 0.8 !important;
+    }
+}

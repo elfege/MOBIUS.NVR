@@ -83,9 +83,15 @@ export class MJPEGStreamManager {
                 } else {
                     const data = await response.json();
                     console.log(`[MJPEG] ${cameraId}: HLS started: ${data.stream_url}`);
-                    // Give FFmpeg time to start publishing to MediaMTX
-                    // Eufy cameras can take 5-10s to establish RTSP connection
-                    await new Promise(r => setTimeout(r, 5000));
+
+                    // Adaptive wait: poll MediaMTX until stream is ready instead of fixed 5s
+                    // If HLS already running (desktop keeps streams alive), this returns instantly
+                    const streamReady = await this.waitForMediaMTXStream(cameraId, 10000);
+                    if (streamReady) {
+                        console.log(`[MJPEG] ${cameraId}: MediaMTX stream ready`);
+                    } else {
+                        console.warn(`[MJPEG] ${cameraId}: MediaMTX poll timeout, trying MJPEG anyway`);
+                    }
                 }
             } catch (e) {
                 console.warn(`[MJPEG] ${cameraId}: Failed to start HLS: ${e.message}`);
@@ -175,6 +181,40 @@ export class MJPEGStreamManager {
                 reject(new Error('MJPEG stream timeout - no frames received'));
             }, 30000);
         });
+    }
+
+    /**
+     * Poll MediaMTX until HLS stream is available
+     * Returns immediately if stream already exists (e.g., desktop was viewing)
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {number} maxWaitMs - Maximum time to wait (default 10s)
+     * @returns {Promise<boolean>} - true if stream ready, false if timeout
+     */
+    async waitForMediaMTXStream(cameraId, maxWaitMs = 10000) {
+        const startTime = Date.now();
+        const pollInterval = 500;  // Check every 500ms
+
+        while (Date.now() - startTime < maxWaitMs) {
+            try {
+                // HEAD request to HLS playlist - 200 means stream is publishing
+                const resp = await fetch(`/hls/${cameraId}/index.m3u8`, {
+                    method: 'HEAD',
+                    cache: 'no-store'
+                });
+                if (resp.ok) {
+                    const elapsed = Date.now() - startTime;
+                    console.log(`[MJPEG] ${cameraId}: MediaMTX ready after ${elapsed}ms`);
+                    return true;
+                }
+            } catch (e) {
+                // Network error - keep polling
+            }
+            await new Promise(r => setTimeout(r, pollInterval));
+        }
+
+        console.log(`[MJPEG] ${cameraId}: MediaMTX poll timed out after ${maxWaitMs}ms`);
+        return false;
     }
 
     /**

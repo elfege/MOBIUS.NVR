@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 7, 2026 00:20 EST*
+*Last updated: January 7, 2026 07:33 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,7 +24,38 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `main` (direct commits)
-**Date:** January 7, 2026 (00:00-00:20 EST)
+**Date:** January 7, 2026 (00:00-07:33 EST)
+
+### Issue: Fullscreen Black Stream (WEBRTC cameras)
+
+**Symptoms:**
+
+- Clicking fullscreen on WEBRTC cameras (e.g., Living Room) showed black video
+- Main stream passthrough not loading
+- Container occasionally showed "Server Unavailable" / unhealthy
+
+**Root Cause:**
+
+1. Backend `start_stream()` only returned `/hls/` URLs for LL_HLS/NEOLINK protocols
+2. WEBRTC cameras got `/api/streams/{serial}_main/playlist.m3u8` URLs instead
+3. Frontend `hls-stream.js` only trusted `/hls/` URLs (line 133)
+4. Frontend fell back to sub stream URL without `_main` suffix → black screen
+
+**Fix Applied (commit 453053e):**
+
+| File | Change |
+|------|--------|
+| `streaming/stream_manager.py:363` | Added `WEBRTC` to protocol check for `/hls/` URL return |
+| `static/js/streaming/hls-stream.js:133` | Accept both `/hls/` and `/api/` URLs from backend |
+| `static/js/streaming/hls-stream.js:142` | Fix fallback URL to include `_main` suffix for main streams |
+
+**Result:**
+
+- WEBRTC cameras now return correct `/hls/{serial}_main/index.m3u8` for fullscreen
+- Frontend correctly uses backend-provided URLs
+- Fallback URL construction includes `_main` suffix when needed
+
+---
 
 ### Issue: FFmpeg Broken Pipe Errors for AMCREST LOBBY
 

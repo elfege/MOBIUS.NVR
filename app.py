@@ -2818,4 +2818,6 @@ if __name__ == '__main__':
     print(f"📱 Web interface: http://{server_ip}:5000")
     print(f"🔧 API endpoints: http://{server_ip}:5000/api/")
 
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # NOTE: debug=False and use_reloader=False prevent Flask from spawning 2 processes
+    # which caused duplicate auto-start attempts and MediaMTX "closing existing publisher" errors
+    app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False, threaded=True)

@@ -345,7 +345,7 @@ class StreamManager:
                     'camera_name': camera_name,
                     'camera_serial': camera_serial,  # Store original serial for config lookup
                     'resolution': resolution,  # Store sub/main for reference
-                    'start_time': None  # Will be set by thread
+                    'start_time': time.time()  # Set immediately to prevent zombie false-positives
                 }
                 print(f"[RESERVED] Slot for {stream_key} - preventing duplicate starts")
             # ===== END NEW BLOCK =====

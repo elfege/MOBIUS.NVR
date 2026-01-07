@@ -275,8 +275,7 @@ class MediaServerMJPEGService:
 
         # Brief initial delay to let MediaMTX stream stabilize
         # Streams may still be initializing when iOS clients first connect
-        # Reduced from 1.0s to 0.2s for faster MJPEG load times
-        initial_wait = 0.2
+        initial_wait = 1.0
         logger.debug(f"MediaServer MJPEG {camera_id}: waiting {initial_wait}s for stream to stabilize")
         if stop_flag.wait(initial_wait):
             return  # Stopped during wait

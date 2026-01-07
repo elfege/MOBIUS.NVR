@@ -1,0 +1,86 @@
+/* ============================================================================
+   iOS PAGINATION CONTROLS
+
+   Pagination system for iOS devices to limit simultaneous video decodes.
+   iOS Safari has hard limits (~4-8 streams) so we show max 6 cameras per page.
+
+   Only visible on iOS devices (pagination controls are not rendered on desktop).
+   ============================================================================ */
+
+/* Container for pagination controls - centered above stream grid */
+.ios-pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.8);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+/* Page navigation buttons */
+.ios-page-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;       /* iOS minimum touch target */
+    height: 44px;
+    background: rgba(102, 126, 234, 0.8);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ios-page-btn:active {
+    background: rgba(102, 126, 234, 1);
+    transform: scale(0.95);
+}
+
+.ios-page-btn:disabled {
+    background: rgba(100, 100, 100, 0.5);
+    color: rgba(255, 255, 255, 0.4);
+    cursor: not-allowed;
+}
+
+.ios-page-btn:disabled:active {
+    transform: none;
+}
+
+/* Page indicator text */
+.ios-page-indicator {
+    color: white;
+    font-size: 1rem;
+    font-weight: 500;
+    min-width: 100px;
+    text-align: center;
+}
+
+/* Hidden stream items on non-visible pages */
+.stream-item.ios-hidden {
+    display: none !important;
+}
+
+/* Adjust grid for iOS pagination - 2x3 grid for 6 cameras */
+@supports (-webkit-touch-callout: none) {
+    /* iOS-specific styles */
+    .streams-container {
+        /* Override default grid for cleaner 2x3 layout on iOS */
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+/* Landscape orientation on iOS - 3x2 grid */
+@media screen and (orientation: landscape) and (max-width: 1024px) {
+    @supports (-webkit-touch-callout: none) {
+        .streams-container {
+            grid-template-columns: repeat(3, 1fr) !important;
+        }
+    }
+}

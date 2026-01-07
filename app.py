@@ -591,7 +591,11 @@ class PTZControlForm(FlaskForm):
 # ===== Main UI Routes =====
 @app.route('/')
 def index():
-    """Redirect to streams page (main interface)"""
+    """Redirect to streams page (main interface), preserving query params"""
+    from flask import request
+    query_string = request.query_string.decode('utf-8')
+    if query_string:
+        return redirect(f'/streams?{query_string}')
     return redirect('/streams')
 
 @app.route('/streams')

@@ -5,6 +5,15 @@
 
 import { fullscreenHandler } from './fullscreen-handler.js';
 
+/**
+ * Detect if current device is a portable/mobile device
+ * Used to hide certain settings that don't apply to mobile
+ */
+function isPortableDevice() {
+    return /iPad|iPhone|iPod|Android/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 export class SettingsUI {
     constructor() {
         // Cache jQuery selectors (initialized in init)
@@ -80,6 +89,21 @@ export class SettingsUI {
             console.log('[SettingsUI] Grid style changed:', style);
 
             fullscreenHandler.setGridStyle(style);
+        });
+
+        // Force MJPEG toggle (desktop only)
+        this.$content.on('change', '#force-mjpeg-toggle', (e) => {
+            const enabled = $(e.currentTarget).is(':checked');
+            console.log('[SettingsUI] Force MJPEG toggled:', enabled);
+
+            localStorage.setItem('forceMJPEG', enabled ? 'true' : 'false');
+
+            // Redirect to apply the setting
+            if (enabled) {
+                window.location.href = '/streams?forceMJPEG=true';
+            } else {
+                window.location.href = '/streams';
+            }
         });
 
         // Mute all cameras button
@@ -243,6 +267,29 @@ export class SettingsUI {
             </div>
         </div>
 
+        <!-- Force MJPEG Mode Setting (Desktop Only) -->
+        ${!isPortableDevice() ? `
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-image"></i>
+                    Force MJPEG Mode
+                </div>
+                <div class="setting-control">
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="force-mjpeg-toggle"
+                               ${this.isForceMJPEGEnabled() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-description">
+                Use MJPEG (snapshot-based) streams instead of HLS video for all cameras.
+                Lower quality but uses less bandwidth and CPU. Page will reload when changed.
+            </div>
+        </div>
+        ` : ''}
+
         <!-- Audio Controls Setting -->
         <div class="setting-row">
             <div class="setting-top">
@@ -282,6 +329,20 @@ export class SettingsUI {
             $delayGroup.addClass('disabled');
             $delayInput.prop('disabled', true);
         }
+    }
+
+    /**
+     * Check if Force MJPEG mode is enabled
+     * Checks both URL param and localStorage
+     */
+    isForceMJPEGEnabled() {
+        // Check URL param first
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('forceMJPEG') === 'true') {
+            return true;
+        }
+        // Fall back to localStorage
+        return localStorage.getItem('forceMJPEG') === 'true';
     }
 }
 

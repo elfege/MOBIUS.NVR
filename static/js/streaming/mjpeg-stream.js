@@ -72,6 +72,7 @@ export class MJPEGStreamManager {
             // MJPEG streams may not fire 'load' event reliably in all browsers.
             // Poll for naturalWidth/naturalHeight to detect when first frame arrives.
             // This handles cases where the multipart MJPEG response doesn't trigger load.
+            // Reduced polling interval from 200ms to 100ms for faster frame detection
             checkInterval = setInterval(() => {
                 if (resolved) return;
 
@@ -80,7 +81,7 @@ export class MJPEGStreamManager {
                     console.log(`[MJPEG] ${cameraId}: Detected frame via naturalWidth check`);
                     onSuccess();
                 }
-            }, 200);
+            }, 100);
 
             // Timeout fallback - if no success or error after 10 seconds, fail
             setTimeout(() => {

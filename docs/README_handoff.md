@@ -55,8 +55,30 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session
 
-**Branch:** (new session - create branch as needed)
-**Date:** (to be filled)
+**Branch:** `main` (direct commits)
+**Date:** January 8, 2026
+
+### MJPEG Pre-warming Implementation (commit 1128006)
+
+**Problem:** MJPEG streams took 60+ seconds to load because:
+1. MediaServer MJPEG capture only started when first client connected
+2. FFmpeg was killed when last client disconnected
+3. Each reconnect required full FFmpeg startup (connect, probe, decode)
+
+**Solution implemented:**
+
+| File | Change |
+|------|--------|
+| `app.py:155-189` | Added `auto_start_mediaserver_mjpeg()` - pre-warms all mediaserver MJPEG at startup |
+| `services/mediaserver_mjpeg_service.py:501-525` | Modified `remove_client()` - no longer stops capture on disconnect |
+
+**Key findings during investigation:**
+- Eufy cameras use `/api/mediaserver/` endpoint (320x240, taps MediaMTX sub)
+- Reolink/Amcrest use direct `/api/reolink/`, `/api/amcrest/` endpoints (640x480, direct to camera)
+- Lock contention in frame buffer causing slowness with multiple clients
+- Motion detection/recording independent of MJPEG display
+
+**Trade-off:** ~3% CPU per camera idle vs instant MJPEG loading
 
 ---
 

@@ -282,6 +282,8 @@ class MediaServerMJPEGService:
 
         consecutive_errors = 0
         max_consecutive_errors = 5
+        total_errors = 0
+        max_total_errors = 20  # Stop entirely after 20 total failures
 
         while not stop_flag.is_set():
             try:
@@ -292,6 +294,8 @@ class MediaServerMJPEGService:
                     '-hide_banner',
                     '-loglevel', 'error',
                     '-rtsp_transport', 'tcp',
+                    '-timeout', '5000000',          # 5s connection timeout (microseconds)
+                    '-stimeout', '5000000',         # 5s socket timeout (microseconds)
                     '-analyzeduration', '2000000',  # 2s - time to detect H.264 codec
                     '-probesize', '2000000',        # 2MB probe buffer
                     '-i', rtsp_url,
@@ -381,15 +385,16 @@ class MediaServerMJPEGService:
                         logger.warning(f"FFmpeg stderr for {camera_id}: {stderr[:500]}")
 
                     consecutive_errors += 1
-                    error_msg = f"Stream unavailable (attempt {consecutive_errors})"
+                    total_errors += 1
+                    error_msg = f"Stream unavailable (attempt {consecutive_errors}, total {total_errors})"
 
                     # Parse common error patterns for better messages
                     if "404 Not Found" in stderr:
-                        error_msg = f"Stream not published yet (attempt {consecutive_errors})"
+                        error_msg = f"Stream not published yet (attempt {consecutive_errors}/{total_errors})"
                     elif "400 Bad Request" in stderr:
-                        error_msg = f"MediaMTX rejected request (attempt {consecutive_errors})"
+                        error_msg = f"MediaMTX rejected request (attempt {consecutive_errors}/{total_errors})"
                     elif "Connection refused" in stderr:
-                        error_msg = f"MediaMTX not reachable (attempt {consecutive_errors})"
+                        error_msg = f"MediaMTX not reachable (attempt {consecutive_errors}/{total_errors})"
 
                     capture_info['last_error'] = error_msg
 
@@ -407,8 +412,13 @@ class MediaServerMJPEGService:
                     if consecutive_errors >= max_consecutive_errors and tracker:
                         tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
 
-                    # Wait before retry (exponential backoff capped at 30s)
-                    wait_time = min(2 ** consecutive_errors, 30)
+                    # Stop entirely after too many total errors
+                    if total_errors >= max_total_errors:
+                        logger.error(f"MediaServer MJPEG {camera_id}: Stopping after {total_errors} total failures")
+                        break
+
+                    # Wait before retry (exponential backoff starting at 4s, capped at 30s)
+                    wait_time = min(4 * (2 ** consecutive_errors), 30)
                     logger.warning(f"MediaServer MJPEG capture for {camera_id} failed, retrying in {wait_time}s")
                     stop_flag.wait(wait_time)
 
@@ -416,6 +426,7 @@ class MediaServerMJPEGService:
                 error_msg = str(e)
                 capture_info['last_error'] = error_msg
                 consecutive_errors += 1
+                total_errors += 1
                 logger.error(f"MediaServer MJPEG capture error for {camera_id}: {e}")
 
                 # Update buffer with error frame
@@ -431,6 +442,11 @@ class MediaServerMJPEGService:
 
                 if consecutive_errors >= max_consecutive_errors and tracker:
                     tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
+
+                # Stop entirely after too many total errors
+                if total_errors >= max_total_errors:
+                    logger.error(f"MediaServer MJPEG {camera_id}: Stopping after {total_errors} total failures (exception)")
+                    break
 
                 stop_flag.wait(5.0)
 

@@ -10,6 +10,106 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 7, 2026 (00:00-22:01 EST): Race Condition Fix + Gunicorn Revert + WEBRTC Fullscreen
+
+**Branch:** `main` (direct commits)
+
+### Summary
+
+Fixed multiple issues that emerged during MJPEG optimization work:
+
+1. **Race condition in stream slot reservation** - Duplicate FFmpeg starts
+2. **Gunicorn thread starvation** - Container going unhealthy
+3. **WEBRTC fullscreen black stream** - Main passthrough not loading
+
+### Issue 1: Race Condition in Stream Slot Reservation
+
+**Symptoms:**
+
+- `[ZOMBIE] Removing stale 'starting' slot for 95270000YPTKLLD6 (age: infs)`
+- Duplicate FFmpeg processes publishing to same MediaMTX path
+- `closing existing publisher` errors in MediaMTX logs
+- Broken pipe errors on `_main` streams
+
+**Root Cause:**
+
+Stream slot reservation set `start_time: None` at creation. Zombie detection logic calculated `slot_age = inf` when `start_time=None`, triggering premature slot removal and allowing duplicate starts.
+
+```python
+# Bug: start_time=None → slot_age=inf → zombie cleanup
+self.active_streams[stream_key] = {
+    'process': None,
+    'status': 'starting',
+    'start_time': None  # BUG
+}
+```
+
+**Fix Applied:**
+
+| File | Change |
+|------|--------|
+| `streaming/stream_manager.py:348` | Changed `'start_time': None` to `'start_time': time.time()` |
+
+### Issue 2: Gunicorn Thread Starvation (REVERTED)
+
+**Symptoms:**
+
+- Container became unhealthy after a few minutes
+- "Server Unavailable" errors in UI
+- API endpoints timing out
+
+**Root Cause:**
+
+Gunicorn with 1 worker + 8 threads got all threads stuck on blocking operations (MJPEG streaming, FFmpeg startups). No threads available for new requests.
+
+**Fix Applied:**
+
+| File | Change |
+|------|--------|
+| `Dockerfile` | Reverted to `CMD ["python3", "app.py"]` |
+| `app.py:2821` | Changed to `debug=False, use_reloader=False, threaded=True` |
+
+**Note:** Gunicorn was initially added to fix duplicate process spawning from Flask `debug=True`. The real fix was simply `debug=False` and `use_reloader=False`.
+
+### Issue 3: WEBRTC Fullscreen Black Stream
+
+**Symptoms:**
+
+- Clicking fullscreen on WEBRTC cameras showed black video
+- Main stream passthrough not loading
+
+**Root Cause:**
+
+1. Backend `start_stream()` only returned `/hls/` URLs for LL_HLS/NEOLINK protocols
+2. WEBRTC cameras got `/api/streams/` URLs instead
+3. Frontend only trusted `/hls/` URLs, fell back to sub stream
+
+**Fix Applied:**
+
+| File | Change |
+|------|--------|
+| `streaming/stream_manager.py:363` | Added `WEBRTC` to protocol check for `/hls/` URL return |
+| `static/js/streaming/hls-stream.js:133` | Accept both `/hls/` and `/api/` URLs |
+| `static/js/streaming/hls-stream.js:142` | Fix fallback to include `_main` suffix |
+
+### Session End Status
+
+**Working:**
+
+- Container healthy, API responding
+- Fullscreen HD main stream passthrough functional
+- Most cameras showing video in grid view
+
+**Known Issues:**
+
+- Living Room: Degraded state
+- Kitchen: Black/not loading
+- Several cameras in Starting... state
+
+**CRITICAL NEXT TASK:** MJPEG load time still 60+ seconds in `?forceMJPEG=true` mode
+
+---
+
 ## January 5, 2026 (10:15-13:58 EST): E1 Stream Restart Button + PTZ Capability Check
 
 **Branch merged:** `fix_e1_stream_restart_btn_JAN_5_2026_a`

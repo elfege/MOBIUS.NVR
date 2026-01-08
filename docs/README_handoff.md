@@ -15,170 +15,59 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 7, 2026 22:01 EST*
+*Last updated: January 7, 2026 22:30 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
+## Previous Session Context
+
+**Archived:** `docs/archive/handoffs/jan_7_2026_fixes/README_handoff_20260107_2201.md`
+
+**See:** `docs/README_project_history.md` section "January 7, 2026 (00:00-22:01 EST): Race Condition Fix + Gunicorn Revert + WEBRTC Fullscreen"
+
+### Key Points for Next Session
+
+1. **CRITICAL NEXT TASK:** MJPEG load time optimization
+   - `?forceMJPEG=true` mode takes 60+ seconds to load
+   - Streams should be pre-warmed after container uptime
+   - Investigate: Are MJPEG streams actually low-res? May have broken something
+
+2. **Architecture Understanding:**
+   - ONE camera RTSP connection produces THREE outputs:
+     - Sub stream (320x240 transcoded) → `rtsp://nvr-packager:8554/{serial}`
+     - Main stream (passthrough `-c:v copy`) → `rtsp://nvr-packager:8554/{serial}_main`
+     - MediaServer MJPEG (separate FFmpeg tapping MediaMTX) → multipart JPEG frames
+   - Single-connection cameras (Eufy, SV3C, Neolink) tap MediaMTX, not camera directly
+
+3. **Recent Fixes Applied:**
+   - Race condition in stream slot reservation (start_time at creation)
+   - Gunicorn reverted to Flask (thread starvation issue)
+   - WEBRTC fullscreen URL handling fixed
+
+4. **Known Camera Issues:**
+   - Living Room: Degraded state
+   - Kitchen: Black/not loading
+   - Several cameras in Starting... state
+
+---
+
 ## Current Session
 
-**Branch:** `main` (direct commits)
-**Date:** January 7, 2026 (00:00-22:01 EST)
-
-### Session End Status
-
-**Working:**
-
-- Container healthy, API responding
-- Fullscreen mode works with HD main stream passthrough
-- Most cameras showing video in grid view
-
-**Known Issues (from screenshot):**
-
-- Living Room: Degraded (1 failures), Inactive, Stopped
-- Kitchen: Black/not loading
-- SV3C_Living_3: Loading spinner
-- REOLINK OFFICE: Starting...
-- Terrace South: MJPEG Stream label visible, loading
-- LAUNDRY ROOM: Starting...
-- AMCREST LOBBY: Loading spinner
-- REOLINK Cat Feeders: Starting...
-
-**CRITICAL NEXT TASK: MJPEG Load Time (60+ seconds)**
-
-- `?forceMJPEG=true` mode takes 60+ seconds to load
-- Streams should be pre-warmed after 24h container uptime
-- Possible issues to investigate:
-  1. Are MJPEG streams actually low-res? May have broken something
-  2. MediaServer MJPEG FFmpeg startup delay?
-  3. Frontend connection/retry logic?
-  4. Check if MJPEG streams are being cached/pre-started
-
----
-
-### Issue: Gunicorn Caused Thread Starvation (REVERTED)
-
-**Symptoms:**
-
-- Container became unhealthy after a few minutes
-- "Server Unavailable" errors in UI
-- API endpoints timing out
-- All Gunicorn threads getting blocked
-
-**Root Cause:**
-
-Gunicorn with 1 worker + 8 threads was getting all threads stuck on blocking operations (likely MJPEG streaming or long FFmpeg startups). When all 8 threads were blocked, no new requests could be handled.
-
-**Fix Applied (commit a524583):**
-
-| File | Change |
-|------|--------|
-| `Dockerfile` | Reverted to `CMD ["python3", "app.py"]` from Gunicorn ENTRYPOINT |
-| `app.py:2821` | Changed to `debug=False, use_reloader=False, threaded=True` |
-
-**Result:**
-
-- Container stays healthy
-- API responds consistently
-- Flask's threaded mode handles concurrent requests without the thread pool limitation
-
-**Note:** The Gunicorn switch was initially meant to fix duplicate process spawning from Flask debug=True. The real fix was simply setting `debug=False` and `use_reloader=False`.
-
----
-
-### Issue: Fullscreen Black Stream (WEBRTC cameras)
-
-**Symptoms:**
-
-- Clicking fullscreen on WEBRTC cameras (e.g., Living Room) showed black video
-- Main stream passthrough not loading
-- Container occasionally showed "Server Unavailable" / unhealthy
-
-**Root Cause:**
-
-1. Backend `start_stream()` only returned `/hls/` URLs for LL_HLS/NEOLINK protocols
-2. WEBRTC cameras got `/api/streams/{serial}_main/playlist.m3u8` URLs instead
-3. Frontend `hls-stream.js` only trusted `/hls/` URLs (line 133)
-4. Frontend fell back to sub stream URL without `_main` suffix → black screen
-
-**Fix Applied (commit 453053e):**
-
-| File | Change |
-|------|--------|
-| `streaming/stream_manager.py:363` | Added `WEBRTC` to protocol check for `/hls/` URL return |
-| `static/js/streaming/hls-stream.js:133` | Accept both `/hls/` and `/api/` URLs from backend |
-| `static/js/streaming/hls-stream.js:142` | Fix fallback URL to include `_main` suffix for main streams |
-
-**Result:**
-
-- WEBRTC cameras now return correct `/hls/{serial}_main/index.m3u8` for fullscreen
-- Frontend correctly uses backend-provided URLs
-- Fallback URL construction includes `_main` suffix when needed
-
----
-
-### Issue: FFmpeg Broken Pipe Errors for AMCREST LOBBY
-
-**Symptoms:**
-
-- `[vost#1:0/copy @ ...] Error submitting a packet to the muxer: Broken pipe` on `_main` stream
-- `LL-HLS publisher died (code 0)` errors at startup
-- MediaMTX logs showing `closing existing publisher` multiple times
-- `🎬 Auto-starting HLS streams` appearing 2-3 times in logs
-
-**Root Cause Analysis:**
-
-1. **Flask debug=True** in `app.run()` spawns TWO processes (parent + reloader child)
-2. **Duplicate auto-start blocks** in app.py:
-   - Lines 121-153: `auto_start_all_streams()` inside `with app.app_context()`
-   - Lines 413-425: Another loop at module level
-3. Combined: 2 processes × 2 code blocks = up to 4 auto-start attempts
-4. Race condition: Multiple FFmpeg processes try to publish to same MediaMTX path → broken pipe
-
-**Fix Applied (then REVERTED - see above):**
-
-1. Created `/home/elfege/0_NVR/entrypoint.sh` - Gunicorn startup script
-2. Updated Dockerfile to use `ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]`
-3. Added `gunicorn` to requirements.txt
-4. Removed duplicate auto-start block (lines 413-425) from app.py
-
-**Files Modified:**
-
-| File | Change |
-|------|--------|
-| `entrypoint.sh` | Created - Gunicorn startup (1 worker, 8 threads) |
-| `Dockerfile` | Changed from `CMD ["python3", "app.py"]` to ENTRYPOINT with Gunicorn |
-| `requirements.txt` | Added `gunicorn` |
-| `app.py` | Removed duplicate auto-start block (was lines 413-425) |
-
-**Initial Result (before Gunicorn revert):**
-
-- Only ONE `🎬 Auto-starting HLS streams` message in logs
-- AMCREST LOBBY starts successfully without broken pipe errors
-- Significantly fewer `closing existing publisher` in MediaMTX
-
-**BUT:** Gunicorn caused thread starvation - see issue above for final fix.
-
----
-
-## Previous Session Summary
-
-**Branch merged:** `mjpeg_load_optimization_JAN_7_2026_a`
-**Date:** January 6, 2026 (22:47-23:38 EST)
-
-See `docs/README_project_history.md` section "MJPEG Load Time Optimization - January 6, 2026" for full details.
-
-Archived handoff: `docs/archive/handoffs/mjpeg_load_optimization_JAN_7_2026_a/README_handoff_20260106_2338.md`
+**Branch:** (new session - create branch as needed)
+**Date:** (to be filled)
 
 ---
 
 ## TODO List
 
-**MJPEG Optimization (Incomplete):**
+**MJPEG Optimization (Priority):**
 
-- [ ] Investigate why MJPEG streams still load slowly despite all optimizations
+- [ ] Investigate why MJPEG streams still load slowly despite optimizations
 - [ ] Profile actual bottleneck (backend FFmpeg startup? MediaMTX? Browser?)
+- [ ] Verify MJPEG streams are actually low-res
+- [ ] Check MediaServer MJPEG pre-warming behavior
 - [ ] Consider alternative approaches (lazy loading, pagination on iOS)
 
 **Future Enhancements:**

@@ -146,7 +146,7 @@ Container showed "unhealthy" status despite Gunicorn running with 80 threads.
 2. 16 cameras loading in parallel through HTTPS/Caddy
 3. Frontend connection setup overhead
 
-### PENDING FIX - analyzeduration/probesize Too Low - 23:51 EST
+### FIXED - analyzeduration/probesize Too Low - 00:05 EST (Jan 8)
 
 **Problem:** FFmpeg error for camera 95270001NT3KNA67 (LAUNDRY ROOM):
 ```
@@ -156,22 +156,33 @@ Consider increasing the value for the 'analyzeduration' (1000000) and 'probesize
 Could not write header (incorrect codec parameters ?): Invalid argument
 ```
 
-**Hardcoded locations found (need to respect cameras.json values or increase defaults):**
-- `streaming/handlers/reolink_stream_handler.py:187-188` - 500000 (too low!)
-- `streaming/handlers/reolink_stream_handler.py:196-197` - 500000 (too low!)
-- `streaming/handlers/unifi_stream_handler.py:126-127` - 1000000
-- `streaming/handlers/sv3c_stream_handler.py:119-120` - 1000000
-- `streaming/handlers/eufy_stream_handler.py:111-112` - 1000000
-- `streaming/handlers/amcrest_stream_handler.py:81-82` - 1000000
-- `services/mediaserver_mjpeg_service.py:302` - 2000000 (good)
+**Fix applied (commit 9be4baf):**
 
-**Fix needed:** Increase reolink_stream_handler.py values from 500000 to at least 2000000, or read from cameras.json `rtsp_input` params.
+- `reolink_stream_handler.py:187-200` - Increased RTMP/NEOLINK fallbacks from 500000 to 2000000
+- `cameras.json` - Updated T8416P0023370398 and 95270001CSO4BPDZ from 500000 to 2000000
+
+### FIXED - Client Count Leak - 00:05 EST (Jan 8)
+
+**Problem:** Client counts climbing to 54+ because `remove_client()` wasn't always called on browser disconnect. `GeneratorExit` is not reliably raised when browser closes tab or navigates away.
+
+**Fix applied (commit 9be4baf):**
+
+- Refactored MJPEG generator in `app.py:1468-1541` to use `try/finally` pattern
+- `finally` block ALWAYS runs - even when generator is garbage collected without `GeneratorExit`
+- This guarantees `remove_client()` is called on ALL exit paths
+
+### FIXED - Logging Spam - 00:05 EST (Jan 8)
+
+**Problem:** Logs flooded with "zombies?" and "extended: -rtsp_transport..." messages.
+
+**Fix applied (commit 9be4baf):**
+
+- Removed debug `print("zombies?")` from `app.py:2822`
+- Removed verbose FFmpeg param logging from `streaming/ffmpeg_params.py:104-115`
 
 ### Known Issues
 
 1. **T8416P0023352DA9 (Living Room)** - Defective camera hardware, won't connect
-2. **95270001NT3KNA67 (LAUNDRY ROOM)** - analyzeduration too low, FFmpeg can't probe stream
-3. **Client count leak** - `remove_client()` not always called on browser disconnect
 
 ---
 
@@ -189,10 +200,12 @@ Could not write header (incorrect codec parameters ?): Invalid argument
 - [x] Remove _stop_capture() from remove_client()
 - [x] Fix pre-warming to poll MediaMTX until streams publishing
 - [x] Fix forceMJPEG fullscreen handling
+- [x] Fix client count leak (try/finally pattern in generator)
+- [x] Fix analyzeduration/probesize values (2000000 in reolink handler + cameras.json)
+- [x] Remove logging spam (zombies?, ffmpeg params)
 
 **Remaining Issues:**
 
-- [ ] Fix client count leak (remove_client not always called on disconnect)
 - [ ] MJPEG status API returns null for client_count (minor bug)
 
 **Future Enhancements:**

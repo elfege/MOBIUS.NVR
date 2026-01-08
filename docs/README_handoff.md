@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 7, 2026 22:30 EST*
+*Last updated: January 7, 2026 22:50 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -80,17 +80,57 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Trade-off:** ~3% CPU per camera idle vs instant MJPEG loading
 
+### MJPEG Pre-warming Fix (commit 0e931ae) - 22:37 EST
+
+**Problem:** MJPEG captures failed with 404 errors on startup because they tried to connect before HLS streams were publishing to MediaMTX.
+
+**Fix:** Poll MediaMTX `/v3/paths/list` API until streams are actually publishing before starting MJPEG captures.
+
+| File | Change |
+|------|--------|
+| `app.py:168-222` | Added MediaMTX polling loop before MJPEG pre-warming |
+
+### Frontend forceMJPEG Fix (commit 736df5a) - 22:41 EST
+
+**Problem:** `?forceMJPEG=true` on desktop caused WebRTC/HLS 404 errors when entering fullscreen. Line 1428 only checked `isPortableDevice()`, not `debugForceMJPEG`.
+
+**Fix:** Check `(isPortableDevice() || debugForceMJPEG)` in `openFullscreen()`.
+
+| File | Change |
+|------|--------|
+| `static/js/streaming/stream.js:1427-1430` | Added `debugForceMJPEG` check to fullscreen MJPEG→HLS switch |
+
+### Session Findings - 22:50 EST
+
+**MJPEG optimization results:**
+- Same client refresh: FAST (HTTP keepalive, reuses connection)
+- Different client: SLOW (new connection setup)
+- Root cause: Flask dev server single-threaded, limited concurrent connections
+- Client counts climbing high (14+ per camera) - suggests `remove_client()` not always called on disconnect
+
+**Next step:** Gunicorn with 40+ threads to handle concurrent MJPEG streams properly.
+
 ---
 
 ## TODO List
 
-**MJPEG Optimization (Priority):**
+**CRITICAL - Gunicorn Implementation:**
 
-- [ ] Investigate why MJPEG streams still load slowly despite optimizations
-- [ ] Profile actual bottleneck (backend FFmpeg startup? MediaMTX? Browser?)
-- [ ] Verify MJPEG streams are actually low-res
-- [ ] Check MediaServer MJPEG pre-warming behavior
-- [ ] Consider alternative approaches (lazy loading, pagination on iOS)
+- [ ] Implement Gunicorn with 40+ worker threads (server has 56 cores, 128GB RAM)
+- [ ] Investigate why previous Gunicorn attempt failed (thread starvation?)
+- [ ] Test MJPEG loading with multiple concurrent clients
+
+**MJPEG Optimization (Completed):**
+
+- [x] Add MJPEG pre-warming to app.py startup
+- [x] Remove _stop_capture() from remove_client()
+- [x] Fix pre-warming to poll MediaMTX until streams publishing
+- [x] Fix forceMJPEG fullscreen handling
+
+**Remaining MJPEG Issues:**
+
+- [ ] Fix client count leak (remove_client not always called on disconnect)
+- [ ] Profile actual bottleneck with Gunicorn running
 
 **Future Enhancements:**
 

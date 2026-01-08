@@ -28,6 +28,17 @@
 
 ---
 
+## Server Specifications
+
+**Host:** Dell PowerEdge R730xd (dellserver)
+
+- **CPU:** 2x Intel Xeon E5-2690 v4 @ 2.60GHz (56 logical cores, 28 physical)
+- **RAM:** 128GB
+- **OS:** Ubuntu 24.04.3 LTS (WSL IP: 192.168.10.20)
+- **Kernel:** Linux 6.8.0-85-generic
+
+---
+
 ## NVR System Technical Overview
 
 **Project Purpose:**

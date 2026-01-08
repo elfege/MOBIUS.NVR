@@ -182,19 +182,22 @@ class ReolinkStreamHandler(StreamHandler):
 
         if protocol == 'RTMP':
             # RTMP input needs minimal params
+            # NOTE: analyzeduration/probesize 500000 caused "dimensions not set" errors
+            # on some cameras - increased to 2000000 for reliable stream detection
             return [
                 '-timeout', '5000000',          # 5-second timeout
-                '-analyzeduration', '500000',   # Fast analysis for low latency
-                '-probesize', '500000'          # Smaller probe for low latency
+                '-analyzeduration', '2000000',  # 2s analysis for reliable codec detection
+                '-probesize', '2000000'         # Larger probe to find all codec params
             ]
         elif protocol == 'NEOLINK':
             # Neolink bridge: use UDP transport to prevent buffer overflow
             # Neolink's GStreamer RTSP server works better with UDP
+            # NOTE: analyzeduration/probesize 500000 caused "dimensions not set" errors
             return [
                 '-rtsp_transport', 'udp',       # UDP prevents buffer stalls
                 '-timeout', '5000000',
-                '-analyzeduration', '500000',   # Fast analysis
-                '-probesize', '500000',
+                '-analyzeduration', '2000000',  # 2s for reliable stream detection
+                '-probesize', '2000000',        # Larger probe for codec detection
                 '-fflags', 'nobuffer',          # Reduce buffering
                 '-flags', 'low_delay'           # Minimize latency
             ]

@@ -2859,7 +2859,7 @@ def cleanup_handler(signum=None, frame=None):
             reolink_motion_service.stop()
 
         stop_all_services(stream_manager,
-                          bridge_watchdog,
+                        #   bridge_watchdog, # Eufy Bridge no longer in use for now
                         #   eufy_bridge, # Eufy Bridge no longer in use for now
                           unifi_cameras,
                           unifi_resource_monitor,

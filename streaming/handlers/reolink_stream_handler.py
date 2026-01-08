@@ -178,46 +178,24 @@ class ReolinkStreamHandler(StreamHandler):
         FFmpeg input parameters for Reolink cameras.
 
         IMPORTANT: All values come from cameras.json rtsp_input section.
-        This handler does NOT hardcode analyzeduration/probesize/timeout values.
-        cameras.json is the single source of truth for FFmpeg parameters.
+        This handler does NOT hardcode any FFmpeg parameter values.
+        cameras.json is the SINGLE SOURCE OF TRUTH for all FFmpeg parameters.
 
-        Protocol-specific handling:
-        - RTMP: Uses rtsp_input values directly
-        - NEOLINK: Forces UDP transport (Neolink's GStreamer works better with UDP),
-                   but all other values come from rtsp_input
-        - RTSP/HLS: Uses rtsp_input values via build_rtsp_input_params()
+        All protocols (RTSP, RTMP, NEOLINK, HLS) use cameras.json rtsp_input values.
+        For NEOLINK cameras, set rtsp_transport: "udp" in cameras.json (not here).
         """
-        protocol = camera_config.get('stream_type', 'HLS')
         camera_name = camera_config.get('name', 'unknown camera')
+        protocol = camera_config.get('stream_type', 'HLS')
 
         try:
             # ALL protocols use cameras.json rtsp_input as source of truth
             params = build_rtsp_input_params(camera_config=camera_config)
-
-            if protocol == 'NEOLINK':
-                # Neolink bridge: force UDP transport (overrides rtsp_input value)
-                # Neolink's GStreamer RTSP server works better with UDP to prevent buffer stalls
-                # Find and replace rtsp_transport if present, or prepend it
-                new_params = []
-                found_transport = False
-                i = 0
-                while i < len(params):
-                    if params[i] == '-rtsp_transport':
-                        new_params.extend(['-rtsp_transport', 'udp'])
-                        found_transport = True
-                        i += 2  # Skip both flag and value
-                    else:
-                        new_params.append(params[i])
-                        i += 1
-                if not found_transport:
-                    new_params = ['-rtsp_transport', 'udp'] + new_params
-                params = new_params
-
             logger.debug(f"FFmpeg input params for {camera_name} ({protocol}): {params}")
             return params
 
         except Exception as e:
             # Fallback only if cameras.json rtsp_input is missing/broken
+            # These values should match reasonable defaults but cameras.json is authoritative
             logger.error(f"Failed to build FFmpeg input params for {camera_name}: {e}")
             traceback.print_exc()
             return [

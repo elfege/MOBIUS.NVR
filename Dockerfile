@@ -34,6 +34,9 @@ RUN mkdir -p /app/logs \
     /app/templates \
     /app/services
 
+# Make entrypoint executable (must be done before switching to non-root user)
+RUN chmod +x /app/entrypoint.sh
+
 # Create non-root user and set ownership
 RUN useradd -r -s /bin/false -u 1000 appuser && \
     chown -R appuser:appuser /app
@@ -45,9 +48,10 @@ USER appuser
 EXPOSE 5000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+# Increased start-period for Gunicorn + HLS stream initialization
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:5000/api/status || exit 1
 
-# Run the application with Flask dev server
-# NOTE: Using debug=False and use_reloader=False to prevent double-process issues
-CMD ["python3", "app.py"]
+# Run via Gunicorn (80 threads for concurrent MJPEG streams)
+# See entrypoint.sh for configuration details
+ENTRYPOINT ["/app/entrypoint.sh"]

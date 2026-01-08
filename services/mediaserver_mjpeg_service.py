@@ -499,7 +499,13 @@ class MediaServerMJPEGService:
             return False
 
     def remove_client(self, camera_id: str):
-        """Remove client, stop capture if no more clients."""
+        """
+        Remove client from camera stream.
+
+        NOTE: Does NOT stop capture when client count reaches 0.
+        MJPEG captures are pre-warmed at startup and kept running for instant
+        reconnect. This trades ~3% CPU per camera for instant MJPEG loading.
+        """
         try:
             with self.lock:
                 if camera_id in self.client_counts and self.client_counts[camera_id] > 0:
@@ -509,7 +515,9 @@ class MediaServerMJPEGService:
                     logger.info(f"Removed MediaServer MJPEG client for {camera_id} (remaining: {client_count})")
 
                     if client_count <= 0:
-                        self._stop_capture(camera_id)
+                        # Don't stop capture - keep MJPEG running for instant reconnect
+                        # Captures are pre-warmed at startup and should stay running
+                        logger.debug(f"MediaServer MJPEG {camera_id}: No clients, keeping capture alive for instant reconnect")
                         if camera_id in self.client_counts:
                             del self.client_counts[camera_id]
 

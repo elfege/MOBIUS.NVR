@@ -175,48 +175,57 @@ class ReolinkStreamHandler(StreamHandler):
     
     def get_ffmpeg_input_params(self, camera_config: Dict) -> List[str]:
         """
-        FFmpeg input parameters for Reolink cameras
-        Different params for RTSP vs RTMP vs NEOLINK
+        FFmpeg input parameters for Reolink cameras.
+
+        IMPORTANT: All values come from cameras.json rtsp_input section.
+        This handler does NOT hardcode analyzeduration/probesize/timeout values.
+        cameras.json is the single source of truth for FFmpeg parameters.
+
+        Protocol-specific handling:
+        - RTMP: Uses rtsp_input values directly
+        - NEOLINK: Forces UDP transport (Neolink's GStreamer works better with UDP),
+                   but all other values come from rtsp_input
+        - RTSP/HLS: Uses rtsp_input values via build_rtsp_input_params()
         """
         protocol = camera_config.get('stream_type', 'HLS')
+        camera_name = camera_config.get('name', 'unknown camera')
 
-        if protocol == 'RTMP':
-            # RTMP input needs minimal params
-            # NOTE: analyzeduration/probesize 500000 caused "dimensions not set" errors
-            # on some cameras - increased to 2000000 for reliable stream detection
+        try:
+            # ALL protocols use cameras.json rtsp_input as source of truth
+            params = build_rtsp_input_params(camera_config=camera_config)
+
+            if protocol == 'NEOLINK':
+                # Neolink bridge: force UDP transport (overrides rtsp_input value)
+                # Neolink's GStreamer RTSP server works better with UDP to prevent buffer stalls
+                # Find and replace rtsp_transport if present, or prepend it
+                new_params = []
+                found_transport = False
+                i = 0
+                while i < len(params):
+                    if params[i] == '-rtsp_transport':
+                        new_params.extend(['-rtsp_transport', 'udp'])
+                        found_transport = True
+                        i += 2  # Skip both flag and value
+                    else:
+                        new_params.append(params[i])
+                        i += 1
+                if not found_transport:
+                    new_params = ['-rtsp_transport', 'udp'] + new_params
+                params = new_params
+
+            logger.debug(f"FFmpeg input params for {camera_name} ({protocol}): {params}")
+            return params
+
+        except Exception as e:
+            # Fallback only if cameras.json rtsp_input is missing/broken
+            logger.error(f"Failed to build FFmpeg input params for {camera_name}: {e}")
+            traceback.print_exc()
             return [
-                '-timeout', '5000000',          # 5-second timeout
-                '-analyzeduration', '2000000',  # 2s analysis for reliable codec detection
-                '-probesize', '2000000'         # Larger probe to find all codec params
-            ]
-        elif protocol == 'NEOLINK':
-            # Neolink bridge: use UDP transport to prevent buffer overflow
-            # Neolink's GStreamer RTSP server works better with UDP
-            # NOTE: analyzeduration/probesize 500000 caused "dimensions not set" errors
-            return [
-                '-rtsp_transport', 'udp',       # UDP prevents buffer stalls
+                '-rtsp_transport', 'tcp',
                 '-timeout', '5000000',
-                '-analyzeduration', '2000000',  # 2s for reliable stream detection
-                '-probesize', '2000000',        # Larger probe for codec detection
-                '-fflags', 'nobuffer',          # Reduce buffering
-                '-flags', 'low_delay'           # Minimize latency
+                '-analyzeduration', '2000000',
+                '-probesize', '2000000'
             ]
-        else:
-            # RTSP input needs transport and timeout params
-            try:
-                params = build_rtsp_input_params(camera_config=camera_config)
-                print(f"INPUT PARAMS for {camera_config.get('name', 'unknown camera?')} returns: ")
-                pprint(params)
-                return params
-            except Exception as e:
-                traceback.print_exc()
-                print(e)
-                return [
-                    '-rtsp_transport', 'tcp',
-                    '-timeout', '5000000',
-                    '-analyzeduration', '1000000',
-                    '-probesize', '1000000'
-                ]
                 
     def get_ffmpeg_output_params(self, stream_type: str = 'sub', camera_config: Dict = None) -> List[str]:
         """
@@ -229,20 +238,18 @@ class ReolinkStreamHandler(StreamHandler):
         Returns:
             List of FFmpeg output parameters for HLS streaming
         """
-        print("REOLINK HANDLER get_ffmpeg_output_params calling build_rtsp_output_params")
         try:
             params = build_rtsp_output_params(
                 stream_type=stream_type,
                 camera_config=camera_config,
                 vendor_prefix='REOLINK_'
             )
-            print(f"OUTPUT PARAMS for {camera_config.get('name', 'unknown camera?')} returns: ")
-            pprint(params)
+            logger.debug(f"FFmpeg output params for {camera_config.get('name', 'unknown')}: {params}")
             return params
         except Exception as e:
-            print(e)
-            print(traceback.print_exc())
-            return None # ← Add explicit return so it doesn't break iteration
+            logger.error(f"Failed to build FFmpeg output params: {e}")
+            traceback.print_exc()
+            return None
 
     def get_required_config_fields(self) -> List[str]:
         """Required fields for Reolink camera config"""

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 7, 2026 22:50 EST*
+*Last updated: January 7, 2026 23:46 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -108,17 +108,38 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - Root cause: Flask dev server single-threaded, limited concurrent connections
 - Client counts climbing high (14+ per camera) - suggests `remove_client()` not always called on disconnect
 
-**Next step:** Gunicorn with 40+ threads to handle concurrent MJPEG streams properly.
+### Gunicorn Implementation - 23:30-23:50 EST
+
+**Problem 1: Health check timeouts**
+Container showed "unhealthy" status despite Gunicorn running with 80 threads.
+
+**Root cause found:** `_wait_for_playlist()` in [stream_manager.py:948-961](streaming/stream_manager.py#L948-L961) was holding `_streams_lock` while sleeping for up to 10 seconds. This blocked ALL other threads trying to access stream state (health checks, API calls, etc.).
+
+**Fix:** Acquire lock briefly to get playlist_path, release before polling loop.
+
+| File | Change |
+|------|--------|
+| `streaming/stream_manager.py:948-971` | Fixed lock contention - release lock before sleep polling |
+| `entrypoint.sh` | Increased Gunicorn threads from 80 to 300 |
+
+**Result:** Container now shows HEALTHY status, health endpoint responds properly.
+
+**Thread counts observed:**
+- Total container threads: ~912 (FFmpeg auto-scales to CPU cores)
+- Gunicorn worker threads: 37 (well under 300 limit)
+- FFmpeg threads per process: ~108 (56 cores × 2)
+
+**Decision:** Left FFmpeg thread count unlimited - I/O-bound, not competing with Gunicorn Python threads.
 
 ---
 
 ## TODO List
 
-**CRITICAL - Gunicorn Implementation:**
+**Gunicorn Implementation (Completed):**
 
-- [ ] Implement Gunicorn with 40+ worker threads (server has 56 cores, 128GB RAM)
-- [ ] Investigate why previous Gunicorn attempt failed (thread starvation?)
-- [ ] Test MJPEG loading with multiple concurrent clients
+- [x] Implement Gunicorn with 300 threads
+- [x] Fix lock contention in _wait_for_playlist
+- [x] Container now shows healthy status
 
 **MJPEG Optimization (Completed):**
 
@@ -127,10 +148,10 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - [x] Fix pre-warming to poll MediaMTX until streams publishing
 - [x] Fix forceMJPEG fullscreen handling
 
-**Remaining MJPEG Issues:**
+**Remaining Issues:**
 
 - [ ] Fix client count leak (remove_client not always called on disconnect)
-- [ ] Profile actual bottleneck with Gunicorn running
+- [ ] MJPEG status API returns null for client_count (minor bug)
 
 **Future Enhancements:**
 

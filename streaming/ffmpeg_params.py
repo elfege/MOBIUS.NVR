@@ -101,18 +101,15 @@ class FFmpegHLSParamBuilder:
                             params.extend(["-vf", f"scale={w}:{h}"])
                         else:
                             params.extend([flag, str(entry)])
-                        print(f"extended: {flag} {entry} to ffmpeg params for {self.camera_name}")
                     continue
 
                 # single value
                 if mapped == "scale" and isinstance(value, str) and "x" in value:
                     w, h = value.split("x", 1)
                     params.extend(["-vf", f"scale={w}:{h}"])
-                    print(f"extended: -vf scale={w}:{h} to ffmpeg params for {self.camera_name}")
                     continue
 
                 params.extend([flag, str(value)])
-                print(f"extended: {flag} {value} to ffmpeg params for {self.camera_name}")
 
             return params
 

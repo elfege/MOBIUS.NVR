@@ -177,25 +177,48 @@ class ReolinkStreamHandler(StreamHandler):
         """
         FFmpeg input parameters for Reolink cameras.
 
-        IMPORTANT: All values come from cameras.json rtsp_input section.
+        IMPORTANT: cameras.json is the SINGLE SOURCE OF TRUTH for all FFmpeg parameters.
         This handler does NOT hardcode any FFmpeg parameter values.
-        cameras.json is the SINGLE SOURCE OF TRUTH for all FFmpeg parameters.
 
-        All protocols (RTSP, RTMP, NEOLINK, HLS) use cameras.json rtsp_input values.
-        For NEOLINK cameras, set rtsp_transport: "udp" in cameras.json (not here).
+        Config sources by protocol:
+        - NEOLINK: Uses cameras.json 'neolink' section (neolink is neolink, not regular rtsp)
+        - RTSP/RTMP/HLS: Uses cameras.json 'rtsp_input' section
         """
         camera_name = camera_config.get('name', 'unknown camera')
         protocol = camera_config.get('stream_type', 'HLS')
 
         try:
-            # ALL protocols use cameras.json rtsp_input as source of truth
-            params = build_rtsp_input_params(camera_config=camera_config)
-            logger.debug(f"FFmpeg input params for {camera_name} ({protocol}): {params}")
-            return params
+            if protocol == 'NEOLINK':
+                # NEOLINK uses its own config section - neolink is neolink, not regular rtsp
+                neolink_config = camera_config.get('neolink', {})
+                if not neolink_config:
+                    raise ValueError(f"Missing neolink config for {camera_name}")
+
+                # Build params from neolink section (same keys as rtsp_input)
+                params = []
+                param_mapping = {
+                    'rtsp_transport': '-rtsp_transport',
+                    'timeout': '-timeout',
+                    'analyzeduration': '-analyzeduration',
+                    'probesize': '-probesize',
+                    'use_wallclock_as_timestamps': '-use_wallclock_as_timestamps',
+                    'fflags': '-fflags',
+                    'flags': '-flags'
+                }
+                for key, flag in param_mapping.items():
+                    if key in neolink_config:
+                        params.extend([flag, str(neolink_config[key])])
+
+                logger.debug(f"FFmpeg input params for {camera_name} (NEOLINK): {params}")
+                return params
+            else:
+                # All other protocols use rtsp_input section
+                params = build_rtsp_input_params(camera_config=camera_config)
+                logger.debug(f"FFmpeg input params for {camera_name} ({protocol}): {params}")
+                return params
 
         except Exception as e:
-            # Fallback only if cameras.json rtsp_input is missing/broken
-            # These values should match reasonable defaults but cameras.json is authoritative
+            # Fallback only if cameras.json config is missing/broken
             logger.error(f"Failed to build FFmpeg input params for {camera_name}: {e}")
             traceback.print_exc()
             return [

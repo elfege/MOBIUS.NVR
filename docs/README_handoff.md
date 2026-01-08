@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 7, 2026 07:45 EST*
+*Last updated: January 7, 2026 22:01 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -24,7 +24,38 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `main` (direct commits)
-**Date:** January 7, 2026 (00:00-07:45 EST)
+**Date:** January 7, 2026 (00:00-22:01 EST)
+
+### Session End Status
+
+**Working:**
+
+- Container healthy, API responding
+- Fullscreen mode works with HD main stream passthrough
+- Most cameras showing video in grid view
+
+**Known Issues (from screenshot):**
+
+- Living Room: Degraded (1 failures), Inactive, Stopped
+- Kitchen: Black/not loading
+- SV3C_Living_3: Loading spinner
+- REOLINK OFFICE: Starting...
+- Terrace South: MJPEG Stream label visible, loading
+- LAUNDRY ROOM: Starting...
+- AMCREST LOBBY: Loading spinner
+- REOLINK Cat Feeders: Starting...
+
+**CRITICAL NEXT TASK: MJPEG Load Time (60+ seconds)**
+
+- `?forceMJPEG=true` mode takes 60+ seconds to load
+- Streams should be pre-warmed after 24h container uptime
+- Possible issues to investigate:
+  1. Are MJPEG streams actually low-res? May have broken something
+  2. MediaServer MJPEG FFmpeg startup delay?
+  3. Frontend connection/retry logic?
+  4. Check if MJPEG streams are being cached/pre-started
+
+---
 
 ### Issue: Gunicorn Caused Thread Starvation (REVERTED)
 

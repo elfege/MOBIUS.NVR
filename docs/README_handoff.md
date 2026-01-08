@@ -131,6 +131,48 @@ Container showed "unhealthy" status despite Gunicorn running with 80 threads.
 
 **Decision:** Left FFmpeg thread count unlimited - I/O-bound, not competing with Gunicorn Python threads.
 
+### MJPEG Reload Test - 23:50 EST
+
+**Test:** Page reload to see if MJPEG streams stay hot and reload faster.
+
+**Result:** Still slow on reload. Investigation showed:
+- FFmpeg processes ARE still running (11 MJPEG processes)
+- Backend responds in 3ms to MJPEG requests (first byte)
+- Client counts climbing: T8416P0023352DA9 at 22 clients, C6F0SgZ0N0PoL2 at 11 clients
+- `remove_client()` not always called on browser disconnect
+
+**Root cause of slow reload:** NOT backend - it's fast. Likely:
+1. Browser connection limits (~6 concurrent per domain)
+2. 16 cameras loading in parallel through HTTPS/Caddy
+3. Frontend connection setup overhead
+
+### PENDING FIX - analyzeduration/probesize Too Low - 23:51 EST
+
+**Problem:** FFmpeg error for camera 95270001NT3KNA67 (LAUNDRY ROOM):
+```
+Could not find codec parameters for stream 0 (Video: h264, none): unspecified size
+Consider increasing the value for the 'analyzeduration' (1000000) and 'probesize' (1000000) options
+[rtsp @ 0x6247bfe39640] dimensions not set
+Could not write header (incorrect codec parameters ?): Invalid argument
+```
+
+**Hardcoded locations found (need to respect cameras.json values or increase defaults):**
+- `streaming/handlers/reolink_stream_handler.py:187-188` - 500000 (too low!)
+- `streaming/handlers/reolink_stream_handler.py:196-197` - 500000 (too low!)
+- `streaming/handlers/unifi_stream_handler.py:126-127` - 1000000
+- `streaming/handlers/sv3c_stream_handler.py:119-120` - 1000000
+- `streaming/handlers/eufy_stream_handler.py:111-112` - 1000000
+- `streaming/handlers/amcrest_stream_handler.py:81-82` - 1000000
+- `services/mediaserver_mjpeg_service.py:302` - 2000000 (good)
+
+**Fix needed:** Increase reolink_stream_handler.py values from 500000 to at least 2000000, or read from cameras.json `rtsp_input` params.
+
+### Known Issues
+
+1. **T8416P0023352DA9 (Living Room)** - Defective camera hardware, won't connect
+2. **95270001NT3KNA67 (LAUNDRY ROOM)** - analyzeduration too low, FFmpeg can't probe stream
+3. **Client count leak** - `remove_client()` not always called on browser disconnect
+
 ---
 
 ## TODO List

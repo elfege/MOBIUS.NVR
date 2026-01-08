@@ -18,8 +18,11 @@ import time
 import logging
 import os
 import io
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from collections import defaultdict
+
+# Import shared FFmpeg param builder to use cameras.json rtsp_input settings
+from streaming.ffmpeg_params import build_rtsp_input_params
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +223,7 @@ class MediaServerMJPEGService:
             capture_info = {
                 'camera_id': camera_id,
                 'camera_name': camera_name,
+                'camera_config': camera_config,  # Full config for build_rtsp_input_params
                 'rtsp_url': rtsp_url,
                 'process': None,
                 'thread': None,
@@ -264,6 +268,7 @@ class MediaServerMJPEGService:
         rtsp_url = capture_info['rtsp_url']
         stop_flag = capture_info['stop_flag']
         camera_name = capture_info['camera_name']
+        camera_config = capture_info.get('camera_config', {})
 
         logger.info(f"MediaServer MJPEG capture loop started for {camera_id} ({camera_name})")
         logger.debug(f"MediaServer MJPEG source: {rtsp_url}")
@@ -289,15 +294,18 @@ class MediaServerMJPEGService:
             try:
                 # FFmpeg command to extract JPEG frames from MediaMTX H.264 sub stream
                 # Decodes H.264, re-encodes as MJPEG at 2 FPS for grid view
+                # Use cameras.json rtsp_input settings (source of truth)
+                try:
+                    input_params = build_rtsp_input_params(camera_config=camera_config)
+                except Exception as e:
+                    logger.warning(f"MediaServer MJPEG {camera_id}: Failed to build rtsp_input params: {e}, using defaults")
+                    input_params = ['-rtsp_transport', 'tcp', '-timeout', '5000000', '-analyzeduration', '2000000', '-probesize', '2000000']
+
                 ffmpeg_cmd = [
                     'ffmpeg',
                     '-hide_banner',
                     '-loglevel', 'error',
-                    '-rtsp_transport', 'tcp',
-                    '-timeout', '5000000',          # 5s connection timeout (microseconds)
-                    '-stimeout', '5000000',         # 5s socket timeout (microseconds)
-                    '-analyzeduration', '2000000',  # 2s - time to detect H.264 codec
-                    '-probesize', '2000000',        # 2MB probe buffer
+                    *input_params,                  # From cameras.json rtsp_input
                     '-i', rtsp_url,
                     '-r', '2',              # 2 FPS for MJPEG grid
                     '-f', 'image2pipe',

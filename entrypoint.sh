@@ -8,7 +8,7 @@ echo "=========================================="
 echo "  Unified NVR - Starting with Gunicorn"
 echo "=========================================="
 echo "  Workers: 1 (single process for shared state)"
-echo "  Threads: 80 (handles concurrent MJPEG streams)"
+echo "  Threads: 200 (handles concurrent MJPEG streams)"
 echo "  Timeout: 600s (long-lived streaming connections)"
 echo "=========================================="
 
@@ -19,12 +19,13 @@ echo "=========================================="
 #   - Multiple workers would each run module-level init code
 #   - Shared state (active_streams, frame_buffers) must be in one process
 #
-# THREADS: 80
+# THREADS: 200
 #   - Previous failure: 8 threads caused thread starvation
+#   - 80 threads still caused health check timeouts when lock contention occurred
 #   - Each MJPEG stream holds a thread for its entire duration
-#   - 16 cameras × 2 clients = 32 threads minimum
-#   - 80 threads allows headroom for API calls, HLS, WebRTC
-#   - Server has 56 cores, 128GB RAM - can easily handle 80 threads
+#   - 16 cameras × multiple clients can easily exhaust threads
+#   - 200 threads provides generous headroom for API calls, HLS, WebRTC
+#   - Server has 56 cores, 128GB RAM - can handle 200+ threads easily
 #
 # TIMEOUT: 600s (10 minutes)
 #   - MJPEG streams are long-lived connections
@@ -38,7 +39,7 @@ echo "=========================================="
 exec gunicorn \
     --bind 0.0.0.0:5000 \
     --workers 1 \
-    --threads 80 \
+    --threads 300 \
     --timeout 600 \
     --graceful-timeout 30 \
     --keep-alive 5 \

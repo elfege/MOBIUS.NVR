@@ -946,19 +946,29 @@ class StreamManager:
     # which uses CameraStateTracker for unified state management.
 
     def _wait_for_playlist(self, camera_serial: str, timeout: int = 10):
-        """Wait for HLS playlist to be created"""
+        """Wait for HLS playlist to be created
+
+        NOTE: This method must NOT hold the lock while sleeping, otherwise it blocks
+        all other threads (health checks, stream starts/stops) for up to 10 seconds.
+        The fix: grab playlist_path quickly with lock, then release lock before polling.
+        """
+        # Quick lock acquisition to get playlist path
         with self._streams_lock:
             if camera_serial not in self.active_streams:
                 return False
+            playlist_path = self.active_streams[camera_serial].get('playlist_path')
 
-            playlist_path = self.active_streams[camera_serial]['playlist_path']
+        # If no playlist_path (e.g., LL-HLS streams), return early
+        if not playlist_path:
+            return True
 
-            for _ in range(timeout * 2):  # Check every 0.5 seconds
-                if playlist_path.exists():
-                    return True
-                time.sleep(0.5)
+        # Poll WITHOUT holding the lock - allows other threads to proceed
+        for _ in range(timeout * 2):  # Check every 0.5 seconds
+            if playlist_path.exists():
+                return True
+            time.sleep(0.5)
 
-            return False
+        return False
 
     def get_stream_url(self, camera_serial: str) -> Optional[str]:
         with self._streams_lock:

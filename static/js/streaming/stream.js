@@ -1,6 +1,16 @@
 /**
  * Multi-Stream Manager - ES6 + jQuery
  * Orchestrates HLS and MJPEG stream managers for unified camera viewing
+ *
+ * MJPEG modes:
+ * - HTTP MJPEG (default): One HTTP connection per camera stream
+ *   - Limited by browser's ~6 connections per domain
+ *   - Causes queuing/slow loading with 16+ cameras
+ *
+ * - WebSocket MJPEG (opt-in via ?useWebSocketMJPEG=true):
+ *   - All cameras multiplexed over single WebSocket connection
+ *   - Bypasses browser connection limit for instant loading
+ *   - Server sends base64-encoded JPEG frames with camera ID prefixes
  */
 
 import { PTZController } from '../controllers/ptz-controller.js';
@@ -10,6 +20,7 @@ import { HLSStreamManager } from './hls-stream.js';
 import { MJPEGStreamManager } from './mjpeg-stream.js';
 import { WebRTCStreamManager } from './webrtc-stream.js';
 import { CameraStateMonitor } from './camera-state-monitor.js';
+import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
@@ -58,6 +69,12 @@ export class MultiStreamManager {
         this.flvManager = new FLVStreamManager();
         this.webrtcManager = new WebRTCStreamManager();
         this.ptzController = new PTZController();
+
+        // WebSocket MJPEG manager for multiplexed streaming
+        // Bypasses browser's ~6 connection limit for faster loading with many cameras
+        // Enable via ?useWebSocketMJPEG=true URL parameter
+        this.wsMjpegManager = new WebSocketMJPEGStreamManager();
+        this.useWebSocketMJPEG = new URLSearchParams(window.location.search).get('useWebSocketMJPEG') === 'true';
 
         // iOS pagination state - limit streams per page to avoid Safari video decode limits
         this.iosPagination = {
@@ -874,12 +891,131 @@ export class MultiStreamManager {
     }
 
     /**
+     * Start all MJPEG streams using WebSocket multiplexing.
+     *
+     * Instead of opening one HTTP connection per camera (limited to ~6 by browser),
+     * uses a single WebSocket connection to receive all camera frames.
+     *
+     * Steps:
+     * 1. Connect to WebSocket /mjpeg namespace
+     * 2. Prepare elements (swap video->img if needed)
+     * 3. Subscribe to all camera streams
+     * 4. Server starts sending multiplexed frames
+     *
+     * @returns {Promise<void>}
+     */
+    async startWebSocketMJPEGStreams() {
+        const $streamItems = this.$container.find('.stream-item');
+        console.log(`[WS-MJPEG] Starting WebSocket MJPEG for ${$streamItems.length} cameras`);
+
+        // Step 1: Connect to WebSocket server
+        try {
+            await this.wsMjpegManager.connect();
+            console.log('[WS-MJPEG] Connected to server');
+        } catch (error) {
+            console.error('[WS-MJPEG] Connection failed, falling back to HTTP MJPEG:', error);
+            // Fall back to sequential HTTP MJPEG
+            return this.startAllStreamsSequential();
+        }
+
+        // Step 2: Prepare elements and collect camera IDs
+        const cameraIds = [];
+        const elementMap = new Map();
+
+        $streamItems.each((_, item) => {
+            const $item = $(item);
+            const cameraId = $item.data('camera-serial');
+            const streamType = $item.data('stream-type');
+
+            // Store original stream type for fullscreen switching
+            $item.data('original-stream-type', streamType);
+            $item.data('stream-type', 'MJPEG');
+
+            // Swap video->img if needed for MJPEG display
+            let streamElement = $item.find('.stream-video')[0];
+            if (streamElement && streamElement.tagName === 'VIDEO') {
+                console.log(`[WS-MJPEG] ${cameraId}: Swapping <video> for <img>`);
+                const $video = $(streamElement);
+
+                // Create <img> element
+                const $img = $('<img>', {
+                    class: 'stream-video stream-mjpeg-img stream-ws-mjpeg',
+                    style: 'object-fit: cover; width: 100%; height: 100%;',
+                    alt: 'WebSocket MJPEG Stream'
+                });
+
+                $video.before($img);
+                $video.hide();
+                streamElement = $img[0];
+                $item.data('mjpeg-swapped', true);
+            }
+
+            cameraIds.push(cameraId);
+            elementMap.set(cameraId, streamElement);
+
+            // Update UI
+            this.setStreamStatus($item, 'loading', 'Connecting...');
+        });
+
+        // Step 3: Subscribe to camera streams
+        const success = this.wsMjpegManager.subscribe(cameraIds, elementMap);
+
+        if (success) {
+            // Update all stream statuses to live
+            $streamItems.each((_, item) => {
+                const $item = $(item);
+                this.setStreamStatus($item, 'live', 'Live (WS)');
+                this.updateStreamButtons($item, true);
+            });
+
+            console.log(`[WS-MJPEG] Subscribed to ${cameraIds.length} cameras`);
+        } else {
+            console.error('[WS-MJPEG] Subscription failed');
+            $streamItems.each((_, item) => {
+                this.setStreamStatus($(item), 'error', 'WS Subscribe failed');
+            });
+        }
+    }
+
+    /**
+     * Fallback sequential MJPEG loading when WebSocket is unavailable.
+     * Called when WebSocket connection fails.
+     */
+    async startAllStreamsSequential() {
+        const $streamItems = this.$container.find('.stream-item');
+        console.log(`[StartAll] Fallback: Sequential MJPEG for ${$streamItems.length} cameras`);
+
+        for (let index = 0; index < $streamItems.length; index++) {
+            const $item = $($streamItems[index]);
+            const cameraId = $item.data('camera-serial');
+            const cameraType = $item.data('camera-type');
+            const streamType = $item.data('stream-type');
+
+            try {
+                await this.startStream(cameraId, $item, cameraType, streamType);
+            } catch (error) {
+                console.error(`[StartAll] Failed: ${cameraId}`, error);
+                this.setStreamStatus($item, 'error', 'Failed to load');
+            }
+
+            if (index < $streamItems.length - 1) {
+                await new Promise(r => setTimeout(r, 300));
+            }
+        }
+    }
+
+    /**
      * Start all streams with sequential loading to prevent resource exhaustion.
      * Uses a delay between stream starts to allow each video element to initialize
      * before the next one starts. This is especially important for:
      * - iOS Safari (hard limit on simultaneous video decodes ~4-8)
      * - Mobile devices with limited resources
      * - Systems with many cameras (11+)
+     *
+     * WebSocket MJPEG mode (?useWebSocketMJPEG=true):
+     * - All MJPEG cameras use a single WebSocket connection
+     * - Bypasses browser's ~6 HTTP connection limit
+     * - Frames are multiplexed and demultiplexed by camera ID
      *
      * @param {number} delayMs - Delay between stream starts in milliseconds (default: 300)
      */
@@ -890,6 +1026,19 @@ export class MultiStreamManager {
         // This fires off all HLS start requests in parallel so MediaMTX has the streams
         // ready by the time each MJPEG connection needs to tap into them.
         await this.preWarmHLSStreams();
+
+        // WebSocket MJPEG mode: use single multiplexed connection for all MJPEG streams
+        // This bypasses browser's ~6 HTTP connection limit for much faster loading
+        const urlParams = new URLSearchParams(window.location.search);
+        const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
+        const shouldUseMJPEG = isPortableDevice() || debugForceMJPEG;
+
+        if (this.useWebSocketMJPEG && shouldUseMJPEG) {
+            console.log('[StartAll] Using WebSocket MJPEG for multiplexed streaming');
+            await this.startWebSocketMJPEGStreams();
+            console.log('[StartAll] ✓✓✓ WEBSOCKET MJPEG COMPLETE ✓✓✓');
+            return;
+        }
 
         // iOS pagination: only start streams on current page (others are hidden)
         // This avoids overwhelming Safari's video decode limits

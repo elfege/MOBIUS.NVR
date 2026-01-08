@@ -159,29 +159,81 @@ try:
         """
         Pre-warm MediaServer MJPEG captures for instant loading.
 
+        Polls MediaMTX API until streams are actually publishing before starting
+        MJPEG captures. This prevents 404 errors from FFmpeg trying to connect
+        to non-existent streams.
+
         Starts FFmpeg capture processes for all cameras that use mediaserver MJPEG.
         These processes run continuously, buffering frames for instant client access.
         """
-        # Wait for HLS streams to be publishing first (MediaMTX needs to be ready)
-        print("⏳ Waiting 10s for HLS streams before MJPEG pre-warming...")
-        time.sleep(10)
+        import requests
+
+        # Collect cameras that need MJPEG pre-warming
+        cameras_to_prewarm = {}
+        for camera_serial, camera_config in camera_repo.get_all_cameras().items():
+            mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
+            if mjpeg_source == 'mediaserver':
+                cameras_to_prewarm[camera_serial] = camera_config
+
+        if not cameras_to_prewarm:
+            print("📭 No mediaserver MJPEG cameras to pre-warm")
+            return
+
+        print(f"⏳ Waiting for {len(cameras_to_prewarm)} HLS streams to publish before MJPEG pre-warming...")
+
+        # Poll MediaMTX until all required streams are publishing
+        # Max wait: 120 seconds (FFmpeg startup can be slow)
+        max_wait = 120
+        poll_interval = 5
+        waited = 0
+
+        while waited < max_wait:
+            try:
+                # Query MediaMTX paths API
+                resp = requests.get('http://nvr-packager:9997/v3/paths/list', timeout=5)
+                if resp.status_code == 200:
+                    paths_data = resp.json()
+                    publishing_paths = set()
+
+                    # Extract publishing path names
+                    for item in paths_data.get('items', []):
+                        path_name = item.get('name', '')
+                        # A path is "publishing" if it has readers OR a source
+                        if item.get('source') or item.get('readers'):
+                            publishing_paths.add(path_name)
+
+                    # Check how many of our cameras are publishing
+                    ready_cameras = [s for s in cameras_to_prewarm if s in publishing_paths]
+
+                    if len(ready_cameras) == len(cameras_to_prewarm):
+                        print(f"✅ All {len(cameras_to_prewarm)} HLS streams publishing - proceeding with MJPEG pre-warming")
+                        break
+                    else:
+                        pending = len(cameras_to_prewarm) - len(ready_cameras)
+                        print(f"  ⏳ {len(ready_cameras)}/{len(cameras_to_prewarm)} streams ready, waiting for {pending} more...")
+
+            except Exception as e:
+                print(f"  ⚠️ MediaMTX poll error: {e}")
+
+            time.sleep(poll_interval)
+            waited += poll_interval
+
+        if waited >= max_wait:
+            print(f"⚠️ Timeout waiting for HLS streams ({max_wait}s) - proceeding with MJPEG pre-warming anyway")
 
         print("🎬 Pre-warming MediaServer MJPEG captures...")
         started = 0
         failed = 0
 
-        for camera_serial, camera_config in camera_repo.get_all_cameras().items():
-            # Only pre-warm cameras that use mediaserver MJPEG (single-connection cameras)
-            mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
-            if mjpeg_source == 'mediaserver':
-                try:
-                    mediaserver_mjpeg_service.start_capture(camera_serial, camera_config)
-                    print(f"  ✓ {camera_config.get('name', camera_serial)}: MJPEG pre-warmed")
-                    started += 1
-                    time.sleep(0.3)  # Brief delay between starts
-                except Exception as e:
-                    print(f"  ✗ {camera_config.get('name', camera_serial)}: {e}")
-                    failed += 1
+        for camera_serial, camera_config in cameras_to_prewarm.items():
+            try:
+                mediaserver_mjpeg_service.start_capture(camera_serial, camera_config)
+                print(f"  ✓ {camera_config.get('name', camera_serial)}: MJPEG pre-warmed")
+                started += 1
+                time.sleep(0.3)  # Brief delay between starts
+            except Exception as e:
+                print(f"  ✗ {camera_config.get('name', camera_serial)}: {e}")
+                failed += 1
 
         print(f"✅ MediaServer MJPEG pre-warming complete: {started} started, {failed} failed")
 

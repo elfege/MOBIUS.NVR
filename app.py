@@ -152,6 +152,42 @@ try:
     # Start streams in a separate thread so app startup isn't blocked
     Thread(target=auto_start_all_streams, daemon=True).start()
 
+    # ===== Pre-warm MediaServer MJPEG captures =====
+    # MJPEG FFmpeg processes tap MediaMTX sub streams and produce JPEG frames.
+    # Pre-warming ensures instant loading when iOS/portable clients connect.
+    def auto_start_mediaserver_mjpeg():
+        """
+        Pre-warm MediaServer MJPEG captures for instant loading.
+
+        Starts FFmpeg capture processes for all cameras that use mediaserver MJPEG.
+        These processes run continuously, buffering frames for instant client access.
+        """
+        # Wait for HLS streams to be publishing first (MediaMTX needs to be ready)
+        print("⏳ Waiting 10s for HLS streams before MJPEG pre-warming...")
+        time.sleep(10)
+
+        print("🎬 Pre-warming MediaServer MJPEG captures...")
+        started = 0
+        failed = 0
+
+        for camera_serial, camera_config in camera_repo.get_all_cameras().items():
+            # Only pre-warm cameras that use mediaserver MJPEG (single-connection cameras)
+            mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
+            if mjpeg_source == 'mediaserver':
+                try:
+                    mediaserver_mjpeg_service.start_capture(camera_serial, camera_config)
+                    print(f"  ✓ {camera_config.get('name', camera_serial)}: MJPEG pre-warmed")
+                    started += 1
+                    time.sleep(0.3)  # Brief delay between starts
+                except Exception as e:
+                    print(f"  ✗ {camera_config.get('name', camera_serial)}: {e}")
+                    failed += 1
+
+        print(f"✅ MediaServer MJPEG pre-warming complete: {started} started, {failed} failed")
+
+    # Start MJPEG pre-warming in background (after HLS streams)
+    Thread(target=auto_start_mediaserver_mjpeg, daemon=True).start()
+
     # Recording service
     try:
         recording_service = RecordingService(

@@ -156,10 +156,13 @@ Consider increasing the value for the 'analyzeduration' (1000000) and 'probesize
 Could not write header (incorrect codec parameters ?): Invalid argument
 ```
 
-**Fix applied (commit 9be4baf):**
+**Fix applied (commits 9be4baf, 9f0c3e2):**
 
-- `reolink_stream_handler.py:187-200` - Increased RTMP/NEOLINK fallbacks from 500000 to 2000000
-- `cameras.json` - Updated T8416P0023370398 and 95270001CSO4BPDZ from 500000 to 2000000
+- `reolink_stream_handler.py` - Removed ALL hardcoded values, uses cameras.json as single source of truth
+- `cameras.json` - Updated analyzeduration/probesize to 2000000 for:
+  - T8416P0023370398
+  - 95270001CSO4BPDZ
+  - 95270000YPTKLLD6 (NEOLINK camera - also set rtsp_transport: udp)
 
 ### FIXED - Client Count Leak - 00:05 EST (Jan 8)
 

@@ -28,6 +28,9 @@ echo ""
 echo "Creating directories..."
 mkdir -p logs streams config
 
+# Ensure entrypoint.sh is executable (bind mount overrides Docker build chmod)
+chmod +x entrypoint.sh 2>/dev/null || true
+
 # Check if config/cameras.json exists
 if [ ! -f config/cameras.json ]; then
 	echo -e "${YELLOW}⚠️  No cameras.json found in config/!${NC}"

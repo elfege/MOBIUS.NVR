@@ -1466,7 +1466,13 @@ def api_mediaserver_stream_mjpeg(camera_id):
             return jsonify({'error': 'Failed to start mediaserver MJPEG capture'}), 503
 
         def generate():
-            """Generator serves frames from shared buffer"""
+            """Generator serves frames from shared buffer.
+
+            IMPORTANT: Uses try/finally to GUARANTEE remove_client() is called.
+            GeneratorExit is not always raised on browser disconnect (network issues,
+            tab close vs clean close). The finally block ensures cleanup even when
+            generator is garbage collected without GeneratorExit.
+            """
             frame_count = 0
             last_frame_number = -1
             no_frame_retries = 0
@@ -1517,16 +1523,22 @@ def api_mediaserver_stream_mjpeg(camera_id):
                                        b'Content-Type: image/jpeg\r\n' +
                                        f'Content-Length: {len(no_signal_frame)}\r\n\r\n'.encode() +
                                        no_signal_frame + b'\r\n')
-                                return  # End generator
+                                return  # End generator - finally block will clean up
 
                     time.sleep(0.5)  # 2 FPS
 
             except GeneratorExit:
-                mediaserver_mjpeg_service.remove_client(camera_id)
-                logger.info(f"Client disconnected from MediaServer MJPEG stream {camera_id} after {frame_count} frames")
+                logger.info(f"Client disconnected from MediaServer MJPEG stream {camera_id} after {frame_count} frames (GeneratorExit)")
             except Exception as e:
                 logger.error(f"MediaServer MJPEG stream error for {camera_id}: {e}")
+            finally:
+                # ALWAYS remove client - handles all exit paths:
+                # - Normal GeneratorExit on browser disconnect
+                # - Early return when no frames received
+                # - Exceptions during frame serving
+                # - Generator garbage collection (browser closed without clean disconnect)
                 mediaserver_mjpeg_service.remove_client(camera_id)
+                logger.debug(f"MediaServer MJPEG {camera_id}: Generator cleanup complete (served {frame_count} frames)")
 
         response = Response(generate(),
                             mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
@@ -2819,7 +2831,6 @@ def reap_zombies(signum, frame):
     Called whenever a child process dies (SIGCHLD signal).
     """
     while True:
-        print("zombies?")
         try:
             # WNOHANG = don't block if no zombies available
             pid, status = os.waitpid(-1, os.WNOHANG)

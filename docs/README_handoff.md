@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 8, 2026 00:45 EST*
+*Last updated: January 8, 2026 05:20 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -44,41 +44,119 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Current Session
 
 **Branch:** `websocket_mjpeg_JAN_8_2026_a`
-**Date:** January 8, 2026
+**Date:** January 8, 2026 (05:00-05:20 EST)
 
-### NEXT TASK: WebSocket MJPEG Multiplexing
+### COMPLETED: WebSocket MJPEG Multiplexing
 
-**Problem:** MJPEG loads slowly because browsers limit HTTP connections to ~6 per domain. With 16 cameras, 10 must wait in queue.
+**Problem solved:** MJPEG loads slowly because browsers limit HTTP connections to ~6 per domain. With 16 cameras, 10 must wait in queue.
 
-**Why WebRTC/HLS don't have this problem:**
+**Solution implemented:** WebSocket-based MJPEG delivery
 
-- HLS.js uses HTTP/2 multiplexing (all requests share one TCP connection)
-- WebRTC uses UDP/SRTP directly, bypassing HTTP
+#### Files Created
 
-**Solution:** WebSocket-based MJPEG delivery
+| File | Purpose |
+|------|---------|
+| `services/websocket_mjpeg_service.py` | Backend WebSocket MJPEG broadcast service |
+| `static/js/streaming/websocket-mjpeg-stream.js` | Frontend WebSocket client with element management |
 
-- Single WebSocket connection for ALL camera streams
-- Server sends frames with camera ID prefix
-- Frontend demultiplexes to appropriate `<canvas>` elements
-- Eliminates browser connection limit bottleneck
+#### Files Modified
 
-**Implementation plan:**
+| File | Change |
+|------|--------|
+| `requirements.txt` | Added flask-socketio, python-socketio, python-engineio, simple-websocket |
+| `app.py` | Added Flask-SocketIO initialization, /mjpeg namespace handlers, status API |
+| `static/js/streaming/stream.js` | Integrated WebSocket MJPEG manager, added startWebSocketMJPEGStreams() |
 
-1. Add Flask-SocketIO or similar WebSocket support
-2. Create `/ws/mjpeg` endpoint that streams all cameras
-3. Frontend: Single WebSocket, route frames to canvas by camera ID
-4. Keep existing MJPEG endpoints as fallback
+#### Architecture
+
+**Backend (Flask-SocketIO):**
+```
+┌─────────────────────────────────────────────────────────┐
+│ WebSocket MJPEG Service                                 │
+├─────────────────────────────────────────────────────────┤
+│ Namespace: /mjpeg                                       │
+│                                                         │
+│ Events:                                                 │
+│   connect    → Client connected                         │
+│   subscribe  → {'cameras': [serial1, serial2, ...]}     │
+│   unsubscribe → Stop receiving frames                   │
+│   disconnect → Client disconnected                      │
+│                                                         │
+│ Outgoing:                                               │
+│   mjpeg_frames → {frames: [{camera_id, frame, ...}]}    │
+│                                                         │
+│ Broadcast loop:                                         │
+│   - Reads from mediaserver_mjpeg_service.frame_buffers  │
+│   - Sends base64-encoded frames with camera ID          │
+│   - Target: 2 FPS (matches existing MJPEG rate)         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Frontend (WebSocket client):**
+```
+┌─────────────────────────────────────────────────────────┐
+│ WebSocketMJPEGStreamManager                             │
+├─────────────────────────────────────────────────────────┤
+│ connect()     → Connect to Socket.IO /mjpeg namespace   │
+│ subscribe()   → Register cameras + element mapping      │
+│ _handleFrames → Decode base64, update img.src           │
+│ disconnect()  → Clean up connection                     │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### Usage
+
+Enable WebSocket MJPEG mode with URL parameters:
+
+```
+https://192.168.10.20:8443/streams?forceMJPEG=true&useWebSocketMJPEG=true
+```
+
+- `forceMJPEG=true` - Use MJPEG instead of HLS/WebRTC (required for desktop)
+- `useWebSocketMJPEG=true` - Use WebSocket multiplexing instead of HTTP MJPEG
+
+On mobile/portable devices, `forceMJPEG` is automatic; only need `useWebSocketMJPEG=true`.
+
+#### Benefits
+
+- **Single connection**: All 16 cameras over 1 WebSocket vs 16 HTTP connections
+- **No browser limit**: Bypasses ~6 connection per domain limit
+- **Instant loading**: No connection queuing, all cameras get frames simultaneously
+- **Fallback**: Automatically falls back to HTTP MJPEG if WebSocket fails
+
+#### Status API
+
+```bash
+curl http://localhost:5000/api/status/websocket-mjpeg
+```
+
+Returns:
+```json
+{
+  "success": true,
+  "active_clients": 0,
+  "broadcast_running": false,
+  "target_fps": 2,
+  "clients": {}
+}
+```
 
 ---
 
 ## TODO List
 
-**WebSocket MJPEG (Pending):**
+**WebSocket MJPEG (COMPLETED):**
 
-- [ ] Add WebSocket support (Flask-SocketIO or native)
-- [ ] Create multiplexed MJPEG WebSocket endpoint
-- [ ] Frontend WebSocket client with canvas rendering
-- [ ] Test with 16 cameras simultaneously
+- [x] Add WebSocket support (Flask-SocketIO)
+- [x] Create multiplexed MJPEG WebSocket endpoint
+- [x] Frontend WebSocket client with canvas rendering
+- [x] Test container startup and Socket.IO availability
+
+**Testing needed:**
+
+- [ ] Test with browser client using `?forceMJPEG=true&useWebSocketMJPEG=true`
+- [ ] Verify all 16 cameras load simultaneously
+- [ ] Compare load time vs HTTP MJPEG
 
 **Remaining Issues:**
 

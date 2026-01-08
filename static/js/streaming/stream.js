@@ -1421,12 +1421,14 @@ export class MultiStreamManager {
             localStorage.setItem('fullscreenCameraSerial', cameraId);
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
-            // Portable device MJPEG→HLS switch for fullscreen
-            // In grid view, portable devices use MJPEG for lighter resource usage.
+            // Portable device or forceMJPEG: MJPEG→HLS switch for fullscreen
+            // In grid view, portable devices (or ?forceMJPEG=true) use MJPEG for lighter resource usage.
             // In fullscreen, we want HLS for audio support and better quality.
+            const urlParams = new URLSearchParams(window.location.search);
+            const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
             const originalStreamType = $streamItem.data('original-stream-type');
-            if (isPortableDevice() && streamType === 'MJPEG' && originalStreamType) {
-                console.log(`[Fullscreen] Portable: Switching ${cameraId} from MJPEG to ${originalStreamType} for fullscreen`);
+            if ((isPortableDevice() || debugForceMJPEG) && streamType === 'MJPEG' && originalStreamType) {
+                console.log(`[Fullscreen] MJPEG mode: Switching ${cameraId} from MJPEG to ${originalStreamType} for fullscreen`);
 
                 // Stop MJPEG stream
                 this.mjpegManager.stopStream(cameraId);

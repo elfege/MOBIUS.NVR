@@ -53,15 +53,35 @@ from services.motion.reolink_motion_service import create_reolink_motion_service
 from services.motion.ffmpeg_motion_detector import create_ffmpeg_detector
 from services.camera_state_tracker import camera_state_tracker
 from services.stream_watchdog import StreamWatchdog
+from services.websocket_mjpeg_service import websocket_mjpeg_service
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
+# Flask-SocketIO for WebSocket MJPEG multiplexing
+# Uses simple-websocket for Gunicorn compatibility (gthread workers)
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Flask app setup
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '-ratatouillemescouilles'
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 csrf = CSRFProtect(app)
+
+# Initialize Flask-SocketIO
+# async_mode='threading' works with Gunicorn gthread workers
+# cors_allowed_origins='*' allows connections from any origin (local network)
+socketio = SocketIO(
+    app,
+    async_mode='threading',
+    cors_allowed_origins='*',
+    ping_timeout=60,
+    ping_interval=25,
+    logger=False,  # Reduce log noise
+    engineio_logger=False
+)
+
+# Set SocketIO instance in websocket_mjpeg_service
+websocket_mjpeg_service.set_socketio(socketio)
 
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.WARNING)
@@ -1581,6 +1601,96 @@ def api_mediaserver_mjpeg_status_single(camera_id):
                 'success': False,
                 'error': 'Capture not found'
             }), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+########################################################-########################################################
+#                                    🔌 WEBSOCKET MJPEG (MULTIPLEXED) 🔌
+########################################################-########################################################
+
+@socketio.on('connect', namespace='/mjpeg')
+def ws_mjpeg_connect():
+    """
+    Handle WebSocket connection for MJPEG streaming.
+
+    Client connects to /mjpeg namespace, then emits 'subscribe' with camera list.
+    This bypasses browser's ~6 HTTP connection limit by multiplexing all camera
+    streams over a single WebSocket connection.
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+    logger.info(f"WebSocket MJPEG: Client {sid[:8]}... connected")
+    emit('connected', {'status': 'ok', 'sid': sid})
+
+
+@socketio.on('disconnect', namespace='/mjpeg')
+def ws_mjpeg_disconnect():
+    """Handle WebSocket disconnection"""
+    from flask import request as flask_request
+    sid = flask_request.sid
+    websocket_mjpeg_service.remove_client(sid)
+    logger.info(f"WebSocket MJPEG: Client {sid[:8]}... disconnected")
+
+
+@socketio.on('subscribe', namespace='/mjpeg')
+def ws_mjpeg_subscribe(data):
+    """
+    Subscribe client to camera streams.
+
+    Args:
+        data: {'cameras': ['serial1', 'serial2', ...]}
+
+    The server will begin sending mjpeg_frames events containing:
+    {'frames': [{'camera_id': 'serial1', 'frame': 'base64...', 'frame_num': 1}, ...]}
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+
+    camera_ids = data.get('cameras', [])
+    if not camera_ids:
+        emit('error', {'message': 'No cameras specified'})
+        return
+
+    # Validate cameras exist
+    valid_cameras = []
+    for camera_id in camera_ids:
+        if camera_repo.get_camera(camera_id):
+            valid_cameras.append(camera_id)
+        else:
+            logger.warning(f"WebSocket MJPEG: Unknown camera {camera_id}")
+
+    if not valid_cameras:
+        emit('error', {'message': 'No valid cameras specified'})
+        return
+
+    # Register client subscription
+    websocket_mjpeg_service.add_client(sid, valid_cameras)
+
+    emit('subscribed', {
+        'cameras': valid_cameras,
+        'count': len(valid_cameras)
+    })
+
+
+@socketio.on('unsubscribe', namespace='/mjpeg')
+def ws_mjpeg_unsubscribe(data=None):
+    """Unsubscribe client from all camera streams"""
+    from flask import request as flask_request
+    sid = flask_request.sid
+    websocket_mjpeg_service.remove_client(sid)
+    emit('unsubscribed', {'status': 'ok'})
+
+
+@app.route('/api/status/websocket-mjpeg')
+def api_websocket_mjpeg_status():
+    """Get status of WebSocket MJPEG service"""
+    try:
+        status = websocket_mjpeg_service.get_status()
+        return jsonify({
+            'success': True,
+            **status
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

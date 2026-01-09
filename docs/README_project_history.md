@@ -407,7 +407,7 @@ PTZ presets failing to load (HTTP 500) for all cameras. Browser shows `[PTZ] Upd
 
 ### Project Rediscovery
 
-- **Context**: User returned to project after months of stable operation
+- **Context**: Returned to project after months of stable operation
 - **Status Found**: Python proxy running continuously since August 2024 (1000+ hours uptime)
 - **Challenge**: Located existing solution that had been "forgotten" due to reliability
 
@@ -1031,7 +1031,7 @@ I'll add a new section to document today's troubleshooting efforts:I've added th
 
 The system works for Blue Iris (sor of...) but the web interface streaming has persistent stability issues. The problem is definitively at the FFmpeg/RTSP layer, not Flask integration.
 
-Your methodical approach of isolating components was exactly right - it eliminated multiple potential causes and pinpointed the real issue. Sometimes the most valuable troubleshooting sessions are the ones that definitively rule out possibilities, even when they don't achieve the final solution.
+The methodical approach of isolating components was exactly right - it eliminated multiple potential causes and pinpointed the real issue. Sometimes the most valuable troubleshooting sessions are the ones that definitively rule out possibilities, even when they don't achieve the final solution.
 
 ## September 22 (Continued): Persistent /static/streams Directory Mystery - Unresolved
 
@@ -3642,7 +3642,7 @@ This is **different** from `bufferAppendError` - HLS.js is rejecting playlists b
 
 ### Why Segment Deletion Failed
 
-Your observation is correct - deleting segments during `stop_stream()` **breaks HLS.js internal state**:
+This observation is correct - deleting segments during `stop_stream()` **breaks HLS.js internal state**:
 
 1. Frontend requests playlist at timestamp A
 2. Backend stops stream, kills FFmpeg, **deletes all segments**
@@ -5900,7 +5900,7 @@ Here’s the next block to append to `README_project_history.md` (same tone/stru
    - HLS: `attachHls(...)` (existing)
    - **RTMP**: fetch FLV instance from `flvManager` and call `attachRTMP(...)`
    - MJPEG: `attachMjpeg(...)` (existing)
-     (Your HLS/MJPEG wiring already existed here【turn5file9】; we added the symmetric RTMP branch.)
+     (The HLS/MJPEG wiring already existed here; the symmetric RTMP branch was added.)
 
 3. **RTMP restart path uses full teardown + explicit status reconciliation**
    In `restartStream()`:
@@ -7248,15 +7248,15 @@ Sweet—picking up from **UI implementation** only. Here’s the tight plan (no 
 
 1. **Use the URL the API returns**
 
-   - When you call `/api/stream/start/<id>`, use `res.stream_url` as-is for the player source. Don’t reconstruct `/streams/...` for LL_HLS cams.
+   - When calling `/api/stream/start/<id>`, use `res.stream_url` as-is for the player source. Don't reconstruct `/streams/...` for LL_HLS cams.
 
 2. **Detect LL_HLS and init the player accordingly**
 
    - If `camera.stream_type === 'LL_HLS'`:
 
      - Use **same-origin** URL (whatever origin the page is on).
-     - hls.js with `lowLatencyMode: true` + your tuned settings (or auto-tune from `SERVER-CONTROL` + `PART-INF`).
-   - Else (classic HLS): keep your existing path.
+     - hls.js with `lowLatencyMode: true` + tuned settings (or auto-tune from `SERVER-CONTROL` + `PART-INF`).
+   - Else (classic HLS): keep the existing path.
 
 3. **Keep native fallback**
 
@@ -7277,13 +7277,13 @@ Sweet—picking up from **UI implementation** only. Here’s the tight plan (no 
 
 7. **Per-camera toggle (optional)**
 
-   - If you expose a UI control to force LL_HLS/HLS per camera session, make it only change which URL you request; do **not** change `cameras.json` (that’s ops-owned). Persist per-user in localStorage if helpful.
+   - If exposing a UI control to force LL_HLS/HLS per camera session, make it only change which URL is requested; do **not** change `cameras.json` (that's ops-owned). Persist per-user in localStorage if helpful.
 
 8. **Edge quirks guardrails**
 
    - Ensure player requests hit `https://<current-origin>/hls/...` (no hardcoded hostnames).
    - Don’t add `Accept-Encoding` headers from the client (edge already strips them).
-   - If you use a service worker, bypass caching for `/hls/` requests.
+   - If using a service worker, bypass caching for `/hls/` requests.
 
 ---
 
@@ -8346,7 +8346,7 @@ Results:
 
 ```
 [Reolink Camera:9000] ←Baichuan→ [Neolink:8554] ←RTSP→ [NVR/FFmpeg] ←HLS→ [Browser]
-   Proprietary                    Bridge/Proxy           Your existing stack
+   Proprietary                    Bridge/Proxy           Existing NVR stack
 
 Expected latency: ~600ms-1.5s (vs current 1-2s)
 ```

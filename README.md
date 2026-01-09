@@ -192,12 +192,12 @@ Each camera entry requires:
 
 ### Vendor-Specific Configuration
 
-| Vendor | Auth Method | RTSP URL Format |
-|--------|-------------|-----------------|
-| Eufy | Per-camera via bridge | `rtsp://user:pass@bridge:554/live0` |
-| Reolink | Camera credentials | `rtsp://user:pass@cam:554/h264Preview_01_sub` |
-| UniFi | Protect console API | `rtsps://console:7441/proxy_url` |
-| Amcrest | Camera credentials | `rtsp://user:pass@cam:554/cam/realmonitor` |
+| Vendor | Auth Method | RTSP URL Format | Notes |
+|--------|-------------|-----------------|-------|
+| Eufy | Direct camera credentials | `rtsp://user:pass@cam:554/live0` | No PTZ (bridge removed due to authentication issues) |
+| Reolink | Camera credentials | `rtsp://user:pass@cam:554/h264Preview_01_sub` | Full PTZ via Baichuan protocol |
+| UniFi | Protect console API | `rtsps://console:7441/proxy_url` | Requires valid console session |
+| Amcrest | Camera credentials | `rtsp://user:pass@cam:554/cam/realmonitor` | PTZ via ONVIF or CGI |
 
 ### Environment Variables
 
@@ -290,6 +290,17 @@ FLASK_PORT=5000
 - Config: `"stream_type": "MJPEG"` in cameras.json
 - Use case: Legacy browsers, cameras with native MJPEG support (Reolink)
 
+### MJPEG for Mobile Grid View (Beta)
+
+- **Purpose**: Fast multi-camera grid loading on mobile devices
+- **Problem solved**: Browsers limit HTTP connections to ~6 per domain; with 16 cameras, 10 must wait
+- **Solution**: WebSocket-based MJPEG multiplexing - all cameras over single connection
+- **URL parameters**:
+  - `?forceMJPEG=true` - Use MJPEG instead of HLS/WebRTC
+  - `?useWebSocketMJPEG=true` - Use WebSocket multiplexing (recommended)
+- **Mobile**: `forceMJPEG` is automatic; only need `useWebSocketMJPEG=true`
+- **Example**: `https://server:8443/streams?forceMJPEG=true&useWebSocketMJPEG=true`
+
 ## Docker Services
 
 ```yaml
@@ -371,15 +382,16 @@ python app.py
 
 ## Documentation
 
-- `docs/NVR_engineering_architecture.html` - Visual architecture diagrams
-- `docs/README_project_history.md` - Development session logs
+- `docs/nvr_engineering_architecture.html` - Visual architecture diagrams
+- `docs/README_project_history.md` - Complete development history
+- `docs/README_handoff.md` - Recent session changes (for latest modifications)
 - `docs/README_Docker_Deployment_Guide.md` - Detailed deployment instructions
 - `docs/README_Motion_Detection_Recording_Architecture.md` - Recording system details
 
 ## Known Limitations
 
 - Dual-stream (simultaneous sub + main) requires composite key architecture (not yet stable)
-- Eufy cameras require P2P bridge service running
+- Eufy cameras: Streaming works via direct RTSP, but PTZ is unavailable (bridge removed due to authentication issues)
 - ONVIF event listener partially implemented
 - UniFi Protect requires valid console session
 

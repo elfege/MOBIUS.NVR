@@ -15,6 +15,7 @@ The Unified NVR abstracts vendor-specific camera protocols behind a common strea
 - **Snapshots**: Periodic JPEG capture from streams
 - **Health Monitoring**: Backend watchdog + frontend blank-frame detection
 - **Credential Security**: AWS Secrets Manager integration
+- **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
 - **Docker Deployment**: Full containerization with docker-compose
 
 ## Architecture
@@ -29,6 +30,11 @@ The Unified NVR abstracts vendor-specific camera protocols behind a common strea
                               └─────────┼────────────────┼────────────────┼──────────┘
                                         │                │                │
                               ┌─────────▼────────────────▼────────────────▼──────────┐
+                              │           Nginx (nvr-edge) - HTTPS/HTTP2              │
+                              │              :8443 (HTTPS) / :8081 (HTTP→301)         │
+                              └───────────────────────┬───────────────────────────────┘
+                                                      │
+                              ┌───────────────────────▼───────────────────────────────┐
                               │                 Flask (app.py:5000)                   │
                               │                   StreamManager                       │
                               └───────────────────────┬───────────────────────────────┘
@@ -89,7 +95,7 @@ Key design patterns:
 
 4. **Access the interface:**
    ```
-   http://<server-ip>:5000/streams
+   https://<server-ip>:8443/streams
    ```
 
 ## Directory Structure
@@ -305,7 +311,8 @@ FLASK_PORT=5000
 
 ```yaml
 services:
-  unified-nvr:        # Flask application (:5000)
+  nvr-edge:           # Nginx reverse proxy - HTTPS (:8443), HTTP redirect (:8081)
+  unified-nvr:        # Flask application (:5000 internal)
   nvr-packager:       # MediaMTX - HLS (:8888), WebRTC (:8889), RTSP (:8554)
   nvr-neolink:        # Neolink Baichuan→RTSP bridge
   nvr-postgrest:      # Recording metadata API

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVR System - Engineering Architecture (Updated January 2026)</title>
+    <title>NVR System - Engineering Architecture (Updated January 18, 2026)</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
         body {
@@ -196,7 +196,7 @@
         <h1>Unified NVR System - Engineering Architecture</h1>
         
         <div class="critical-note">
-            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, and Neolink (Baichuan) protocols. <em>Last updated: January 4, 2026.</em>
+            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, snapshot polling, and Neolink (Baichuan) protocols. Mobile-optimized with iOS snapshot polling and Android MJPEG for grid view. <em>Last updated: January 18, 2026.</em>
         </div>
 
         <div class="key-metrics">
@@ -877,6 +877,163 @@
             </ul>
         </div>
 
+        <!-- MOBILE STREAMING -->
+        <h2>Level 7: Mobile Streaming Architecture (Jan 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>Problem:</strong> iOS Safari has unreliable multipart MJPEG parsing and strict video decode limits (~4-8 simultaneous HLS streams). Android handles MJPEG well but also has resource constraints on mobile.</p>
+            <p><strong>Solution:</strong> Device-specific streaming strategies with snapshot polling for iOS grid view.</p>
+        </div>
+
+        <div class="diagram-container">
+            <div class="mermaid">
+flowchart TB
+    subgraph Detection["Device Detection (stream.js)"]
+        UA[User Agent Check] --> iOS{iOS?}
+        UA --> Android{Android?}
+        UA --> Desktop{Desktop?}
+    end
+
+    subgraph iOSFlow["iOS Flow"]
+        iOS -->|Yes| GridiOS[Grid View]
+        GridiOS --> Snapshot[SNAPSHOT Mode<br/>1s polling via /api/snap/]
+        Snapshot --> ImgTag["&lt;img&gt; element<br/>No video decode limit"]
+
+        GridiOS --> ExpModal[Expanded Modal]
+        ExpModal --> SnapModal[Still SNAPSHOT<br/>Buttons visible]
+
+        ExpModal --> FSiOS[Fullscreen]
+        FSiOS --> HLSMain[HLS Main Stream<br/>High quality + audio]
+        FSiOS --> PauseOthers[Pause other cameras]
+    end
+
+    subgraph AndroidFlow["Android Flow"]
+        Android -->|Yes| GridAndroid[Grid View]
+        GridAndroid --> MJPEG[MJPEG Mode<br/>Multipart stream]
+        MJPEG --> ImgTagA["&lt;img&gt; element"]
+
+        GridAndroid --> FSAndroid[Fullscreen]
+        FSAndroid --> HLSMainA[HLS Main Stream]
+    end
+
+    subgraph DesktopFlow["Desktop Flow"]
+        Desktop -->|Yes| GridDesk[Grid View]
+        GridDesk --> HLSSub[HLS Sub Stream<br/>or WebRTC]
+        HLSSub --> VideoTag["&lt;video&gt; element"]
+
+        GridDesk --> FSDesk[Fullscreen]
+        FSDesk --> HLSMainD[HLS Main Stream<br/>High resolution]
+    end
+
+    style iOS fill:#ff9500,color:#fff
+    style Android fill:#3ddc84,color:#fff
+    style Desktop fill:#0078d4,color:#fff
+    style Snapshot fill:#ff6b6b,color:#fff
+    style HLSMain fill:#4ecdc4,color:#fff
+            </div>
+        </div>
+
+        <div class="critical-note">
+            <h3>Streaming Behavior by Device & Mode</h3>
+            <table style="width:100%; border-collapse: collapse; margin: 15px 0;">
+                <tr style="background: #34495e; color: white;">
+                    <th style="padding: 10px; border: 1px solid #ddd;">Device</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Grid View</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Expanded Modal</th>
+                    <th style="padding: 10px; border: 1px solid #ddd;">Fullscreen</th>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>iOS (iPhone/iPad)</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Snapshots (1s polling)</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">Snapshots</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">HLS main stream</td>
+                </tr>
+                <tr style="background: #f9f9f9;">
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Android</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">MJPEG</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">MJPEG</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">HLS main stream</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border: 1px solid #ddd;"><strong>Desktop</strong></td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">HLS/WebRTC sub</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">HLS/WebRTC sub</td>
+                    <td style="padding: 10px; border: 1px solid #ddd;">HLS/WebRTC main</td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="architecture-note">
+            <h3>iOS Snapshot Implementation Details</h3>
+            <ul>
+                <li><strong>Endpoint:</strong> <code>/api/snap/&lt;camera_id&gt;</code> - Returns latest JPEG from frame buffer</li>
+                <li><strong>Frame Sources:</strong> Checks reolink_mjpeg_capture_service → mediaserver_mjpeg_service → unifi frame buffers</li>
+                <li><strong>Polling Interval:</strong> 1 second (configurable via SnapshotStreamManager)</li>
+                <li><strong>Element Swap:</strong> <code>&lt;video&gt;</code> → <code>&lt;img class="stream-snapshot-img"&gt;</code> for grid view</li>
+                <li><strong>Fullscreen Switch:</strong> SNAPSHOT → HLS main stream with element restoration</li>
+                <li><strong>Resource Management:</strong> All other cameras' snapshot polling paused during fullscreen</li>
+            </ul>
+        </div>
+
+        <div class="diagram-container">
+            <div class="mermaid">
+sequenceDiagram
+    participant Browser as iOS Safari
+    participant StreamJS as stream.js
+    participant SnapMgr as SnapshotStreamManager
+    participant API as /api/snap/
+    participant Buffer as Frame Buffer
+
+    Note over Browser,Buffer: Page Load - Grid View
+    Browser->>StreamJS: Load page
+    StreamJS->>StreamJS: isIOSDevice() = true
+    StreamJS->>StreamJS: Swap video→img elements
+    StreamJS->>SnapMgr: startStream(cameraId, imgEl, 1000ms)
+
+    loop Every 1 second
+        SnapMgr->>API: GET /api/snap/{cameraId}?t=timestamp
+        API->>Buffer: Get latest frame
+        Buffer-->>API: JPEG data
+        API-->>SnapMgr: image/jpeg
+        SnapMgr->>Browser: Update img.src
+    end
+
+    Note over Browser,Buffer: Fullscreen Entered
+    Browser->>StreamJS: Click fullscreen button
+    StreamJS->>SnapMgr: stopStream(cameraId)
+    StreamJS->>StreamJS: Restore video element
+    StreamJS->>StreamJS: hlsManager.startStream(main)
+    StreamJS->>SnapMgr: Pause all other cameras
+
+    Note over Browser,Buffer: Fullscreen Exited
+    Browser->>StreamJS: Exit fullscreen
+    StreamJS->>StreamJS: Stop HLS
+    StreamJS->>StreamJS: Create img element
+    StreamJS->>SnapMgr: Resume all cameras
+            </div>
+        </div>
+
+        <div class="alert-note">
+            <h3>Mobile UI Behavior</h3>
+            <ul>
+                <li><strong>Grid Mode:</strong> All control buttons hidden for clean thumbnail view</li>
+                <li><strong>Expanded Modal:</strong> Tap camera to show larger view with all buttons visible (fullscreen, audio, PTZ toggle, controls toggle)</li>
+                <li><strong>Fullscreen Mode:</strong> Full device screen with HLS video and all controls</li>
+                <li><strong>PTZ/Stream Controls:</strong> Hidden in grid mode via CSS <code>.stream-item:not(.css-fullscreen):not(.expanded)</code></li>
+                <li><strong>Pagination Disabled:</strong> iOS previously limited to 6 cameras/page for video decode limits; disabled since snapshots use <code>&lt;img&gt;</code> tags</li>
+            </ul>
+        </div>
+
+        <div class="danger-note">
+            <h3>Mobile-Specific Limitations</h3>
+            <ul>
+                <li><strong>iOS WebRTC:</strong> Requires DTLS-SRTP encryption which our LAN-only MediaMTX config doesn't enable; falls back to HLS</li>
+                <li><strong>iOS Safari MJPEG:</strong> Multipart parsing unreliable; snapshot polling is more stable</li>
+                <li><strong>Audio Autoplay:</strong> Both iOS and Android block autoplay with audio; video starts muted by default</li>
+                <li><strong>Background Tab:</strong> iOS aggressively suspends background tabs; streams may need refresh on return</li>
+            </ul>
+        </div>
+
         <!-- SUMMARY -->
         <h2>Architecture Summary</h2>
 
@@ -928,7 +1085,7 @@
                 <li><strong>Motion Detection:</strong> <code>services/motion/ffmpeg_motion_detector.py</code>, <code>services/onvif/onvif_event_listener.py</code></li>
                 <li><strong>ONVIF PTZ:</strong> <code>services/onvif/onvif_ptz_handler.py</code></li>
                 <li><strong>Neolink Config:</strong> <code>config/neolink.toml</code></li>
-                <li><strong>Frontend Streaming:</strong> <code>static/js/streaming/*.js</code></li>
+                <li><strong>Frontend Streaming:</strong> <code>static/js/streaming/*.js</code> (includes snapshot-stream.js for iOS)</li>
                 <li><strong>Frontend Controllers:</strong> <code>static/js/controllers/*.js</code></li>
                 <li><strong>Templates:</strong> <code>templates/streams.html</code></li>
                 <li><strong>Database Schema:</strong> <code>psql/init-db.sql</code></li>
@@ -946,6 +1103,7 @@
                 <li><strong>Jan 1, 2026:</strong> MediaMTX centralization, pre-buffer recording, FFmpeg scene detection threshold fix, PTZ latency learning</li>
                 <li><strong>Jan 2, 2026:</strong> Neolink Baichuan bridge, NEOLINK → MediaMTX LL-HLS integration, dual-output FFmpeg, connection monitor</li>
                 <li><strong>Jan 3-4, 2026:</strong> CameraStateTracker service (MediaMTX API polling, exponential backoff), StreamWatchdog unified service (replaces per-stream watchdogs), UI recovery detection (auto-refresh on backend recovery), WebRTC streaming via WHEP (~200ms latency)</li>
+                <li><strong>Jan 18, 2026:</strong> iOS snapshot polling (replaces unreliable MJPEG), expanded modal mode (tap-to-expand), Force MJPEG desktop setting, UI health re-enabled with tuned thresholds, PTZ/controls visibility fixes for grid mode</li>
             </ul>
         </div>
 

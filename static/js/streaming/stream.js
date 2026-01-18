@@ -28,10 +28,30 @@ import { SnapshotStreamManager } from './snapshot-stream.js';
  * iOS Safari requires encrypted WebRTC (DTLS-SRTP).
  * If DTLS is enabled in cameras.json (webrtc_global_settings.enable_dtls),
  * iOS can use WebRTC for ~200ms latency instead of HLS (~2-4s).
+ *
+ * Detection logic:
+ * 1. Explicit iOS user agent strings (iPhone, iPad, iPod)
+ * 2. iPadOS requesting desktop site: MacIntel platform + touch support + NOT a Mac
+ *    (Macs with Touch Bar have maxTouchPoints > 0 but are NOT iOS)
+ *
+ * We distinguish iPadOS from Mac by checking for touch-primary behavior:
+ * - iPadOS: maxTouchPoints >= 5 (multi-touch screen)
+ * - Mac with Touch Bar: maxTouchPoints == 1 or 2 (Touch Bar only)
  */
 function isIOSDevice() {
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-           (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // Explicit iOS user agent (covers most cases)
+    if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        return true;
+    }
+
+    // iPadOS 13+ requests desktop sites and reports as MacIntel
+    // But it has full multi-touch support (5+ touch points for gestures)
+    // Mac with Touch Bar only has 1-2 touch points
+    if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints >= 5) {
+        return true;
+    }
+
+    return false;
 }
 
 /**

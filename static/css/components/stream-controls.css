@@ -26,6 +26,13 @@
     display: block;
 }
 
+/* CRITICAL: Hide stream controls in grid mode (non-expanded, non-fullscreen)
+   Even if stream-controls-visible class is set, grid thumbnails should not show
+   the control panel. Controls are only appropriate in expanded or fullscreen. */
+.stream-item:not(.css-fullscreen):not(.expanded) .stream-controls {
+    display: none !important;
+}
+
 /* IMPORTANT: Keep controls visible briefly after hover ends
    This gives user time to move mouse to button */
 .stream-controls:hover {

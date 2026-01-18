@@ -820,8 +820,38 @@ def api_camera_detail(camera_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ===== Streaming Configuration Routes =====
+
+@app.route('/api/config/streaming')
+def api_streaming_config():
+    """
+    Get streaming configuration for frontend.
+
+    Returns WebRTC settings so frontend can determine:
+    - Whether iOS can use WebRTC (requires DTLS)
+    - ICE server configuration for NAT traversal
+
+    Used by stream.js to decide streaming method per device.
+    """
+    try:
+        webrtc_settings = camera_repo.config.get('webrtc_global_settings', {})
+        return jsonify({
+            'webrtc': {
+                'encryption_enabled': webrtc_settings.get('enable_dtls', False),
+                'ice_servers': webrtc_settings.get('ice_servers', [])
+            }
+        })
+    except Exception as e:
+        print(f"[Config] Error getting streaming config: {e}")
+        return jsonify({
+            'webrtc': {
+                'encryption_enabled': False,
+                'ice_servers': []
+            }
+        })
+
 # ===== Bridge Control Routes =====
-# DEPRECATED OR NOT IN USE FOR NOW # TBD... 
+# DEPRECATED OR NOT IN USE FOR NOW # TBD...
 @app.route('/api/bridge/start', methods=['POST'])
 @csrf.exempt
 def api_bridge_start():

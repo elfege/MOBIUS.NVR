@@ -424,10 +424,10 @@ After restart, MediaMTX logs show successful WebRTC sessions with DTLS:
 **Commits:**
 
 - `41e21f2` - Add fullscreen stream type setting (HLS vs WebRTC)
+- `80d3955` - Add Grid Snapshots Only setting for desktop users
 
 **Pending:**
 
-- [ ] Add "Grid Snapshots Only" setting for desktop (use snapshots in grid like iOS)
 - [ ] Test iOS WebRTC with DTLS on actual iOS device
 - [ ] Test UI health monitoring after container restart
 - [ ] Camera 95270001CSHLPO74 RTSP port issue (needs reboot or investigation)

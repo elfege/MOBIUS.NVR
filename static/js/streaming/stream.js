@@ -21,6 +21,7 @@ import { MJPEGStreamManager } from './mjpeg-stream.js';
 import { WebRTCStreamManager } from './webrtc-stream.js';
 import { CameraStateMonitor } from './camera-state-monitor.js';
 import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
+import { SnapshotStreamManager } from './snapshot-stream.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
@@ -69,6 +70,10 @@ export class MultiStreamManager {
         this.flvManager = new FLVStreamManager();
         this.webrtcManager = new WebRTCStreamManager();
         this.ptzController = new PTZController();
+
+        // Snapshot manager for iOS grid view - polls single JPEGs instead of MJPEG streams
+        // Much more reliable on iOS Safari than multipart MJPEG
+        this.snapshotManager = new SnapshotStreamManager();
 
         // WebSocket MJPEG manager for multiplexed streaming
         // Bypasses browser's ~6 connection limit for faster loading with many cameras
@@ -1090,17 +1095,49 @@ export class MultiStreamManager {
         // which are much lighter than <video> elements and bypass Safari's decode limits.
         // This only applies to grid view (not fullscreen where we want HLS for audio support).
         //
-        // All camera types now support MJPEG:
-        // - Native MJPEG: reolink, unifi, amcrest (direct camera endpoints)
-        // - MediaServer MJPEG: eufy, sv3c, neolink (taps MediaMTX RTSP output)
+        // iOS GRID MODE: Use snapshot polling (1 JPEG/sec) instead of MJPEG streams.
+        // MJPEG multipart streams are unreliable on iOS Safari.
+        // Snapshots are lightweight, load instantly, and work reliably.
+        //
+        // ANDROID/OTHER PORTABLE: Still use MJPEG (works fine on non-iOS)
         //
         // DEBUG: Add ?forceMJPEG=true to URL to test MJPEG on desktop
         const urlParams = new URLSearchParams(window.location.search);
         const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
+        const debugForceSnapshot = urlParams.get('forceSnapshot') === 'true';
         const isGridView = !$streamItem.hasClass('fullscreen-stream');
-        const forcePortableMJPEG = (isPortableDevice() || debugForceMJPEG) && isGridView;
 
-        if (forcePortableMJPEG && streamType !== 'MJPEG' && streamType !== 'mjpeg_proxy') {
+        // iOS in grid view: use snapshots (not MJPEG)
+        const useIOSSnapshot = isIOSDevice() && isGridView && !debugForceMJPEG;
+        // Android/other portable in grid: use MJPEG
+        const forcePortableMJPEG = (isPortableDevice() && !isIOSDevice() || debugForceMJPEG) && isGridView;
+        // Debug snapshot mode for any device
+        const useSnapshot = useIOSSnapshot || (debugForceSnapshot && isGridView);
+
+        if (useSnapshot && streamType !== 'SNAPSHOT') {
+            console.log(`[Stream] ${isIOSDevice() ? 'iOS' : 'Debug'} grid mode - using snapshot polling for ${cameraId}`);
+            streamType = 'SNAPSHOT';
+            // Store original stream type for fullscreen switching
+            $streamItem.data('original-stream-type', $streamItem.data('stream-type'));
+            $streamItem.data('stream-type', 'SNAPSHOT');
+
+            // Snapshots require an <img> element
+            if (streamElement && streamElement.tagName === 'VIDEO') {
+                console.log(`[Stream] ${cameraId}: Swapping <video> for <img> element for snapshots`);
+                const $video = $(streamElement);
+
+                const $img = $('<img>', {
+                    class: 'stream-video stream-snapshot-img',
+                    style: 'object-fit: cover; width: 100%; height: 100%;',
+                    alt: 'Snapshot Stream'
+                });
+
+                $video.before($img);
+                $video.hide();
+                streamElement = $img[0];
+                $streamItem.data('snapshot-swapped', true);
+            }
+        } else if (forcePortableMJPEG && streamType !== 'MJPEG' && streamType !== 'mjpeg_proxy' && streamType !== 'SNAPSHOT') {
             console.log(`[Stream] Portable device detected - using MJPEG for ${cameraId} grid view`);
             streamType = 'MJPEG';  // Override to MJPEG for lighter resource usage
             // Store original stream type for fullscreen switching
@@ -1108,28 +1145,19 @@ export class MultiStreamManager {
             $streamItem.data('stream-type', 'MJPEG');
 
             // CRITICAL: MJPEG requires an <img> element, not <video>
-            // If the template rendered a <video> element (for HLS/WebRTC cameras),
-            // we need to swap it with an <img> element for MJPEG to work.
-            // Browsers handle multipart/x-mixed-replace only on <img> elements.
             if (streamElement && streamElement.tagName === 'VIDEO') {
                 console.log(`[Stream] ${cameraId}: Swapping <video> for <img> element for MJPEG`);
                 const $video = $(streamElement);
 
-                // Create <img> element with same styling as the original video
                 const $img = $('<img>', {
                     class: 'stream-video stream-mjpeg-img',
                     style: 'object-fit: cover; width: 100%; height: 100%;',
                     alt: 'MJPEG Stream'
                 });
 
-                // Insert img before video and hide video
                 $video.before($img);
                 $video.hide();
-
-                // Use the new img element
                 streamElement = $img[0];
-
-                // Store reference for later cleanup/restoration
                 $streamItem.data('mjpeg-swapped', true);
             }
         }
@@ -1142,7 +1170,11 @@ export class MultiStreamManager {
 
             // Use streamType to determine which manager to use
             // NOTE: mjpeg_proxy is only for direct access to UNIFI MJPEG streams (when not using Protect)
-            if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+            if (streamType === 'SNAPSHOT') {
+                // Snapshot polling - lightweight, reliable on iOS Safari
+                // Polls /api/snap/<camera_id> every 1 second for single JPEGs
+                success = await this.snapshotManager.startStream(cameraId, streamElement, cameraType, 1000);
+            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
                 // Pass 'sub' as stream parameter for grid view (Reolink requires this for MJPEG endpoint)
                 success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
             } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
@@ -1214,7 +1246,9 @@ export class MultiStreamManager {
             let success;
 
             // Use streamType to determine which manager to use
-            if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+            if (streamType === 'SNAPSHOT') {
+                success = this.snapshotManager.stopStream(cameraId);
+            } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
                 success = this.mjpegManager.stopStream(cameraId);
             } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                 success = await this.hlsManager.stopStream(cameraId);
@@ -1240,12 +1274,13 @@ export class MultiStreamManager {
 
     async stopAllStreams() {
         try {
-            // Stop all manager types in parallel
+            // Stop all manager types in parallel (including snapshot polling)
             const stopPromises = [
                 this.mjpegManager.stopAllStreams(),
                 this.hlsManager.stopAllStreams(),
                 this.flvManager.stopAllStreams(),
-                this.webrtcManager.stopAllStreams()
+                this.webrtcManager.stopAllStreams(),
+                this.snapshotManager.stopAllStreams()
             ];
 
             await Promise.allSettled(stopPromises);
@@ -1570,12 +1605,48 @@ export class MultiStreamManager {
             localStorage.setItem('fullscreenCameraSerial', cameraId);
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
-            // Portable device or forceMJPEG: MJPEG→HLS switch for fullscreen
-            // In grid view, portable devices (or ?forceMJPEG=true) use MJPEG for lighter resource usage.
+            // iOS SNAPSHOT or portable MJPEG: Switch to HLS for fullscreen
+            // In grid view, iOS uses snapshots and other portables use MJPEG for lighter resource usage.
             // In fullscreen, we want HLS for audio support and better quality.
             const urlParams = new URLSearchParams(window.location.search);
             const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
             const originalStreamType = $streamItem.data('original-stream-type');
+
+            // Handle SNAPSHOT → HLS switch (iOS grid to fullscreen, or debug ?forceSnapshot mode)
+            if (streamType === 'SNAPSHOT' && originalStreamType) {
+                console.log(`[Fullscreen] Snapshot mode: Switching ${cameraId} from SNAPSHOT to ${originalStreamType} for fullscreen`);
+
+                // Stop snapshot polling
+                this.snapshotManager.stopStream(cameraId);
+
+                // Restore video element if we swapped
+                let videoEl;
+                if ($streamItem.data('snapshot-swapped')) {
+                    console.log(`[Fullscreen] ${cameraId}: Restoring <video> element from snapshot swap`);
+                    $streamItem.find('.stream-snapshot-img').remove();
+                    const $video = $streamItem.find('video.stream-video');
+                    $video.show();
+                    videoEl = $video[0];
+                    $streamItem.data('snapshot-swapped', false);
+                } else {
+                    videoEl = $streamItem.find('.stream-video')[0];
+                }
+
+                // Start HLS stream (main resolution for fullscreen)
+                try {
+                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                    console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                    $streamItem.data('switched-from-snapshot', true);
+                    $streamItem.data('switched-to-main', true);
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch to HLS main:`, e);
+                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
+                    $streamItem.data('switched-from-snapshot', true);
+                }
+                return;
+            }
+
+            // Handle MJPEG → HLS switch (Android/portable grid to fullscreen)
             if ((isPortableDevice() || debugForceMJPEG) && streamType === 'MJPEG' && originalStreamType) {
                 console.log(`[Fullscreen] MJPEG mode: Switching ${cameraId} from MJPEG to ${originalStreamType} for fullscreen`);
 
@@ -1716,6 +1787,20 @@ export class MultiStreamManager {
                         this.pausedStreams.push({ id, type: 'MJPEG' });
                     }
                 }
+                // Pause SNAPSHOT by stopping polling
+                else if (itemStreamType === 'SNAPSHOT') {
+                    console.log(`[Fullscreen] Pausing snapshot polling: ${id}`);
+                    this.snapshotManager.stopStream(id);
+
+                    const imgEl = $item.find('.stream-snapshot-img')[0] || $video[0];
+                    // Detach health monitor for paused stream
+                    if (imgEl && imgEl._healthDetach) {
+                        imgEl._healthDetach();
+                        delete imgEl._healthDetach;
+                    }
+
+                    this.pausedStreams.push({ id, type: 'SNAPSHOT', cameraType: $item.data('camera-type') });
+                }
                 // Pause WebRTC by closing the peer connection (will reconnect on resume)
                 else if (itemStreamType === 'WEBRTC') {
                     const stream = this.webrtcManager.activeStreams.get(id);
@@ -1758,6 +1843,7 @@ export class MultiStreamManager {
             const fullscreenCameraId = $fullscreenItem.data('camera-serial');
             const switchedToMain = $fullscreenItem.data('switched-to-main');
             const switchedFromMJPEG = $fullscreenItem.data('switched-from-mjpeg');
+            const switchedFromSnapshot = $fullscreenItem.data('switched-from-snapshot');
             const originalStreamType = $fullscreenItem.data('original-stream-type');
             const streamType = $fullscreenItem.data('stream-type');
             const cameraType = $fullscreenItem.data('camera-type');
@@ -1770,8 +1856,52 @@ export class MultiStreamManager {
             localStorage.removeItem('fullscreenCameraSerial');
             console.log('[Fullscreen] Cleared localStorage');
 
-            // Portable device: Switch back from HLS to MJPEG for grid view
-            if (switchedFromMJPEG && originalStreamType) {
+            // iOS: Switch back from HLS to SNAPSHOT for grid view
+            if (switchedFromSnapshot && originalStreamType) {
+                console.log(`[Fullscreen] iOS: Switching ${fullscreenCameraId} back to SNAPSHOT for grid view`);
+
+                // Stop HLS stream
+                this.hlsManager.stopStream(fullscreenCameraId);
+
+                // Snapshots require <img> element
+                const $video = $fullscreenItem.find('video.stream-video');
+                let imgEl;
+
+                // Check if we need to create an <img> element
+                let $existingImg = $fullscreenItem.find('.stream-snapshot-img');
+                if ($existingImg.length === 0) {
+                    console.log(`[Fullscreen] ${fullscreenCameraId}: Creating <img> element for snapshot`);
+                    const $img = $('<img>', {
+                        class: 'stream-video stream-snapshot-img',
+                        style: 'object-fit: cover; width: 100%; height: 100%;',
+                        alt: 'Snapshot Stream'
+                    });
+                    $video.before($img);
+                    $existingImg = $img;
+                    $fullscreenItem.data('snapshot-swapped', true);
+                }
+
+                // Hide video, show img
+                $video.hide();
+                $existingImg.show();
+                imgEl = $existingImg[0];
+
+                // Start snapshot polling (1 second interval for grid view)
+                try {
+                    await this.snapshotManager.startStream(fullscreenCameraId, imgEl, cameraType, 1000);
+                    console.log(`[Fullscreen] ✓ Switched back to SNAPSHOT for ${fullscreenCameraId}`);
+                    // Restore stream-type to SNAPSHOT for grid view
+                    $fullscreenItem.data('stream-type', 'SNAPSHOT');
+                } catch (e) {
+                    console.error(`[Fullscreen] Failed to switch back to SNAPSHOT:`, e);
+                }
+
+                // Clear flags
+                $fullscreenItem.removeData('switched-from-snapshot');
+                $fullscreenItem.removeData('switched-to-main');
+            }
+            // Portable device (non-iOS): Switch back from HLS to MJPEG for grid view
+            else if (switchedFromMJPEG && originalStreamType) {
                 console.log(`[Fullscreen] Portable: Switching ${fullscreenCameraId} back to MJPEG for grid view`);
 
                 // Stop HLS stream
@@ -1897,6 +2027,20 @@ export class MultiStreamManager {
 
                             // Reattach health monitor
                             this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                        }
+                    }
+                    else if (stream.type === 'SNAPSHOT') {
+                        // Resume snapshot polling for iOS cameras
+                        const imgEl = $item.find('.stream-snapshot-img')[0] || $video[0];
+                        if (imgEl) {
+                            console.log(`[Fullscreen] Resuming snapshot polling: ${stream.id}`);
+                            try {
+                                await this.snapshotManager.startStream(stream.id, imgEl, stream.cameraType, 1000);
+                                // Reattach health monitor
+                                this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                            } catch (e) {
+                                console.error(`[Fullscreen] Failed to resume snapshot stream ${stream.id}:`, e);
+                            }
                         }
                     }
                     else if (stream.type === 'WEBRTC') {

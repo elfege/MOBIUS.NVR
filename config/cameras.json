@@ -2042,7 +2042,7 @@
         "streaming",
         "ptz"
       ],
-      "stream_type": "WEBRTC",
+      "stream_type": "MJPEG",
       "onvif_port": 8000,
       "true_mjpeg": "false",
       "player_settings": {

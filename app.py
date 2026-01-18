@@ -1696,6 +1696,65 @@ def api_websocket_mjpeg_status():
 
 
 ########################################################-########################################################
+#                                          ⚙️⚙️⚙️⚙️ SNAPSHOT API ⚙️⚙️⚙️⚙️
+########################################################-########################################################
+@app.route('/api/snap/<camera_id>')
+@csrf.exempt
+def api_snap_camera(camera_id):
+    """
+    Get a single JPEG snapshot from any camera.
+    Used for iOS grid view (polling snapshots instead of MJPEG streams).
+
+    Checks frame buffers in order:
+    1. reolink_mjpeg_capture_service (for Reolink cameras)
+    2. mediaserver_mjpeg_service (for eufy, sv3c, neolink via MediaMTX)
+    3. unifi_mjpeg_service (for UniFi cameras)
+
+    Returns latest cached frame if available, or 503 if no frame ready.
+    """
+    from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
+    from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
+
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return "Camera not found", 404
+
+        camera_type = camera.get('type', '').lower()
+        frame_data = None
+
+        # Try camera-specific service first
+        if camera_type == 'reolink':
+            frame_data = reolink_mjpeg_capture_service.get_latest_frame(camera_id)
+        elif camera_type == 'unifi':
+            # UniFi uses shared frame buffer
+            if camera_id in unifi_frame_buffers:
+                frame_data = unifi_frame_buffers[camera_id]
+
+        # Fallback to mediaserver (works for any camera with HLS running)
+        if not frame_data:
+            frame_data = mediaserver_mjpeg_service.get_latest_frame(camera_id)
+
+        if frame_data and frame_data.get('data'):
+            return Response(
+                frame_data['data'],
+                mimetype='image/jpeg',
+                headers={
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            )
+        else:
+            # No frame available - return 503 so client knows to retry
+            return "No frame available", 503
+
+    except Exception as e:
+        logger.error(f"Snapshot error for {camera_id}: {e}")
+        return f"Snapshot error: {e}", 500
+
+
+########################################################-########################################################
 #                                          ⚙️⚙️⚙️⚙️ REOLINK ⚙️⚙️⚙️⚙️
 ########################################################-########################################################
 @app.route('/api/reolink/<camera_id>/stream/mjpeg')

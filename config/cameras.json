@@ -2388,6 +2388,14 @@
       "ui_health_monitor": true
     }
   },
+  "webrtc_global_settings": {
+    "__notes": {
+      "enable_dtls": "Enable DTLS-SRTP encryption for WebRTC. Required for iOS Safari which refuses unencrypted WebRTC. When enabled, iOS can use WebRTC (~200ms latency) instead of falling back to HLS (~2-4s latency). Adds ~10-20ms CPU overhead per frame for encryption, plus ~100-200ms one-time handshake. Recommended: true for production use with iOS users.",
+      "ice_servers": "Optional STUN/TURN servers for NAT traversal. Empty array for LAN-only use. Add STUN server for external access: [{\"url\": \"stun:stun.l.google.com:19302\"}]"
+    },
+    "enable_dtls": true,
+    "ice_servers": []
+  },
   "ui_health_global_settings": {
     "__notes": {
       "UI_HEALTH_ENABLED": "Master switch: enables/disables entire UI health monitoring system. When false, no frame checks occur.",

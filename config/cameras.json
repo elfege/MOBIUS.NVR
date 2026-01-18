@@ -2399,11 +2399,11 @@
   "ui_health_global_settings": {
     "__notes": {
       "UI_HEALTH_ENABLED": "Master switch: enables/disables entire UI health monitoring system. When false, no frame checks occur.",
-      "UI_HEALTH_BLANK_AVG": "Luminance threshold (0-255 scale). Frame flagged blank if avg brightness < this value. Detects black/very dark screens. Uses ITU-R BT.601: Y = 0.299\u00d7R + 0.587\u00d7G + 0.114\u00d7B",
+      "UI_HEALTH_BLANK_AVG": "Luminance threshold (0-255 scale). Frame flagged blank if avg brightness < this value. Detects black/very dark screens. Uses ITU-R BT.601: Y = 0.299×R + 0.587×G + 0.114×B",
       "UI_HEALTH_BLANK_STD": "Standard deviation threshold for pixel brightness uniformity. Frames must have BOTH avg < BLANK_AVG AND std < BLANK_STD to trigger blank detection. Filters out grainy darkness and startup loading screens.",
-      "UI_HEALTH_SAMPLE_INTERVAL_MS": "Milliseconds between frame samples. Lower = faster detection but higher CPU. Time to detect black screen = CONSECUTIVE_BLANK_NEEDED \u00d7 this value.",
+      "UI_HEALTH_SAMPLE_INTERVAL_MS": "Milliseconds between frame samples. Lower = faster detection but higher CPU. Time to detect black screen = CONSECUTIVE_BLANK_NEEDED × this value.",
       "UI_HEALTH_STALE_AFTER_MS": "Milliseconds of no frame signature change before marking stream stale. Detects frozen frames (same image for N milliseconds). Independent of black screen check.",
-      "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": "How many consecutive black samples required to trigger restart. Prevents false positives from brief stalls. Formula: detection_time = this \u00d7 SAMPLE_INTERVAL_MS",
+      "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": "How many consecutive black samples required to trigger restart. Prevents false positives from brief stalls. Formula: detection_time = this × SAMPLE_INTERVAL_MS",
       "UI_HEALTH_COOLDOWN_MS": "Milliseconds to wait after health alert before allowing next restart attempt. Prevents restart loops if stream keeps failing immediately.",
       "UI_HEALTH_WARMUP_MS": "Milliseconds to wait after attaching monitor before checking health. Allows stream initial buffering/startup without false triggers. Monitoring suppressed for this duration.",
       "UI_HEALTH_MAX_ATTEMPTS": "Maximum restart attempts before giving up. Set to 0 for infinite attempts (not recommended - may cause endless restart loops for permanently failed cameras)."

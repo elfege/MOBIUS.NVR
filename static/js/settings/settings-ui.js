@@ -132,6 +132,39 @@ export class SettingsUI {
             window.location.reload();
         });
 
+        // iOS Force WebRTC Grid toggle (experimental)
+        // When enabled, iOS grid view uses WebRTC instead of snapshot polling
+        // WARNING: May cause issues with many cameras due to Safari video decode limits
+        this.$content.on('change', '#force-webrtc-grid-toggle', (e) => {
+            const enabled = $(e.currentTarget).is(':checked');
+            console.log('[SettingsUI] iOS Force WebRTC Grid toggled:', enabled);
+
+            if (enabled) {
+                // Show confirmation modal before enabling
+                const confirmed = confirm(
+                    '⚠️ EXPERIMENTAL FEATURE ⚠️\n\n' +
+                    'Force WebRTC in Grid Mode may cause:\n\n' +
+                    '• Black screens or frozen video\n' +
+                    '• Safari video decode limits (~4-8 streams)\n' +
+                    '• High battery drain\n' +
+                    '• App crashes with many cameras\n\n' +
+                    'This setting requires DTLS to be enabled on the server.\n\n' +
+                    'Are you sure you want to enable this?'
+                );
+
+                if (!confirmed) {
+                    // User cancelled - revert checkbox
+                    $(e.currentTarget).prop('checked', false);
+                    return;
+                }
+            }
+
+            localStorage.setItem('forceWebRTCGrid', enabled ? 'true' : 'false');
+
+            // Reload to apply the setting
+            window.location.reload();
+        });
+
         // Mute all cameras button
         this.$content.on('click', '#mute-all-btn', () => {
             console.log('[SettingsUI] Mute all cameras clicked');
@@ -360,6 +393,35 @@ export class SettingsUI {
             </div>
         </div>
 
+        <!-- iOS WebRTC Grid Mode (Experimental) - Only show on iOS devices -->
+        ${isPortableDevice() && /iPad|iPhone|iPod/.test(navigator.userAgent) ? `
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-exclamation-triangle" style="color: #dc3545;"></i>
+                    iOS Grid: Force WebRTC
+                </div>
+                <div class="setting-control">
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="force-webrtc-grid-toggle"
+                               ${this.isForceWebRTCGridEnabled() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-description" style="background-color: rgba(220,53,69,0.1); padding: 10px; border-radius: 4px; border-left: 3px solid #dc3545;">
+                <strong style="color: #dc3545; font-size: 1.1em;">⚠️ EXPERIMENTAL - USE WITH CAUTION</strong><br><br>
+                Use WebRTC (~200ms latency) in grid view instead of snapshots (1fps).<br><br>
+                <strong style="color: #dc3545;">Known Issues:</strong><br>
+                <span style="color: #dc3545;">• Safari limits concurrent video decodes (~4-8 streams)</span><br>
+                <span style="color: #dc3545;">• May cause black screens or freezes with many cameras</span><br>
+                <span style="color: #dc3545;">• Significantly higher battery and CPU usage</span><br>
+                <span style="color: #dc3545;">• Requires DTLS to be enabled on server</span><br><br>
+                Page will reload when changed.
+            </div>
+        </div>
+        ` : ''}
+
         <!-- Audio Controls Setting -->
         <div class="setting-row">
             <div class="setting-top">
@@ -432,6 +494,17 @@ export class SettingsUI {
      */
     isGridSnapshotsEnabled() {
         return localStorage.getItem('gridSnapshotsOnly') === 'true';
+    }
+
+    /**
+     * Check if iOS should force WebRTC in grid view instead of snapshots.
+     * This is an EXPERIMENTAL option - may cause issues with many cameras
+     * due to Safari's concurrent video decode limits (~4-8 streams).
+     *
+     * Requires DTLS to be enabled on the server for iOS WebRTC support.
+     */
+    isForceWebRTCGridEnabled() {
+        return localStorage.getItem('forceWebRTCGrid') === 'true';
     }
 }
 

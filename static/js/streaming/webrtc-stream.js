@@ -136,10 +136,12 @@ export class WebRTCStreamManager {
                 // Continue anyway - MediaMTX might still have the stream available
             }
 
-            // Build WHEP URL - MediaMTX serves WebRTC on separate port
+            // Build WHEP URL - route through nginx proxy to avoid mixed content issues
+            // When page is served over HTTPS, we can't fetch from HTTP port directly
+            // Nginx proxies /webrtc/<path> -> nvr-packager:8889/<path>
             // Path format: camera_id for sub stream, camera_id_main for main stream
             const streamPath = streamType === 'main' ? `${cameraId}_main` : cameraId;
-            const whepUrl = `http://${window.location.hostname}:${this.webrtcPort}/${streamPath}/whep`;
+            const whepUrl = `${window.location.origin}/webrtc/${streamPath}/whep`;
 
             // Create RTCPeerConnection with minimal config (LAN-only, no STUN needed)
             const pc = new RTCPeerConnection({

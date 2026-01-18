@@ -86,6 +86,21 @@ websocket_mjpeg_service.set_socketio(socketio)
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.WARNING)
 
+# Custom filter to suppress high-frequency API endpoint logs
+class SnapAPIFilter(logging.Filter):
+    """Filter out /api/snap/ requests from werkzeug access logs.
+    iOS polls snapshots every 1s per camera, creating excessive log noise."""
+    def filter(self, record):
+        # Suppress logs containing /api/snap/ path
+        if hasattr(record, 'getMessage'):
+            msg = record.getMessage()
+            if '/api/snap/' in msg:
+                return False
+        return True
+
+# Apply filter to werkzeug logger
+logger.addFilter(SnapAPIFilter())
+
 load_dotenv()  # loads .env from the current working directory / project root
 
 TRUE_SET = {"1", "true", "yes", "on"}

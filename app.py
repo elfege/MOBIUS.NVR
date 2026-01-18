@@ -849,7 +849,8 @@ def api_streaming_config():
     Used by stream.js to decide streaming method per device.
     """
     try:
-        webrtc_settings = camera_repo.config.get('webrtc_global_settings', {})
+        # Access cameras_data which contains the full cameras.json config
+        webrtc_settings = camera_repo.cameras_data.get('webrtc_global_settings', {})
         return jsonify({
             'webrtc': {
                 'encryption_enabled': webrtc_settings.get('enable_dtls', False),

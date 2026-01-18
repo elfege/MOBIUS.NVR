@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 18, 2026 13:52 EST*
+*Last updated: January 18, 2026 15:05 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -27,7 +27,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session - January 18, 2026 (02:00-13:52 EST)
+## Current Session - January 18, 2026 (02:00-15:05 EST)
 
 **Branch:** `ui_health_enable_JAN_18_2026_a`
 
@@ -271,5 +271,50 @@ Camera `95270001CSHLPO74` (Terrace South) stays in "starting" mode with WEBRTC.
 - `952f370` - Update handoff documentation with iOS snapshot and PTZ fix
 - `339933e` - Hide stream controls in grid mode (non-expanded, non-fullscreen)
 - `af44dde` - Fix iOS: disable pagination, fix grid view detection
+- `adaefcc` - Update architecture documentation with iOS mobile streaming
+
+---
+
+## Session Wrap-up Notes (15:05 EST)
+
+### Final Discussion: iOS WebRTC Latency
+
+**Why iOS uses HLS instead of WebRTC:**
+
+- MediaMTX configured with `webrtcEncryption: no` for LAN-only deployment
+- iOS Safari *requires* DTLS-SRTP encryption for WebRTC
+- Result: iOS falls back to HLS (~2-4s latency) instead of WebRTC (~200ms)
+
+**DTLS Latency Impact (if enabled):**
+
+- **Backend/transport layer** overhead, not frontend
+- Handshake: ~100-200ms one-time at connection establishment
+- Ongoing: ~10-20ms per frame for encryption/decryption
+- Network overhead: ~16 bytes extra per RTP packet
+
+**Trade-off analysis:**
+
+- Current: iOS uses HLS = 2-4 seconds latency
+- With DTLS: iOS could use WebRTC = ~200ms latency
+- Net gain: 2-4 seconds improvement for iOS users
+
+### CLAUDE.md Updated
+
+Added **RULE 3: Teaching Sessions** to project instructions:
+
+- Create teaching documents for significant implementations
+- Store in `docs/teachings/` directory
+- Maintain catalog for reference
+
+### Next Branch: `dtls_webrtc_ios_JAN_18_2026_a`
+
+**Objective:** Enable DTLS in MediaMTX for iOS WebRTC support
+
+**Implementation plan:**
+
+1. Add `enable_dtls` setting to `cameras.json` (source of truth)
+2. Update MediaMTX configuration generator to conditionally enable DTLS
+3. Update frontend to detect DTLS support and use WebRTC on iOS
+4. Create teaching document explaining DTLS/WebRTC architecture
 
 ---

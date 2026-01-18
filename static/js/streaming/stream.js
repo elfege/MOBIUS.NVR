@@ -2111,6 +2111,22 @@ export class MultiStreamManager {
         const cameraId = $expandedItem.data('camera-serial');
         console.log(`[Expanded] Collapsing modal for ${cameraId}`);
 
+        // CRITICAL: Hide PTZ controls when collapsing to grid view
+        // PTZ controls are too large for grid thumbnails and block interaction
+        const $ptzControls = $expandedItem.find('.ptz-controls');
+        if ($ptzControls.hasClass('ptz-visible')) {
+            $ptzControls.removeClass('ptz-visible');
+            $expandedItem.find('.stream-ptz-toggle-btn').removeClass('ptz-active');
+            console.log(`[Expanded] ${cameraId}: Hiding PTZ controls on collapse`);
+        }
+
+        // Also hide stream controls panel if visible
+        const $streamControls = $expandedItem.find('.stream-controls');
+        if ($streamControls.hasClass('stream-controls-visible')) {
+            $streamControls.removeClass('stream-controls-visible');
+            $expandedItem.find('.stream-controls-toggle-btn').removeClass('controls-active');
+        }
+
         // Hide backdrop
         $('#expanded-backdrop').removeClass('visible');
 

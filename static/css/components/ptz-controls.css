@@ -146,3 +146,10 @@
         display: none;
     }
 }
+
+/* CRITICAL: Hide PTZ controls in grid view (non-expanded, non-fullscreen)
+   Even if ptz-visible class is set, grid thumbnails are too small for PTZ.
+   PTZ should only show in expanded modal or fullscreen modes. */
+.stream-item:not(.css-fullscreen):not(.expanded) .ptz-controls {
+    display: none !important;
+}

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 18, 2026 04:38 EST*
+*Last updated: January 18, 2026 13:52 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -27,7 +27,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session - January 18, 2026 (02:00-04:38 EST)
+## Current Session - January 18, 2026 (02:00-13:52 EST)
 
 **Branch:** `ui_health_enable_JAN_18_2026_a`
 
@@ -38,11 +38,13 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 Added checkbox in Settings panel to force MJPEG mode for desktop users:
 
 **Files modified:**
+
 - `static/js/settings/settings-ui.js` - Added Force MJPEG toggle (hidden on mobile)
 - `static/js/streaming/stream.js` - Added `isForceMJPEGEnabled()` check
 - `app.py` - Index route preserves `?forceMJPEG=true` query param
 
 **Behavior:**
+
 - Toggle redirects to `/streams?forceMJPEG=true`
 - Stored in localStorage for persistence
 - Hidden on portable devices (they always use MJPEG in grid)
@@ -52,13 +54,15 @@ Added checkbox in Settings panel to force MJPEG mode for desktop users:
 Restored expanded modal feature from another branch:
 
 **Files affected:**
+
 - `static/css/components/fullscreen.css` - `.expanded` and `.expanded-backdrop` classes
 - `static/css/components/stream-item.css` - Grid mode button hiding
 - `templates/streams.html` - `#expanded-backdrop` div
 - `static/js/streaming/stream.js` - `expandCamera()` and `collapseExpandedCamera()` methods
 
 **Behavior:**
-- Grid mode: All buttons hidden
+
+- Grid mode: All buttons hidden (clean look)
 - Tap camera → Expanded modal with buttons visible
 - Fullscreen: All buttons visible
 
@@ -80,6 +84,7 @@ Restored expanded modal feature from another branch:
 Camera `95270001CSHLPO74` (Terrace South) stays in "starting" mode with WEBRTC.
 
 **Root cause:** RTSP port not responding (camera-level issue, not NVR).
+
 - Ping works, HTTP MJPEG works, but `rtsp://192.168.10.89:554/...` times out
 - Sister camera `95270001CSO4BPDZ` (same model/firmware) works fine
 - **Workaround:** Set to MJPEG in cameras.json
@@ -107,12 +112,19 @@ Camera `95270001CSHLPO74` (Terrace South) stays in "starting" mode with WEBRTC.
   - Fullscreen → switches to HLS for audio/quality
   - Proper pause/resume for snapshot streams
 
-**Behavior:**
+**Behavior by device/mode:**
 
-- iOS grid: Static snapshots refreshing every 1s
-- iOS fullscreen: HLS main stream (with audio)
-- Android grid: MJPEG (works fine on Android)
-- Desktop: Normal HLS/WebRTC
+| Device | Grid View | Expanded Modal | Fullscreen |
+|--------|-----------|----------------|------------|
+| **iOS** | Snapshots (1s polling) | Snapshots | HLS main stream |
+| **Android** | MJPEG | MJPEG | HLS main stream |
+| **Desktop** | HLS/WebRTC | HLS/WebRTC | HLS main stream |
+
+**Fullscreen resource management:**
+
+- When entering fullscreen, all other streams are paused (including snapshot polling)
+- When exiting fullscreen, paused streams resume automatically
+- This saves bandwidth/CPU during fullscreen viewing
 
 #### 6. PTZ Controls Bug Fix
 
@@ -120,8 +132,102 @@ Camera `95270001CSHLPO74` (Terrace South) stays in "starting" mode with WEBRTC.
 
 **Files modified:**
 
-- `static/js/streaming/stream.js` - `collapseExpandedCamera()` now hides PTZ
-- `static/css/components/ptz-controls.css` - Grid view hides PTZ controls
+- `static/js/streaming/stream.js` - `collapseExpandedCamera()` now hides PTZ and stream controls
+- `static/css/components/ptz-controls.css` - Added rule to force-hide in grid mode
+
+#### 7. Stream Controls Bug Fix
+
+**Bug:** Stream controls (play/stop/refresh/restart) showing in grid view after hard refresh.
+
+**Files modified:**
+
+- `static/css/components/stream-controls.css` - Added rule to force-hide in grid mode
+
+**CSS Rules Added:**
+
+```css
+/* PTZ controls - hidden in grid (non-expanded, non-fullscreen) */
+.stream-item:not(.css-fullscreen):not(.expanded) .ptz-controls {
+    display: none !important;
+}
+
+/* Stream controls - hidden in grid (non-expanded, non-fullscreen) */
+.stream-item:not(.css-fullscreen):not(.expanded) .stream-controls {
+    display: none !important;
+}
+```
+
+#### 8. iOS Pagination Disabled
+
+**Problem:** iOS was showing only 6 cameras per page with pagination controls.
+
+**Root cause:** Pagination was designed for iOS video decode limits when using HLS/MJPEG.
+
+**Solution:** Disabled pagination since snapshots use `<img>` tags (no video decode limit).
+
+**Files modified:**
+
+- `static/js/streaming/stream.js` - Set `iosPagination.enabled = false`
+
+#### 9. Grid View Detection Fix
+
+**Problem:** `isGridView` check was looking for non-existent `fullscreen-stream` class.
+
+**Solution:** Changed to check for `css-fullscreen` class instead.
+
+**Files modified:**
+
+- `static/js/streaming/stream.js` - Fixed: `!$streamItem.hasClass('css-fullscreen')`
+
+---
+
+## Architecture Summary: iOS Mobile Streaming
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                      iOS STREAMING FLOW                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  PAGE LOAD (Grid View)                                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ isIOSDevice() = true                                     │   │
+│  │ isGridView = true (not css-fullscreen)                   │   │
+│  │ → streamType = 'SNAPSHOT'                                │   │
+│  │ → Swap <video> for <img class="stream-snapshot-img">     │   │
+│  │ → snapshotManager.startStream() polls /api/snap/         │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                           │                                     │
+│                           ▼                                     │
+│  TAP TO EXPAND (Modal View)                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ .expanded class added                                    │   │
+│  │ → Still SNAPSHOT mode (no stream change)                 │   │
+│  │ → Buttons become visible (CSS override)                  │   │
+│  │ → PTZ/controls available if toggled                      │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                           │                                     │
+│                           ▼                                     │
+│  FULLSCREEN BUTTON (Full Screen View)                           │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ .css-fullscreen class added                              │   │
+│  │ → Stop snapshot polling                                  │   │
+│  │ → Restore <video> element                                │   │
+│  │ → Start HLS main stream (high quality + audio)           │   │
+│  │ → PAUSE all other cameras' snapshot polling              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                           │                                     │
+│                           ▼                                     │
+│  EXIT FULLSCREEN                                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Remove .css-fullscreen class                             │   │
+│  │ → Stop HLS stream                                        │   │
+│  │ → Create <img> element                                   │   │
+│  │ → Restart snapshot polling                               │   │
+│  │ → RESUME all paused cameras' snapshot polling            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -134,6 +240,10 @@ Camera `95270001CSHLPO74` (Terrace South) stays in "starting" mode with WEBRTC.
 - [x] Fullscreen: HLS on iOS (WebRTC not possible due to DTLS requirement)
 - [x] Force MJPEG setting should NOT default for iOS (iOS uses snapshots now)
 - [x] Fix PTZ controls blocking grid after modal collapse
+- [x] Fix stream controls showing in grid mode
+- [x] Disable iOS pagination (not needed with snapshots)
+- [x] Fix isGridView detection (css-fullscreen class)
+- [x] Snapshot pause/resume during fullscreen
 
 **Pending:**
 
@@ -158,5 +268,8 @@ Camera `95270001CSHLPO74` (Terrace South) stays in "starting" mode with WEBRTC.
 - `7e10b87` - Add Force MJPEG setting for desktop users
 - `8b445fa` - Implement iOS snapshot polling for grid view
 - `0dcc043` - Fix PTZ controls blocking grid view after modal collapse
+- `952f370` - Update handoff documentation with iOS snapshot and PTZ fix
+- `339933e` - Hide stream controls in grid mode (non-expanded, non-fullscreen)
+- `af44dde` - Fix iOS: disable pagination, fix grid view detection
 
 ---

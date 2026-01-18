@@ -25,13 +25,58 @@ import { SnapshotStreamManager } from './snapshot-stream.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
- * iOS Safari requires encrypted WebRTC (DTLS-SRTP), which our MediaMTX config
- * doesn't have enabled (webrtcEncryption: no for LAN-only use).
- * Fall back to HLS on iOS for reliable playback.
+ * iOS Safari requires encrypted WebRTC (DTLS-SRTP).
+ * If DTLS is enabled in cameras.json (webrtc_global_settings.enable_dtls),
+ * iOS can use WebRTC for ~200ms latency instead of HLS (~2-4s).
  */
 function isIOSDevice() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * Cache for streaming configuration fetched from backend.
+ * Loaded once on page load to avoid repeated API calls.
+ */
+let _streamingConfigCache = null;
+
+/**
+ * Fetch streaming configuration from backend (cached).
+ * Returns WebRTC settings including DTLS encryption status.
+ *
+ * @returns {Promise<{webrtc: {encryption_enabled: boolean, ice_servers: Array}}>}
+ */
+async function getStreamingConfig() {
+    if (_streamingConfigCache !== null) {
+        return _streamingConfigCache;
+    }
+
+    try {
+        const response = await fetch('/api/config/streaming');
+        if (response.ok) {
+            _streamingConfigCache = await response.json();
+            console.log('[Config] Streaming config loaded:', _streamingConfigCache);
+        } else {
+            console.warn('[Config] Failed to fetch streaming config, using defaults');
+            _streamingConfigCache = { webrtc: { encryption_enabled: false, ice_servers: [] } };
+        }
+    } catch (e) {
+        console.error('[Config] Error fetching streaming config:', e);
+        _streamingConfigCache = { webrtc: { encryption_enabled: false, ice_servers: [] } };
+    }
+
+    return _streamingConfigCache;
+}
+
+/**
+ * Check if WebRTC DTLS encryption is enabled on the server.
+ * When enabled, iOS Safari can use WebRTC instead of falling back to HLS.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function isDTLSEnabled() {
+    const config = await getStreamingConfig();
+    return config?.webrtc?.encryption_enabled === true;
 }
 
 /**
@@ -214,6 +259,14 @@ export class MultiStreamManager {
         if (this.iosPagination.enabled) {
             this.initIOSPagination();
         }
+
+        // Pre-fetch streaming config (caches DTLS setting for iOS WebRTC check)
+        // This runs in parallel with stream loading so config is ready when needed
+        getStreamingConfig().then(config => {
+            console.log(`[Init] Streaming config: DTLS=${config?.webrtc?.encryption_enabled}`);
+        }).catch(err => {
+            console.warn('[Init] Failed to pre-fetch streaming config:', err);
+        });
 
         // Start all streams (fire and forget - don't await)
         console.log('[Init] Starting streams in background...');
@@ -1185,15 +1238,24 @@ export class MultiStreamManager {
             } else if (streamType === 'RTMP') {
                 success = await this.flvManager.startStream(cameraId, streamElement);
             } else if (streamType === 'WEBRTC') {
-                // WebRTC via MediaMTX WHEP protocol - sub-second latency
-                // iOS Safari requires encrypted WebRTC (DTLS-SRTP) which we don't have
-                // enabled. Fall back to HLS for iOS devices.
+                // WebRTC via MediaMTX WHEP protocol - sub-second latency (~200ms)
+                // iOS Safari requires encrypted WebRTC (DTLS-SRTP).
+                // Check if DTLS is enabled on the server before attempting WebRTC on iOS.
                 if (isIOSDevice()) {
-                    console.log(`[Stream] iOS detected - falling back to HLS for ${cameraId} (WebRTC requires DTLS on iOS)`);
-                    success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
-                    // Update the stream type on the element so fullscreen/recovery works correctly
-                    $streamItem.data('stream-type', 'LL_HLS');
+                    const dtlsEnabled = await isDTLSEnabled();
+                    if (dtlsEnabled) {
+                        // DTLS enabled - iOS can use WebRTC for low latency
+                        console.log(`[Stream] iOS + DTLS enabled - using WebRTC for ${cameraId} (~200ms latency)`);
+                        success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
+                    } else {
+                        // No DTLS - fall back to HLS (iOS requires encryption)
+                        console.log(`[Stream] iOS without DTLS - falling back to HLS for ${cameraId} (~2-4s latency)`);
+                        success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
+                        // Update the stream type on the element so fullscreen/recovery works correctly
+                        $streamItem.data('stream-type', 'LL_HLS');
+                    }
                 } else {
+                    // Non-iOS: WebRTC works without DTLS on LAN
                     success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
                 }
             } else {

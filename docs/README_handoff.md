@@ -411,6 +411,52 @@ After restart, MediaMTX logs show successful WebRTC sessions with DTLS:
 
 ---
 
+## Session Continuation - January 18, 2026 (17:00-17:15 EST)
+
+**Branch:** `dtls_webrtc_ios_JAN_18_2026_a` (continued)
+
+### COMPLETED: iOS WebRTC Fix + Force WebRTC Grid Setting
+
+#### 1. DTLS API Bug Fix (17:00 EST)
+
+**Problem:** iOS still using HLS even with DTLS enabled in config.
+
+**Root cause:** `app.py` line 852 accessed `camera_repo.config` which doesn't exist. Should be `camera_repo.cameras_data`. Exception caused fallback to `encryption_enabled: false`.
+
+**Why only iOS affected:** Desktop had bypass logic `|| !isIOSDevice()` allowing WebRTC without DTLS check.
+
+**Fix:** Changed `camera_repo.config` → `camera_repo.cameras_data`
+
+**Commit:** `1480a79` - Fix DTLS config: use cameras_data instead of non-existent config property
+
+**Result:** iOS now achieves ~200ms WebRTC latency in fullscreen!
+
+#### 2. iOS Force WebRTC Grid Mode Setting (17:10 EST)
+
+**Feature:** New experimental toggle to force WebRTC in grid view on iOS (bypasses default 1fps snapshot polling).
+
+**Files modified:**
+
+- `static/js/streaming/stream.js` - Added `isForceWebRTCGridEnabled()` function and grid logic
+- `static/js/settings/settings-ui.js` - Added toggle with red warning styling and confirmation modal
+
+**Warning features:**
+
+- Bold red text: "EXPERIMENTAL - USE WITH CAUTION"
+- Red-highlighted description box with border
+- Confirmation modal listing known issues before enabling
+- Only visible on iOS devices
+
+**Commit:** `04d8893` - Add iOS Force WebRTC Grid Mode setting (experimental)
+
+### Key Lesson Learned
+
+**The assumption "iOS can't do WebRTC on LAN without internet" was WRONG.**
+
+iOS Safari CAN use WebRTC on LAN - it just **requires DTLS encryption**. The earlier decision to disable DTLS for "LAN simplicity" only worked for desktop browsers. iOS has a hard requirement for DTLS-SRTP, no exceptions.
+
+---
+
 ## TODO List
 
 **Completed this session:**
@@ -420,15 +466,17 @@ After restart, MediaMTX logs show successful WebRTC sessions with DTLS:
 - [x] Silence snapshot API logs
 - [x] Fix DTLS/WHEP HTTPS proxy issue
 - [x] Add fullscreen stream type setting (HLS vs WebRTC toggle in Settings)
+- [x] Test iOS WebRTC with DTLS on actual iOS device - **WORKING! ~200ms latency**
+- [x] Fix DTLS API bug (`camera_repo.config` → `camera_repo.cameras_data`)
+- [x] Add iOS Force WebRTC Grid Mode setting (experimental)
 
-**Commits:**
+**Commits this session:**
 
-- `41e21f2` - Add fullscreen stream type setting (HLS vs WebRTC)
-- `80d3955` - Add Grid Snapshots Only setting for desktop users
+- `1480a79` - Fix DTLS config: use cameras_data instead of non-existent config property
+- `04d8893` - Add iOS Force WebRTC Grid Mode setting (experimental)
 
 **Pending:**
 
-- [ ] Test iOS WebRTC with DTLS on actual iOS device
 - [ ] Test UI health monitoring after container restart
 - [ ] Camera 95270001CSHLPO74 RTSP port issue (needs reboot or investigation)
 

@@ -106,6 +106,19 @@ export class SettingsUI {
             }
         });
 
+        // Fullscreen stream type toggle (HLS vs WebRTC)
+        // When enabled, fullscreen mode uses WebRTC for lower latency (~200ms)
+        // When disabled, fullscreen mode uses HLS (more stable, ~2-4s latency)
+        this.$content.on('change', '#fullscreen-stream-type-toggle', (e) => {
+            const useWebRTC = $(e.currentTarget).is(':checked');
+            console.log('[SettingsUI] Fullscreen stream type toggled:', useWebRTC ? 'WebRTC' : 'HLS');
+
+            localStorage.setItem('fullscreenStreamType', useWebRTC ? 'webrtc' : 'hls');
+
+            // Reload to apply the setting
+            window.location.reload();
+        });
+
         // Mute all cameras button
         this.$content.on('click', '#mute-all-btn', () => {
             console.log('[SettingsUI] Mute all cameras clicked');
@@ -290,6 +303,28 @@ export class SettingsUI {
         </div>
         ` : ''}
 
+        <!-- Fullscreen Stream Type Setting (HLS vs WebRTC) -->
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-broadcast-tower"></i>
+                    Fullscreen: Use WebRTC
+                </div>
+                <div class="setting-control">
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="fullscreen-stream-type-toggle"
+                               ${this.isFullscreenWebRTCEnabled() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-description">
+                When enabled, fullscreen uses WebRTC (~200ms latency, lower quality).<br>
+                When disabled, fullscreen uses HLS (~2-4s latency, higher quality).<br>
+                Page will reload when changed.
+            </div>
+        </div>
+
         <!-- Audio Controls Setting -->
         <div class="setting-row">
             <div class="setting-top">
@@ -343,6 +378,15 @@ export class SettingsUI {
         }
         // Fall back to localStorage
         return localStorage.getItem('forceMJPEG') === 'true';
+    }
+
+    /**
+     * Check if fullscreen should use WebRTC instead of HLS
+     * WebRTC offers lower latency (~200ms) but HLS is more stable
+     * Default is HLS (unchecked) for stability
+     */
+    isFullscreenWebRTCEnabled() {
+        return localStorage.getItem('fullscreenStreamType') === 'webrtc';
     }
 }
 

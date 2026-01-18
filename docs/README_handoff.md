@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 18, 2026 15:15 EST*
+*Last updated: January 18, 2026 15:35 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -310,11 +310,27 @@ Added **RULE 3: Teaching Sessions** to project instructions:
 
 **Objective:** Enable DTLS in MediaMTX for iOS WebRTC support
 
-**Implementation plan:**
+**Implementation COMPLETED (15:30 EST):**
 
-1. Add `enable_dtls` setting to `cameras.json` (source of truth)
-2. Update MediaMTX configuration generator to conditionally enable DTLS
-3. Update frontend to detect DTLS support and use WebRTC on iOS
-4. Create teaching document explaining DTLS/WebRTC architecture
+1. ✅ Added `webrtc_global_settings.enable_dtls` to `cameras.json`
+2. ✅ Updated `update_mediamtx_paths.sh` to sync DTLS setting to `mediamtx.yml`
+3. ✅ Added `/api/config/streaming` endpoint in `app.py`
+4. ✅ Updated `static/js/streaming/stream.js`:
+   - Added `getStreamingConfig()` and `isDTLSEnabled()` helpers
+   - iOS now checks DTLS before WebRTC attempt
+   - Falls back to HLS only if DTLS disabled
+5. ✅ Created teaching document: `docs/teachings/README_teaching_DTLS_WebRTC_01_18_2026.md`
+
+**To activate:**
+
+1. Ensure `cameras.json` has `"webrtc_global_settings": { "enable_dtls": true }`
+2. Run `./start.sh` (or manually run `./update_mediamtx_paths.sh`)
+3. Restart packager: `docker compose restart packager`
+4. iOS Safari will now use WebRTC (~200ms latency)
+
+**Commits:**
+
+- `dc19ed6` - Add DTLS/WebRTC teaching document
+- `1b97a7a` - Implement DTLS encryption toggle for iOS WebRTC support
 
 ---

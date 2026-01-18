@@ -106,6 +106,19 @@ export class SettingsUI {
             }
         });
 
+        // Grid Snapshots Only toggle (desktop only)
+        // Uses snapshot polling (like iOS) instead of HLS/WebRTC in grid view
+        // Reduces CPU/bandwidth usage at cost of lower framerate (~1 fps)
+        this.$content.on('change', '#grid-snapshots-toggle', (e) => {
+            const enabled = $(e.currentTarget).is(':checked');
+            console.log('[SettingsUI] Grid Snapshots toggled:', enabled);
+
+            localStorage.setItem('gridSnapshotsOnly', enabled ? 'true' : 'false');
+
+            // Reload to apply the setting
+            window.location.reload();
+        });
+
         // Fullscreen stream type toggle (HLS vs WebRTC)
         // When enabled, fullscreen mode uses WebRTC for lower latency (~200ms)
         // When disabled, fullscreen mode uses HLS (more stable, ~2-4s latency)
@@ -301,6 +314,28 @@ export class SettingsUI {
                 Lower quality but uses less bandwidth and CPU. Page will reload when changed.
             </div>
         </div>
+
+        <!-- Grid Snapshots Only Setting (Desktop Only) -->
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-camera"></i>
+                    Grid: Snapshots Only
+                </div>
+                <div class="setting-control">
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="grid-snapshots-toggle"
+                               ${this.isGridSnapshotsEnabled() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-description">
+                Use snapshot polling (~1 fps) in grid view instead of live video streams.<br>
+                Reduces CPU and bandwidth usage. Fullscreen still uses full video.<br>
+                <strong>Note:</strong> iOS always uses this mode due to browser limitations.
+            </div>
+        </div>
         ` : ''}
 
         <!-- Fullscreen Stream Type Setting (HLS vs WebRTC) -->
@@ -387,6 +422,16 @@ export class SettingsUI {
      */
     isFullscreenWebRTCEnabled() {
         return localStorage.getItem('fullscreenStreamType') === 'webrtc';
+    }
+
+    /**
+     * Check if grid view should use snapshot polling instead of live video.
+     * Snapshot mode uses ~1 fps polling, reducing CPU/bandwidth usage.
+     * iOS always uses this mode automatically due to Safari limitations.
+     * This setting allows desktop users to opt-in for the same behavior.
+     */
+    isGridSnapshotsEnabled() {
+        return localStorage.getItem('gridSnapshotsOnly') === 'true';
     }
 }
 

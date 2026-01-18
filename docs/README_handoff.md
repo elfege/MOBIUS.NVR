@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 18, 2026 15:05 EST*
+*Last updated: January 18, 2026 15:15 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -29,7 +29,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Current Session - January 18, 2026 (02:00-15:05 EST)
 
-**Branch:** `ui_health_enable_JAN_18_2026_a`
+**Branch:** `dtls_webrtc_ios_JAN_18_2026_a` (merged from `ui_health_enable_JAN_18_2026_a`)
 
 ### COMPLETED: Force MJPEG Setting + UI Health Re-enable
 

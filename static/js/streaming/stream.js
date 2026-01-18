@@ -82,8 +82,11 @@ export class MultiStreamManager {
         this.useWebSocketMJPEG = new URLSearchParams(window.location.search).get('useWebSocketMJPEG') === 'true';
 
         // iOS pagination state - limit streams per page to avoid Safari video decode limits
+        // DISABLED: Now that iOS uses snapshot polling (img tags) instead of video elements,
+        // the Safari video decode limit no longer applies. All cameras can load simultaneously.
+        // Keeping the structure for potential future use with HLS on iOS.
         this.iosPagination = {
-            enabled: isIOSDevice(),
+            enabled: false,  // Disabled - snapshots don't have video decode limits
             camerasPerPage: 6,
             currentPage: 0,
             totalPages: 0,
@@ -1105,7 +1108,7 @@ export class MultiStreamManager {
         const urlParams = new URLSearchParams(window.location.search);
         const debugForceMJPEG = urlParams.get('forceMJPEG') === 'true';
         const debugForceSnapshot = urlParams.get('forceSnapshot') === 'true';
-        const isGridView = !$streamItem.hasClass('fullscreen-stream');
+        const isGridView = !$streamItem.hasClass('css-fullscreen');
 
         // iOS in grid view: use snapshots (not MJPEG)
         const useIOSSnapshot = isIOSDevice() && isGridView && !debugForceMJPEG;

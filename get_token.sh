@@ -217,8 +217,8 @@ log "Usage examples:" "$TO_TTY"
 echo
 repeat_print "═"
 echo -e "${ACCENT_YELLOW}" " - List cameras:" "$NC"
-echo -e "  curl -k -b '$COOKIES_FILE' https://$UNIFI_HOST/proxy/protect/api/cameras " "$NC"
+echo -e " curl -k -b '$COOKIES_FILE' https://$UNIFI_HOST/proxy/protect/api/cameras " "$NC"
 echo
 echo -e "${ACCENT_YELLOW}" " - Get bootstrap info:" "$NC"
-echo -e " curl -k -b '$COOKIES_FILE' https://$UNIFI_HOST/proxy/protect/api/bootstrap " "$NC"
+echo -e "curl -k -b '$COOKIES_FILE' https://$UNIFI_HOST/proxy/protect/api/bootstrap " "$NC"
 repeat_print "═"

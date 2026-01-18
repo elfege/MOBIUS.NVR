@@ -1996,7 +1996,7 @@ Message have zero to two payloads.
         # Repeats for ALL wifi in range
     </udidList>
     <ssid>YOUR_CURRENT_WIFI</ssid>
-    <key>YOUR_CURRENT_WIFI_PASSWORD_UNENCRYPTED</key>
+    <key>YOUR_CURRENT___PASSWORD___UNENCRYPTED</key>
     <channel>YOUR_CURRENT_WIFI_CHANNEL</channel>
     </Wifi>
     </body>

@@ -98,13 +98,13 @@ fi
 
 echo -e "${GREEN}Starting NVR application...${NC}"
 echo -e "${YELLOW}Configuration:${NC}"
-echo -e "  Workers: $WORKERS"
-echo -e "  Bind: $HOST:$PORT"
-echo -e "  Access logging: Disabled"
-echo -e "  Error logging: Enabled"
+echo -e " Workers: $WORKERS"
+echo -e " Bind: $HOST:$PORT"
+echo -e " Access logging: Disabled"
+echo -e " Error logging: Enabled"
 if $DAEMON; then
-    echo -e "  PID file: $PROJECT_DIR/nvr.pid"
-    echo -e "  Log file: $PROJECT_DIR/nvr.log"
+    echo -e " PID file: $PROJECT_DIR/nvr.pid"
+    echo -e " Log file: $PROJECT_DIR/nvr.log"
 fi
 echo ""
 

@@ -145,7 +145,7 @@ push_notifications = false
 
 EOF
 
-    echo -e "  ${GREEN}+${NC} $name ($serial)"
+    echo -e " ${GREEN}+${NC} $name ($serial)"
 done
 
 # Add technical notes

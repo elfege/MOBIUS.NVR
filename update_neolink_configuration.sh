@@ -286,7 +286,7 @@ EOF
 	echo -e "${CYAN}Next steps:${NC}"
 	echo "  1. Review config: cat $OUTPUT_FILE"
 	if [[ "$REOLINK_PASSWORD" == "CHANGEME" ]]; then
-		echo -e "  2. ${YELLOW}UPDATE PASSWORD in $OUTPUT_FILE${NC}"
+		echo -e " 2. ${YELLOW}UPDATE PASSWORD in $OUTPUT_FILE${NC}"
 	fi
 	echo "  3. Test Neolink: ./neolink/target/release/neolink rtsp --config=$OUTPUT_FILE"
 	echo "  4. Rebuild container: docker compose build unified-nvr"

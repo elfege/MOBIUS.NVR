@@ -14,6 +14,7 @@ This document explains why iOS Safari requires DTLS encryption for WebRTC, and h
 ## The Problem
 
 **Current behavior:**
+
 - Desktop browsers: WebRTC works (low latency ~200ms)
 - iOS Safari: Falls back to HLS (high latency 2-4 seconds)
 
@@ -35,6 +36,7 @@ WebRTC is a peer-to-peer protocol for real-time audio/video streaming.
 ```
 
 **Key characteristics:**
+
 - Uses UDP for low latency (no TCP handshake delays)
 - Peer-to-peer architecture (even server acts as a "peer")
 - Built for real-time - no buffering needed
@@ -52,6 +54,7 @@ HLS is Apple's adaptive streaming protocol using HTTP.
 ```
 
 **Key characteristics:**
+
 - Uses TCP (reliable but slower)
 - Segments video into chunks (typically 2-6 seconds each)
 - Requires buffering multiple segments before playback
@@ -80,7 +83,7 @@ SRTP encrypts the actual media (audio/video) data within WebRTC.
 ```text
 WebRTC Security Stack:
 ┌─────────────────────────────────────────┐
-│            Application Layer             │
+│            Application Layer            │
 ├─────────────────────────────────────────┤
 │  SRTP (Encrypts audio/video data)       │
 ├─────────────────────────────────────────┤
@@ -91,6 +94,7 @@ WebRTC Security Stack:
 ```
 
 **How they work together:**
+
 1. DTLS handshake establishes a secure channel
 2. DTLS negotiates SRTP encryption keys
 3. SRTP encrypts the actual media streams
@@ -135,11 +139,13 @@ webrtcEncryption: no    # Disabled for LAN-only deployment
 ```
 
 **Pros:**
+
 - Lower CPU usage (no encryption overhead)
 - Simpler setup (no certificates needed)
 - Works fine for Chrome/Firefox on LAN
 
 **Cons:**
+
 - iOS Safari cannot use WebRTC
 - iOS users get 2-4s latency instead of 200ms
 
@@ -151,11 +157,13 @@ webrtcEncryption: yes   # Enable DTLS for iOS Safari support
 ```
 
 **Pros:**
+
 - iOS Safari can use WebRTC
 - All devices get ~200ms latency
 - Industry-standard security
 
 **Cons:**
+
 - CPU overhead (~10-20ms per frame for encryption)
 - DTLS handshake adds ~100-200ms on connection start
 - Self-signed certificate warnings (can be ignored on LAN)
@@ -203,6 +211,7 @@ iOS Safari Connection:
 ```
 
 **Why cameras.json?**
+
 - Single source of truth for all NVR settings
 - Already used for streaming configuration
 - Can be toggled without code changes

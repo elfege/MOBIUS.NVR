@@ -2400,14 +2400,14 @@
       "UI_HEALTH_WARMUP_MS": "Milliseconds to wait after attaching monitor before checking health. Allows stream initial buffering/startup without false triggers. Monitoring suppressed for this duration.",
       "UI_HEALTH_MAX_ATTEMPTS": "Maximum restart attempts before giving up. Set to 0 for infinite attempts (not recommended - may cause endless restart loops for permanently failed cameras)."
     },
-    "UI_HEALTH_ENABLED": false,
-    "UI_HEALTH_BLANK_AVG": 2,
-    "UI_HEALTH_BLANK_STD": 5,
-    "UI_HEALTH_SAMPLE_INTERVAL_MS": 3000,
-    "UI_HEALTH_STALE_AFTER_MS": 30000,
-    "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": 100,
-    "UI_HEALTH_COOLDOWN_MS": 60000,
-    "UI_HEALTH_WARMUP_MS": 60000,
-    "UI_HEALTH_MAX_ATTEMPTS": 3
+    "UI_HEALTH_ENABLED": true,
+    "UI_HEALTH_BLANK_AVG": 5,
+    "UI_HEALTH_BLANK_STD": 3,
+    "UI_HEALTH_SAMPLE_INTERVAL_MS": 2000,
+    "UI_HEALTH_STALE_AFTER_MS": 10000,
+    "UI_HEALTH_CONSECUTIVE_BLANK_NEEDED": 3,
+    "UI_HEALTH_COOLDOWN_MS": 30000,
+    "UI_HEALTH_WARMUP_MS": 15000,
+    "UI_HEALTH_MAX_ATTEMPTS": 5
   }
 }

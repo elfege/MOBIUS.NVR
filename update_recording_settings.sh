@@ -84,8 +84,8 @@ for camera_id in $ALL_CAMERA_IDS; do
     esac
 
     echo -e "${YELLOW}Adding:${NC} $CAMERA_NAME ($camera_id)"
-    echo -e "  Type: $CAMERA_TYPE, Stream: $STREAM_TYPE"
-    echo -e "  Detection: $DETECTION_METHOD, Source: $RECORDING_SOURCE"
+    echo -e " Type: $CAMERA_TYPE, Stream: $STREAM_TYPE"
+    echo -e " Detection: $DETECTION_METHOD, Source: $RECORDING_SOURCE"
 
     # Add camera settings using jq
     RECORDING_SETTINGS_TMP="${RECORDING_SETTINGS}.tmp"

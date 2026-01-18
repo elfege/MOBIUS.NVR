@@ -300,3 +300,57 @@ If DTLS causes issues:
 | Security | Unencrypted | Encrypted |
 
 **Recommendation:** Enable DTLS for production use. The latency improvement for iOS users far outweighs the minimal CPU overhead.
+
+---
+
+## Lesson Learned (Post-Implementation)
+
+*Added: January 18, 2026 17:20 EST*
+
+### The Misconception
+
+**WRONG assumption:** "iOS can't do WebRTC on LAN without internet/public TURN servers."
+
+**CORRECT:** iOS Safari CAN use WebRTC on LAN - it just **requires DTLS encryption**. No exceptions.
+
+### Why This Matters
+
+The earlier decision to disable DTLS for "LAN simplicity" was based on incomplete understanding:
+
+1. Desktop browsers (Chrome, Firefox) happily accept unencrypted WebRTC on LAN
+2. We assumed all browsers behaved the same way
+3. iOS Safari has a **hard requirement** for DTLS-SRTP - it will refuse unencrypted WebRTC entirely
+
+### The Debug Journey
+
+1. **Symptom:** iOS stuck on HLS despite DTLS being "enabled" in config
+2. **Red herring:** Chrome DevTools device emulation showed WebRTC working
+3. **Key insight:** DevTools emulation changes screen size/UA, not browser engine
+4. **Root cause:** API bug (`camera_repo.config` vs `camera_repo.cameras_data`) returned `encryption_enabled: false`
+5. **Why only iOS broke:** Desktop had `|| !isIOSDevice()` bypass in WebRTC check
+
+### Verification Method
+
+Chrome DevTools device emulation is **NOT** a reliable test for iOS-specific behavior. To test iOS WebRTC:
+
+1. Use actual iOS device
+2. Check browser console for WebRTC connection logs
+3. Measure actual latency (200ms = WebRTC, 2-4s = HLS fallback)
+
+### Final Configuration
+
+```yaml
+# packager/mediamtx.yml
+webrtcEncryption: yes  # Required for iOS Safari
+```
+
+```json
+// config/cameras.json
+{
+  "webrtc_global_settings": {
+    "enable_dtls": true
+  }
+}
+```
+
+**Result:** iOS now achieves ~200ms WebRTC latency instead of 2-4s HLS.

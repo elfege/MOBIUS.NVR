@@ -100,6 +100,19 @@ async function isDTLSEnabled() {
 }
 
 /**
+ * Check if user has enabled WebRTC for fullscreen mode.
+ * This setting is controlled via Settings UI toggle.
+ *
+ * WebRTC offers lower latency (~200ms) but HLS is more stable and higher quality.
+ * Default is HLS (returns false) when no preference is set.
+ *
+ * @returns {boolean}
+ */
+function isFullscreenWebRTCEnabled() {
+    return localStorage.getItem('fullscreenStreamType') === 'webrtc';
+}
+
+/**
  * Detect portable/mobile devices that should use MJPEG for grid view.
  * These devices have limited resources and benefit from MJPEG's lighter decode overhead.
  * MJPEG uses simple <img> tags instead of <video> elements, avoiding:
@@ -1717,16 +1730,36 @@ export class MultiStreamManager {
                     videoEl = $streamItem.find('.stream-video')[0];
                 }
 
-                // Start HLS stream (main resolution for fullscreen)
+                // Start fullscreen stream based on user preference (WebRTC or HLS)
                 try {
-                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                    console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                    const useWebRTC = isFullscreenWebRTCEnabled();
+                    if (useWebRTC) {
+                        // User prefers WebRTC for lower latency
+                        const dtlsEnabled = await isDTLSEnabled();
+                        if (dtlsEnabled || !isIOSDevice()) {
+                            // WebRTC available (DTLS for iOS, or non-iOS)
+                            await this.webrtcManager.startStream(cameraId, videoEl, 'main');
+                            console.log(`[Fullscreen] ✓ Switched to WebRTC main stream for ${cameraId}`);
+                            $streamItem.data('fullscreen-stream-type', 'webrtc');
+                        } else {
+                            // iOS without DTLS - must use HLS
+                            console.log(`[Fullscreen] iOS without DTLS - using HLS for ${cameraId}`);
+                            await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                            $streamItem.data('fullscreen-stream-type', 'hls');
+                        }
+                    } else {
+                        // User prefers HLS (default behavior)
+                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                        console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                        $streamItem.data('fullscreen-stream-type', 'hls');
+                    }
                     $streamItem.data('switched-from-snapshot', true);
                     $streamItem.data('switched-to-main', true);
                 } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch to HLS main:`, e);
+                    console.error(`[Fullscreen] Failed to switch to main stream:`, e);
                     await this.hlsManager.startStream(cameraId, videoEl, 'sub');
                     $streamItem.data('switched-from-snapshot', true);
+                    $streamItem.data('fullscreen-stream-type', 'hls');
                 }
                 return;
             }
@@ -1752,60 +1785,82 @@ export class MultiStreamManager {
                     videoEl = $streamItem.find('.stream-video')[0];
                 }
 
-                // Start HLS stream (main resolution for fullscreen)
+                // Start fullscreen stream based on user preference (WebRTC or HLS)
                 try {
-                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                    console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                    const useWebRTC = isFullscreenWebRTCEnabled();
+                    if (useWebRTC) {
+                        // User prefers WebRTC for lower latency
+                        const dtlsEnabled = await isDTLSEnabled();
+                        if (dtlsEnabled || !isIOSDevice()) {
+                            // WebRTC available (DTLS for iOS, or non-iOS)
+                            await this.webrtcManager.startStream(cameraId, videoEl, 'main');
+                            console.log(`[Fullscreen] ✓ Switched to WebRTC main stream for ${cameraId}`);
+                            $streamItem.data('fullscreen-stream-type', 'webrtc');
+                        } else {
+                            // iOS without DTLS - must use HLS
+                            console.log(`[Fullscreen] iOS without DTLS - using HLS for ${cameraId}`);
+                            await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                            $streamItem.data('fullscreen-stream-type', 'hls');
+                        }
+                    } else {
+                        // User prefers HLS (default behavior)
+                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                        console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                        $streamItem.data('fullscreen-stream-type', 'hls');
+                    }
                     $streamItem.data('switched-from-mjpeg', true);
                     $streamItem.data('switched-to-main', true);
                 } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch to HLS main:`, e);
+                    console.error(`[Fullscreen] Failed to switch to main stream:`, e);
                     // Fall back to HLS sub
                     await this.hlsManager.startStream(cameraId, videoEl, 'sub');
                     $streamItem.data('switched-from-mjpeg', true);
+                    $streamItem.data('fullscreen-stream-type', 'hls');
                 }
                 return; // Don't process other stream type switches
             }
 
             // For LL_HLS/NEOLINK/WEBRTC cameras: Switch to main stream (high-res)
             // The backend dual-output FFmpeg provides both sub and main streams
-            if (streamType === 'LL_HLS' || streamType === 'NEOLINK') {
-                console.log(`[Fullscreen] Switching ${cameraId} to main stream (high-res)...`);
+            // User can choose between HLS and WebRTC for fullscreen via Settings
+            if (streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'WEBRTC') {
+                const useWebRTC = isFullscreenWebRTCEnabled();
+                console.log(`[Fullscreen] Switching ${cameraId} to main stream (${useWebRTC ? 'WebRTC' : 'HLS'})...`);
 
                 const $video = $streamItem.find('.stream-video');
                 const videoEl = $video[0];
 
-                // Stop current sub stream on this video element
+                // Stop current stream (could be HLS or WebRTC)
                 this.hlsManager.stopStream(cameraId);
+                this.webrtcManager.stopStream(cameraId);
 
-                // Start main stream (backend serves from camera_serial_main path)
+                // Start main stream based on user preference
                 try {
-                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                    console.log(`[Fullscreen] ✓ Switched to main stream for ${cameraId}`);
-                    // Store that we switched to main so closeFullscreen knows to switch back
+                    if (useWebRTC) {
+                        // User prefers WebRTC for lower latency
+                        const dtlsEnabled = await isDTLSEnabled();
+                        if (dtlsEnabled || !isIOSDevice()) {
+                            await this.webrtcManager.startStream(cameraId, videoEl, 'main');
+                            console.log(`[Fullscreen] ✓ Switched to WebRTC main stream for ${cameraId}`);
+                            $streamItem.data('fullscreen-stream-type', 'webrtc');
+                        } else {
+                            // iOS without DTLS - must use HLS
+                            console.log(`[Fullscreen] iOS without DTLS - using HLS for ${cameraId}`);
+                            await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                            $streamItem.data('fullscreen-stream-type', 'hls');
+                        }
+                    } else {
+                        // User prefers HLS (default behavior)
+                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                        console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
+                        $streamItem.data('fullscreen-stream-type', 'hls');
+                    }
                     $streamItem.data('switched-to-main', true);
                 } catch (e) {
                     console.error(`[Fullscreen] Failed to switch to main stream:`, e);
-                    // Fall back to keeping sub stream
+                    // Fall back to HLS sub
                     await this.hlsManager.startStream(cameraId, videoEl, 'sub');
-                }
-            } else if (streamType === 'WEBRTC') {
-                console.log(`[Fullscreen] Switching ${cameraId} to main stream (high-res) via WebRTC...`);
-
-                const $video = $streamItem.find('.stream-video');
-                const videoEl = $video[0];
-
-                // Stop current sub stream
-                this.webrtcManager.stopStream(cameraId);
-
-                // Start main stream
-                try {
-                    await this.webrtcManager.startStream(cameraId, videoEl, 'main');
-                    console.log(`[Fullscreen] ✓ Switched to main stream for ${cameraId} via WebRTC`);
-                    $streamItem.data('switched-to-main', true);
-                } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch to main stream via WebRTC:`, e);
-                    await this.webrtcManager.startStream(cameraId, videoEl, 'sub');
+                    $streamItem.data('fullscreen-stream-type', 'hls');
                 }
             }
 
@@ -1941,12 +1996,17 @@ export class MultiStreamManager {
             localStorage.removeItem('fullscreenCameraSerial');
             console.log('[Fullscreen] Cleared localStorage');
 
-            // iOS: Switch back from HLS to SNAPSHOT for grid view
+            // iOS: Switch back from HLS/WebRTC to SNAPSHOT for grid view
             if (switchedFromSnapshot && originalStreamType) {
                 console.log(`[Fullscreen] iOS: Switching ${fullscreenCameraId} back to SNAPSHOT for grid view`);
 
-                // Stop HLS stream
-                this.hlsManager.stopStream(fullscreenCameraId);
+                // Stop fullscreen stream (could be HLS or WebRTC depending on user preference)
+                const fullscreenStreamType = $fullscreenItem.data('fullscreen-stream-type');
+                if (fullscreenStreamType === 'webrtc') {
+                    this.webrtcManager.stopStream(fullscreenCameraId);
+                } else {
+                    this.hlsManager.stopStream(fullscreenCameraId);
+                }
 
                 // Snapshots require <img> element
                 const $video = $fullscreenItem.find('video.stream-video');
@@ -1985,12 +2045,17 @@ export class MultiStreamManager {
                 $fullscreenItem.removeData('switched-from-snapshot');
                 $fullscreenItem.removeData('switched-to-main');
             }
-            // Portable device (non-iOS): Switch back from HLS to MJPEG for grid view
+            // Portable device (non-iOS): Switch back from HLS/WebRTC to MJPEG for grid view
             else if (switchedFromMJPEG && originalStreamType) {
                 console.log(`[Fullscreen] Portable: Switching ${fullscreenCameraId} back to MJPEG for grid view`);
 
-                // Stop HLS stream
-                this.hlsManager.stopStream(fullscreenCameraId);
+                // Stop fullscreen stream (could be HLS or WebRTC depending on user preference)
+                const fullscreenStreamType = $fullscreenItem.data('fullscreen-stream-type');
+                if (fullscreenStreamType === 'webrtc') {
+                    this.webrtcManager.stopStream(fullscreenCameraId);
+                } else {
+                    this.hlsManager.stopStream(fullscreenCameraId);
+                }
 
                 // MJPEG requires <img> element, not <video>
                 // We need to swap video→img for MJPEG to work
@@ -2031,44 +2096,37 @@ export class MultiStreamManager {
                 $fullscreenItem.removeData('switched-to-main');
             }
             // If we switched to main stream, switch back to sub stream
-            else if (switchedToMain && (streamType === 'LL_HLS' || streamType === 'NEOLINK')) {
-                console.log(`[Fullscreen] Switching ${fullscreenCameraId} back to sub stream...`);
+            // Note: Fullscreen may have used WebRTC even if original was HLS (user preference)
+            else if (switchedToMain && (streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'WEBRTC')) {
+                const fullscreenStreamType = $fullscreenItem.data('fullscreen-stream-type');
+                console.log(`[Fullscreen] Switching ${fullscreenCameraId} back to sub stream (was ${fullscreenStreamType || 'unknown'})...`);
 
                 const $video = $fullscreenItem.find('.stream-video');
                 const videoEl = $video[0];
 
-                // Stop current main stream
-                this.hlsManager.stopStream(fullscreenCameraId);
+                // Stop fullscreen stream (could be HLS or WebRTC depending on user preference)
+                if (fullscreenStreamType === 'webrtc') {
+                    this.webrtcManager.stopStream(fullscreenCameraId);
+                } else {
+                    this.hlsManager.stopStream(fullscreenCameraId);
+                }
 
-                // Start sub stream
+                // Start sub stream matching the original stream type (grid view uses original type)
                 try {
-                    await this.hlsManager.startStream(fullscreenCameraId, videoEl, 'sub');
-                    console.log(`[Fullscreen] ✓ Switched back to sub stream for ${fullscreenCameraId}`);
+                    if (streamType === 'WEBRTC') {
+                        await this.webrtcManager.startStream(fullscreenCameraId, videoEl, 'sub');
+                        console.log(`[Fullscreen] ✓ Switched back to WebRTC sub stream for ${fullscreenCameraId}`);
+                    } else {
+                        await this.hlsManager.startStream(fullscreenCameraId, videoEl, 'sub');
+                        console.log(`[Fullscreen] ✓ Switched back to HLS sub stream for ${fullscreenCameraId}`);
+                    }
                 } catch (e) {
                     console.error(`[Fullscreen] Failed to switch back to sub stream:`, e);
                 }
 
-                // Clear the flag
+                // Clear the flags
                 $fullscreenItem.removeData('switched-to-main');
-            } else if (switchedToMain && streamType === 'WEBRTC') {
-                console.log(`[Fullscreen] Switching ${fullscreenCameraId} back to sub stream via WebRTC...`);
-
-                const $video = $fullscreenItem.find('.stream-video');
-                const videoEl = $video[0];
-
-                // Stop current main stream
-                this.webrtcManager.stopStream(fullscreenCameraId);
-
-                // Start sub stream
-                try {
-                    await this.webrtcManager.startStream(fullscreenCameraId, videoEl, 'sub');
-                    console.log(`[Fullscreen] ✓ Switched back to sub stream for ${fullscreenCameraId} via WebRTC`);
-                } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch back to sub stream via WebRTC:`, e);
-                }
-
-                // Clear the flag
-                $fullscreenItem.removeData('switched-to-main');
+                $fullscreenItem.removeData('fullscreen-stream-type');
             }
 
             // Resume previously paused streams

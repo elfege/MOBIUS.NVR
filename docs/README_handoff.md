@@ -419,9 +419,15 @@ After restart, MediaMTX logs show successful WebRTC sessions with DTLS:
 - [x] Fix WebRTC mixed content (nginx WHEP proxy)
 - [x] Silence snapshot API logs
 - [x] Fix DTLS/WHEP HTTPS proxy issue
+- [x] Add fullscreen stream type setting (HLS vs WebRTC toggle in Settings)
+
+**Commits:**
+
+- `41e21f2` - Add fullscreen stream type setting (HLS vs WebRTC)
 
 **Pending:**
 
+- [ ] Add "Grid Snapshots Only" setting for desktop (use snapshots in grid like iOS)
 - [ ] Test iOS WebRTC with DTLS on actual iOS device
 - [ ] Test UI health monitoring after container restart
 - [ ] Camera 95270001CSHLPO74 RTSP port issue (needs reboot or investigation)

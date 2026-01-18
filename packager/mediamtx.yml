@@ -108,9 +108,9 @@ hlsAlwaysRemux: yes # stable timing even if source timestamps wobble
 #
 webrtc: yes
 webrtcAddress: :8889 # HTTP endpoint for WHEP signaling
-webrtcEncryption: no # LAN-only, no DTLS needed (faster setup)
-webrtcServerKey: ""
-webrtcServerCert: ""
+webrtcEncryption: yes # Controlled by cameras.json webrtc_global_settings.enable_dtls
+webrtcServerKey: /certs/privkey.pem
+webrtcServerCert: /certs/fullchain.pem
 webrtcAllowOrigin: "*" # Allow browser clients
 webrtcTrustedProxies: []
 webrtcICEServers2: [] # No STUN/TURN for LAN-only use
@@ -183,10 +183,6 @@ paths:
   95270001CSO4BPDZ:
     source: publisher
   95270001CSO4BPDZ_main:
-    source: publisher
-  95270001NT3KNA67:
-    source: publisher
-  95270001NT3KNA67_main:
     source: publisher
   AMC043145A67EFBF79:
     source: publisher

@@ -170,6 +170,7 @@ services:
     # weâ€™ll add a config file next step
     volumes:
       - ./packager/mediamtx.yml:/mediamtx.yml:ro
+      - ./certs/dev:/certs:ro  # DTLS certificates for iOS WebRTC
     # expose only its HTTP port to nginx (no direct internet)
     ports:
       - "8888:8888"   # HTTP (HLS/LL-HLS)

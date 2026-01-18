@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 18, 2026 15:35 EST*
+*Last updated: January 18, 2026 16:21 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -27,7 +27,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session - January 18, 2026 (02:00-15:05 EST)
+## Current Session - January 18, 2026 (02:00-16:21 EST)
 
 **Branch:** `dtls_webrtc_ios_JAN_18_2026_a` (merged from `ui_health_enable_JAN_18_2026_a`)
 
@@ -332,5 +332,98 @@ Added **RULE 3: Teaching Sessions** to project instructions:
 
 - `dc19ed6` - Add DTLS/WebRTC teaching document
 - `1b97a7a` - Implement DTLS encryption toggle for iOS WebRTC support
+
+---
+
+## Session Continuation - January 18, 2026 (15:50-16:21 EST)
+
+**Branch:** `dtls_webrtc_ios_JAN_18_2026_a` (continued)
+
+### COMPLETED: DTLS Implementation Fixes
+
+After context compaction, continued debugging DTLS/WebRTC issues.
+
+#### 1. iOS Device Detection Fix (16:00 EST)
+
+**Problem:** Mac Safari with Touch Bar was detected as iOS device due to `maxTouchPoints > 1`.
+
+**Solution:** Changed threshold to `maxTouchPoints >= 5` (iPads have 5+ touch points, Touch Bar has 1-2).
+
+**Files modified:**
+
+- `static/js/streaming/stream.js` - Updated `isIOSDevice()` function
+
+**Commit:** `2ff5c72` - Fix iOS detection: distinguish iPad from Mac with Touch Bar
+
+#### 2. WebRTC Mixed Content Fix (16:05 EST)
+
+**Problem:** Browser blocked WHEP fetch requests - page served over HTTPS (8443), WHEP endpoint was HTTP (8889).
+
+**Solution:** Added nginx proxy for WHEP signaling to avoid mixed content issues.
+
+**Files modified:**
+
+- `nginx/nginx.conf` - Added `/webrtc/` location block
+- `static/js/streaming/webrtc-stream.js` - Changed WHEP URL to use `window.location.origin`
+
+**Commit:** `9bc52de` - Fix WebRTC mixed content: proxy WHEP through nginx HTTPS
+
+#### 3. Snapshot API Log Spam Fix (16:10 EST)
+
+**Problem:** iOS snapshot polling generating thousands of log lines.
+
+**Solution:** Silenced logs for `/api/snap/` endpoint.
+
+**Files modified:**
+
+- `nginx/nginx.conf` - Added `/api/snap/` location with `access_log off`
+- `app.py` - Added `SnapAPIFilter` class to filter werkzeug logs
+
+**Commit:** `d197fc8` - Silence snapshot API logs
+
+#### 4. DTLS/WHEP HTTPS Proxy Fix (16:20 EST)
+
+**Problem:** When `webrtcEncryption: yes` in MediaMTX, WHEP endpoint requires HTTPS connections. nginx was proxying HTTP → MediaMTX rejected with "HTTP request to HTTPS server".
+
+**Solution:** Changed nginx proxy from `http://` to `https://` with SSL verification disabled (MediaMTX uses self-signed cert).
+
+**Files modified:**
+
+- `nginx/nginx.conf` - Changed `proxy_pass http://nvr-packager:8889` to `proxy_pass https://nvr-packager:8889` with `proxy_ssl_verify off`
+- `config/cameras.json` - Re-enabled `enable_dtls: true`
+
+**Commit:** `44ead33` - Fix nginx HTTPS proxy for MediaMTX WHEP when DTLS enabled
+
+### Verification
+
+After restart, MediaMTX logs show successful WebRTC sessions with DTLS:
+
+```text
+2026/01/18 21:21:43 INF [WebRTC] [session 6a5f3e40] peer connection established, local candidate: host/udp/127.0.0.1/8189, remote candidate: prflx/udp/192.168.10.110/49290
+```
+
+### Current State
+
+- DTLS enabled (`webrtcEncryption: yes` in mediamtx.yml)
+- nginx proxies HTTPS to MediaMTX WHEP endpoint
+- Desktop WebRTC working with encryption
+- iOS can now use WebRTC (when DTLS enabled) instead of HLS fallback
+
+---
+
+## TODO List
+
+**Completed this session:**
+
+- [x] Fix iOS detection (Mac Touch Bar vs iPad)
+- [x] Fix WebRTC mixed content (nginx WHEP proxy)
+- [x] Silence snapshot API logs
+- [x] Fix DTLS/WHEP HTTPS proxy issue
+
+**Pending:**
+
+- [ ] Test iOS WebRTC with DTLS on actual iOS device
+- [ ] Test UI health monitoring after container restart
+- [ ] Camera 95270001CSHLPO74 RTSP port issue (needs reboot or investigation)
 
 ---

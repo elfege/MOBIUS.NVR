@@ -113,6 +113,20 @@ function isFullscreenWebRTCEnabled() {
 }
 
 /**
+ * Check if user has enabled snapshot polling for grid view (desktop only).
+ * This setting is controlled via Settings UI toggle.
+ *
+ * Snapshot mode polls /api/snap/<camera_id> at ~1 fps, reducing CPU/bandwidth.
+ * iOS Safari always uses this mode automatically due to MJPEG/video limitations.
+ * This allows desktop users to opt-in for the same lightweight behavior.
+ *
+ * @returns {boolean}
+ */
+function isGridSnapshotsEnabled() {
+    return localStorage.getItem('gridSnapshotsOnly') === 'true';
+}
+
+/**
  * Detect portable/mobile devices that should use MJPEG for grid view.
  * These devices have limited resources and benefit from MJPEG's lighter decode overhead.
  * MJPEG uses simple <img> tags instead of <video> elements, avoiding:
@@ -1198,13 +1212,16 @@ export class MultiStreamManager {
 
         // iOS in grid view: use snapshots (not MJPEG)
         const useIOSSnapshot = isIOSDevice() && isGridView && !debugForceMJPEG;
+        // Desktop users can opt-in to snapshot mode via Settings
+        const useDesktopSnapshot = !isPortableDevice() && isGridSnapshotsEnabled() && isGridView;
         // Android/other portable in grid: use MJPEG
         const forcePortableMJPEG = (isPortableDevice() && !isIOSDevice() || debugForceMJPEG) && isGridView;
-        // Debug snapshot mode for any device
-        const useSnapshot = useIOSSnapshot || (debugForceSnapshot && isGridView);
+        // Use snapshots for: iOS, desktop opt-in, or debug mode
+        const useSnapshot = useIOSSnapshot || useDesktopSnapshot || (debugForceSnapshot && isGridView);
 
         if (useSnapshot && streamType !== 'SNAPSHOT') {
-            console.log(`[Stream] ${isIOSDevice() ? 'iOS' : 'Debug'} grid mode - using snapshot polling for ${cameraId}`);
+            const snapshotReason = isIOSDevice() ? 'iOS' : (useDesktopSnapshot ? 'Desktop setting' : 'Debug');
+            console.log(`[Stream] ${snapshotReason} grid mode - using snapshot polling for ${cameraId}`);
             streamType = 'SNAPSHOT';
             // Store original stream type for fullscreen switching
             $streamItem.data('original-stream-type', $streamItem.data('stream-type'));

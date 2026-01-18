@@ -1024,11 +1024,22 @@ sequenceDiagram
             </ul>
         </div>
 
+        <div class="architecture-note">
+            <h3>iOS WebRTC Support (DTLS Enabled - Jan 18, 2026)</h3>
+            <ul>
+                <li><strong>DTLS-SRTP Enabled:</strong> MediaMTX configured with <code>webrtcEncryption: yes</code> for iOS Safari WebRTC support (~200ms latency)</li>
+                <li><strong>Configuration:</strong> <code>cameras.json</code> has <code>webrtc_global_settings.enable_dtls: true</code></li>
+                <li><strong>nginx Proxy:</strong> WHEP endpoint proxied via HTTPS (<code>/webrtc/</code> → <code>https://nvr-packager:8889</code> with SSL verify off)</li>
+                <li><strong>Grid Mode Options:</strong> iOS defaults to snapshot polling (1fps), but experimental "Force WebRTC Grid" setting available</li>
+                <li><strong>Fullscreen:</strong> iOS now uses WebRTC (~200ms) instead of HLS fallback (~2-4s)</li>
+            </ul>
+        </div>
+
         <div class="danger-note">
             <h3>Mobile-Specific Limitations</h3>
             <ul>
-                <li><strong>iOS WebRTC:</strong> Requires DTLS-SRTP encryption which our LAN-only MediaMTX config doesn't enable; falls back to HLS</li>
                 <li><strong>iOS Safari MJPEG:</strong> Multipart parsing unreliable; snapshot polling is more stable</li>
+                <li><strong>iOS Video Decode Limits:</strong> Safari limits concurrent video decodes (~4-8 streams); Force WebRTC Grid is experimental</li>
                 <li><strong>Audio Autoplay:</strong> Both iOS and Android block autoplay with audio; video starts muted by default</li>
                 <li><strong>Background Tab:</strong> iOS aggressively suspends background tabs; streams may need refresh on return</li>
             </ul>
@@ -1103,7 +1114,7 @@ sequenceDiagram
                 <li><strong>Jan 1, 2026:</strong> MediaMTX centralization, pre-buffer recording, FFmpeg scene detection threshold fix, PTZ latency learning</li>
                 <li><strong>Jan 2, 2026:</strong> Neolink Baichuan bridge, NEOLINK → MediaMTX LL-HLS integration, dual-output FFmpeg, connection monitor</li>
                 <li><strong>Jan 3-4, 2026:</strong> CameraStateTracker service (MediaMTX API polling, exponential backoff), StreamWatchdog unified service (replaces per-stream watchdogs), UI recovery detection (auto-refresh on backend recovery), WebRTC streaming via WHEP (~200ms latency)</li>
-                <li><strong>Jan 18, 2026:</strong> iOS snapshot polling (replaces unreliable MJPEG), expanded modal mode (tap-to-expand), Force MJPEG desktop setting, UI health re-enabled with tuned thresholds, PTZ/controls visibility fixes for grid mode</li>
+                <li><strong>Jan 18, 2026:</strong> iOS snapshot polling (replaces unreliable MJPEG), expanded modal mode (tap-to-expand), Force MJPEG desktop setting, UI health re-enabled with tuned thresholds, PTZ/controls visibility fixes for grid mode, DTLS enabled for iOS WebRTC support (~200ms latency), Force WebRTC Grid experimental setting for iOS</li>
             </ul>
         </div>
 

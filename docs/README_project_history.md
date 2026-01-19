@@ -14910,4 +14910,104 @@ Streams still load slowly. Further investigation needed in future sessions.
 
 ---
 
+## January 18, 2026 (02:00-17:30 EST): DTLS/WebRTC iOS Support + Settings Enhancements
+
+**Branch:** `dtls_webrtc_ios_JAN_18_2026_a`
+
+### Summary
+
+Major milestone: **iOS Safari now achieves ~200ms WebRTC latency** instead of 2-4s HLS fallback. Key lesson learned: iOS CAN use WebRTC on LAN - it just requires DTLS encryption (non-negotiable requirement).
+
+### Key Accomplishments
+
+#### 1. DTLS/WebRTC iOS Support
+
+**Problem:** iOS Safari refused WebRTC connections on LAN, falling back to HLS (~2-4s latency).
+
+**Root Cause:** iOS Safari has a hard requirement for DTLS-SRTP encryption. The earlier decision to disable DTLS for "LAN simplicity" only worked for desktop browsers.
+
+**Solution:**
+- Enabled DTLS in MediaMTX (`webrtcEncryption: yes`)
+- Added `webrtc_global_settings.enable_dtls` to `cameras.json`
+- Updated `update_mediamtx_paths.sh` to sync DTLS setting
+- Fixed nginx proxy to use HTTPS for WHEP endpoint (MediaMTX requires HTTPS when DTLS enabled)
+- Fixed API bug: `camera_repo.config` → `camera_repo.cameras_data` (non-existent property caused fallback to `false`)
+
+**Result:** iOS Safari now uses WebRTC with ~200ms latency in fullscreen mode.
+
+#### 2. Settings UI Enhancements
+
+Added multiple new settings toggles:
+
+| Setting | Description | Platform |
+|---------|-------------|----------|
+| Force MJPEG Mode | Use MJPEG instead of HLS in grid | Desktop only |
+| Grid: Snapshots Only | Use 1fps snapshot polling in grid | Desktop only |
+| Fullscreen: Use WebRTC | WebRTC (~200ms) vs HLS (~2-4s) in fullscreen | All |
+| iOS Grid: Force WebRTC | Experimental: WebRTC in grid view | iOS only |
+
+#### 3. iOS Detection Fix
+
+**Problem:** Mac Safari with Touch Bar detected as iOS due to `maxTouchPoints > 1`.
+
+**Solution:** Changed threshold to `maxTouchPoints >= 5` (iPads have 5+ touch points, Touch Bar has 1-2).
+
+#### 4. WebRTC Mixed Content Fix
+
+**Problem:** Browser blocked WHEP requests (HTTPS page → HTTP endpoint).
+
+**Solution:** Added nginx proxy: `/webrtc/` → `https://nvr-packager:8889` with SSL verify off.
+
+#### 5. Snapshot API Log Silencing
+
+**Problem:** iOS snapshot polling generating thousands of log lines.
+
+**Solution:** Added `access_log off` for `/api/snap/` in nginx and `SnapAPIFilter` in Flask.
+
+### Key Lesson Learned
+
+> **The assumption "iOS can't do WebRTC on LAN without internet" was WRONG.**
+>
+> iOS Safari CAN use WebRTC on LAN - it just has a **hard requirement** for DTLS-SRTP encryption. No exceptions. Desktop browsers (Chrome, Firefox) happily accept unencrypted WebRTC, which led to the false assumption that DTLS could be disabled for "LAN simplicity."
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `app.py` | Added `/api/config/streaming` endpoint, fixed `cameras_data` bug, `SnapAPIFilter` |
+| `config/cameras.json` | Added `webrtc_global_settings.enable_dtls` |
+| `nginx/nginx.conf` | WHEP proxy (`/webrtc/`), snapshot log silencing |
+| `packager/mediamtx.yml` | `webrtcEncryption: yes` |
+| `update_mediamtx_paths.sh` | DTLS sync from cameras.json |
+| `static/js/streaming/stream.js` | iOS detection fix, `isForceWebRTCGridEnabled()`, grid mode logic |
+| `static/js/streaming/webrtc-stream.js` | WHEP URL via nginx proxy |
+| `static/js/settings/settings-ui.js` | All new settings toggles |
+
+### Key Commits
+
+| Commit | Description |
+|--------|-------------|
+| `785db99` | Mount certificates for WebRTC encryption |
+| `2ff5c72` | Fix iOS detection (Mac Touch Bar vs iPad) |
+| `9bc52de` | Fix WebRTC mixed content: proxy WHEP through nginx HTTPS |
+| `d197fc8` | Silence snapshot API logs |
+| `44ead33` | Fix nginx HTTPS proxy for MediaMTX WHEP when DTLS enabled |
+| `41e21f2` | Add fullscreen stream type setting (HLS vs WebRTC) |
+| `80d3955` | Add Grid Snapshots Only setting for desktop users |
+| `1480a79` | Fix DTLS config: use cameras_data instead of non-existent config property |
+| `04d8893` | Add iOS Force WebRTC Grid Mode setting (experimental) |
+| `c000b48` | Update teaching doc with DTLS lesson learned |
+
+### Teaching Document
+
+Created: `docs/teachings/README_teaching_DTLS_WebRTC_01_18_2026.md`
+
+### TODO
+
+**Pending:**
+- [ ] Test UI health monitoring after container restart
+- [ ] Camera 95270001CSHLPO74 RTSP port issue (needs reboot or investigation)
+
+---
+
 {% endraw %}

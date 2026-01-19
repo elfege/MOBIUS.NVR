@@ -1609,11 +1609,27 @@ export class MultiStreamManager {
                 this.hlsManager.forceRefreshStream(cameraId, videoElement);
                 console.log(`[Recovery] ${cameraId}: HLS refresh triggered`);
             } else if (streamType === 'WEBRTC') {
-                console.log(`[Recovery] ${cameraId}: Using WebRTC forceRefreshStream (same as manual refresh)`);
+                // IMPORTANT: For WebRTC, call forceRefreshStream IMMEDIATELY without delay
+                // The 1-second delay was causing T8416P0023352DA9 to fail while manual refresh worked
+                // Manual refresh button calls forceRefreshStream directly - we should too
+                console.log(`[Recovery] ${cameraId}: Using WebRTC forceRefreshStream (same as manual refresh - NO delay)`);
                 this.setStreamStatus($streamItem, 'loading', 'Refreshing WebRTC...');
-                await new Promise(r => setTimeout(r, 1000)); // Brief delay for backend to stabilize
                 this.webrtcManager.forceRefreshStream(cameraId, videoElement);
                 console.log(`[Recovery] ${cameraId}: WebRTC refresh triggered`);
+
+                // FALLBACK: If video is still black after 5 seconds, trigger refresh button click directly
+                // This is the "nuclear option" - directly clicking the button that we know works
+                setTimeout(() => {
+                    if (videoElement && (videoElement.readyState < 2 || videoElement.videoWidth === 0)) {
+                        console.log(`[Recovery] ${cameraId}: WebRTC still black after 5s - triggering refresh button click directly`);
+                        const $refreshBtn = $streamItem.find('.refresh-stream-btn');
+                        if ($refreshBtn.length) {
+                            $refreshBtn.trigger('click');
+                        }
+                    } else {
+                        console.log(`[Recovery] ${cameraId}: WebRTC recovered successfully (readyState=${videoElement?.readyState}, videoWidth=${videoElement?.videoWidth})`);
+                    }
+                }, 5000);
             } else {
                 // For other stream types: full stop+start cycle
                 console.log(`[Recovery] ${cameraId}: Using full stop+start cycle for ${streamType}`);

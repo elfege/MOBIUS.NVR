@@ -165,6 +165,18 @@ export class SettingsUI {
             window.location.reload();
         });
 
+        // Quiet Status Messages toggle
+        // When enabled, hides verbose status messages (Refreshing, Degraded, Recovered, etc.)
+        // Only shows important statuses: Starting, Connecting, Live, Failed, Error
+        this.$content.on('change', '#quiet-status-toggle', (e) => {
+            const enabled = $(e.currentTarget).is(':checked');
+            console.log('[SettingsUI] Quiet Status Messages toggled:', enabled);
+
+            localStorage.setItem('quietStatusMessages', enabled ? 'true' : 'false');
+
+            // No reload needed - takes effect immediately on next status update
+        });
+
         // Mute all cameras button
         this.$content.on('click', '#mute-all-btn', () => {
             console.log('[SettingsUI] Mute all cameras clicked');
@@ -422,6 +434,28 @@ export class SettingsUI {
         </div>
         ` : ''}
 
+        <!-- Quiet Status Messages Setting -->
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-comment-slash"></i>
+                    Quiet Status Messages
+                </div>
+                <div class="setting-control">
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="quiet-status-toggle"
+                               ${this.isQuietStatusEnabled() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-description">
+                Hide verbose status messages like "Refreshing...", "Degraded", "Recovered".<br>
+                Only show important statuses: Starting, Connecting, Live, Failed.<br>
+                Useful for a cleaner interface when streams are stable.
+            </div>
+        </div>
+
         <!-- Audio Controls Setting -->
         <div class="setting-row">
             <div class="setting-top">
@@ -505,6 +539,15 @@ export class SettingsUI {
      */
     isForceWebRTCGridEnabled() {
         return localStorage.getItem('forceWebRTCGrid') === 'true';
+    }
+
+    /**
+     * Check if quiet status messages mode is enabled.
+     * When enabled, verbose status messages (Refreshing, Degraded, Recovered, etc.)
+     * are hidden and only important statuses are shown (Starting, Connecting, Live, Failed).
+     */
+    isQuietStatusEnabled() {
+        return localStorage.getItem('quietStatusMessages') === 'true';
     }
 }
 

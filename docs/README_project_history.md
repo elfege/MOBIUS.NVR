@@ -15002,11 +15002,250 @@ Added multiple new settings toggles:
 
 Created: `docs/teachings/README_teaching_DTLS_WebRTC_01_18_2026.md`
 
-### TODO
+---
 
-**Pending:**
+## January 19, 2026 (01:00-03:00 EST): Audio Restoration & User-Stopped Stream Tracking
+
+**Branches:** `audio_restoration_JAN_19_2026_a`, `audio_restoration_JAN_19_2026_b`
+
+### Summary
+
+Fixed WebRTC audio by transcoding AAC → Opus, and implemented user-stopped stream tracking to prevent watchdog from auto-restarting manually stopped streams.
+
+### Audio Restoration
+
+#### Problem
+
+WebRTC streams had no audio. MediaMTX logs showed:
+
+```text
+WAR [WebRTC] [session efb8efc9] skipping track 2 (MPEG-4 Audio)
+```
+
+#### Root Cause
+
+All cameras output AAC audio natively, but WebRTC specification only supports **Opus** (and G.711 for telephony). MediaMTX explicitly skips AAC tracks for WebRTC sessions.
+
+#### Audio Probing Results
+
+| Camera | Type | Native Audio Codec | Sample Rate | Channels |
+|--------|------|-------------------|-------------|----------|
+| UniFi G5 Flex | unifi | AAC LC | 16kHz | mono |
+| Reolink RLC-423WS | reolink | AAC LC | 16kHz | mono |
+
+#### Solution
+
+1. Changed `cameras.json` audio config from `"c:a": "copy"` to `"c:a": "libopus"` with `"b:a": "32k"`
+2. Fixed `streaming/ffmpeg_params.py` - main stream was hardcoded to `-c:a copy`, now reads from config
+3. Enabled Opus transcoding for ALL cameras
+
+**Result:** Audio now works in grid view, modal view, AND fullscreen mode (all WebRTC).
+
+### User-Stopped Stream Tracking
+
+#### Problem
+
+When user clicks stop on a stream, watchdog/health monitor would restart it automatically.
+
+#### Solution
+
+Track user-stopped streams in localStorage:
+- `markStreamAsUserStopped(cameraId)` - called when `userInitiated: true`
+- `clearUserStoppedStream(cameraId)` - called when stream is started
+- `isUserStoppedStream(cameraId)` - checked in `handleBackendRecovery()` and `onRecovery()`
+
+**Files Modified:**
+- `static/js/streaming/stream.js` - User-stopped tracking with localStorage
+- `config/cameras.json` - Opus audio enabled for all cameras
+- `streaming/ffmpeg_params.py` - Main stream now uses audio config
+
+### Key Commits
+
+| Commit | Description |
+|--------|-------------|
+| `37188de` | Fix: User-stopped streams being auto-restarted by watchdog |
+| `9082b89` | Switch UniFi audio from AAC passthrough to Opus for WebRTC compatibility |
+| `fecf5dd` | Fix: Apply audio codec config to both sub and main streams |
+| `73d1c2d` | Enable Opus audio transcoding for all cameras |
+
+---
+
+## January 19, 2026 (03:00-12:00 EST): Stream Status Fixes & Timeline Playback
+
+**Branches:** `stream_status_fixes_JAN_19_2026_a`, `timeline_playback_JAN_19_2026_a`
+
+**Context compaction occurred at ~03:00 EST**
+
+### Stream Status Fixes
+
+#### Quiet Mode Fix
+
+**Problem:** "Quiet Status Messages" checkbox was enabled but UI still showed "Degraded" status text.
+
+**Root Cause:** `CameraStateMonitor.updateUI()` directly set the status indicator and text, bypassing the quiet mode check in `setStreamStatus()`.
+
+**Solution:** Added two checks to `camera-state-monitor.js`:
+1. **User-stopped check:** If camera is in `localStorage.userStoppedStreams`, skip UI update entirely
+2. **Quiet mode check:** If `localStorage.quietStatusMessages === 'true'` and status is not 'online' or 'starting', only update class (visual indicator) but keep previous text
+
+### Timeline Playback Feature
+
+Added timeline playback functionality to each camera modal:
+
+1. Select a date/time range
+2. View recordings on a visual timeline
+3. Drag-select a portion for export
+4. Zoom in/out for granular selection
+5. Export to MP4 (with optional iOS compatibility)
+6. Download the merged video file
+
+#### Backend: TimelineService
+
+**File:** `services/recording/timeline_service.py`
+
+**Classes:**
+- `ExportStatus` (Enum) - Job states: PENDING, PROCESSING, MERGING, CONVERTING, COMPLETED, FAILED, CANCELLED
+- `TimelineSegment` (dataclass) - Recording segment metadata
+- `ExportJob` (dataclass) - Export job tracking with progress
+
+**Key Methods:**
+- `get_timeline_segments(camera_id, start, end)` - Query recordings from PostgREST
+- `get_timeline_summary(camera_id, start, end, bucket_minutes)` - Get coverage buckets for visualization
+- `create_export_job(camera_id, start, end, ios_compatible)` - Create new export job
+- `start_export(job_id)` - Start async processing in background thread
+- `_convert_for_ios(input, output)` - Re-encode to H.264 Baseline + AAC for iOS Photos app
+
+#### API Endpoints (added to app.py)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/timeline/segments/<camera_id>` | GET | Query segments by time range |
+| `/api/timeline/summary/<camera_id>` | GET | Get coverage summary with buckets |
+| `/api/timeline/export` | POST | Create export job |
+| `/api/timeline/export/<job_id>` | GET | Get job status |
+| `/api/timeline/export/<job_id>/start` | POST | Start pending job |
+| `/api/timeline/export/<job_id>/cancel` | POST | Cancel job |
+| `/api/timeline/export/<job_id>/download` | GET | Download completed export |
+| `/api/timeline/exports` | GET | List all export jobs |
+
+#### Frontend: TimelinePlaybackModal
+
+**File:** `static/js/modals/timeline-playback-modal.js`
+
+**Features:**
+- Date picker with time range inputs
+- Quick presets: Last Hour, 6 Hours, 24 Hours, 7 Days
+- Canvas-based timeline visualization
+- Color-coded segments: Green (motion), Blue (continuous), Orange (manual)
+- Drag-select for export range
+- Zoom slider (1-10x) with fit-to-view button
+- Export progress bar with status text
+- iOS compatibility checkbox
+
+**CSS:** `static/css/components/timeline-modal.css`
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `services/recording/timeline_service.py` | NEW - Timeline query and export service |
+| `app.py` | Added timeline API endpoints (8 routes) |
+| `static/js/modals/timeline-playback-modal.js` | NEW - Timeline UI component |
+| `static/css/components/timeline-modal.css` | NEW - Timeline modal styling |
+| `templates/streams.html` | Added playback button and modal HTML |
+| `docker-compose.yml` | Added exports volume mount |
+| `static/js/streaming/camera-state-monitor.js` | Quiet mode and user-stopped fixes |
+
+### Key Commits
+
+| Commit | Description |
+|--------|-------------|
+| `f0b9a28` | Fix: CameraStateMonitor now respects user-stopped and quiet mode settings |
+| `4db432f` | Add timeline playback feature: UI modal, CSS, docker volume for exports |
+
+---
+
+## January 19, 2026 (12:00+ EST): Storage Migration Planning
+
+**Branch:** `video_recording_long_term_storage_fix_JAN_19_2025_a`
+
+**Context compaction occurred at ~12:00 EST**
+
+### Summary
+
+All previous branches merged to main. Started work on storage migration and timeline playback fixes.
+
+### Merged to Main
+
+- `audio_restoration_JAN_19_2026_a` ✓
+- `audio_restoration_JAN_19_2026_b` ✓
+- `stream_status_fixes_JAN_19_2026_a` ✓
+- `timeline_playback_JAN_19_2026_a` ✓
+
+### Issues Identified
+
+1. **Timeline shows "No recordings found"** - Either recordings not logged to DB or query issue
+2. **No storage migration** - Files in `/mnt/sdc/NVR_Recent/` (210GB) never move to `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/` (empty)
+3. **No file operations audit** - Moves/deletes not logged
+
+### Architectural Decision
+
+**DEFERRED:** Full database-backed settings overhaul
+**See:** `docs/README_plan_for_user_based_settings_implementation.md`
+
+**CURRENT FOCUS:**
+1. Fix timeline playback
+2. Implement storage migration with logging
+3. Keep `recording_settings.json` as-is
+
+### Key Commits
+
+| Commit | Description |
+|--------|-------------|
+| `20b665e` | Add deferred plan for user-based settings implementation |
+
+---
+
+## TODO List (Cumulative)
+
+**Current Priority:**
+
+- [ ] Diagnose why timeline shows "No recordings found"
+- [ ] Verify recordings are being logged to PostgreSQL
+- [ ] Fix timeline query if needed
+- [ ] Add `file_operations_log` table for audit trail
+- [ ] Implement storage migration (recent → archive)
+
+**Testing Needed:**
+
 - [ ] Test UI health monitoring after container restart
+- [ ] Test timeline playback modal opens from playback button
+- [ ] Test date/time controls and presets load recordings
+- [ ] Test drag-select on canvas creates valid selection
+- [ ] Test export creates valid MP4 file
+- [ ] Test iOS export creates Photos-compatible file
+- [ ] Test download works on desktop and iOS
+- [ ] Test quiet mode hides verbose statuses
+- [ ] Test user-stopped streams stay "Stopped"
+- [ ] Test storage migration moves files correctly
+
+**Hardware Issues:**
+
 - [ ] Camera 95270001CSHLPO74 RTSP port issue (needs reboot or investigation)
+
+**Future Enhancements:**
+
+- [ ] Add pan/scroll for zoomed timeline
+- [ ] Add segment preview on hover
+- [ ] Add direct video playback in modal (before export)
+- [ ] Add automatic old export cleanup
+- [ ] Consider dedicated timeline page (Blue Iris 5 style)
+
+**Deferred (see docs/README_plan_for_user_based_settings_implementation.md):**
+
+- [ ] Database-backed recording settings
+- [ ] Camera settings UI (credentials, resolution)
+- [ ] Container self-restart mechanism
 
 ---
 

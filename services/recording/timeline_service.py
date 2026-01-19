@@ -200,19 +200,28 @@ class TimelineService:
 
         # Build PostgREST query
         # We want recordings where:
+        # - timestamp >= start_time (recording started after our range starts)
         # - timestamp <= end_time (recording started before our range ends)
-        # - end_timestamp >= start_time (recording ended after our range starts)
-        # This handles partial overlaps correctly
+        # Note: We filter by start timestamp only since end_timestamp may not be populated
+        # The Python code below handles partial overlaps at range boundaries
+        #
+        # PostgREST range query syntax: use 'and' operator for compound conditions
+        # Format: column=operator.value&column=operator.value doesn't work for same column
+        # Instead use select with filter or multiple query params with different ops
+
+        # Query recordings that started within our time range
+        # PostgREST supports multiple filters on same column when they're different operators
+        url = f"{self.postgrest_url}/recordings"
         params = {
             'camera_id': f'eq.{camera_id}',
-            'timestamp': f'lte.{end_time.isoformat()}',
             'status': 'eq.completed',  # Only completed recordings
             'order': 'timestamp.asc',
             'limit': '1000'
         }
 
-        # Add end_timestamp filter if recordings have it
-        # Some early recordings may not have end_timestamp populated
+        # Add the timestamp range filter using PostgREST's 'and' syntax
+        # We need both: timestamp >= start_time AND timestamp <= end_time
+        params['and'] = f"(timestamp.gte.{start_time.isoformat()},timestamp.lte.{end_time.isoformat()})"
 
         try:
             response = requests.get(

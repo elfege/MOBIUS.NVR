@@ -105,12 +105,41 @@ export class CameraStateMonitor {
     }
 
     /**
+     * Check if a camera is marked as user-stopped in localStorage.
+     * User-stopped streams should not have their status overwritten by backend state.
+     * @param {string} cameraId - Camera serial number
+     * @returns {boolean} True if user manually stopped this stream
+     */
+    isUserStoppedStream(cameraId) {
+        try {
+            const stored = localStorage.getItem('userStoppedStreams');
+            if (stored) {
+                const stoppedSet = new Set(JSON.parse(stored));
+                return stoppedSet.has(cameraId);
+            }
+        } catch (e) {
+            console.error('[CameraState] Error reading userStoppedStreams:', e);
+        }
+        return false;
+    }
+
+    /**
      * Update UI with camera state information
      * @param {string} cameraId - Camera serial number
      * @param {jQuery} $streamItem - Stream item element
      * @param {object} state - Camera state data from API
      */
     updateUI(cameraId, $streamItem, state) {
+        // CRITICAL: Skip UI updates for user-stopped streams
+        // When user manually stops a stream, they don't want to see "Degraded" etc.
+        // The stream should stay showing "Stopped" until they restart it
+        if (this.isUserStoppedStream(cameraId)) {
+            // Don't update UI for user-stopped streams - respect their choice
+            // Still track state internally for recovery detection
+            this.previousStates.set(cameraId, state.availability);
+            return;
+        }
+
         // Check for recovery transition: degraded/offline → online
         const previousState = this.previousStates.get(cameraId);
         const wasUnhealthy = previousState && (previousState === 'degraded' || previousState === 'offline');
@@ -166,6 +195,20 @@ export class CameraStateMonitor {
             default:
                 statusClass = 'loading';
                 statusText = 'Unknown';
+        }
+
+        // Check quiet mode - hide verbose statuses like "Degraded", "Offline", etc.
+        const quietMode = localStorage.getItem('quietStatusMessages') === 'true';
+        if (quietMode) {
+            // In quiet mode, only show important statuses: Live, Starting, Stopped
+            // Verbose (hidden): Degraded, Offline with retry countdown
+            const importantStatuses = ['online', 'starting'];
+            if (!importantStatuses.includes(state.availability)) {
+                // Update class for visual indicator but don't update text
+                $indicator.attr('class', `stream-indicator ${statusClass}`);
+                // Keep previous text visible (e.g., "Stopped" or "Live")
+                return;
+            }
         }
 
         $indicator.attr('class', `stream-indicator ${statusClass}`);

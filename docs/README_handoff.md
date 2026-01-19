@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 19, 2026 02:35 EST*
+*Last updated: January 19, 2026 02:54 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -42,6 +42,9 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ### Commits This Session (post-compaction)
 
 1. `7302dfb` - Config: Change camera stream_type from MJPEG to WEBRTC
+2. `ed150f9` - Update handoff: post-compaction session, verify WebSocket recovery features
+3. `93fe6b0` - Config: Set REOLINK Office and Terrace South to MJPEG @ 15fps for comparison test
+4. `abf89ec` - Fix: MJPEG capture timing - account for request latency to achieve target FPS
 
 ### Previous Session Commits (pre-compaction, on `audio_restoration_JAN_19_2026_b`)
 
@@ -123,6 +126,32 @@ Removed duplicate `**/config/` rule that was overriding exceptions. `config/came
 - [services/camera_state_tracker.py](services/camera_state_tracker.py) - `starting_since` field, `_check_starting_timeouts()`
 - [static/js/streaming/stream.js](static/js/streaming/stream.js) - WebSocket subscription, startup timeout
 
+#### 6. MJPEG Capture Timing Fix (commit `abf89ec`)
+
+**Problem:** MJPEG streams not achieving configured FPS (e.g., 15fps config resulted in ~1fps).
+
+**Root Cause:** Sleep happened AFTER request completed, so:
+
+```text
+Request (800ms) → Sleep (67ms) → Next request
+Total cycle: ~867ms = ~1.15 FPS
+```
+
+**Solution:** Track `loop_start = time.time()` at beginning of each iteration, calculate remaining sleep:
+
+```python
+elapsed = time.time() - loop_start
+remaining = max(0, frame_interval - elapsed)
+if remaining > 0:
+    stop_flag.wait(remaining)
+```
+
+**Files Modified:**
+
+- [services/reolink_mjpeg_capture_service.py](services/reolink_mjpeg_capture_service.py) - Timing fix for target FPS
+
+**Note:** Terrace South (95270001CSHLPO74) may have hardware damage limiting Snap API response time. REOLINK Office (95270001CSO4BPDZ) used as healthy control for comparison.
+
 ---
 
 ## Audio Architecture Notes
@@ -154,6 +183,7 @@ Current config uses Opus for all since WebRTC is primary playback method. HLS la
 | [streaming/ffmpeg_params.py](streaming/ffmpeg_params.py) | Main stream now uses audio config (was hardcoded copy) |
 | [.gitignore](.gitignore) | Removed duplicate config/ rule |
 | [docs/README_handoff.md](docs/README_handoff.md) | Session documentation |
+| [services/reolink_mjpeg_capture_service.py](services/reolink_mjpeg_capture_service.py) | MJPEG timing fix for target FPS |
 
 ---
 
@@ -176,6 +206,7 @@ Current config uses Opus for all since WebRTC is primary playback method. HLS la
 - [x] WebSocket stream recovery (instant HLS refresh on backend restart)
 - [x] 15-second frontend startup timeout
 - [x] 60-second backend STARTING state timeout
+- [x] MJPEG capture timing fix (account for request latency)
 
 **Next Major Feature (discussed but not started):**
 

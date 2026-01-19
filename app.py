@@ -2950,6 +2950,7 @@ def api_timeline_summary(camera_id: str):
 
 
 @app.route('/api/timeline/export', methods=['POST'])
+@csrf.exempt
 def api_timeline_export_create():
     """
     Create a video export job for a time range.
@@ -3041,6 +3042,7 @@ def api_timeline_export_status(job_id: str):
 
 
 @app.route('/api/timeline/export/<job_id>/start', methods=['POST'])
+@csrf.exempt
 def api_timeline_export_start(job_id: str):
     """
     Start processing a pending export job.
@@ -3065,6 +3067,7 @@ def api_timeline_export_start(job_id: str):
 
 
 @app.route('/api/timeline/export/<job_id>/cancel', methods=['POST'])
+@csrf.exempt
 def api_timeline_export_cancel(job_id: str):
     """Cancel a pending or processing export job."""
     try:

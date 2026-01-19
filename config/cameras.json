@@ -190,11 +190,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -326,11 +325,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -462,11 +460,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -598,11 +595,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -734,11 +730,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -870,11 +865,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1005,11 +999,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1141,11 +1134,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1295,11 +1287,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1427,11 +1418,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1559,11 +1549,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1690,11 +1679,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1821,11 +1809,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -1952,11 +1939,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -2084,11 +2070,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -2216,11 +2201,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",
@@ -2336,11 +2320,10 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "Transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",

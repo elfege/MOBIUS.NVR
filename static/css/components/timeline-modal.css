@@ -1,0 +1,532 @@
+/**
+ * Timeline Playback Modal - Styling
+ * Location: ~/0_NVR/static/css/components/timeline-modal.css
+ *
+ * Provides styling for:
+ * - Timeline modal overlay
+ * - Canvas-based timeline visualization
+ * - Date/time controls
+ * - Export progress indicators
+ */
+
+/* ==========================================================================
+   Playback Button (in stream item)
+   ========================================================================== */
+
+.camera-playback-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 96px;  /* Offset from record button */
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #7C4DFF;  /* Purple accent for playback */
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+    font-size: 16px;
+    opacity: 0;
+    pointer-events: auto;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .camera-playback-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .camera-playback-btn {
+        opacity: 0.7;
+    }
+}
+
+.camera-playback-btn:hover {
+    background: rgba(124, 77, 255, 0.3);
+    border-color: #7C4DFF;
+    color: #fff;
+    transform: scale(1.05);
+}
+
+.camera-playback-btn:active {
+    transform: scale(0.95);
+}
+
+
+/* ==========================================================================
+   Modal Overlay
+   ========================================================================== */
+
+.timeline-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.timeline-modal-content {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    width: 95%;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+
+/* ==========================================================================
+   Modal Header
+   ========================================================================== */
+
+.timeline-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.timeline-modal-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.timeline-modal-header h3 i {
+    color: #7C4DFF;
+}
+
+.timeline-modal-close {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.timeline-modal-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+
+/* ==========================================================================
+   Modal Body
+   ========================================================================== */
+
+.timeline-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+
+/* ==========================================================================
+   Date/Time Controls
+   ========================================================================== */
+
+.timeline-date-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+}
+
+.date-control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.date-control-group label {
+    font-size: 12px;
+    color: #888;
+    font-weight: 500;
+}
+
+.timeline-date-input,
+.timeline-time-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #fff;
+    padding: 8px 12px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.timeline-date-input:focus,
+.timeline-time-input:focus {
+    border-color: #7C4DFF;
+}
+
+/* Style the date/time picker icons */
+.timeline-date-input::-webkit-calendar-picker-indicator,
+.timeline-time-input::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
+
+/* ==========================================================================
+   Buttons
+   ========================================================================== */
+
+.timeline-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.timeline-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.timeline-btn-primary {
+    background: #7C4DFF;
+    color: #fff;
+}
+
+.timeline-btn-primary:hover:not(:disabled) {
+    background: #651fff;
+}
+
+.timeline-btn-success {
+    background: #4CAF50;
+    color: #fff;
+}
+
+.timeline-btn-success:hover:not(:disabled) {
+    background: #388E3C;
+}
+
+.timeline-btn-danger {
+    background: #f44336;
+    color: #fff;
+}
+
+.timeline-btn-danger:hover:not(:disabled) {
+    background: #d32f2f;
+}
+
+
+/* ==========================================================================
+   Presets
+   ========================================================================== */
+
+.timeline-presets {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.timeline-preset-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 16px;
+    color: #ccc;
+    padding: 6px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.timeline-preset-btn:hover {
+    background: rgba(124, 77, 255, 0.2);
+    border-color: #7C4DFF;
+    color: #fff;
+}
+
+
+/* ==========================================================================
+   Timeline Container
+   ========================================================================== */
+
+.timeline-container {
+    min-height: 150px;
+    position: relative;
+}
+
+.timeline-loading,
+.timeline-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 150px;
+    color: #888;
+    font-size: 14px;
+    gap: 10px;
+}
+
+.timeline-loading i,
+.timeline-empty i {
+    font-size: 32px;
+    opacity: 0.5;
+}
+
+.timeline-canvas-wrapper {
+    position: relative;
+}
+
+#timeline-canvas {
+    width: 100%;
+    height: 150px;
+    border-radius: 8px;
+    cursor: crosshair;
+    touch-action: none;  /* Prevent touch scrolling on canvas */
+}
+
+.timeline-selection-info {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 13px;
+    color: #aaa;
+}
+
+.timeline-selection-info span {
+    color: #fff;
+    font-weight: 500;
+}
+
+
+/* ==========================================================================
+   Zoom Controls
+   ========================================================================== */
+
+.timeline-zoom-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 8px;
+}
+
+.timeline-zoom-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #ccc;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.timeline-zoom-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+#timeline-zoom-slider {
+    width: 150px;
+    accent-color: #7C4DFF;
+}
+
+
+/* ==========================================================================
+   Export Controls
+   ========================================================================== */
+
+.timeline-export-controls {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.export-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.export-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #ccc;
+    font-size: 13px;
+}
+
+.export-option input[type="checkbox"] {
+    accent-color: #7C4DFF;
+    width: 16px;
+    height: 16px;
+}
+
+.export-option small {
+    color: #888;
+    font-size: 11px;
+}
+
+.export-summary {
+    text-align: center;
+    color: #888;
+    font-size: 13px;
+    padding: 8px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.export-summary span {
+    color: #fff;
+}
+
+
+/* ==========================================================================
+   Export Progress
+   ========================================================================== */
+
+.timeline-export-progress {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.export-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.export-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7C4DFF, #B388FF);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.export-progress-text {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    font-size: 13px;
+}
+
+.export-status {
+    color: #ccc;
+}
+
+.export-percent {
+    color: #7C4DFF;
+    font-weight: 500;
+}
+
+
+/* ==========================================================================
+   Download Ready
+   ========================================================================== */
+
+.timeline-download-ready {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.timeline-download-ready i {
+    font-size: 40px;
+    color: #4CAF50;
+}
+
+.timeline-download-ready span {
+    color: #4CAF50;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+
+/* ==========================================================================
+   Responsive Adjustments
+   ========================================================================== */
+
+@media (max-width: 600px) {
+    .timeline-modal-content {
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        border-radius: 0;
+    }
+
+    .timeline-date-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .date-control-group {
+        width: 100%;
+    }
+
+    .timeline-date-input,
+    .timeline-time-input {
+        width: 100%;
+    }
+
+    .export-options {
+        flex-direction: column;
+    }
+}

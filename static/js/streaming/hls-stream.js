@@ -74,12 +74,24 @@ export class HLSStreamManager {
 
 
     /**
-     * Force refresh a stream by destroying and recreating the HLS instance
+     * Force refresh a stream by destroying and recreating the HLS instance.
+     *
+     * Preserves the last frame during refresh to avoid visible black flash:
+     * 1. Capture current video frame to canvas overlay
+     * 2. Destroy existing HLS instance
+     * 3. Restart stream
+     * 4. Remove canvas when new stream is playing
      */
     async forceRefreshStream(cameraId, videoElement) {
         // 0) Remember current type before clearing map
         const current = this.activeStreams.get(cameraId);
         const streamType = current?.type ?? 'sub';
+
+        // Capture last frame to canvas overlay for seamless transition
+        let frameCanvas = null;
+        if (videoElement && videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
+            frameCanvas = this._captureFrameOverlay(cameraId, videoElement);
+        }
 
         // 1) Client-side teardown
         try {
@@ -106,7 +118,65 @@ export class HLSStreamManager {
         }
 
         // 2) Restart stream via startStream (handles backend + frontend)
-        return await this.startStream(cameraId, videoElement, streamType);
+        const result = await this.startStream(cameraId, videoElement, streamType);
+
+        // Remove frame overlay after short delay (stream should be displaying by now)
+        if (frameCanvas) {
+            setTimeout(() => {
+                if (frameCanvas.parentNode) {
+                    frameCanvas.remove();
+                }
+            }, 2000);
+        }
+
+        return result;
+    }
+
+    /**
+     * Capture current video frame to a canvas overlay positioned over the video.
+     *
+     * Creates a canvas element that shows the last frame, positioned exactly
+     * over the video element. This prevents the black flash during stream refresh.
+     *
+     * @param {string} cameraId - Camera identifier for logging
+     * @param {HTMLVideoElement} videoElement - Video element to capture from
+     * @returns {HTMLCanvasElement} Canvas element with captured frame
+     */
+    _captureFrameOverlay(cameraId, videoElement) {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        canvas.className = 'hls-frame-overlay';
+
+        // Draw current frame
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoElement, 0, 0);
+
+        // Position canvas exactly over video element
+        canvas.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 10;
+            pointer-events: none;
+        `;
+
+        // Insert canvas as sibling after video (video parent should have position:relative)
+        const parent = videoElement.parentElement;
+        if (parent) {
+            // Ensure parent has relative positioning for absolute canvas
+            const parentStyle = window.getComputedStyle(parent);
+            if (parentStyle.position === 'static') {
+                parent.style.position = 'relative';
+            }
+            parent.appendChild(canvas);
+            console.log(`[HLS] ${cameraId}: Frame overlay created for seamless refresh`);
+        }
+
+        return canvas;
     }
 
     /**

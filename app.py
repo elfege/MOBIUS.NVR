@@ -47,6 +47,7 @@ from services.ptz.baichuan_ptz_handler import BaichuanPTZHandler
 from services.recording.recording_service import RecordingService
 from config.recording_config_loader import RecordingConfig
 from services.recording.snapshot_service import SnapshotService
+from services.recording.timeline_service import get_timeline_service, TimelineService
 from services.onvif.onvif_event_listener import ONVIFEventListener
 from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
 from services.motion.reolink_motion_service import create_reolink_motion_service
@@ -2830,6 +2831,318 @@ def api_recording_active():
     
     except Exception as e:
         logger.error(f"Get active recordings API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+########################################################
+#           📼 TIMELINE PLAYBACK API ROUTES 📼
+########################################################
+
+@app.route('/api/timeline/segments/<camera_id>', methods=['GET'])
+def api_timeline_segments(camera_id: str):
+    """
+    Get timeline segments for a camera within a time range.
+
+    Query Parameters:
+        start: ISO timestamp (required) - Range start
+        end: ISO timestamp (required) - Range end
+        types: Comma-separated recording types (optional) - motion,continuous,manual
+
+    Returns:
+        List of recording segments with file paths and metadata
+    """
+    try:
+        # Parse time range from query params
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+
+        if not start_str or not end_str:
+            return jsonify({'error': 'start and end parameters required'}), 400
+
+        try:
+            from datetime import datetime
+            start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+            end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+        except ValueError as e:
+            return jsonify({'error': f'Invalid timestamp format: {e}'}), 400
+
+        # Optional recording type filter
+        types_str = request.args.get('types')
+        recording_types = types_str.split(',') if types_str else None
+
+        # Get timeline service
+        timeline_service = get_timeline_service()
+
+        # Query segments
+        segments = timeline_service.get_timeline_segments(
+            camera_id, start_time, end_time, recording_types
+        )
+
+        return jsonify({
+            'success': True,
+            'camera_id': camera_id,
+            'start': start_time.isoformat(),
+            'end': end_time.isoformat(),
+            'segment_count': len(segments),
+            'segments': [
+                {
+                    'recording_id': seg.recording_id,
+                    'start_time': seg.start_time.isoformat(),
+                    'end_time': seg.end_time.isoformat(),
+                    'duration_seconds': seg.duration_seconds,
+                    'file_path': seg.file_path,
+                    'file_size_bytes': seg.file_size_bytes,
+                    'recording_type': seg.recording_type,
+                    'has_audio': seg.has_audio
+                }
+                for seg in segments
+            ]
+        })
+
+    except Exception as e:
+        logger.error(f"Timeline segments API error for {camera_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/summary/<camera_id>', methods=['GET'])
+def api_timeline_summary(camera_id: str):
+    """
+    Get timeline summary with recording coverage by time buckets.
+
+    Query Parameters:
+        start: ISO timestamp (required) - Range start
+        end: ISO timestamp (required) - Range end
+        bucket_minutes: Bucket size in minutes (optional, default: 15)
+
+    Returns:
+        Summary with time buckets showing recording coverage and gaps
+    """
+    try:
+        # Parse parameters
+        start_str = request.args.get('start')
+        end_str = request.args.get('end')
+        bucket_minutes = int(request.args.get('bucket_minutes', 15))
+
+        if not start_str or not end_str:
+            return jsonify({'error': 'start and end parameters required'}), 400
+
+        try:
+            from datetime import datetime
+            start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+            end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+        except ValueError as e:
+            return jsonify({'error': f'Invalid timestamp format: {e}'}), 400
+
+        timeline_service = get_timeline_service()
+
+        summary = timeline_service.get_timeline_summary(
+            camera_id, start_time, end_time, bucket_minutes
+        )
+
+        return jsonify({
+            'success': True,
+            **summary
+        })
+
+    except Exception as e:
+        logger.error(f"Timeline summary API error for {camera_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/export', methods=['POST'])
+def api_timeline_export_create():
+    """
+    Create a video export job for a time range.
+
+    Request Body (JSON):
+        camera_id: Camera serial number (required)
+        start: ISO timestamp (required) - Export range start
+        end: ISO timestamp (required) - Export range end
+        ios_compatible: Boolean (optional) - Convert to iOS format
+        types: List of recording types (optional) - ['motion', 'continuous', 'manual']
+        auto_start: Boolean (optional, default: true) - Start processing immediately
+
+    Returns:
+        Export job details with job_id for tracking
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'JSON body required'}), 400
+
+        camera_id = data.get('camera_id')
+        start_str = data.get('start')
+        end_str = data.get('end')
+
+        if not camera_id or not start_str or not end_str:
+            return jsonify({'error': 'camera_id, start, and end are required'}), 400
+
+        try:
+            from datetime import datetime
+            start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
+            end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+        except ValueError as e:
+            return jsonify({'error': f'Invalid timestamp format: {e}'}), 400
+
+        ios_compatible = data.get('ios_compatible', False)
+        recording_types = data.get('types')
+        auto_start = data.get('auto_start', True)
+
+        timeline_service = get_timeline_service()
+
+        # Create export job
+        job = timeline_service.create_export_job(
+            camera_id=camera_id,
+            start_time=start_time,
+            end_time=end_time,
+            ios_compatible=ios_compatible,
+            recording_types=recording_types
+        )
+
+        # Optionally start processing immediately
+        if auto_start:
+            timeline_service.start_export(job.job_id)
+
+        return jsonify({
+            'success': True,
+            'job': job.to_dict()
+        })
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Timeline export create API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/export/<job_id>', methods=['GET'])
+def api_timeline_export_status(job_id: str):
+    """
+    Get export job status.
+
+    Returns:
+        Export job details including progress and output path when complete
+    """
+    try:
+        timeline_service = get_timeline_service()
+        job = timeline_service.get_export_job(job_id)
+
+        if not job:
+            return jsonify({'error': f'Export job not found: {job_id}'}), 404
+
+        return jsonify({
+            'success': True,
+            'job': job.to_dict()
+        })
+
+    except Exception as e:
+        logger.error(f"Timeline export status API error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/export/<job_id>/start', methods=['POST'])
+def api_timeline_export_start(job_id: str):
+    """
+    Start processing a pending export job.
+
+    Use this if auto_start was false when creating the job.
+    """
+    try:
+        timeline_service = get_timeline_service()
+        timeline_service.start_export(job_id)
+
+        job = timeline_service.get_export_job(job_id)
+        return jsonify({
+            'success': True,
+            'job': job.to_dict()
+        })
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Timeline export start API error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/export/<job_id>/cancel', methods=['POST'])
+def api_timeline_export_cancel(job_id: str):
+    """Cancel a pending or processing export job."""
+    try:
+        timeline_service = get_timeline_service()
+        cancelled = timeline_service.cancel_export(job_id)
+
+        if not cancelled:
+            job = timeline_service.get_export_job(job_id)
+            if not job:
+                return jsonify({'error': f'Export job not found: {job_id}'}), 404
+            return jsonify({'error': f'Cannot cancel job in status: {job.status.value}'}), 400
+
+        return jsonify({
+            'success': True,
+            'message': f'Export job {job_id} cancelled'
+        })
+
+    except Exception as e:
+        logger.error(f"Timeline export cancel API error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/export/<job_id>/download', methods=['GET'])
+def api_timeline_export_download(job_id: str):
+    """
+    Download completed export file.
+
+    Returns:
+        Video file as attachment for download
+    """
+    try:
+        timeline_service = get_timeline_service()
+        job = timeline_service.get_export_job(job_id)
+
+        if not job:
+            return jsonify({'error': f'Export job not found: {job_id}'}), 404
+
+        if job.status.value != 'completed':
+            return jsonify({'error': f'Export not ready (status: {job.status.value})'}), 400
+
+        if not job.output_path or not os.path.exists(job.output_path):
+            return jsonify({'error': 'Export file not found'}), 404
+
+        # Return file for download
+        return send_file(
+            job.output_path,
+            mimetype='video/mp4',
+            as_attachment=True,
+            download_name=os.path.basename(job.output_path)
+        )
+
+    except Exception as e:
+        logger.error(f"Timeline export download API error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/exports', methods=['GET'])
+def api_timeline_export_list():
+    """
+    List all export jobs, optionally filtered by camera.
+
+    Query Parameters:
+        camera_id: Optional camera filter
+    """
+    try:
+        camera_id = request.args.get('camera_id')
+        timeline_service = get_timeline_service()
+
+        jobs = timeline_service.get_export_jobs(camera_id)
+
+        return jsonify({
+            'success': True,
+            'count': len(jobs),
+            'jobs': [job.to_dict() for job in jobs]
+        })
+
+    except Exception as e:
+        logger.error(f"Timeline export list API error: {e}")
         return jsonify({'error': str(e)}), 500
 
 

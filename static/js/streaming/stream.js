@@ -1799,9 +1799,50 @@ export class MultiStreamManager {
         }
     }
 
+    /**
+     * Set stream status indicator and text.
+     *
+     * Respects "Quiet Status Messages" setting - when enabled, only shows important
+     * statuses (Starting, Connecting, Live, Failed, Error) and hides verbose ones
+     * (Refreshing, Degraded, Recovered, Buffering, Retry, etc.).
+     *
+     * @param {jQuery} $streamItem - Stream item element
+     * @param {string} status - Status class (loading, live, error, failed, active)
+     * @param {string} text - Status text to display
+     */
     setStreamStatus($streamItem, status, text) {
         const $indicator = $streamItem.find('.stream-indicator');
         const $statusText = $indicator.find('span');
+
+        // Check if quiet mode is enabled
+        const quietMode = localStorage.getItem('quietStatusMessages') === 'true';
+
+        if (quietMode) {
+            // In quiet mode, only show important statuses
+            // Important: Starting, Connecting, Live, Failed, Error, Stopped
+            // Verbose (hidden): Refreshing, Degraded, Recovered, Buffering, Retry, Restarting, Nuclear
+            const importantPatterns = [
+                /^Starting/i,
+                /^Connecting/i,
+                /^Live/i,
+                /^Failed/i,
+                /^Error/i,
+                /^Stopped/i,
+                /^$/  // Empty text (for active status with no message)
+            ];
+
+            const isImportant = importantPatterns.some(pattern => pattern.test(text));
+
+            if (!isImportant) {
+                // Skip verbose status updates in quiet mode
+                // Keep the indicator class updated for visual feedback, just hide the text
+                if ($indicator.length) {
+                    $indicator.attr('class', `stream-indicator ${status}`);
+                }
+                // Don't update the text - keep previous important status visible
+                return;
+            }
+        }
 
         if ($indicator.length) {
             $indicator.attr('class', `stream-indicator ${status}`);

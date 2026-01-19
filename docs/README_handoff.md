@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 19, 2026 03:35 EST*
+*Last updated: January 19, 2026 14:15 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -27,21 +27,21 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (Jan 19, 2026) - Timeline Playback Feature
+## Current Session (Jan 19, 2026) - Storage Migration & Playback Fix
 
-**Context compaction occurred at ~03:00 EST**
+**Context compaction occurred at ~03:00 EST, ~12:00 EST, ~14:15 EST**
 
 ### Branch Info
 
-**Current Branch:** `timeline_playback_JAN_19_2026_a`
-**Previous Branch:** `stream_status_fixes_JAN_19_2026_a`
+**Current Branch:** `video_recording_long_term_storage_fix_JAN_19_2025_a`
+**Previous Branch:** `timeline_playback_JAN_19_2026_a`
 
-**Branches needing PRs to merge to main:**
+**Merged to main (Jan 19 ~12:00 EST):**
 
-- `audio_restoration_JAN_19_2026_a`
-- `audio_restoration_JAN_19_2026_b`
-- `stream_status_fixes_JAN_19_2026_a`
-- `timeline_playback_JAN_19_2026_a`
+- `audio_restoration_JAN_19_2026_a` ✓
+- `audio_restoration_JAN_19_2026_b` ✓
+- `stream_status_fixes_JAN_19_2026_a` ✓
+- `timeline_playback_JAN_19_2026_a` ✓
 
 ### Commits This Session
 
@@ -54,6 +54,32 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 #### On `timeline_playback_JAN_19_2026_a`:
 
 1. `4db432f` - Add timeline playback feature: UI modal, CSS, docker volume for exports
+
+#### On `video_recording_long_term_storage_fix_JAN_19_2025_a`:
+
+1. `20b665e` - Add deferred plan for user-based settings implementation
+2. `089af9a` - Port Jan 19 sessions to project history with consolidated TODO list
+3. `72879f4` - Add file_operations_log table for storage operation auditing
+
+---
+
+## Storage Migration & Playback Fix - IN PROGRESS
+
+### Architectural Decision
+
+**DEFERRED**: Full database-backed settings overhaul
+**See**: `docs/README_plan_for_user_based_settings_implementation.md`
+
+**CURRENT FOCUS**:
+1. Fix timeline playback ("No recordings found")
+2. Implement storage migration (recent → archive with logging)
+3. Keep `recording_settings.json` as-is
+
+### Key Insight
+
+Files exist in `/mnt/sdc/NVR_Recent/motion/` (210GB) but:
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/` is empty (no migration logic exists)
+- Timeline shows "No recordings found" (DB query issue or recordings not logged)
 
 ---
 
@@ -201,41 +227,11 @@ if (quietMode) {
 
 ---
 
-## TODO List
-
-**Pending PRs (branch protection requires PRs via GitHub web):**
-
-- [ ] Create PR for `audio_restoration_JAN_19_2026_a` → main
-- [ ] Create PR for `audio_restoration_JAN_19_2026_b` → main
-- [ ] Create PR for `stream_status_fixes_JAN_19_2026_a` → main
-- [ ] Create PR for `timeline_playback_JAN_19_2026_a` → main
-
-**Testing Needed:**
-
-- [ ] Test timeline playback modal opens from playback button
-- [ ] Test date/time controls and presets load recordings
-- [ ] Test drag-select on canvas creates valid selection
-- [ ] Test export creates valid MP4 file
-- [ ] Test iOS export creates Photos-compatible file
-- [ ] Test download works on desktop and iOS
-- [ ] Test quiet mode hides verbose statuses
-- [ ] Test user-stopped streams stay "Stopped"
-
-**Future Enhancements:**
-
-- [ ] Add pan/scroll for zoomed timeline
-- [ ] Add segment preview on hover
-- [ ] Add direct video playback in modal (before export)
-- [ ] Add automatic old export cleanup
-- [ ] Consider dedicated timeline page (Blue Iris 5 style)
-
----
-
 ## Architecture Notes
 
 ### Export Process Flow
 
-```
+```text
 1. User selects time range in modal
 2. POST /api/timeline/export creates job
 3. TimelineService.start_export() spawns thread
@@ -254,5 +250,70 @@ if (quietMode) {
 
 1. **PostgREST database** (primary) - Uses `recordings` table with camera_id + timestamp index
 2. **Filesystem scan** (fallback) - If database unavailable, scans `/recordings/{type}/` directories
+
+---
+
+## TODO List
+
+**Current Priority (this session):**
+
+- [ ] Diagnose why timeline shows "No recordings found"
+- [ ] Verify recordings are being logged to PostgreSQL
+- [ ] Fix timeline query if needed
+- [x] Add `file_operations_log` table for audit trail (commit `72879f4`)
+- [ ] Add storage config to `recording_settings.json` (storage_paths, migration settings)
+- [ ] Update `recording_config_loader.py` for new config sections
+- [ ] Create `StorageMigrationService` (rsync-based, two-tier logic)
+- [ ] Add storage API endpoints to `app.py`
+- [ ] Add UI storage visualization (progress bars, color coding)
+
+**Storage Migration Design (finalized ~14:00 EST):**
+
+```text
+RECENT: file.age > max_age_days OR capacity > 80% → MIGRATE to STORAGE
+STORAGE: file.age > archive_retention_days OR capacity > 80% → DELETE
+
+Commands:
+  rsync -auz --remove-source-files source/ dest/
+  find source/ -type d -empty -delete
+```
+
+Settings to add:
+- `age_threshold_days`: 3 (default)
+- `archive_retention_days`: 90 (default)
+- `min_free_space_percent`: 20 (triggers capacity-based migration/deletion)
+
+**Completed (merged to main Jan 19):**
+
+- [x] Audio restoration (Opus transcoding for WebRTC)
+- [x] Stream status fixes (quiet mode, user-stopped tracking)
+- [x] Timeline playback UI (modal, canvas, export)
+- [x] Merge all branches to main
+
+**Testing Needed:**
+
+- [ ] Test timeline playback modal opens from playback button
+- [ ] Test date/time controls and presets load recordings
+- [ ] Test drag-select on canvas creates valid selection
+- [ ] Test export creates valid MP4 file
+- [ ] Test iOS export creates Photos-compatible file
+- [ ] Test download works on desktop and iOS
+- [ ] Test quiet mode hides verbose statuses
+- [ ] Test user-stopped streams stay "Stopped"
+- [ ] Test storage migration moves files correctly
+
+**Future Enhancements:**
+
+- [ ] Add pan/scroll for zoomed timeline
+- [ ] Add segment preview on hover
+- [ ] Add direct video playback in modal (before export)
+- [ ] Add automatic old export cleanup
+- [ ] Consider dedicated timeline page (Blue Iris 5 style)
+
+**Deferred (see docs/README_plan_for_user_based_settings_implementation.md):**
+
+- [ ] Database-backed recording settings
+- [ ] Camera settings UI (credentials, resolution)
+- [ ] Container self-restart mechanism
 
 ---

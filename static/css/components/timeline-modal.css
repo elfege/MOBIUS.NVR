@@ -529,4 +529,140 @@
     .export-options {
         flex-direction: column;
     }
+
+    .timeline-preview-container {
+        max-height: 200px;
+    }
+}
+
+
+/* ==========================================================================
+   PREVIEW SECTION
+   ========================================================================== */
+
+.timeline-preview-section {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.timeline-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.timeline-preview-header h4 {
+    margin: 0;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.timeline-preview-header h4 i {
+    color: #7C4DFF;
+}
+
+.timeline-preview-close {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.timeline-preview-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.timeline-preview-container {
+    position: relative;
+    background: #000;
+    max-height: 300px;
+}
+
+#timeline-preview-video {
+    width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+    background: #000;
+}
+
+.timeline-preview-info {
+    position: absolute;
+    bottom: 40px;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    padding: 8px;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    font-size: 12px;
+    color: #ccc;
+}
+
+#preview-segment-time {
+    font-family: monospace;
+}
+
+.preview-type-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.preview-type-badge.motion {
+    background: rgba(76, 175, 80, 0.3);
+    color: #4CAF50;
+}
+
+.preview-type-badge.continuous {
+    background: rgba(33, 150, 243, 0.3);
+    color: #2196F3;
+}
+
+.preview-type-badge.manual {
+    background: rgba(255, 152, 0, 0.3);
+    color: #FF9800;
+}
+
+.timeline-preview-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.timeline-preview-controls .timeline-btn {
+    min-width: auto;
+    padding: 8px 12px;
+}
+
+.timeline-preview-controls .timeline-btn i {
+    margin: 0;
+}
+
+#preview-play-all-btn {
+    padding: 8px 16px;
+}
+
+#preview-play-all-btn i {
+    margin-right: 6px;
 }

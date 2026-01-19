@@ -43,9 +43,45 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session
+## Current Session (Jan 19, 2026 - 19:00+ EST)
 
-*(No work started yet)*
+### Work Done This Session:
+
+**1. Fixed Timeline Export CSRF Issue (earlier)**
+- Added `@csrf.exempt` decorators to timeline export endpoints in `app.py`
+- Fixed "Unexpected token '<'" error caused by Flask-WTF CSRF protection
+
+**2. Fixed Export Directory Permission Error**
+- Host path `/mnt/sdc/NVR_Recent/exports` was owned by root:root
+- Container runs as appuser (UID 1000) - caused permission denied error
+- Manual fix: `sudo chown 1000:1000 /mnt/sdc/NVR_Recent/exports`
+
+**3. Implemented Timeline Preview Feature (19:00-19:30 EST)**
+
+New files:
+- **`ensure_recording_paths.sh`** - Reads `recording_settings.json` and fixes permissions on storage paths
+
+Modified files:
+- **`app.py`** - Added `/api/timeline/preview/<recording_id>` endpoint
+  - Supports HTTP Range requests for video seeking
+  - Streams recording files for in-browser playback
+- **`services/recording/timeline_service.py`** - Added `get_segment_by_id()` method
+  - Fetches single recording segment by database ID
+  - Returns TimelineSegment with file_path for preview
+- **`templates/streams.html`** - Added preview section HTML (lines 303-336)
+  - Video player with controls
+  - Previous/Next segment navigation
+  - "Play Selection" button for auto-advance through segments
+- **`static/css/components/timeline-modal.css`** - Added preview styling
+  - Video container, controls, type badges
+  - Responsive adjustments
+- **`static/js/modals/timeline-playback-modal.js`** - Added preview functionality
+  - `showPreview()`, `hidePreview()` - Show/hide preview section
+  - `loadPreviewSegment(index)` - Load specific segment for preview
+  - `previewPrevious()`, `previewNext()` - Navigate segments
+  - `playAllSelected()` - Play all selected segments in sequence
+  - `onPreviewEnded()` - Auto-advance to next segment
+- **`start.sh`** - Added call to `ensure_recording_paths.sh` before docker compose up
 
 ---
 
@@ -53,19 +89,21 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Testing Needed (after container restart):**
 
-- [ ] Test timeline playback shows recordings for selected date range
+- [x] Test timeline playback shows recordings for selected date range
+- [x] Test "Export Selection" button works (CSRF fix)
+- [ ] Test preview playback works in timeline modal
 - [ ] Test storage status appears in Settings panel
 - [ ] Test "Migrate Now" button triggers migration
 - [ ] Test "Cleanup Archive" button works
 - [ ] Test "Reconcile DB" button removes orphaned entries
 - [ ] Test progress bars show correct disk usage with color coding
+- [ ] Test `ensure_recording_paths.sh` creates directories with correct permissions
 
 **Future Enhancements:**
 
 - [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline
-- [ ] Add segment preview on hover
-- [ ] Add direct video playback in modal (before export)
+- [x] Add direct video playback in modal (before export) - DONE this session
 
 **Deferred:**
 

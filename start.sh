@@ -74,6 +74,13 @@ if [[ -f ~/0_NVR/update_recording_settings.sh && -f ~/0_NVR/config/recording_set
 	stop_spinner
 fi
 
+# Ensure recording paths have proper permissions (UID 1000 for container appuser)
+if [[ -f ~/0_NVR/ensure_recording_paths.sh ]]; then
+	echo ""
+	echo "Ensuring recording path permissions..."
+	~/0_NVR/ensure_recording_paths.sh
+fi
+
 # Start the container
 echo ""
 echo "Starting container..."

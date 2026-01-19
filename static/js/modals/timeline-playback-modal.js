@@ -29,6 +29,11 @@ export class TimelinePlaybackModal {
         this.currentExportJobId = null;
         this.exportPollInterval = null;
 
+        // Preview state
+        this.selectedSegments = [];
+        this.currentPreviewIndex = 0;
+        this.isPlayingAll = false;
+
         // Canvas interaction state
         this.isDragging = false;
         this.dragStart = null;
@@ -125,6 +130,18 @@ export class TimelinePlaybackModal {
 
         // Download button
         $('#timeline-download-btn').on('click', () => this.downloadExport());
+
+        // Preview controls
+        $('.timeline-preview-close').on('click', () => this.hidePreview());
+        $('#preview-prev-btn').on('click', () => this.previewPrevious());
+        $('#preview-next-btn').on('click', () => this.previewNext());
+        $('#preview-play-all-btn').on('click', () => this.playAllSelected());
+
+        // Video ended event - auto-advance when playing all
+        const video = document.getElementById('timeline-preview-video');
+        if (video) {
+            video.addEventListener('ended', () => this.onPreviewEnded());
+        }
     }
 
     /**
@@ -560,15 +577,20 @@ export class TimelinePlaybackModal {
         }
 
         // Find segments that overlap with selection
-        const selectedSegments = this.segments.filter(seg =>
+        this.selectedSegments = this.segments.filter(seg =>
             seg.end_time > this.selection.start && seg.start_time < this.selection.end
         );
 
         // Update export info
-        this.updateExportInfo(selectedSegments);
+        this.updateExportInfo(this.selectedSegments);
 
         // Enable export button if segments selected
-        $('#timeline-export-btn').prop('disabled', selectedSegments.length === 0);
+        $('#timeline-export-btn').prop('disabled', this.selectedSegments.length === 0);
+
+        // Show preview if segments selected
+        if (this.selectedSegments.length > 0) {
+            this.showPreview();
+        }
     }
 
     /**
@@ -835,12 +857,197 @@ export class TimelinePlaybackModal {
             'zoom': '.timeline-zoom-controls',
             'export': '.timeline-export-controls',
             'progress': '.timeline-export-progress',
-            'download': '.timeline-download-ready'
+            'download': '.timeline-download-ready',
+            'preview': '.timeline-preview-section'
         };
 
         const selector = sectionMap[section];
         if (selector) {
             this.$modal.find(selector).toggle(show);
+        }
+    }
+
+    // =========================================================================
+    // Preview Methods
+    // =========================================================================
+
+    /**
+     * Show the preview section and load first segment
+     */
+    showPreview() {
+        if (this.selectedSegments.length === 0) {
+            console.log('[Timeline] No segments to preview');
+            return;
+        }
+
+        this.currentPreviewIndex = 0;
+        this.isPlayingAll = false;
+        this.showSection('preview', true);
+        this.loadPreviewSegment(0);
+        this.updatePreviewControls();
+
+        console.log(`[Timeline] Preview opened with ${this.selectedSegments.length} segments`);
+    }
+
+    /**
+     * Hide the preview section
+     */
+    hidePreview() {
+        this.showSection('preview', false);
+        this.isPlayingAll = false;
+
+        // Pause and reset video
+        const video = document.getElementById('timeline-preview-video');
+        if (video) {
+            video.pause();
+            video.src = '';
+        }
+
+        console.log('[Timeline] Preview closed');
+    }
+
+    /**
+     * Load a specific segment for preview
+     * @param {number} index - Index in selectedSegments array
+     */
+    loadPreviewSegment(index) {
+        if (index < 0 || index >= this.selectedSegments.length) {
+            console.warn('[Timeline] Invalid segment index:', index);
+            return;
+        }
+
+        const segment = this.selectedSegments[index];
+        this.currentPreviewIndex = index;
+
+        // Build preview URL using recording ID
+        const previewUrl = `/api/timeline/preview/${segment.recording_id}`;
+
+        // Get video element
+        const video = document.getElementById('timeline-preview-video');
+        if (!video) {
+            console.error('[Timeline] Preview video element not found');
+            return;
+        }
+
+        // Update video source
+        video.src = previewUrl;
+        video.load();
+
+        // Auto-play if in "play all" mode
+        if (this.isPlayingAll) {
+            video.play().catch(err => {
+                console.warn('[Timeline] Auto-play prevented:', err);
+            });
+        }
+
+        // Update preview info display
+        this.updatePreviewInfo(segment);
+        this.updatePreviewControls();
+
+        console.log(`[Timeline] Loading preview segment ${index + 1}/${this.selectedSegments.length}: ${segment.recording_id}`);
+    }
+
+    /**
+     * Update the preview info display
+     * @param {object} segment - Current segment being previewed
+     */
+    updatePreviewInfo(segment) {
+        // Format time range
+        const startStr = segment.start_time.toLocaleTimeString();
+        const endStr = segment.end_time.toLocaleTimeString();
+        $('#preview-segment-time').text(`${startStr} - ${endStr}`);
+
+        // Update type badge with appropriate class
+        const $badge = $('#preview-segment-type');
+        $badge
+            .text(segment.recording_type)
+            .removeClass('motion continuous manual')
+            .addClass(segment.recording_type);
+    }
+
+    /**
+     * Update preview control buttons (prev/next enable state)
+     */
+    updatePreviewControls() {
+        const hasPrev = this.currentPreviewIndex > 0;
+        const hasNext = this.currentPreviewIndex < this.selectedSegments.length - 1;
+
+        $('#preview-prev-btn').prop('disabled', !hasPrev);
+        $('#preview-next-btn').prop('disabled', !hasNext);
+
+        // Update play all button text
+        const $playBtn = $('#preview-play-all-btn');
+        if (this.isPlayingAll) {
+            $playBtn.html('<i class="fas fa-stop"></i> Stop');
+        } else {
+            $playBtn.html('<i class="fas fa-play"></i> Play Selection');
+        }
+    }
+
+    /**
+     * Go to previous segment in preview
+     */
+    previewPrevious() {
+        if (this.currentPreviewIndex > 0) {
+            this.loadPreviewSegment(this.currentPreviewIndex - 1);
+        }
+    }
+
+    /**
+     * Go to next segment in preview
+     */
+    previewNext() {
+        if (this.currentPreviewIndex < this.selectedSegments.length - 1) {
+            this.loadPreviewSegment(this.currentPreviewIndex + 1);
+        }
+    }
+
+    /**
+     * Start playing all selected segments in sequence
+     */
+    playAllSelected() {
+        if (this.isPlayingAll) {
+            // Stop playback
+            this.isPlayingAll = false;
+            const video = document.getElementById('timeline-preview-video');
+            if (video) video.pause();
+            this.updatePreviewControls();
+            console.log('[Timeline] Stopped play-all mode');
+            return;
+        }
+
+        // Start playing from first segment
+        this.isPlayingAll = true;
+        this.loadPreviewSegment(0);
+
+        // Ensure video starts playing
+        const video = document.getElementById('timeline-preview-video');
+        if (video) {
+            video.play().catch(err => {
+                console.warn('[Timeline] Auto-play prevented:', err);
+                this.isPlayingAll = false;
+                this.updatePreviewControls();
+            });
+        }
+
+        this.updatePreviewControls();
+        console.log('[Timeline] Started play-all mode');
+    }
+
+    /**
+     * Handle video ended event - advance to next segment if playing all
+     */
+    onPreviewEnded() {
+        console.log('[Timeline] Preview segment ended');
+
+        if (this.isPlayingAll && this.currentPreviewIndex < this.selectedSegments.length - 1) {
+            // Auto-advance to next segment
+            this.loadPreviewSegment(this.currentPreviewIndex + 1);
+        } else if (this.isPlayingAll) {
+            // All segments played
+            this.isPlayingAll = false;
+            this.updatePreviewControls();
+            console.log('[Timeline] All segments played');
         }
     }
 }

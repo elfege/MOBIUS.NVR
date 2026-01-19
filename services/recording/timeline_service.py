@@ -391,6 +391,86 @@ class TimelineService:
         except Exception:
             return False
 
+    def get_segment_by_id(self, recording_id: int) -> Optional[TimelineSegment]:
+        """
+        Get a single recording segment by its database ID.
+
+        Used for preview playback - fetches recording details and file path.
+
+        Args:
+            recording_id: Database recording ID
+
+        Returns:
+            TimelineSegment object or None if not found
+        """
+        logger.info(f"Fetching segment for recording ID: {recording_id}")
+
+        try:
+            # Query single recording from database
+            response = requests.get(
+                f"{self.postgrest_url}/recordings",
+                params={
+                    'id': f'eq.{recording_id}',
+                    'limit': '1'
+                },
+                timeout=10
+            )
+            response.raise_for_status()
+            recordings = response.json()
+
+            if not recordings:
+                logger.warning(f"Recording not found in database: {recording_id}")
+                return None
+
+            rec = recordings[0]
+
+            # Parse timestamps
+            rec_start = datetime.fromisoformat(rec['timestamp'].replace('Z', '+00:00'))
+
+            # Calculate end time
+            if rec.get('end_timestamp'):
+                rec_end = datetime.fromisoformat(rec['end_timestamp'].replace('Z', '+00:00'))
+            elif rec.get('duration_seconds'):
+                rec_end = rec_start + timedelta(seconds=rec['duration_seconds'])
+            else:
+                rec_end = rec_start + timedelta(seconds=30)
+
+            # Determine recording type
+            if rec.get('motion_source') == 'manual':
+                recording_type = 'manual'
+            elif rec.get('motion_triggered'):
+                recording_type = 'motion'
+            else:
+                recording_type = 'continuous'
+
+            # Get file path
+            file_path = rec.get('file_path')
+            if not file_path:
+                logger.warning(f"Recording {recording_id} has no file_path")
+                return None
+
+            segment = TimelineSegment(
+                recording_id=rec['id'],
+                camera_id=rec.get('camera_id', ''),
+                start_time=rec_start,
+                end_time=rec_end,
+                duration_seconds=int((rec_end - rec_start).total_seconds()),
+                file_path=file_path,
+                file_size_bytes=rec.get('file_size_bytes', 0),
+                recording_type=recording_type,
+                has_audio=self._check_audio_track(file_path) if os.path.exists(file_path) else False
+            )
+
+            logger.info(f"Found segment: {segment.file_path}")
+            return segment
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Database query failed for recording {recording_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching segment {recording_id}: {e}")
+            return None
+
     # =========================================================================
     # Timeline Summary Methods
     # =========================================================================

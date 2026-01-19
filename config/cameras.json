@@ -60,11 +60,9 @@
           "rtsp_transport": "tcp"
         },
         "audio": {
-          "enabled": false,
-          "codec": "aac",
-          "bitrate": "64k",
-          "rate": 44100,
-          "channels": 1
+          "enabled": true,
+          "c:a": "copy",
+          "_note": "UniFi outputs AAC LC @ 16kHz mono - passthrough, no transcode needed"
         },
         "video_sub": {
           "c:v": "libx264",

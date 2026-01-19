@@ -1598,6 +1598,8 @@ export class MultiStreamManager {
             const streamType = $streamItem.data('stream-type');
             const videoElement = $streamItem.find('.stream-video')[0];
 
+            console.log(`[Recovery] ${cameraId}: streamType='${streamType}', videoElement exists: ${!!videoElement}`);
+
             // For HLS and WebRTC: use forceRefreshStream() - same as manual refresh button
             // This is faster and more reliable than full stop+start cycle
             if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {

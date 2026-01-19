@@ -561,6 +561,8 @@ try:
         camera_state_tracker=camera_state_tracker,
         mjpeg_services=mjpeg_services
     )
+    # Set SocketIO instance so watchdog can broadcast stream_restarted events
+    stream_watchdog.set_socketio(socketio)
     stream_watchdog.start()
     print("✅ Stream Watchdog started (polling every 10s, uses CameraStateTracker)")
 except Exception as e:
@@ -1726,6 +1728,35 @@ def ws_mjpeg_unsubscribe(data=None):
     sid = flask_request.sid
     websocket_mjpeg_service.remove_client(sid)
     emit('unsubscribed', {'status': 'ok'})
+
+
+# ============================================================================
+# Stream Events WebSocket (notify frontend of backend stream restarts)
+# ============================================================================
+# Frontend connects to /stream_events namespace to receive real-time
+# notifications when StreamWatchdog restarts a stream. This allows instant
+# HLS refresh instead of waiting for the 10-second polling cycle.
+
+@socketio.on('connect', namespace='/stream_events')
+def handle_stream_events_connect():
+    """
+    Handle WebSocket connection for stream event notifications.
+
+    Frontend connects to /stream_events namespace to receive real-time
+    notifications when StreamWatchdog restarts a stream.
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+    logger.info(f"StreamEvents: Client {sid[:8]}... connected")
+    emit('connected', {'status': 'ok', 'sid': sid})
+
+
+@socketio.on('disconnect', namespace='/stream_events')
+def handle_stream_events_disconnect():
+    """Handle WebSocket disconnection from stream events namespace"""
+    from flask import request as flask_request
+    sid = flask_request.sid
+    logger.info(f"StreamEvents: Client {sid[:8]}... disconnected")
 
 
 @app.route('/api/status/websocket-mjpeg')

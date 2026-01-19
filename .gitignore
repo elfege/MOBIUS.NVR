@@ -87,8 +87,9 @@ __pycache__
 **/backups/
 **/archive/
 
-# config files (contain creds)
-**/config/
+# config files (contain creds) - exceptions defined above at lines 33-37
+# NOTE: The specific config/ rules with exceptions are on lines 33-37
+# Do NOT add another blanket **/config/ rule here as it overrides exceptions
 
 # environment files
 .env

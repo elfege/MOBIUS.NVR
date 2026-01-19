@@ -346,6 +346,11 @@ export class MultiStreamManager {
         console.log('[Init] Starting camera state monitor...');
         this.cameraStateMonitor.start();
 
+        // Connect to stream events WebSocket for instant restart notifications
+        // This allows frontend to refresh HLS immediately when backend restarts a stream
+        console.log('[Init] Connecting to stream events WebSocket...');
+        this.connectStreamEventsSocket();
+
         // Restore fullscreen independently after short delay
         // Just needs DOM to be ready, doesn't need streams loaded
         setTimeout(() => {
@@ -1304,6 +1309,24 @@ export class MultiStreamManager {
             $loadingIndicator.show();
             this.setStreamStatus($streamItem, 'loading', 'Starting...');
 
+            // Timeout for stuck "Starting..." state
+            // If stream doesn't become live within 15 seconds, trigger reconnection via health monitor
+            const startupTimeout = setTimeout(() => {
+                const $indicator = $streamItem.find('.stream-indicator');
+                if ($indicator.hasClass('loading')) {
+                    console.log(`[Stream] ${cameraId}: Startup timeout - no media in 15s, triggering health monitor`);
+                    this.setStreamStatus($streamItem, 'loading', 'Reconnecting...');
+                    // Dispatch error event so health monitor can retry
+                    const el = $streamItem.find('.stream-video')[0];
+                    if (el) {
+                        el.dispatchEvent(new CustomEvent('streamerror', {
+                            detail: { cameraId, error: 'Startup timeout' }
+                        }));
+                    }
+                }
+            }, 15000);
+            $streamItem.data('startup-timeout', startupTimeout);
+
             let success;
 
             // Use streamType to determine which manager to use
@@ -1345,6 +1368,13 @@ export class MultiStreamManager {
             }
 
             if (success) {
+                // Clear startup timeout - stream is now live
+                const startupTimeout = $streamItem.data('startup-timeout');
+                if (startupTimeout) {
+                    clearTimeout(startupTimeout);
+                    $streamItem.removeData('startup-timeout');
+                }
+
                 $loadingIndicator.hide();
                 this.setStreamStatus($streamItem, 'live', 'Live');
                 this.updateStreamButtons($streamItem, true);
@@ -1390,6 +1420,13 @@ export class MultiStreamManager {
 
     async stopIndividualStream(cameraId, $streamItem, cameraType, streamType) {
         try {
+            // Clear any pending startup timeout
+            const startupTimeout = $streamItem.data('startup-timeout');
+            if (startupTimeout) {
+                clearTimeout(startupTimeout);
+                $streamItem.removeData('startup-timeout');
+            }
+
             let success;
 
             // Use streamType to determine which manager to use
@@ -2567,6 +2604,90 @@ export class MultiStreamManager {
         const start = this.iosPagination.currentPage * this.iosPagination.camerasPerPage;
         const end = start + this.iosPagination.camerasPerPage;
         return this.iosPagination.allCameraIds.slice(start, end);
+    }
+
+    // ==========================================================================
+    // Stream Events WebSocket - Real-time restart notifications from backend
+    // ==========================================================================
+
+    /**
+     * Connect to backend stream events WebSocket.
+     *
+     * Receives real-time notifications when StreamWatchdog restarts a stream,
+     * triggering immediate HLS refresh instead of waiting for 10-second poll cycle.
+     * This solves the "black screen after backend restart" issue where HLS.js
+     * stays connected to a stale MediaMTX session.
+     */
+    async connectStreamEventsSocket() {
+        // Load Socket.IO client if not already loaded
+        if (typeof io === 'undefined') {
+            await this._loadSocketIOClient();
+        }
+
+        try {
+            this.streamEventsSocket = io('/stream_events', {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                timeout: 10000
+            });
+
+            this.streamEventsSocket.on('connect', () => {
+                console.log('[StreamEvents] Connected to backend stream events');
+            });
+
+            this.streamEventsSocket.on('stream_restarted', (data) => {
+                const { camera_id, timestamp } = data;
+                console.log(`[StreamEvents] Backend restarted stream for ${camera_id} at ${new Date(timestamp * 1000).toLocaleTimeString()}`);
+
+                // Find the stream item and trigger recovery
+                const $streamItem = $(`.stream-item[data-camera-serial="${camera_id}"]`);
+                if ($streamItem.length) {
+                    console.log(`[StreamEvents] Triggering HLS refresh for ${camera_id}`);
+                    this.handleBackendRecovery(camera_id, $streamItem);
+                } else {
+                    console.log(`[StreamEvents] Camera ${camera_id} not on this page, ignoring`);
+                }
+            });
+
+            this.streamEventsSocket.on('disconnect', (reason) => {
+                console.log(`[StreamEvents] Disconnected: ${reason}`);
+            });
+
+            this.streamEventsSocket.on('connect_error', (error) => {
+                console.error('[StreamEvents] Connection error:', error);
+            });
+
+        } catch (error) {
+            console.error('[StreamEvents] Failed to connect:', error);
+        }
+    }
+
+    /**
+     * Load Socket.IO client library dynamically if not already loaded.
+     *
+     * @returns {Promise<void>}
+     */
+    _loadSocketIOClient() {
+        return new Promise((resolve, reject) => {
+            if (typeof io !== 'undefined') {
+                resolve();
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
+            script.crossOrigin = 'anonymous';
+            script.onload = () => {
+                console.log('[StreamEvents] Socket.IO client loaded');
+                resolve();
+            };
+            script.onerror = () => {
+                reject(new Error('Failed to load Socket.IO client'));
+            };
+            document.head.appendChild(script);
+        });
     }
 
     updateStreamCount() {

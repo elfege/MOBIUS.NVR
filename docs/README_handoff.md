@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 19, 2026 01:00 EST*
+*Last updated: January 19, 2026 01:20 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -29,18 +29,38 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (Jan 19, 2026 01:00 EST)
+## Current Session (Jan 19, 2026 01:00-01:20 EST)
 
 ### Branch Info
 
 **Branch:** `audio_restoration_JAN_19_2026_a`
 **Previous branch merged to main:** `dtls_webrtc_ios_JAN_18_2026_a` (needs PR due to branch protection)
 
-### WebSocket Logging Update
+### WebSocket Stream Recovery - COMPLETED
 
-Changed console log prefix from `[StreamEvents]` to `[WEBSOCKET]` for easier visibility in browser console.
+Fixed timing issues with WebSocket stream restart notifications for WebRTC cameras.
 
-**Commit:** `fdfb61c Change WebSocket log prefix to [WEBSOCKET] for easier visibility`
+**Problem:** WebSocket `stream_restarted` event fires BEFORE FFmpeg publishes to MediaMTX, causing:
+
+1. Frontend tries WebRTC → 404 (stream not available yet)
+2. Manual refresh button worked because user clicked it later when stream was ready
+
+**Solution (3-tier recovery):**
+
+1. **Immediate:** WebSocket notification triggers `forceRefreshStream()` (no delay for WebRTC)
+2. **5-second fallback:** If video still black (`readyState<2` or `videoWidth=0`), trigger refresh button click
+3. **Poll-based secondary:** When CameraStateMonitor detects `degraded → online`, check if WebRTC still black and retry
+
+**Commits:**
+
+- `18fcbb1` Fix WebRTC recovery: remove delay and add fallback button click
+- `ed5698f` Add secondary poll-based recovery for WebRTC streams still black
+
+**Files Modified:**
+
+- [static/js/streaming/stream.js](static/js/streaming/stream.js) - Multi-tier recovery logic
+
+**Test Results:** All stream types (WebRTC, HLS, MJPEG) recovering seamlessly via WebSocket notifications
 
 ---
 

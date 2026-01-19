@@ -205,14 +205,20 @@ export class MultiStreamManager {
         };
 
         // CameraStateMonitor polls backend state for status display
-        // NOTE: Recovery callback DISABLED - WebSocket /stream_events handles recovery notifications
-        // with instant delivery instead of 10-second polling delay. Re-enable only if WebSocket fails.
+        // Recovery callback is enabled/disabled dynamically based on WebSocket connection state:
+        // - WebSocket connected: callback disabled (WebSocket provides instant notifications)
+        // - WebSocket disconnected: callback enabled (10-second polling fallback)
+        this.wsRecoveryEnabled = false;  // Track if WebSocket is handling recovery
         this.cameraStateMonitor = new CameraStateMonitor({
-            // onRecovery disabled: WebSocket stream_restarted event triggers handleBackendRecovery() instead
-            // onRecovery: (cameraId, $streamItem, previousState, newState) => {
-            //     console.log(`[Recovery] ${cameraId}: Backend recovered stream (${previousState} → ${newState}), refreshing UI...`);
-            //     this.handleBackendRecovery(cameraId, $streamItem);
-            // }
+            onRecovery: (cameraId, $streamItem, previousState, newState) => {
+                // Only use polling recovery when WebSocket is NOT connected
+                if (this.wsRecoveryEnabled) {
+                    console.log(`[Recovery] ${cameraId}: Skipping poll-based recovery (WebSocket active)`);
+                    return;
+                }
+                console.log(`[Recovery] ${cameraId}: Poll-based recovery (WebSocket down) - ${previousState} → ${newState}`);
+                this.handleBackendRecovery(cameraId, $streamItem);
+            }
         });
         // Arrow function preserves context
         this.getCameraConfig = (id) => this.hlsManager.getCameraConfig(id);
@@ -2633,17 +2639,25 @@ export class MultiStreamManager {
             await this._loadSocketIOClient();
         }
 
+        // Track consecutive failures for logging
+        this.wsReconnectAttempts = 0;
+
         try {
             this.streamEventsSocket = io('/stream_events', {
                 transports: ['websocket', 'polling'],
                 reconnection: true,
-                reconnectionAttempts: 10,
-                reconnectionDelay: 1000,
+                reconnectionAttempts: Infinity,  // Never give up - always try to reconnect
+                reconnectionDelay: 1000,         // Start with 1 second
+                reconnectionDelayMax: 30000,     // Max 30 seconds between attempts
                 timeout: 10000
             });
 
             this.streamEventsSocket.on('connect', () => {
                 console.log('[WEBSOCKET] Connected to /stream_events namespace');
+                // Enable WebSocket-based recovery, disable poll-based fallback
+                this.wsRecoveryEnabled = true;
+                this.wsReconnectAttempts = 0;
+                console.log('[WEBSOCKET] Recovery mode: WebSocket (instant notifications)');
             });
 
             this.streamEventsSocket.on('connected', (data) => {
@@ -2665,15 +2679,43 @@ export class MultiStreamManager {
             });
 
             this.streamEventsSocket.on('disconnect', (reason) => {
-                console.log(`[WEBSOCKET] Disconnected from /stream_events: ${reason}`);
+                console.warn(`[WEBSOCKET] Disconnected from /stream_events: ${reason}`);
+                // Disable WebSocket recovery, enable poll-based fallback
+                this.wsRecoveryEnabled = false;
+                console.log('[WEBSOCKET] Recovery mode: Polling fallback (10-second delay)');
             });
 
             this.streamEventsSocket.on('connect_error', (error) => {
-                console.error('[WEBSOCKET] Connection error:', error);
+                this.wsReconnectAttempts++;
+                // Only log every 5th attempt to avoid console spam
+                if (this.wsReconnectAttempts === 1 || this.wsReconnectAttempts % 5 === 0) {
+                    console.error(`[WEBSOCKET] Connection error (attempt ${this.wsReconnectAttempts}):`, error.message || error);
+                }
+                // Ensure fallback is active
+                if (this.wsRecoveryEnabled) {
+                    this.wsRecoveryEnabled = false;
+                    console.log('[WEBSOCKET] Recovery mode: Polling fallback (WebSocket connection failed)');
+                }
+            });
+
+            // Socket.IO reconnection events
+            this.streamEventsSocket.on('reconnect', (attemptNumber) => {
+                console.log(`[WEBSOCKET] Reconnected after ${attemptNumber} attempts`);
+                this.wsRecoveryEnabled = true;
+                console.log('[WEBSOCKET] Recovery mode: WebSocket (reconnected)');
+            });
+
+            this.streamEventsSocket.on('reconnect_attempt', (attemptNumber) => {
+                // Log occasionally to show reconnection is being attempted
+                if (attemptNumber === 1 || attemptNumber % 10 === 0) {
+                    console.log(`[WEBSOCKET] Reconnection attempt ${attemptNumber}...`);
+                }
             });
 
         } catch (error) {
-            console.error('[WEBSOCKET] Failed to connect:', error);
+            console.error('[WEBSOCKET] Failed to initialize:', error);
+            // Ensure fallback is active on initialization failure
+            this.wsRecoveryEnabled = false;
         }
     }
 

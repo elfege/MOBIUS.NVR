@@ -8,6 +8,7 @@
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/recording-modal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/timeline-modal.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -135,6 +136,10 @@
                 data-camera-id="{{ serial }}" data-recording="false">
                 <i class="fas fa-circle"></i>
             </button>
+            <button class="camera-playback-btn" aria-label="Timeline Playback" title="Timeline Playback & Export"
+                data-camera-id="{{ serial }}">
+                <i class="fas fa-history"></i>
+            </button>
 
             <div class="stream-controls">
                 <div class="control-row">
@@ -226,6 +231,123 @@
         </div>
     </div>
 
+    <!-- Timeline Playback Modal -->
+    <div id="timeline-playback-modal" class="timeline-modal" style="display: none;">
+        <div class="timeline-modal-content">
+            <div class="timeline-modal-header">
+                <h3><i class="fas fa-history"></i> Timeline Playback - <span id="timeline-camera-name"></span></h3>
+                <button class="timeline-modal-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="timeline-modal-body">
+                <!-- Date/Time Range Selection -->
+                <div class="timeline-date-controls">
+                    <div class="date-control-group">
+                        <label for="timeline-date">Date:</label>
+                        <input type="date" id="timeline-date" class="timeline-date-input">
+                    </div>
+                    <div class="date-control-group">
+                        <label for="timeline-start-time">From:</label>
+                        <input type="time" id="timeline-start-time" class="timeline-time-input" value="00:00">
+                    </div>
+                    <div class="date-control-group">
+                        <label for="timeline-end-time">To:</label>
+                        <input type="time" id="timeline-end-time" class="timeline-time-input" value="23:59">
+                    </div>
+                    <button id="timeline-load-btn" class="timeline-btn timeline-btn-primary">
+                        <i class="fas fa-search"></i> Load Timeline
+                    </button>
+                </div>
+
+                <!-- Quick date presets -->
+                <div class="timeline-presets">
+                    <button class="timeline-preset-btn" data-hours="1">Last Hour</button>
+                    <button class="timeline-preset-btn" data-hours="6">Last 6 Hours</button>
+                    <button class="timeline-preset-btn" data-hours="24">Last 24 Hours</button>
+                    <button class="timeline-preset-btn" data-hours="168">Last 7 Days</button>
+                </div>
+
+                <!-- Timeline Visualization -->
+                <div class="timeline-container">
+                    <div class="timeline-loading" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i> Loading recordings...
+                    </div>
+                    <div class="timeline-empty" style="display: none;">
+                        <i class="fas fa-video-slash"></i> No recordings found for this time range
+                    </div>
+                    <div class="timeline-canvas-wrapper" style="display: none;">
+                        <canvas id="timeline-canvas"></canvas>
+                        <div class="timeline-selection-info">
+                            <span id="selection-start">--</span> to <span id="selection-end">--</span>
+                            (<span id="selection-duration">--</span>)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zoom Controls -->
+                <div class="timeline-zoom-controls" style="display: none;">
+                    <button class="timeline-zoom-btn" data-zoom="out" title="Zoom Out">
+                        <i class="fas fa-search-minus"></i>
+                    </button>
+                    <input type="range" id="timeline-zoom-slider" min="1" max="10" value="1">
+                    <button class="timeline-zoom-btn" data-zoom="in" title="Zoom In">
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                    <button class="timeline-zoom-btn" data-zoom="fit" title="Fit to View">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </button>
+                </div>
+
+                <!-- Export Controls -->
+                <div class="timeline-export-controls" style="display: none;">
+                    <div class="export-options">
+                        <label class="export-option">
+                            <input type="checkbox" id="export-ios-compatible">
+                            <span>iOS Compatible Format</span>
+                            <small>(Converts for Apple Photos app)</small>
+                        </label>
+                        <label class="export-option">
+                            <input type="checkbox" id="export-include-audio" checked>
+                            <span>Include Audio</span>
+                        </label>
+                    </div>
+                    <div class="export-summary">
+                        <span id="export-segment-count">0 segments</span> |
+                        <span id="export-duration">0:00</span> |
+                        <span id="export-size">~0 MB</span>
+                    </div>
+                    <button id="timeline-export-btn" class="timeline-btn timeline-btn-success" disabled>
+                        <i class="fas fa-download"></i> Export Selection
+                    </button>
+                </div>
+
+                <!-- Export Progress -->
+                <div class="timeline-export-progress" style="display: none;">
+                    <div class="export-progress-bar">
+                        <div class="export-progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="export-progress-text">
+                        <span class="export-status">Preparing...</span>
+                        <span class="export-percent">0%</span>
+                    </div>
+                    <button id="timeline-cancel-export-btn" class="timeline-btn timeline-btn-danger">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
+                </div>
+
+                <!-- Download Ready -->
+                <div class="timeline-download-ready" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Export complete!</span>
+                    <button id="timeline-download-btn" class="timeline-btn timeline-btn-success">
+                        <i class="fas fa-download"></i> Download Video
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Load scripts in order -->
     <script type="module">
         // Import and initialize connection monitor
@@ -266,6 +388,7 @@
     <script type="module" src="{{ url_for('static', filename='js/forms/recording-settings-form.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controls.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/modals/timeline-playback-modal.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/ptz-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/utils/eufy-auth-notifier.js') }}"></script>

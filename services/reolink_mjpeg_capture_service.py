@@ -158,10 +158,14 @@ class ReolinkMJPEGCaptureService:
 
         while not stop_flag.is_set():
             try:
+                # Track loop start time to calculate remaining sleep
+                # This ensures we hit target FPS even when requests take varying times
+                loop_start = time.time()
+
                 # Update cache-busting random string
                 snap_params['rs'] = int(time.time() * 1000)
                 snap_url = f"http://{host}/cgi-bin/api.cgi?{urlencode(snap_params)}"
-                
+
                 # Single snapshot request regardless of client count
                 # This prevents the N-browser = N-camera-connections problem
                 response = session.get(snap_url, timeout=timeout_sec, stream=False)
@@ -176,7 +180,11 @@ class ReolinkMJPEGCaptureService:
                             capture_info['last_error'] = error_msg
                         consecutive_errors += 1
                         logger.warning(f"[{camera_id}] {error_msg}: {snapshot[:200]}")
-                        stop_flag.wait(frame_interval)
+                        # Sleep remaining time accounting for request latency
+                        elapsed = time.time() - loop_start
+                        remaining = max(0, frame_interval - elapsed)
+                        if remaining > 0:
+                            stop_flag.wait(remaining)
                         continue
 
                     # Update shared buffer with latest frame
@@ -213,9 +221,13 @@ class ReolinkMJPEGCaptureService:
                     # Report failure after consecutive errors
                     if consecutive_errors >= max_consecutive_errors and tracker:
                         tracker.update_mjpeg_capture_state(camera_id, active=False, error=error_msg)
-                
-                # Sleep to maintain target FPS
-                stop_flag.wait(frame_interval)
+
+                # Sleep remaining time to maintain target FPS
+                # Accounts for request latency - only sleep if we're ahead of schedule
+                elapsed = time.time() - loop_start
+                remaining = max(0, frame_interval - elapsed)
+                if remaining > 0:
+                    stop_flag.wait(remaining)
                 
             except requests.exceptions.Timeout:
                 error_msg = "Snap API timeout"

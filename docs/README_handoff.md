@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 19, 2026 02:22 EST*
+*Last updated: January 19, 2026 02:54 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -27,14 +27,27 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (Jan 19, 2026 01:00-02:22 EST)
+## Current Session (Jan 19, 2026 02:31+ EST) - Post-Compaction
+
+**Context compaction occurred at ~02:30 EST**
 
 ### Branch Info
 
-**Branch:** `audio_restoration_JAN_19_2026_b`
-**Previous branch:** `audio_restoration_JAN_19_2026_a` (needs PR to merge to main - branch protection)
+**Branch:** `stream_status_fixes_JAN_19_2026_a` (renamed from `timeline_playback_JAN_19_2026_a`)
+**Previous branches (need PRs to merge to main):**
 
-### Commits This Session
+- `audio_restoration_JAN_19_2026_a`
+- `audio_restoration_JAN_19_2026_b`
+
+### Commits This Session (post-compaction)
+
+1. `7302dfb` - Config: Change camera stream_type from MJPEG to WEBRTC
+2. `ed150f9` - Update handoff: post-compaction session, verify WebSocket recovery features
+3. `93fe6b0` - Config: Set REOLINK Office and Terrace South to MJPEG @ 15fps for comparison test
+4. `abf89ec` - Fix: MJPEG capture timing - account for request latency to achieve target FPS
+5. `f0b9a28` - Fix: CameraStateMonitor now respects user-stopped and quiet mode settings
+
+### Previous Session Commits (pre-compaction, on `audio_restoration_JAN_19_2026_b`)
 
 1. `37188de` - Fix: User-stopped streams being auto-restarted by watchdog
 2. `e8a9f8d` - Update handoff: user-stopped tracking, audio probing results
@@ -43,6 +56,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 5. `9082b89` - Switch UniFi audio from AAC passthrough to Opus for WebRTC compatibility
 6. `fecf5dd` - Fix: Apply audio codec config to both sub and main streams
 7. `73d1c2d` - Enable Opus audio transcoding for all cameras
+8. `0a8ef90` - Update architecture doc: Audio section and Jan 19 changelog
 
 ### Completed Work
 
@@ -94,6 +108,51 @@ WebRTC only supports **Opus** audio codec, NOT AAC/MPEG-4 Audio.
 
 Removed duplicate `**/config/` rule that was overriding exceptions. `config/cameras.json` now tracked.
 
+#### 5. WebSocket Stream Recovery - ALREADY IMPLEMENTED
+
+**Problem:** Camera shows "Live" + "Active" + "Running" (all green) but video is BLACK after backend StreamWatchdog restarts FFmpeg. HLS.js stays connected to old MediaMTX session.
+
+**Solution implemented (verified in code):**
+
+1. **Backend:** `/stream_events` SocketIO namespace in `app.py` (lines 1737-1758)
+2. **StreamWatchdog:** `_broadcast_stream_restarted()` method broadcasts to frontend on successful restart
+3. **Frontend:** `stream.js` subscribes to `/stream_events` and calls `handleBackendRecovery()` on `stream_restarted` event
+4. **Startup timeout:** 15-second timeout for stuck "Starting..." state triggers health monitor retry
+5. **STARTING state timeout:** 60-second timeout in `CameraStateTracker._check_starting_timeouts()` transitions stuck cameras to DEGRADED
+
+**Files involved:**
+
+- [app.py](app.py) - `/stream_events` namespace handlers
+- [services/stream_watchdog.py](services/stream_watchdog.py) - `set_socketio()`, `_broadcast_stream_restarted()`
+- [services/camera_state_tracker.py](services/camera_state_tracker.py) - `starting_since` field, `_check_starting_timeouts()`
+- [static/js/streaming/stream.js](static/js/streaming/stream.js) - WebSocket subscription, startup timeout
+
+#### 6. MJPEG Capture Timing Fix (commit `abf89ec`)
+
+**Problem:** MJPEG streams not achieving configured FPS (e.g., 15fps config resulted in ~1fps).
+
+**Root Cause:** Sleep happened AFTER request completed, so:
+
+```text
+Request (800ms) → Sleep (67ms) → Next request
+Total cycle: ~867ms = ~1.15 FPS
+```
+
+**Solution:** Track `loop_start = time.time()` at beginning of each iteration, calculate remaining sleep:
+
+```python
+elapsed = time.time() - loop_start
+remaining = max(0, frame_interval - elapsed)
+if remaining > 0:
+    stop_flag.wait(remaining)
+```
+
+**Files Modified:**
+
+- [services/reolink_mjpeg_capture_service.py](services/reolink_mjpeg_capture_service.py) - Timing fix for target FPS
+
+**Note:** Terrace South (95270001CSHLPO74) may have hardware damage limiting Snap API response time. REOLINK Office (95270001CSO4BPDZ) used as healthy control for comparison.
+
 ---
 
 ## Audio Architecture Notes
@@ -125,6 +184,7 @@ Current config uses Opus for all since WebRTC is primary playback method. HLS la
 | [streaming/ffmpeg_params.py](streaming/ffmpeg_params.py) | Main stream now uses audio config (was hardcoded copy) |
 | [.gitignore](.gitignore) | Removed duplicate config/ rule |
 | [docs/README_handoff.md](docs/README_handoff.md) | Session documentation |
+| [services/reolink_mjpeg_capture_service.py](services/reolink_mjpeg_capture_service.py) | MJPEG timing fix for target FPS |
 
 ---
 
@@ -134,6 +194,7 @@ Current config uses Opus for all since WebRTC is primary playback method. HLS la
 
 - [ ] Create PR for `audio_restoration_JAN_19_2026_a` → main
 - [ ] Create PR for `audio_restoration_JAN_19_2026_b` → main
+- [ ] Create PR for `stream_status_fixes_JAN_19_2026_a` → main (when ready)
 
 **Completed This Session:**
 
@@ -143,6 +204,15 @@ Current config uses Opus for all since WebRTC is primary playback method. HLS la
 - [x] Fix main stream to use config (not hardcoded copy)
 - [x] Enable audio on all cameras
 - [x] Test audio in grid, modal, and fullscreen modes
+- [x] WebSocket stream recovery (instant HLS refresh on backend restart)
+- [x] 15-second frontend startup timeout
+- [x] 60-second backend STARTING state timeout
+- [x] MJPEG capture timing fix (account for request latency)
+
+**Next Major Feature (discussed but not started):**
+
+- [ ] Timeline video playback - dedicated page from main menu
+- [ ] Optional: Blue Iris 5 style timeline
 
 **Other:**
 

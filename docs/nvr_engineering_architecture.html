@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVR System - Engineering Architecture (Updated January 18, 2026)</title>
+    <title>NVR System - Engineering Architecture (Updated January 19, 2026)</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
         body {
@@ -482,6 +482,42 @@
                 <li><strong>WebRTC LAN-Only:</strong> Current config uses direct ICE without STUN/TURN (add STUN for remote access)</li>
                 <li><strong>Neolink Bridge:</strong> Adds ~100-200ms for Baichuan-to-RTSP translation; required for cameras with broken RTSP</li>
             </ul>
+        </div>
+
+        <div class="architecture-note">
+            <h3>Audio Architecture (Jan 19, 2026)</h3>
+            <p><strong>Key Discovery:</strong> WebRTC only supports Opus audio codec. MediaMTX explicitly skips AAC/MPEG-4 audio tracks for WebRTC sessions.</p>
+            <ul>
+                <li><strong>Camera Native Audio:</strong> Most cameras (UniFi, Reolink) output AAC LC @ 16kHz mono</li>
+                <li><strong>WebRTC Requirement:</strong> Must transcode AAC → Opus for audio to work</li>
+                <li><strong>FFmpeg Config:</strong> <code>"c:a": "libopus", "b:a": "32k"</code> in cameras.json audio section</li>
+                <li><strong>Video Passthrough:</strong> Video stays as copy (<code>-c:v copy</code>) - only audio is transcoded (minimal CPU)</li>
+                <li><strong>Both Streams:</strong> Sub and main streams both use Opus (fullscreen also uses WebRTC)</li>
+            </ul>
+            <table style="width:100%; border-collapse: collapse; margin-top: 10px;">
+                <tr style="background: #f0f0f0;">
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Stream Type</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Audio Codec</th>
+                    <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Notes</th>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">WebRTC</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;"><strong>Opus required</strong></td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">AAC skipped by MediaMTX; must transcode</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">LL-HLS / HLS</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">AAC preferred</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">Opus has limited Safari support in HLS</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">MJPEG</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">N/A</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">Video only, no audio track</td>
+                </tr>
+            </table>
+            <p style="margin-top: 10px;"><strong>Config Location:</strong> <code>config/cameras.json</code> → per-camera <code>ll_hls.audio</code> section</p>
+            <p><strong>Code Location:</strong> <code>streaming/ffmpeg_params.py</code> lines 386-395 (sub stream) and 417-425 (main stream)</p>
         </div>
 
         <div class="diagram-container">
@@ -1115,6 +1151,7 @@ sequenceDiagram
                 <li><strong>Jan 2, 2026:</strong> Neolink Baichuan bridge, NEOLINK → MediaMTX LL-HLS integration, dual-output FFmpeg, connection monitor</li>
                 <li><strong>Jan 3-4, 2026:</strong> CameraStateTracker service (MediaMTX API polling, exponential backoff), StreamWatchdog unified service (replaces per-stream watchdogs), UI recovery detection (auto-refresh on backend recovery), WebRTC streaming via WHEP (~200ms latency)</li>
                 <li><strong>Jan 18, 2026:</strong> iOS snapshot polling (replaces unreliable MJPEG), expanded modal mode (tap-to-expand), Force MJPEG desktop setting, UI health re-enabled with tuned thresholds, PTZ/controls visibility fixes for grid mode, DTLS enabled for iOS WebRTC support (~200ms latency), Force WebRTC Grid experimental setting for iOS</li>
+                <li><strong>Jan 19, 2026:</strong> WebRTC audio restoration - AAC→Opus transcoding for all cameras (WebRTC requires Opus, MediaMTX skips AAC), fixed ffmpeg_params.py main stream hardcoded -c:a copy, user-stopped stream tracking (localStorage prevents watchdog auto-restart), .gitignore fix for config/cameras.json tracking</li>
             </ul>
         </div>
 

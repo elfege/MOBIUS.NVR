@@ -17,7 +17,7 @@
         "ONVIF",
         "streaming"
       ],
-      "stream_type": "WEBRTC",
+      "stream_type": "LL_HLS",
       "onvif_port": 8000,
       "true_mjpeg": "false",
       "player_settings": {

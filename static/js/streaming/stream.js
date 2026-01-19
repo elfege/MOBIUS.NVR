@@ -211,6 +211,13 @@ export class MultiStreamManager {
         this.wsRecoveryEnabled = false;  // Track if WebSocket is handling recovery
         this.cameraStateMonitor = new CameraStateMonitor({
             onRecovery: (cameraId, $streamItem, previousState, newState) => {
+                // CRITICAL: Skip recovery for user-stopped streams
+                // User explicitly stopped this stream via UI, don't auto-restart
+                if (this.isUserStoppedStream(cameraId)) {
+                    console.log(`[Recovery] ${cameraId}: Skipping recovery - user manually stopped this stream`);
+                    return;
+                }
+
                 // When WebSocket is active, still check if this WebRTC stream needs help
                 // The WebSocket notification fires BEFORE FFmpeg is ready, but poll-based
                 // recovery fires when backend actually shows 'online' (MediaMTX has stream)
@@ -521,13 +528,28 @@ export class MultiStreamManager {
             this.startStream(cameraId, $streamItem, cameraType, streamType);
         });
 
+        // =========================================================================
+        // STOP STREAM BUTTON HANDLER
+        // =========================================================================
+        // IMPORTANT: NEVER use $(stop-stream-btn).click() or .trigger('click') programmatically!
+        //
+        // This handler sets userInitiated=true which marks the stream as "user-stopped"
+        // in localStorage. This prevents the watchdog/health monitor from auto-restarting
+        // the stream. If you programmatically trigger this click, you'll mark streams as
+        // user-stopped when the user didn't actually intend to stop them.
+        //
+        // For programmatic stops (recovery, page switches, etc.), call:
+        //   this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType)
+        // WITHOUT the { userInitiated: true } option.
+        // =========================================================================
         this.$container.on('click', '.stop-stream-btn', (e) => {
             e.stopPropagation();
             const $streamItem = $(e.target).closest('.stream-item');
             const cameraId = $streamItem.data('camera-serial');
             const cameraType = $streamItem.data('camera-type');
             const streamType = $streamItem.data('stream-type');
-            this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+            // Pass userInitiated=true so we track this as user-stopped and don't auto-restart
+            this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType, { userInitiated: true });
         });
 
         // PTZ control handlers
@@ -1329,6 +1351,9 @@ export class MultiStreamManager {
         }
 
         try {
+            // Clear user-stopped flag when stream is being started (user wants it running)
+            this.clearUserStoppedStream(cameraId);
+
             $loadingIndicator.show();
             this.setStreamStatus($streamItem, 'loading', 'Starting...');
 
@@ -1441,8 +1466,27 @@ export class MultiStreamManager {
         }
     }
 
-    async stopIndividualStream(cameraId, $streamItem, cameraType, streamType) {
+    /**
+     * Stop an individual stream.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {jQuery} $streamItem - Stream item element
+     * @param {string} cameraType - Camera vendor type
+     * @param {string} streamType - Stream type (HLS, WEBRTC, MJPEG, etc.)
+     * @param {Object} options - Optional configuration
+     * @param {boolean} options.userInitiated - Set to true ONLY when user clicks stop button.
+     *        This marks the stream as "user-stopped" in localStorage, preventing auto-restart.
+     *        DO NOT set this for programmatic stops (recovery, page switches, etc.)!
+     */
+    async stopIndividualStream(cameraId, $streamItem, cameraType, streamType, options = {}) {
         try {
+            // Track user-initiated stops to prevent watchdog/health monitor from auto-restarting
+            // When userInitiated=true, we record this in localStorage so recovery logic skips this stream
+            if (options.userInitiated) {
+                this.markStreamAsUserStopped(cameraId);
+                console.log(`[Stream] ${cameraId}: User-initiated stop - marking as user-stopped`);
+            }
+
             // Clear any pending startup timeout
             const startupTimeout = $streamItem.data('startup-timeout');
             if (startupTimeout) {
@@ -1597,6 +1641,13 @@ export class MultiStreamManager {
      */
     async handleBackendRecovery(cameraId, $streamItem) {
         try {
+            // CRITICAL: Skip recovery for user-stopped streams
+            // User explicitly stopped this stream via UI, don't auto-restart
+            if (this.isUserStoppedStream(cameraId)) {
+                console.log(`[Recovery] ${cameraId}: Skipping backend recovery - user manually stopped this stream`);
+                return;
+            }
+
             // Clear any pending UI health restart timers (backend already fixed it)
             if (this.restartTimers.has(cameraId)) {
                 clearTimeout(this.restartTimers.get(cameraId));
@@ -1769,6 +1820,87 @@ export class MultiStreamManager {
 
         // PTZ works regardless of streaming
         $ptzBtns.prop('disabled', false);
+    }
+
+    // ============================================================================
+    // User-Stopped Stream Tracking
+    // ============================================================================
+    // When user explicitly stops a stream via UI button, we track this in localStorage.
+    // Recovery logic (watchdog/health monitor) checks this list and skips auto-restarting
+    // streams the user manually stopped. This prevents the annoying behavior where
+    // the system keeps restarting streams the user intentionally stopped.
+    // ============================================================================
+
+    /**
+     * Get the Set of camera IDs that user has manually stopped.
+     * Stored in localStorage as JSON array for persistence across page refreshes.
+     * @returns {Set<string>} Set of user-stopped camera IDs
+     */
+    _getUserStoppedStreams() {
+        try {
+            const stored = localStorage.getItem('userStoppedStreams');
+            return stored ? new Set(JSON.parse(stored)) : new Set();
+        } catch (e) {
+            console.error('[UserStopped] Error reading localStorage:', e);
+            return new Set();
+        }
+    }
+
+    /**
+     * Persist the Set of user-stopped camera IDs to localStorage.
+     * @param {Set<string>} stoppedSet - Set of camera IDs to persist
+     */
+    _saveUserStoppedStreams(stoppedSet) {
+        try {
+            localStorage.setItem('userStoppedStreams', JSON.stringify([...stoppedSet]));
+        } catch (e) {
+            console.error('[UserStopped] Error saving to localStorage:', e);
+        }
+    }
+
+    /**
+     * Mark a camera as user-stopped (should not be auto-restarted).
+     * Called when user clicks stop button on a stream.
+     * @param {string} cameraId - Camera serial number
+     */
+    markStreamAsUserStopped(cameraId) {
+        const stopped = this._getUserStoppedStreams();
+        stopped.add(cameraId);
+        this._saveUserStoppedStreams(stopped);
+        console.log(`[UserStopped] Marked ${cameraId} as user-stopped. Total: ${stopped.size}`);
+    }
+
+    /**
+     * Clear user-stopped flag for a camera (allow auto-restart).
+     * Called when user starts a stream (indicates they want it running).
+     * @param {string} cameraId - Camera serial number
+     */
+    clearUserStoppedStream(cameraId) {
+        const stopped = this._getUserStoppedStreams();
+        if (stopped.has(cameraId)) {
+            stopped.delete(cameraId);
+            this._saveUserStoppedStreams(stopped);
+            console.log(`[UserStopped] Cleared ${cameraId} from user-stopped list. Remaining: ${stopped.size}`);
+        }
+    }
+
+    /**
+     * Check if a camera was manually stopped by user.
+     * Recovery logic should skip auto-restarting these streams.
+     * @param {string} cameraId - Camera serial number
+     * @returns {boolean} True if user manually stopped this stream
+     */
+    isUserStoppedStream(cameraId) {
+        return this._getUserStoppedStreams().has(cameraId);
+    }
+
+    /**
+     * Clear all user-stopped flags (e.g., on page refresh with "Start All").
+     * Not currently used but available for future UI integration.
+     */
+    clearAllUserStoppedStreams() {
+        localStorage.removeItem('userStoppedStreams');
+        console.log('[UserStopped] Cleared all user-stopped flags');
     }
 
     async executePTZ(cameraSerial, direction, $button) {

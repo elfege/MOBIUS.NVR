@@ -17,7 +17,7 @@
         "ONVIF",
         "streaming"
       ],
-      "stream_type": "LL_HLS",
+      "stream_type": "WEBRTC",
       "onvif_port": 8000,
       "true_mjpeg": "false",
       "player_settings": {
@@ -61,8 +61,9 @@
         },
         "audio": {
           "enabled": true,
-          "c:a": "copy",
-          "_note": "UniFi outputs AAC LC @ 16kHz mono - passthrough, no transcode needed"
+          "c:a": "libopus",
+          "b:a": "32k",
+          "_note": "UniFi outputs AAC LC @ 16kHz mono - transcode to Opus for WebRTC compatibility"
         },
         "video_sub": {
           "c:v": "libx264",

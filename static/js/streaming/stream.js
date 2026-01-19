@@ -204,12 +204,15 @@ export class MultiStreamManager {
             allCameraIds: []  // All camera IDs in order
         };
 
-        // CameraStateMonitor polls backend state and detects when watchdog recovers streams
+        // CameraStateMonitor polls backend state for status display
+        // NOTE: Recovery callback DISABLED - WebSocket /stream_events handles recovery notifications
+        // with instant delivery instead of 10-second polling delay. Re-enable only if WebSocket fails.
         this.cameraStateMonitor = new CameraStateMonitor({
-            onRecovery: (cameraId, $streamItem, previousState, newState) => {
-                console.log(`[Recovery] ${cameraId}: Backend recovered stream (${previousState} → ${newState}), refreshing UI...`);
-                this.handleBackendRecovery(cameraId, $streamItem);
-            }
+            // onRecovery disabled: WebSocket stream_restarted event triggers handleBackendRecovery() instead
+            // onRecovery: (cameraId, $streamItem, previousState, newState) => {
+            //     console.log(`[Recovery] ${cameraId}: Backend recovered stream (${previousState} → ${newState}), refreshing UI...`);
+            //     this.handleBackendRecovery(cameraId, $streamItem);
+            // }
         });
         // Arrow function preserves context
         this.getCameraConfig = (id) => this.hlsManager.getCameraConfig(id);

@@ -33,7 +33,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ### Branch Info
 
-**Branch:** `timeline_playback_JAN_19_2026_a`
+**Branch:** `stream_status_fixes_JAN_19_2026_a` (renamed from `timeline_playback_JAN_19_2026_a`)
 **Previous branches (need PRs to merge to main):**
 
 - `audio_restoration_JAN_19_2026_a`
@@ -45,6 +45,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 2. `ed150f9` - Update handoff: post-compaction session, verify WebSocket recovery features
 3. `93fe6b0` - Config: Set REOLINK Office and Terrace South to MJPEG @ 15fps for comparison test
 4. `abf89ec` - Fix: MJPEG capture timing - account for request latency to achieve target FPS
+5. `f0b9a28` - Fix: CameraStateMonitor now respects user-stopped and quiet mode settings
 
 ### Previous Session Commits (pre-compaction, on `audio_restoration_JAN_19_2026_b`)
 
@@ -193,7 +194,7 @@ Current config uses Opus for all since WebRTC is primary playback method. HLS la
 
 - [ ] Create PR for `audio_restoration_JAN_19_2026_a` → main
 - [ ] Create PR for `audio_restoration_JAN_19_2026_b` → main
-- [ ] Create PR for `timeline_playback_JAN_19_2026_a` → main (when ready)
+- [ ] Create PR for `stream_status_fixes_JAN_19_2026_a` → main (when ready)
 
 **Completed This Session:**
 

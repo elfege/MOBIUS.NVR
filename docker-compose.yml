@@ -104,6 +104,7 @@ services:
       - /mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots
       - /mnt/sdc/NVR_Recent/manual:/recordings/manual
       - /mnt/sdc/NVR_Recent/buffer:/recordings/buffer
+      - /mnt/sdc/NVR_Recent/exports:/recordings/exports
 
       # LONG TERM STORAGE
       - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion

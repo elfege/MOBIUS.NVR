@@ -211,9 +211,23 @@ export class MultiStreamManager {
         this.wsRecoveryEnabled = false;  // Track if WebSocket is handling recovery
         this.cameraStateMonitor = new CameraStateMonitor({
             onRecovery: (cameraId, $streamItem, previousState, newState) => {
-                // Only use polling recovery when WebSocket is NOT connected
+                // When WebSocket is active, still check if this WebRTC stream needs help
+                // The WebSocket notification fires BEFORE FFmpeg is ready, but poll-based
+                // recovery fires when backend actually shows 'online' (MediaMTX has stream)
                 if (this.wsRecoveryEnabled) {
-                    console.log(`[Recovery] ${cameraId}: Skipping poll-based recovery (WebSocket active)`);
+                    const streamType = $streamItem.data('stream-type');
+                    const videoElement = $streamItem.find('.stream-video')[0];
+
+                    // For WebRTC streams that are still black, use poll-based as secondary fallback
+                    // This catches the case where WebSocket notified too early and fallback also failed
+                    if (streamType === 'WEBRTC' && videoElement &&
+                        (videoElement.readyState < 2 || videoElement.videoWidth === 0)) {
+                        console.log(`[Recovery] ${cameraId}: Poll-based secondary recovery for black WebRTC stream (${previousState} → ${newState})`);
+                        this.handleBackendRecovery(cameraId, $streamItem);
+                        return;
+                    }
+
+                    console.log(`[Recovery] ${cameraId}: Skipping poll-based recovery (WebSocket active, stream OK)`);
                     return;
                 }
                 console.log(`[Recovery] ${cameraId}: Poll-based recovery (WebSocket down) - ${previousState} → ${newState}`);

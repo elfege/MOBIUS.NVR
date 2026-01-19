@@ -2666,14 +2666,26 @@ export class MultiStreamManager {
                 console.log('[WEBSOCKET] Server confirmed subscription:', data);
             });
 
+            // Track recent recovery attempts to debounce rapid-fire events
+            this.recentRecoveries = this.recentRecoveries || new Map();
+
             this.streamEventsSocket.on('stream_restarted', (data) => {
                 const { camera_id, timestamp } = data;
                 console.log(`[WEBSOCKET] stream_restarted event received for ${camera_id} at ${new Date(timestamp * 1000).toLocaleTimeString()}`);
 
+                // Debounce: ignore if we handled recovery for this camera in last 5 seconds
+                const lastRecovery = this.recentRecoveries.get(camera_id);
+                const now = Date.now();
+                if (lastRecovery && (now - lastRecovery) < 5000) {
+                    console.log(`[WEBSOCKET] Ignoring duplicate event for ${camera_id} (debounced)`);
+                    return;
+                }
+
                 // Find the stream item and trigger recovery
                 const $streamItem = $(`.stream-item[data-camera-serial="${camera_id}"]`);
                 if ($streamItem.length) {
-                    console.log(`[WEBSOCKET] Triggering HLS refresh for ${camera_id}`);
+                    console.log(`[WEBSOCKET] Triggering refresh for ${camera_id}`);
+                    this.recentRecoveries.set(camera_id, now);
                     this.handleBackendRecovery(camera_id, $streamItem);
                 } else {
                     console.log(`[WEBSOCKET] Camera ${camera_id} not on this page, ignoring`);

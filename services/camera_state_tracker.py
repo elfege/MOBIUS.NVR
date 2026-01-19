@@ -67,6 +67,7 @@ class CameraState:
         next_retry: When services should next attempt connection (exponential backoff)
         backoff_seconds: Current backoff duration in seconds
         error_message: Last error encountered (for UI display)
+        starting_since: Timestamp when camera entered STARTING state (for timeout detection)
     """
     camera_id: str
     availability: CameraAvailability = CameraAvailability.STARTING
@@ -77,6 +78,7 @@ class CameraState:
     next_retry: datetime = field(default_factory=datetime.now)
     backoff_seconds: int = 0
     error_message: Optional[str] = None
+    starting_since: datetime = field(default_factory=datetime.now)
 
 
 class CameraStateTracker:
@@ -362,6 +364,7 @@ class CameraStateTracker:
                 else:
                     # Graceful stop (no error)
                     state.availability = CameraAvailability.STARTING
+                    state.starting_since = datetime.now()  # Reset starting timer
                     logger.debug(f"MJPEG camera {camera_id} capture stopped (no error)")
 
             # Trigger callbacks if state changed
@@ -401,6 +404,7 @@ class CameraStateTracker:
             # (not yet verified healthy by actual stream/connection)
             if active and not old_active and state.availability == CameraAvailability.OFFLINE:
                 state.availability = CameraAvailability.STARTING
+                state.starting_since = datetime.now()  # Reset starting timer
                 logger.info(f"Camera {camera_id} publisher activated, state: OFFLINE → STARTING")
 
             # If publisher just died and camera was ONLINE, mark as DEGRADED
@@ -520,10 +524,50 @@ class CameraStateTracker:
 
             logger.debug(f"MediaMTX API poll: {len(paths)} paths checked")
 
+            # Check for cameras stuck in STARTING state for too long (60+ seconds)
+            # If a camera has been STARTING but publisher never became active,
+            # transition to DEGRADED so StreamWatchdog picks it up for restart
+            self._check_starting_timeouts()
+
         except requests.exceptions.RequestException as e:
             logger.warning(f"MediaMTX API unreachable: {e}")
         except Exception as e:
             logger.error(f"Error parsing MediaMTX API response: {e}", exc_info=True)
+
+
+    def _check_starting_timeouts(self):
+        """
+        Check for cameras stuck in STARTING state and transition to DEGRADED.
+
+        If a camera has been in STARTING state for 60+ seconds without
+        publisher_active becoming True, it's likely stuck (FFmpeg never started
+        or died immediately). Transition to DEGRADED so StreamWatchdog can
+        pick it up and attempt a restart.
+
+        This fixes the issue where cameras get stuck showing "Starting..."
+        forever because the watchdog skips cameras in STARTING state.
+        """
+        STARTING_TIMEOUT_SECONDS = 60
+
+        with self._lock:
+            now = datetime.now()
+
+            for camera_id, state in self._states.items():
+                if state.availability == CameraAvailability.STARTING:
+                    elapsed = (now - state.starting_since).total_seconds()
+
+                    # Only timeout if still no publisher after 60 seconds
+                    if elapsed > STARTING_TIMEOUT_SECONDS and not state.publisher_active:
+                        logger.warning(
+                            f"Camera {camera_id} stuck in STARTING for {elapsed:.0f}s without publisher, "
+                            f"transitioning to DEGRADED for watchdog pickup"
+                        )
+                        state.availability = CameraAvailability.DEGRADED
+                        state.failure_count = 1
+                        state.error_message = "Startup timeout - FFmpeg never published"
+                        state.backoff_seconds = 5  # Short backoff for first retry
+                        state.next_retry = now + timedelta(seconds=5)
+                        self._trigger_callbacks(camera_id, state)
 
 
     def _trigger_callbacks(self, camera_id: str, state: CameraState):
@@ -560,16 +604,18 @@ class CameraStateTracker:
             New CameraState with STARTING availability
         """
         logger.debug(f"Creating default state for camera: {camera_id}")
+        now = datetime.now()
         return CameraState(
             camera_id=camera_id,
             availability=CameraAvailability.STARTING,
             publisher_active=False,
             ffmpeg_process_alive=False,
-            last_seen=datetime.now(),
+            last_seen=now,
             failure_count=0,
-            next_retry=datetime.now(),
+            next_retry=now,
             backoff_seconds=0,
-            error_message=None
+            error_message=None,
+            starting_since=now
         )
 
 

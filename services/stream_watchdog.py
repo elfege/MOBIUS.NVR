@@ -107,7 +107,41 @@ class StreamWatchdog:
         # Startup timestamp - used for warmup period
         self._start_time: Optional[float] = None
 
+        # SocketIO instance for broadcasting stream restart events to frontend
+        self._socketio = None
+
         logger.info("StreamWatchdog initialized")
+
+    def set_socketio(self, socketio) -> None:
+        """
+        Set SocketIO instance for broadcasting stream restart events.
+
+        Called by app.py after Flask-SocketIO initialization.
+        Enables real-time notification to frontend when streams are restarted.
+
+        Args:
+            socketio: Flask-SocketIO instance
+        """
+        self._socketio = socketio
+        logger.info("StreamWatchdog: SocketIO instance set for event broadcasting")
+
+    def _broadcast_stream_restarted(self, camera_id: str) -> None:
+        """
+        Broadcast stream_restarted event to all connected frontend clients.
+
+        Sent via /stream_events SocketIO namespace. Frontend subscribes to this
+        event and triggers HLS refresh immediately, avoiding the 10-second
+        polling delay that would otherwise leave HLS.js stuck on a stale session.
+
+        Args:
+            camera_id: Camera serial number that was restarted
+        """
+        if self._socketio:
+            self._socketio.emit('stream_restarted', {
+                'camera_id': camera_id,
+                'timestamp': time.time()
+            }, namespace='/stream_events')
+            logger.info(f"[WATCHDOG] Broadcast stream_restarted for {camera_id}")
 
     def start(self) -> None:
         """
@@ -326,6 +360,8 @@ class StreamWatchdog:
             if success:
                 logger.info(f"[WATCHDOG] LL-HLS restart successful for {camera_id}")
                 self._state_tracker.register_success(camera_id)
+                # Broadcast to frontend so HLS.js can refresh immediately
+                self._broadcast_stream_restarted(camera_id)
             else:
                 logger.error(f"[WATCHDOG] LL-HLS restart failed for {camera_id}")
                 self._state_tracker.register_failure(camera_id, "Watchdog restart failed")
@@ -374,6 +410,8 @@ class StreamWatchdog:
                 if success:
                     logger.info(f"[WATCHDOG] MJPEG restart successful for {camera_id}")
                     self._state_tracker.register_success(camera_id)
+                    # Broadcast to frontend so it can refresh immediately
+                    self._broadcast_stream_restarted(camera_id)
                 else:
                     logger.error(f"[WATCHDOG] MJPEG restart failed for {camera_id}")
                     self._state_tracker.register_failure(camera_id, "MJPEG restart failed")

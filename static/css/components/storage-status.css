@@ -1,0 +1,370 @@
+/* ============================================================================
+   STORAGE STATUS COMPONENT
+
+   STRUCTURE:
+   - Container: Wraps all storage visualization elements
+   - Storage Tiers: Individual tier cards (Recent, Archive)
+   - Progress Bars: Visual representation of disk usage
+   - Action Buttons: Trigger migration/cleanup/reconcile operations
+
+   COLOR CODING:
+   - Green (storage-ok): < 60% used
+   - Yellow (storage-warning): 60-80% used
+   - Red (storage-critical): > 80% used
+   ============================================================================ */
+
+/* Main container */
+.storage-status-container {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+/* Loading state */
+.storage-loading {
+    text-align: center;
+    padding: 2rem;
+    color: #667eea;
+    font-size: 1rem;
+}
+
+.storage-loading i {
+    margin-right: 0.5rem;
+}
+
+/* Error state */
+.storage-status-error {
+    text-align: center;
+    padding: 2rem;
+    color: #dc3545;
+    font-size: 1rem;
+}
+
+.storage-status-error i {
+    margin-right: 0.5rem;
+}
+
+/* ============================================================================
+   STORAGE TIER CARDS
+   ============================================================================ */
+
+.storage-tier {
+    background: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.storage-tier:last-of-type {
+    margin-bottom: 0.5rem;
+}
+
+/* Tier header (name + path) */
+.storage-tier-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.storage-tier-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.storage-tier-name i {
+    color: #667eea;
+}
+
+.storage-tier-path {
+    font-size: 0.75rem;
+    color: #888;
+    font-family: monospace;
+    background: #f0f0f0;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+/* ============================================================================
+   PROGRESS BAR
+   ============================================================================ */
+
+.storage-progress-container {
+    width: 100%;
+    height: 24px;
+    background: #e9ecef;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.storage-progress-bar {
+    height: 100%;
+    border-radius: 12px;
+    transition: width 0.5s ease, background-color 0.3s ease;
+    min-width: 0;
+}
+
+/* Color classes based on usage percentage */
+.storage-ok {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+.storage-warning {
+    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+}
+
+.storage-critical {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+}
+
+/* Tier stats row */
+.storage-tier-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    color: #666;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.storage-tier-stats span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* ============================================================================
+   WARNINGS SECTION
+   ============================================================================ */
+
+.storage-warnings {
+    background: rgba(220, 53, 69, 0.08);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+}
+
+.storage-warning {
+    color: #dc3545;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.storage-warning:last-child {
+    margin-bottom: 0;
+}
+
+.storage-warning i {
+    flex-shrink: 0;
+}
+
+/* ============================================================================
+   CONFIG SUMMARY
+   ============================================================================ */
+
+.storage-config-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: #e9ecef;
+    border-radius: 8px;
+    margin: 0.75rem 0;
+    font-size: 0.85rem;
+    color: #555;
+}
+
+.storage-config-summary span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: help;
+}
+
+.storage-config-summary i {
+    color: #667eea;
+}
+
+/* ============================================================================
+   ACTION BUTTONS
+   ============================================================================ */
+
+.storage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.storage-action-btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.storage-action-btn:disabled,
+.storage-action-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.storage-action-btn i {
+    font-size: 1rem;
+}
+
+/* Migrate button - primary action */
+.storage-action-migrate {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.storage-action-migrate:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5a71d4 0%, #6a4292 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Cleanup button - warning action */
+.storage-action-cleanup {
+    background: linear-gradient(135deg, #fd7e14 0%, #dc3545 100%);
+    color: white;
+}
+
+.storage-action-cleanup:hover:not(:disabled) {
+    background: linear-gradient(135deg, #e96f0d 0%, #c82333 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(253, 126, 20, 0.4);
+}
+
+/* Reconcile button - secondary action */
+.storage-action-reconcile {
+    background: #6c757d;
+    color: white;
+}
+
+.storage-action-reconcile:hover:not(:disabled) {
+    background: #5a6268;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+}
+
+/* ============================================================================
+   OPERATION RESULT DISPLAY
+   ============================================================================ */
+
+.storage-operation-result {
+    padding: 0.75rem 1rem;
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    border-radius: 8px;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    text-align: center;
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.storage-operation-result.show {
+    opacity: 1;
+    max-height: 100px;
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .storage-tier-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .storage-tier-path {
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .storage-tier-stats {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .storage-config-summary {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .storage-actions {
+        flex-direction: column;
+    }
+
+    .storage-action-btn {
+        width: 100%;
+    }
+}
+
+/* ============================================================================
+   ANIMATION ENHANCEMENTS
+   ============================================================================ */
+
+/* Pulse animation for critical storage */
+@keyframes pulse-critical {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(220, 53, 69, 0);
+    }
+}
+
+.storage-progress-bar.storage-critical {
+    animation: pulse-critical 2s infinite;
+}
+
+/* Shimmer effect for loading */
+@keyframes shimmer {
+    0% {
+        background-position: -200px 0;
+    }
+    100% {
+        background-position: calc(200px + 100%) 0;
+    }
+}
+
+.storage-progress-bar.loading {
+    background: linear-gradient(
+        90deg,
+        #e9ecef 0px,
+        #f8f9fa 40px,
+        #e9ecef 80px
+    );
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite linear;
+}

@@ -4,6 +4,7 @@
  */
 
 import { fullscreenHandler } from './fullscreen-handler.js';
+import { storageStatus } from './storage-status.js';
 
 /**
  * Detect if current device is a portable/mobile device
@@ -241,6 +242,9 @@ export class SettingsUI {
     hide() {
         console.log('[SettingsUI] Hiding settings panel');
         this.$overlay.removeClass('active');
+
+        // Stop storage status auto-refresh when panel is hidden
+        storageStatus.stopAutoRefresh();
     }
 
     toggle() {
@@ -478,10 +482,30 @@ export class SettingsUI {
                 <br><strong>Note:</strong> Audio starts muted by default (browser autoplay policy).
             </div>
         </div>
+
+        <!-- Storage Status Section -->
+        <div class="setting-row" style="border-left-color: #28a745;">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-hdd" style="color: #28a745;"></i>
+                    Storage Status
+                </div>
+            </div>
+            <div class="setting-description" style="margin-bottom: 1rem;">
+                View disk usage for recent and archive storage tiers.
+                Migrate old recordings or cleanup archive storage.
+            </div>
+            <div id="storage-status-container">
+                <!-- StorageStatus component renders here -->
+            </div>
+        </div>
     `;
 
         this.$content.html(html);
         console.log('[SettingsUI] Settings rendered');
+
+        // Initialize storage status component
+        storageStatus.init('#storage-status-container');
     }
 
     updateDelayInputState(enabled) {

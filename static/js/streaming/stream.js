@@ -1585,30 +1585,36 @@ export class MultiStreamManager {
             this.restartAttempts.delete(cameraId);
             this.recentFailures.delete(cameraId);
 
-            // Show brief "Recovered" status before restart
-            this.setStreamStatus($streamItem, 'loading', 'Recovered - Reconnecting...');
-
-            // Give the backend stream a moment to stabilize before UI connects
-            await new Promise(r => setTimeout(r, 2000));
-
-            // Get stream metadata for stop/start
-            const cameraType = $streamItem.data('camera-type');
+            // Get stream metadata
             const streamType = $streamItem.data('stream-type');
+            const videoElement = $streamItem.find('.stream-video')[0];
 
-            // Full stop+start cycle (not just refresh) for clean reconnection
-            // This mimics manual stop/start which user confirmed works reliably
-            console.log(`[Recovery] ${cameraId}: Performing full stop+start cycle`);
+            // For HLS and WebRTC: use forceRefreshStream() - same as manual refresh button
+            // This is faster and more reliable than full stop+start cycle
+            if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                console.log(`[Recovery] ${cameraId}: Using HLS forceRefreshStream (same as manual refresh)`);
+                this.setStreamStatus($streamItem, 'loading', 'Refreshing HLS...');
+                await new Promise(r => setTimeout(r, 1000)); // Brief delay for backend to stabilize
+                this.hlsManager.forceRefreshStream(cameraId, videoElement);
+                console.log(`[Recovery] ${cameraId}: HLS refresh triggered`);
+            } else if (streamType === 'WEBRTC') {
+                console.log(`[Recovery] ${cameraId}: Using WebRTC forceRefreshStream (same as manual refresh)`);
+                this.setStreamStatus($streamItem, 'loading', 'Refreshing WebRTC...');
+                await new Promise(r => setTimeout(r, 1000)); // Brief delay for backend to stabilize
+                this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                console.log(`[Recovery] ${cameraId}: WebRTC refresh triggered`);
+            } else {
+                // For other stream types: full stop+start cycle
+                console.log(`[Recovery] ${cameraId}: Using full stop+start cycle for ${streamType}`);
+                this.setStreamStatus($streamItem, 'loading', 'Recovered - Reconnecting...');
+                await new Promise(r => setTimeout(r, 2000));
 
-            // Step 1: Stop stream (client-side cleanup, detach health monitor)
-            await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
-
-            // Step 2: Brief pause between stop and start
-            await new Promise(r => setTimeout(r, 500));
-
-            // Step 3: Start fresh stream
-            await this.startStream(cameraId, $streamItem, cameraType, streamType);
-
-            console.log(`[Recovery] ${cameraId}: Full stop+start complete after backend recovery`);
+                const cameraType = $streamItem.data('camera-type');
+                await this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType);
+                await new Promise(r => setTimeout(r, 500));
+                await this.startStream(cameraId, $streamItem, cameraType, streamType);
+                console.log(`[Recovery] ${cameraId}: Full stop+start complete`);
+            }
 
         } catch (e) {
             console.error(`[Recovery] ${cameraId}: Failed to reconnect after backend recovery`, e);

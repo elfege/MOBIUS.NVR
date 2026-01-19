@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 19, 2026 02:45 EST*
+*Last updated: January 19, 2026 01:37 EST*
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -25,60 +25,40 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **See:** `docs/README_project_history.md` for full history
 
-**Previous session (Jan 18-19, 2026):** WebSocket stream restart notification implemented for instant HLS recovery after backend restarts FFmpeg.
-
 ---
 
-## Current Session (Jan 19, 2026 01:00-02:45 EST)
+## Current Session (Jan 19, 2026 01:00-01:37 EST)
 
 ### Branch Info
 
-**Branch:** `audio_restoration_JAN_19_2026_b` (new branch after _a merged)
-**Previous branch:** `audio_restoration_JAN_19_2026_a` (needs PR due to branch protection)
+**Branch:** `audio_restoration_JAN_19_2026_b`
+**Previous branch:** `audio_restoration_JAN_19_2026_a` (needs PR to merge to main - branch protection)
+
+### Commits This Session
+
+1. `37188de` - Fix: User-stopped streams being auto-restarted by watchdog
+2. `e8a9f8d` - Update handoff: user-stopped tracking, audio probing results
+3. `bb73c51` - Fix .gitignore: remove duplicate config/ rule that overrode exceptions
 
 ### Completed Work
 
-#### 1. WebSocket Stream Recovery (from _a branch) - COMPLETED
-
-Fixed timing issues with WebSocket stream restart notifications for WebRTC cameras.
-
-**Solution (3-tier recovery):**
-1. **Immediate:** WebSocket notification triggers `forceRefreshStream()` (no delay for WebRTC)
-2. **5-second fallback:** If video still black (`readyState<2` or `videoWidth=0`), trigger refresh button click
-3. **Poll-based secondary:** When CameraStateMonitor detects `degraded → online`, check if WebRTC still black and retry
-
-#### 2. Frame Preservation During Refresh - COMPLETED
-
-Added canvas overlay to preserve last frame during stream refresh (no black flash).
-- `_captureFrameOverlay()` added to both webrtc-stream.js and hls-stream.js
-- Canvas positioned over video, removed after 2 seconds
-
-#### 3. Quiet Status Messages Toggle - COMPLETED
-
-Added UI toggle in settings to hide verbose status messages (Degraded, Refreshing, etc.)
-- Only shows: Starting, Connecting, Live, Failed, Error, Stopped
-- Saved to localStorage: `quietStatusMessages`
-
-#### 4. User-Stopped Stream Tracking - COMPLETED (commit `37188de`)
+#### 1. User-Stopped Stream Tracking (commit `37188de`)
 
 **Problem:** When user clicks stop on a stream, watchdog/health monitor would restart it.
 
 **Solution:** Track user-stopped streams in localStorage:
-- `markStreamAsUserStopped()` called when `userInitiated: true`
-- `clearUserStoppedStream()` called when stream is started
-- `isUserStoppedStream()` checked in `handleBackendRecovery()` and `onRecovery()`
-- Recovery logic skips streams user manually stopped
+
+- `markStreamAsUserStopped(cameraId)` - called when `userInitiated: true`
+- `clearUserStoppedStream(cameraId)` - called when stream is started
+- `isUserStoppedStream(cameraId)` - checked in `handleBackendRecovery()` and `onRecovery()`
 
 **Files Modified:**
-- [static/js/streaming/stream.js](static/js/streaming/stream.js) - User-stopped tracking
 
-**WARNING ADDED:** Never use `.click()` on stop button programmatically - see comments in code.
+- [static/js/streaming/stream.js](static/js/streaming/stream.js) - User-stopped tracking with localStorage
 
----
+**WARNING:** Never use `.click()` on stop button programmatically - see comments in code.
 
-## Audio Restoration Progress
-
-### Camera Audio Codec Probing - COMPLETED
+#### 2. Audio Codec Probing - COMPLETED
 
 Probed cameras via FFprobe inside container:
 
@@ -89,9 +69,9 @@ Probed cameras via FFprobe inside container:
 
 **Key Finding:** Both cameras output AAC natively (HLS-compatible). Historical note about "Reolink outputs PCM" appears incorrect for this model.
 
-### Audio Enabled on UniFi Camera (TEST PENDING)
+#### 3. Audio Enabled on UniFi Camera
 
-Modified `config/cameras.json` for UniFi G5 Flex:
+Modified `config/cameras.json` for UniFi G5 Flex (68d49398005cf203e400043f):
 
 ```json
 "audio": {
@@ -101,34 +81,45 @@ Modified `config/cameras.json` for UniFi G5 Flex:
 }
 ```
 
-**Note:** config/ is gitignored - change is local only.
+**Status:** User is restarting NVR to test audio.
 
-**TO TEST:**
-1. Restart NVR: `source ~/.bash_aliases && startnvr`
-2. Check UniFi camera stream for audio
-3. Verify no HLS errors in console
-4. If works, enable audio on Reolink camera too
+#### 4. .gitignore Fix (commit `bb73c51`)
+
+Removed duplicate `**/config/` rule on line 91 that was overriding the exceptions defined on lines 33-37. This allows `config/cameras.json` to be tracked.
+
+**Lesson learned:** In gitignore, a blanket directory ignore like `**/config/` prevents git from looking inside the directory at all, so earlier exceptions like `!config/cameras.json` never get evaluated.
+
+---
+
+## Files Modified This Session
+
+| File | Changes |
+|------|---------|
+| [static/js/streaming/stream.js](static/js/streaming/stream.js) | User-stopped stream tracking with localStorage |
+| [config/cameras.json](config/cameras.json) | Audio enabled on UniFi camera (c:a: copy) |
+| [.gitignore](.gitignore) | Removed duplicate config/ rule |
+| [docs/README_handoff.md](docs/README_handoff.md) | Session documentation |
+
+---
+
+## Pending Testing
+
+- [ ] **Audio test:** User restarting NVR - check UniFi camera for audio
+- [ ] **User-stopped test:** Stop a stream manually, verify it doesn't auto-restart
 
 ---
 
 ## TODO List
 
-**Testing (User):**
-
-- [ ] Restart NVR and test UniFi camera audio
-- [ ] Check for HLS.js errors in console
-- [ ] Test mute/unmute button functionality
-- [x] Test user-stopped stream tracking (stop stream, verify it doesn't auto-restart)
-
-**Pending PRs:**
+**Pending PRs (branch protection requires PRs):**
 
 - [ ] Create PR for `audio_restoration_JAN_19_2026_a` → main
-- [ ] Create PR for `audio_restoration_JAN_19_2026_b` → main (after testing)
+- [ ] Create PR for `audio_restoration_JAN_19_2026_b` → main
 
-**Next Steps (Audio):**
+**Audio Restoration:**
 
 - [x] Probe each camera type for native audio codec
-- [ ] Test UniFi audio (pending restart)
+- [ ] Test UniFi audio (user restarting NVR now)
 - [ ] If UniFi works, enable audio on Reolink camera
 - [ ] Consider separate audio stream approach if transcoding issues arise
 

@@ -364,11 +364,23 @@ export class WebRTCStreamManager {
     }
 
     /**
-     * Force refresh a stream by closing and reopening connection
+     * Force refresh a stream by closing and reopening connection.
+     *
+     * Preserves the last frame during refresh to avoid visible black flash:
+     * 1. Capture current video frame to canvas overlay
+     * 2. Stop existing WebRTC connection
+     * 3. Restart stream
+     * 4. Remove canvas when new stream is live
      */
     async forceRefreshStream(cameraId, videoElement) {
         const current = this.activeStreams.get(cameraId);
         const streamType = current?.type ?? 'sub';
+
+        // Capture last frame to canvas overlay for seamless transition
+        let frameCanvas = null;
+        if (videoElement && videoElement.readyState >= 2 && videoElement.videoWidth > 0) {
+            frameCanvas = this._captureFrameOverlay(videoElement);
+        }
 
         // Stop existing stream
         this.stopStream(cameraId);
@@ -376,8 +388,66 @@ export class WebRTCStreamManager {
         // Brief delay before restart
         await new Promise(resolve => setTimeout(resolve, 200));
 
-        // Restart stream
-        return this.startStream(cameraId, videoElement, streamType);
+        // Restart stream - pass canvas reference to remove when live
+        const result = await this.startStream(cameraId, videoElement, streamType);
+
+        // Remove frame overlay after short delay (stream should be displaying by now)
+        // The 'streamlive' event is more reliable but this is a fallback
+        if (frameCanvas) {
+            setTimeout(() => {
+                if (frameCanvas.parentNode) {
+                    frameCanvas.remove();
+                }
+            }, 2000);
+        }
+
+        return result;
+    }
+
+    /**
+     * Capture current video frame to a canvas overlay positioned over the video.
+     *
+     * Creates a canvas element that shows the last frame, positioned exactly
+     * over the video element. This prevents the black flash during stream refresh.
+     *
+     * @param {HTMLVideoElement} videoElement - Video element to capture from
+     * @returns {HTMLCanvasElement} Canvas element with captured frame
+     */
+    _captureFrameOverlay(videoElement) {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoElement.videoWidth;
+        canvas.height = videoElement.videoHeight;
+        canvas.className = 'webrtc-frame-overlay';
+
+        // Draw current frame
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoElement, 0, 0);
+
+        // Position canvas exactly over video element
+        canvas.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 10;
+            pointer-events: none;
+        `;
+
+        // Insert canvas as sibling after video (video parent should have position:relative)
+        const parent = videoElement.parentElement;
+        if (parent) {
+            // Ensure parent has relative positioning for absolute canvas
+            const parentStyle = window.getComputedStyle(parent);
+            if (parentStyle.position === 'static') {
+                parent.style.position = 'relative';
+            }
+            parent.appendChild(canvas);
+            console.log(`[WebRTC] ${videoElement.id || 'video'}: Frame overlay created for seamless refresh`);
+        }
+
+        return canvas;
     }
 
     /**

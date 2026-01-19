@@ -3147,6 +3147,247 @@ def api_timeline_export_list():
 
 
 ########################################################
+#           📦 STORAGE MIGRATION API ROUTES 📦
+########################################################
+
+# Global storage migration service instance
+_storage_migration_service = None
+
+def get_storage_migration_service():
+    """
+    Get or create the StorageMigrationService singleton.
+    Lazy initialization to avoid import issues at startup.
+    """
+    global _storage_migration_service
+    if _storage_migration_service is None:
+        from services.recording.storage_migration import StorageMigrationService
+        _storage_migration_service = StorageMigrationService()
+    return _storage_migration_service
+
+
+@app.route('/api/storage/stats', methods=['GET'])
+def api_storage_stats():
+    """
+    Get storage statistics for UI display.
+
+    Returns:
+        Disk usage for recent and archive tiers, config settings, warnings
+    """
+    try:
+        migration_service = get_storage_migration_service()
+        stats = migration_service.get_storage_stats()
+
+        return jsonify({
+            'success': True,
+            **stats
+        })
+
+    except Exception as e:
+        logger.error(f"Storage stats API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/migrate', methods=['POST'])
+@csrf.exempt
+def api_storage_migrate():
+    """
+    Trigger storage migration from recent to archive tier.
+
+    Request Body (JSON, optional):
+        recording_type: Type to migrate (default: "motion")
+        force: Bypass threshold checks (default: false)
+
+    Returns:
+        Migration result with counts and details
+    """
+    try:
+        data = request.get_json() or {}
+        recording_type = data.get('recording_type', 'motion')
+        force = data.get('force', False)
+
+        migration_service = get_storage_migration_service()
+        result = migration_service.migrate_recent_to_archive(recording_type, force)
+
+        return jsonify({
+            'success': True,
+            'operation': 'migrate',
+            'recording_type': recording_type,
+            'trigger_reason': result.trigger_reason,
+            'migrated': result.success_count,
+            'failed': result.failed_count,
+            'skipped': result.skipped_count,
+            'bytes_processed': result.bytes_processed,
+            'errors': result.errors[:10] if result.errors else []
+        })
+
+    except Exception as e:
+        logger.error(f"Storage migrate API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/cleanup', methods=['POST'])
+@csrf.exempt
+def api_storage_cleanup():
+    """
+    Trigger archive cleanup (deletion of old files).
+
+    Request Body (JSON, optional):
+        recording_type: Type to clean (default: "motion")
+        force: Bypass threshold checks (default: false)
+
+    Returns:
+        Cleanup result with counts and details
+    """
+    try:
+        data = request.get_json() or {}
+        recording_type = data.get('recording_type', 'motion')
+        force = data.get('force', False)
+
+        migration_service = get_storage_migration_service()
+        result = migration_service.cleanup_archive(recording_type, force)
+
+        return jsonify({
+            'success': True,
+            'operation': 'cleanup',
+            'recording_type': recording_type,
+            'trigger_reason': result.trigger_reason,
+            'deleted': result.success_count,
+            'failed': result.failed_count,
+            'bytes_freed': result.bytes_processed,
+            'errors': result.errors[:10] if result.errors else []
+        })
+
+    except Exception as e:
+        logger.error(f"Storage cleanup API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/reconcile', methods=['POST'])
+@csrf.exempt
+def api_storage_reconcile():
+    """
+    Reconcile database with filesystem.
+    Removes orphaned database entries where files no longer exist.
+
+    Returns:
+        Reconciliation result with removed entry count
+    """
+    try:
+        migration_service = get_storage_migration_service()
+        result = migration_service.reconcile_db_with_filesystem()
+
+        return jsonify({
+            'success': True,
+            'operation': 'reconcile',
+            'orphaned_removed': result.success_count,
+            'failed': result.failed_count,
+            'errors': result.errors[:10] if result.errors else []
+        })
+
+    except Exception as e:
+        logger.error(f"Storage reconcile API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/migrate/full', methods=['POST'])
+@csrf.exempt
+def api_storage_full_migration():
+    """
+    Run complete migration cycle for all recording types.
+
+    Steps:
+    1. Migrate recent → archive for all types
+    2. Cleanup archive for all types
+    3. Reconcile database
+
+    Returns:
+        Summary of all operations
+    """
+    try:
+        migration_service = get_storage_migration_service()
+        results = migration_service.run_full_migration()
+
+        # Summarize results
+        summary = {
+            'success': True,
+            'operation': 'full_migration',
+            'migrate': {},
+            'cleanup': {},
+            'reconcile': {}
+        }
+
+        for key, result in results.items():
+            if key.startswith('migrate_'):
+                rec_type = key.replace('migrate_', '')
+                summary['migrate'][rec_type] = {
+                    'migrated': result.success_count,
+                    'failed': result.failed_count
+                }
+            elif key.startswith('cleanup_'):
+                rec_type = key.replace('cleanup_', '')
+                summary['cleanup'][rec_type] = {
+                    'deleted': result.success_count,
+                    'failed': result.failed_count
+                }
+            elif key == 'reconcile':
+                summary['reconcile'] = {
+                    'orphaned_removed': result.success_count,
+                    'failed': result.failed_count
+                }
+
+        return jsonify(summary)
+
+    except Exception as e:
+        logger.error(f"Storage full migration API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/operations', methods=['GET'])
+def api_storage_operations():
+    """
+    Query file operations log.
+
+    Query Parameters:
+        operation: Filter by operation type (migrate, delete, reconcile, error)
+        camera_id: Filter by camera
+        limit: Max records (default: 50)
+        offset: Pagination offset (default: 0)
+
+    Returns:
+        List of file operation log entries
+    """
+    try:
+        # Build PostgREST query
+        operation = request.args.get('operation')
+        camera_id = request.args.get('camera_id')
+        limit = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+
+        # Query PostgREST directly
+        url = f"http://localhost:3000/file_operations_log?order=created_at.desc&limit={limit}&offset={offset}"
+
+        if operation:
+            url += f"&operation=eq.{operation}"
+        if camera_id:
+            url += f"&camera_id=eq.{camera_id}"
+
+        import requests as req
+        response = req.get(url, timeout=30)
+        response.raise_for_status()
+        operations = response.json()
+
+        return jsonify({
+            'success': True,
+            'count': len(operations),
+            'operations': operations
+        })
+
+    except Exception as e:
+        logger.error(f"Storage operations API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+########################################################
 #           🏃 MOTION DETECTION API ROUTES 🏃
 ########################################################
 

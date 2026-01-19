@@ -2634,33 +2634,37 @@ export class MultiStreamManager {
             });
 
             this.streamEventsSocket.on('connect', () => {
-                console.log('[StreamEvents] Connected to backend stream events');
+                console.log('[WEBSOCKET] Connected to /stream_events namespace');
+            });
+
+            this.streamEventsSocket.on('connected', (data) => {
+                console.log('[WEBSOCKET] Server confirmed subscription:', data);
             });
 
             this.streamEventsSocket.on('stream_restarted', (data) => {
                 const { camera_id, timestamp } = data;
-                console.log(`[StreamEvents] Backend restarted stream for ${camera_id} at ${new Date(timestamp * 1000).toLocaleTimeString()}`);
+                console.log(`[WEBSOCKET] stream_restarted event received for ${camera_id} at ${new Date(timestamp * 1000).toLocaleTimeString()}`);
 
                 // Find the stream item and trigger recovery
                 const $streamItem = $(`.stream-item[data-camera-serial="${camera_id}"]`);
                 if ($streamItem.length) {
-                    console.log(`[StreamEvents] Triggering HLS refresh for ${camera_id}`);
+                    console.log(`[WEBSOCKET] Triggering HLS refresh for ${camera_id}`);
                     this.handleBackendRecovery(camera_id, $streamItem);
                 } else {
-                    console.log(`[StreamEvents] Camera ${camera_id} not on this page, ignoring`);
+                    console.log(`[WEBSOCKET] Camera ${camera_id} not on this page, ignoring`);
                 }
             });
 
             this.streamEventsSocket.on('disconnect', (reason) => {
-                console.log(`[StreamEvents] Disconnected: ${reason}`);
+                console.log(`[WEBSOCKET] Disconnected from /stream_events: ${reason}`);
             });
 
             this.streamEventsSocket.on('connect_error', (error) => {
-                console.error('[StreamEvents] Connection error:', error);
+                console.error('[WEBSOCKET] Connection error:', error);
             });
 
         } catch (error) {
-            console.error('[StreamEvents] Failed to connect:', error);
+            console.error('[WEBSOCKET] Failed to connect:', error);
         }
     }
 
@@ -2680,7 +2684,7 @@ export class MultiStreamManager {
             script.src = 'https://cdn.socket.io/4.7.4/socket.io.min.js';
             script.crossOrigin = 'anonymous';
             script.onload = () => {
-                console.log('[StreamEvents] Socket.IO client loaded');
+                console.log('[WEBSOCKET] Socket.IO client loaded');
                 resolve();
             };
             script.onerror = () => {

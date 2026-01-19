@@ -15165,59 +15165,152 @@ Added timeline playback functionality to each camera modal:
 
 ---
 
-## January 19, 2026 (12:00+ EST): Storage Migration Planning
+## January 19, 2026 (03:00-18:00 EST): Storage Migration & Timeline Fix - COMPLETED
 
-**Branch:** `video_recording_long_term_storage_fix_JAN_19_2025_a`
+**Branch:** `video_recording_long_term_storage_fix_JAN_19_2025_a` (merged to main)
 
-**Context compaction occurred at ~12:00 EST**
+**Context compactions occurred at ~03:00, ~12:00, ~14:15, ~17:38 EST**
 
 ### Summary
 
-All previous branches merged to main. Started work on storage migration and timeline playback fixes.
+Implemented complete two-tier storage migration system and fixed timeline playback bug.
 
-### Merged to Main
+### Work Completed
 
-- `audio_restoration_JAN_19_2026_a` ✓
-- `audio_restoration_JAN_19_2026_b` ✓
-- `stream_status_fixes_JAN_19_2026_a` ✓
-- `timeline_playback_JAN_19_2026_a` ✓
+#### 1. Storage Migration System - FULLY IMPLEMENTED
 
-### Issues Identified
+**Files Created:**
 
-1. **Timeline shows "No recordings found"** - Either recordings not logged to DB or query issue
-2. **No storage migration** - Files in `/mnt/sdc/NVR_Recent/` (210GB) never move to `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/` (empty)
-3. **No file operations audit** - Moves/deletes not logged
+| File | Description |
+|------|-------------|
+| `psql/migrations/004_file_operations_log.sql` | Audit table for file operations |
+| `services/recording/storage_migration.py` | 811-line rsync-based migration service |
+| `config/recording_config_loader.py` | Config loader for recording settings |
+| `static/js/settings/storage-status.js` | ES6 UI component for storage visualization |
+| `static/css/components/storage-status.css` | CSS with progress bars, color coding |
 
-### Architectural Decision
+**Files Modified:**
 
-**DEFERRED:** Full database-backed settings overhaul
-**See:** `docs/README_plan_for_user_based_settings_implementation.md`
+| File | Changes |
+|------|---------|
+| `config/recording_settings.json` | Added `storage_paths` and `migration` sections |
+| `app.py` | Added 6 storage API endpoints |
+| `static/js/settings/settings-ui.js` | Integrated storage status into settings panel |
+| `templates/streams.html` | Added storage-status.css link |
 
-**CURRENT FOCUS:**
-1. Fix timeline playback
-2. Implement storage migration with logging
-3. Keep `recording_settings.json` as-is
+**Storage API Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/storage/stats` | GET | Get disk usage for UI (both tiers) |
+| `/api/storage/migrate` | POST | Trigger recent → archive migration |
+| `/api/storage/cleanup` | POST | Trigger archive cleanup (deletion) |
+| `/api/storage/reconcile` | POST | Remove orphaned DB entries |
+| `/api/storage/migrate/full` | POST | Run full migration cycle |
+| `/api/storage/operations` | GET | Query file_operations_log |
+
+**Configuration Added:**
+
+```json
+"storage_paths": {
+  "recent_base": "/recordings",
+  "recent_host_path": "/mnt/sdc/NVR_Recent",
+  "archive_base": "/recordings/STORAGE",
+  "archive_host_path": "/mnt/THE_BIG_DRIVE/NVR_RECORDINGS"
+},
+"migration": {
+  "enabled": true,
+  "age_threshold_days": 3,
+  "archive_retention_days": 90,
+  "min_free_space_percent": 20,
+  "schedule_cron": "0 3 * * *",
+  "run_on_startup": false
+}
+```
+
+**Migration Logic:**
+
+```text
+RECENT tier: file.age > 3 days OR free_space < 20% → rsync to STORAGE
+STORAGE tier: file.age > 90 days OR free_space < 20% → DELETE
+
+Commands used:
+  rsync -auz --remove-source-files source dest
+  find base/ -type d -empty -delete
+```
+
+#### 2. Timeline Playback Query Fix - COMPLETED
+
+**Bug:** Timeline showed "No recordings found" despite 3500+ recordings in DB.
+
+**Root Cause:** PostgREST query in `timeline_service.py` only filtered by `timestamp <= end_time`, returning oldest recordings first (from Jan 5) which were then filtered out because they were outside the requested range.
+
+**Fix Location:** `services/recording/timeline_service.py:201-224`
+
+```python
+params['and'] = f"(timestamp.gte.{start_time.isoformat()},timestamp.lte.{end_time.isoformat()})"
+```
+
+**Verification:** Query now returns 374 recordings for Jan 18-19 range (tested successfully).
+
+#### 3. SQL Migration Executed
+
+Table `file_operations_log` created with indexes for operation, camera_id, created_at, failures, recording_id. Permissions granted to nvr_anon role with RLS enabled.
 
 ### Key Commits
 
 | Commit | Description |
 |--------|-------------|
 | `20b665e` | Add deferred plan for user-based settings implementation |
+| `089af9a` | Port Jan 19 sessions to project history with consolidated TODO list |
+| `72879f4` | Add file_operations_log table for storage operation auditing |
+| `14f8725` | Add storage_paths and migration config to recording_settings.json |
+| `2f86b59` | Add config loader methods for storage paths and migration |
+| `581bc09` | Add StorageMigrationService (rsync-based two-tier migration) |
+| `2281586` | Add storage migration API endpoints |
+| `6c5f62d` | Add storage status UI component with progress bars and action buttons |
+| `f172839` | Fix timeline query: add start_time filter to PostgREST query |
+| `28c97d0` | Update handoff documentation with storage migration and timeline fix details |
+
+### Key Files Reference
+
+For next session, key files to understand the storage system:
+
+1. **Storage Migration Service:** `services/recording/storage_migration.py`
+   - `StorageMigrationService` class
+   - `migrate_recent_to_archive()` - rsync-based migration
+   - `cleanup_archive()` - retention-based deletion
+   - `reconcile_db_with_filesystem()` - orphan cleanup
+   - `get_storage_stats()` - UI data
+
+2. **Config:** `config/recording_settings.json` + `config/recording_config_loader.py`
+
+3. **API:** `app.py` (search for `/api/storage/`)
+
+4. **UI:** `static/js/settings/storage-status.js` + `static/css/components/storage-status.css`
+
+5. **Timeline Fix:** `services/recording/timeline_service.py:206-224` (the `and` filter)
 
 ---
 
 ## TODO List (Cumulative)
 
-**Current Priority:**
+**Completed This Session (Jan 19, 2026):**
 
-- [ ] Diagnose why timeline shows "No recordings found"
-- [ ] Verify recordings are being logged to PostgreSQL
-- [ ] Fix timeline query if needed
-- [ ] Add `file_operations_log` table for audit trail
-- [ ] Implement storage migration (recent → archive)
+- [x] Diagnose why timeline shows "No recordings found" - **FIXED** (query bug)
+- [x] Verify recordings are logged to PostgreSQL - **YES** (3500+ recordings)
+- [x] Fix timeline query - **DONE** (commit `f172839`)
+- [x] Add `file_operations_log` table - **DONE** (commit `72879f4`)
+- [x] Implement storage migration (recent → archive) - **DONE** (811 lines)
 
-**Testing Needed:**
+**Testing Needed (after container restart):**
 
+- [ ] Test timeline playback shows recordings for selected date range
+- [ ] Test storage status appears in Settings panel
+- [ ] Test "Migrate Now" button triggers migration
+- [ ] Test "Cleanup Archive" button works
+- [ ] Test "Reconcile DB" button removes orphaned entries
+- [ ] Test progress bars show correct disk usage with color coding
 - [ ] Test UI health monitoring after container restart
 - [ ] Test timeline playback modal opens from playback button
 - [ ] Test date/time controls and presets load recordings
@@ -15227,7 +15320,6 @@ All previous branches merged to main. Started work on storage migration and time
 - [ ] Test download works on desktop and iOS
 - [ ] Test quiet mode hides verbose statuses
 - [ ] Test user-stopped streams stay "Stopped"
-- [ ] Test storage migration moves files correctly
 
 **Hardware Issues:**
 
@@ -15235,6 +15327,7 @@ All previous branches merged to main. Started work on storage migration and time
 
 **Future Enhancements:**
 
+- [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline
 - [ ] Add segment preview on hover
 - [ ] Add direct video playback in modal (before export)

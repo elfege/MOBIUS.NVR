@@ -414,10 +414,18 @@ def build_ll_hls_dual_output_publish_params(
             out += ["-map", "0:v"]  # Map raw video input directly (no filter)
             out += ["-c:v", "copy"]  # Copy video codec (no re-encoding)
 
-            # Audio for main stream (also passthrough if available)
+            # Audio for main stream - use same codec config as sub stream for WebRTC compatibility
+            # (WebRTC requires Opus, so if config specifies libopus, apply it to both streams)
             if bool(aud.get("enabled", False)):
                 out += ["-map", "0:a:0?"]
-                out += ["-c:a", "copy"]  # Copy audio too for lowest latency
+                c_a = aud.get("c:a", aud.get("codec", "copy"))
+                b_a = aud.get("b:a", aud.get("bitrate", None))
+                ar = aud.get("ar", aud.get("rate", None))
+                ac = aud.get("ac", aud.get("channels", None))
+                out += ["-c:a", str(c_a)]
+                if b_a: out += ["-b:a", str(b_a)]
+                if ar: out += ["-ar", str(ar)]
+                if ac is not None: out += ["-ac", str(ac)]
             else:
                 out += ["-an"]
 

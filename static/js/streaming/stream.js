@@ -584,6 +584,9 @@ export class MultiStreamManager {
             }
         });
 
+        // Track cameras currently undergoing manual restart (to block WebSocket auto-recovery)
+        this.manualRestartInProgress = this.manualRestartInProgress || new Set();
+
         // Restart stream handler (backend FFmpeg restart)
         // Unlike refresh which just reconnects HLS.js, this kills and restarts FFmpeg
         this.$container.on('click', '.restart-stream-btn', async (e) => {
@@ -599,6 +602,9 @@ export class MultiStreamManager {
                 return;
             }
 
+            // Mark this camera as undergoing manual restart
+            // This prevents WebSocket stream_restarted events from interfering
+            this.manualRestartInProgress.add(cameraId);
             console.log(`[Restart] ${cameraId}: Initiating backend FFmpeg restart...`);
             this.setStreamStatus($streamItem, 'loading', 'Restarting...');
 
@@ -657,6 +663,10 @@ export class MultiStreamManager {
             } catch (error) {
                 console.error(`[Restart] ${cameraId}: Failed - ${error.message}`);
                 this.setStreamStatus($streamItem, 'error', `Restart failed: ${error.message}`);
+            } finally {
+                // Clear manual restart flag regardless of success/failure
+                this.manualRestartInProgress.delete(cameraId);
+                console.log(`[Restart] ${cameraId}: Manual restart flow completed`);
             }
         });
 
@@ -2898,6 +2908,13 @@ export class MultiStreamManager {
             this.streamEventsSocket.on('stream_restarted', (data) => {
                 const { camera_id, timestamp } = data;
                 console.log(`[WEBSOCKET] stream_restarted event received for ${camera_id} at ${new Date(timestamp * 1000).toLocaleTimeString()}`);
+
+                // Skip if this camera is undergoing manual restart via UI button
+                // The manual restart handler has its own retry logic and timing
+                if (this.manualRestartInProgress?.has(camera_id)) {
+                    console.log(`[WEBSOCKET] Ignoring event for ${camera_id} (manual restart in progress)`);
+                    return;
+                }
 
                 // Debounce: ignore if we handled recovery for this camera in last 5 seconds
                 const lastRecovery = this.recentRecoveries.get(camera_id);

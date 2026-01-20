@@ -612,6 +612,7 @@
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
     font-size: 12px;
     color: #ccc;
+    pointer-events: none;  /* Allow clicks to pass through to video controls */
 }
 
 #preview-segment-time {

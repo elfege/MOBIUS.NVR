@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 20, 2026 17:09 EST*
+*Last updated: January 20, 2026 17:23 EST*
 
 **Context compaction occurred at 17:00 EST on January 20, 2026**
 
@@ -161,6 +161,52 @@ neolink:
 - `9f55671` - Fix neolink RTSP path: use /mainStream instead of /main
 
 **Result:** E1 camera stream CONFIRMED WORKING - 12.6s latency shown in UI
+
+**7. Implemented Merged Preview for Timeline Playback (Jan 20, 17:00-17:23 EST)**
+
+**Branch:** `timeline_playback_multi_segment_fix_JAN_20_2026_a`
+
+**Problem:** When selecting multiple segments in timeline, preview played them one-by-one. User wanted to preview the same merged file they would download.
+
+**Solution:** Implemented merged preview system:
+
+**Backend Changes (`services/recording/timeline_service.py`):**
+- Added `PreviewJob` dataclass to track preview merges
+- New methods:
+  - `create_preview_merge(camera_id, segment_ids)` - Creates job, starts background FFmpeg merge
+  - `_process_preview_merge(job_id, segments)` - FFmpeg concat in thread with Popen for cancel
+  - `cancel_preview_merge(job_id)` - Terminates FFmpeg subprocess, cleans temp files
+  - `cleanup_preview(job_id)` - Deletes temp files, removes from tracking
+  - `promote_preview_to_export(job_id, ios_compatible)` - Moves temp to exports dir
+
+**New API Endpoints (`app.py`):**
+- `POST /api/timeline/preview-merge` - Start merge job
+- `GET /api/timeline/preview-merge/<job_id>` - Get status/progress
+- `POST /api/timeline/preview-merge/<job_id>/cancel` - Cancel merge
+- `GET /api/timeline/preview-merge/<job_id>/stream` - Stream merged video (Range support)
+- `DELETE /api/timeline/preview-merge/<job_id>/cleanup` - Delete temp files
+- `POST /api/timeline/preview-merge/<job_id>/promote` - Move to exports dir
+
+**Frontend Changes (`static/js/modals/timeline-playback-modal.js`):**
+- Replaced segment-by-segment playback with merged preview
+- Added merge progress polling (500ms interval)
+- Cancel button kills FFmpeg and cleans up
+- Export reuses merged file (no re-merge)
+- Cleanup on modal close or selection change
+
+**HTML/CSS Changes:**
+- `templates/streams.html` - Added merge progress HTML with cancel button
+- `static/css/components/timeline-modal.css` - Added merge progress bar styles with pulse animation
+
+**Key Features:**
+- User sees merge progress while segments are combined
+- Can cancel at any time (kills FFmpeg process)
+- Preview shows accurate total duration in video controls
+- Export promotes merged file instead of re-merging
+- Temp files auto-deleted on modal close
+
+**Commits:**
+- `8cc5746` - Implement merged preview for timeline playback
 
 ---
 

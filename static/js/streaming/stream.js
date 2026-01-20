@@ -618,14 +618,37 @@ export class MultiStreamManager {
                 const result = await response.json();
                 console.log(`[Restart] ${cameraId}: Backend restart successful, stream_url: ${result.stream_url}`);
 
-                // Brief delay for FFmpeg to stabilize
-                await new Promise(r => setTimeout(r, 1000));
+                // Wait for FFmpeg to establish MediaMTX publish connection
+                // FFmpeg needs ~2-3 seconds to connect and start publishing
+                console.log(`[Restart] ${cameraId}: Waiting for FFmpeg to establish MediaMTX connection...`);
+                await new Promise(r => setTimeout(r, 3000));
 
-                // Reconnect HLS.js to new stream
-                if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
-                    await this.hlsManager.forceRefreshStream(cameraId, videoElement);
-                } else if (streamType === 'WEBRTC') {
-                    await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                // Reconnect to stream with retry logic
+                // MediaMTX path may not be immediately available after FFmpeg starts
+                const maxRetries = 3;
+                const retryDelay = 2000;
+
+                for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                    try {
+                        console.log(`[Restart] ${cameraId}: Reconnecting (attempt ${attempt}/${maxRetries})...`);
+
+                        if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                            await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+                        } else if (streamType === 'WEBRTC') {
+                            await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                        }
+
+                        // Success - exit retry loop
+                        break;
+                    } catch (retryError) {
+                        console.warn(`[Restart] ${cameraId}: Attempt ${attempt} failed: ${retryError.message}`);
+                        if (attempt < maxRetries) {
+                            console.log(`[Restart] ${cameraId}: Waiting ${retryDelay}ms before retry...`);
+                            await new Promise(r => setTimeout(r, retryDelay));
+                        } else {
+                            throw retryError; // Final attempt failed, propagate error
+                        }
+                    }
                 }
 
                 this.setStreamStatus($streamItem, 'active', '');

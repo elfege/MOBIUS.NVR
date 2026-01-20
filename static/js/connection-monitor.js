@@ -8,13 +8,96 @@ export class ConnectionMonitor {
         this.checkInterval = null;
         this.retryInterval = null;  // Track retry interval to prevent duplicates
         this.failedChecks = 0;
-        this.maxFailedChecks = 10; // Fail after 10 consecutive failures (~100s detection time)
-        this.checkIntervalMs = 10000; // Check every 10 seconds (less frequent)
         this.isMonitoring = false;
         this.isRedirecting = false;  // Guard against duplicate redirects/modals
         this.modalShown = false;  // Track if modal is already displayed
 
-        console.log('[ConnectionMonitor] Initialized - will check health every', this.checkIntervalMs / 1000, 'seconds');
+        // Detect if device is likely a slower/older tablet or mobile device
+        // These devices may have slower network handling and need more lenient thresholds
+        this.isSlowDevice = this._detectSlowDevice();
+
+        // Adjust thresholds based on device capability
+        // Slow devices get much more lenient settings to avoid false positives
+        if (this.isSlowDevice) {
+            this.maxFailedChecks = 20;        // 20 failures before redirect (was 10)
+            this.checkIntervalMs = 15000;     // Check every 15 seconds (was 10)
+            this.healthCheckTimeoutMs = 20000; // 20 second timeout (was 10)
+            this.fetchErrorThreshold = 15;    // 15 fetch errors (was 8)
+            console.log('[ConnectionMonitor] Slow device detected - using lenient thresholds');
+        } else {
+            this.maxFailedChecks = 10;        // Standard: 10 failures
+            this.checkIntervalMs = 10000;     // Standard: 10 seconds
+            this.healthCheckTimeoutMs = 10000; // Standard: 10 second timeout
+            this.fetchErrorThreshold = 8;     // Standard: 8 fetch errors
+        }
+
+        console.log('[ConnectionMonitor] Initialized - device:', this.isSlowDevice ? 'SLOW' : 'NORMAL',
+            '| check interval:', this.checkIntervalMs / 1000, 's',
+            '| max failures:', this.maxFailedChecks,
+            '| timeout:', this.healthCheckTimeoutMs / 1000, 's');
+    }
+
+    /**
+     * Detect if device is likely slower/older based on various heuristics
+     * Returns true for older tablets, low-end mobile devices, etc.
+     */
+    _detectSlowDevice() {
+        const ua = navigator.userAgent.toLowerCase();
+
+        // Check for older iPad models (iPad 1-4, iPad Air 1, iPad mini 1-3)
+        // These have older A-series chips and slower performance
+        const isOlderIPad = /ipad/.test(ua) && (
+            // iOS versions before 13 typically indicate older hardware
+            /os [4-9]_|os 1[0-2]_/.test(ua) ||
+            // Check for hardware concurrency (CPU cores) - older iPads have fewer
+            (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)
+        );
+
+        // Check for older Android tablets
+        const isOlderAndroidTablet = /android/.test(ua) && /tablet|pad/i.test(ua) && (
+            // Android versions before 8 are typically on older hardware
+            /android [4-7]\./.test(ua) ||
+            // Low CPU core count
+            (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)
+        );
+
+        // Check device memory (Chrome/Firefox on Android) - low memory = slow device
+        // @ts-ignore - deviceMemory is not in all browsers
+        const lowMemory = navigator.deviceMemory && navigator.deviceMemory <= 2;
+
+        // Check connection type if available - slow connections need more tolerance
+        // @ts-ignore - connection API not in all browsers
+        const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        const slowConnection = conn && (
+            conn.effectiveType === 'slow-2g' ||
+            conn.effectiveType === '2g' ||
+            conn.effectiveType === '3g' ||
+            conn.saveData === true
+        );
+
+        // Check for any touch device (tablets/phones) with low cores
+        const isTouchWithLowCores = 'ontouchstart' in window &&
+            navigator.hardwareConcurrency &&
+            navigator.hardwareConcurrency <= 4;
+
+        // Combine all checks - if any indicate slow device, be lenient
+        const isSlow = isOlderIPad || isOlderAndroidTablet || lowMemory || slowConnection || isTouchWithLowCores;
+
+        if (isSlow) {
+            console.log('[ConnectionMonitor] Slow device indicators:', {
+                isOlderIPad,
+                isOlderAndroidTablet,
+                lowMemory,
+                slowConnection,
+                isTouchWithLowCores,
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                // @ts-ignore
+                deviceMemory: navigator.deviceMemory,
+                userAgent: ua.substring(0, 100) + '...'
+            });
+        }
+
+        return isSlow;
     }
 
     /**
@@ -69,7 +152,7 @@ export class ConnectionMonitor {
             const response = await fetch('/api/health', {
                 method: 'GET',
                 cache: 'no-store',
-                signal: AbortSignal.timeout(10000) // 10 second timeout (less sensitive)
+                signal: AbortSignal.timeout(this.healthCheckTimeoutMs)
             });
 
             const latency = Date.now() - checkStartTime;
@@ -300,7 +383,7 @@ export class ConnectionMonitor {
     setupFetchInterceptor() {
         // Track consecutive fetch errors
         let consecutiveErrors = 0;
-        const errorThreshold = 8; // Redirect after 8 consecutive fetch errors (less sensitive)
+        const errorThreshold = this.fetchErrorThreshold;
 
         console.log('[ConnectionMonitor] 🔌 Installing fetch interceptor (will trigger after', errorThreshold, 'consecutive errors)');
 

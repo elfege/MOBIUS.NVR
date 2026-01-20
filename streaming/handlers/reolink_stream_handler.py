@@ -132,10 +132,10 @@ class ReolinkStreamHandler(StreamHandler):
         neolink_stream = neolink_config.get('stream', 'subStream')
 
         if neolink_stream == 'mainStream':
-            # When configured for mainStream, Neolink ONLY exposes /main paths
+            # When configured for mainStream, Neolink exposes /mainStream paths
             # The stream_type parameter is ignored - /sub is not available
-            stream_path = 'main'
-            logger.debug(f"Neolink configured for mainStream - forcing /main path for {camera_config.get('name')}")
+            stream_path = 'mainStream'
+            logger.debug(f"Neolink configured for mainStream - using /mainStream path for {camera_config.get('name')}")
         else:
             # When configured for subStream (default), use requested stream_type
             # Neolink accepts: main, Main, mainStream, sub, Sub, subStream, etc.

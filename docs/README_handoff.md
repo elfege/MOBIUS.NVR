@@ -98,6 +98,36 @@ Modified files:
     - 15 fetch errors before redirect (was 8)
   - Prevents false "reloading" modal on slower but connected devices
 
+**5. Fixed Neolink E1 Camera MJPEG Issue (Jan 20, ~21:00 EST)**
+
+**Problem:** REOLINK Cat Feeders camera (serial: 95270000YPTKLLD6) showing static/noise instead of video.
+
+**Root Cause:** docker-compose.yml was changed from local neolink binary (v0.6.3-rc.3) to Docker Hub image (v0.6.2). The v0.6.2 image outputs MJPEG for E1 cameras instead of H.264.
+
+**Investigation Steps:**
+
+1. ffprobe showed stream was MJPEG codec (896x512) instead of expected H.264
+2. User confirmed camera works in native Reolink app
+3. Git history showed neolink config changed from local binary to Docker image
+4. Local binary version: v0.6.3-rc.3 (built Oct 23, 2025)
+5. Docker image version: v0.6.2
+
+**Fix:** Reverted docker-compose.yml to use local binary:
+
+```yaml
+neolink:
+  build:
+    context: .
+    dockerfile: Dockerfile.neolink
+  volumes:
+    - ./neolink/target/release/neolink:/usr/local/bin/neolink:ro
+    - ./config/neolink.toml:/etc/neolink.toml:ro
+```
+
+Modified files:
+
+- **`docker-compose.yml`** - Reverted neolink service to use local v0.6.3-rc.3 binary
+
 ---
 
 ## TODO List

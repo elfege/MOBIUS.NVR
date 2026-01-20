@@ -91,13 +91,19 @@ Modified files:
 
 - [x] Test timeline playback shows recordings for selected date range
 - [x] Test "Export Selection" button works (CSRF fix)
-- [ ] Test preview playback works in timeline modal
+- [x] Test preview playback works in timeline modal - CONFIRMED WORKING
 - [ ] Test storage status appears in Settings panel
 - [ ] Test "Migrate Now" button triggers migration
 - [ ] Test "Cleanup Archive" button works
 - [ ] Test "Reconcile DB" button removes orphaned entries
 - [ ] Test progress bars show correct disk usage with color coding
 - [ ] Test `ensure_recording_paths.sh` creates directories with correct permissions
+
+**Bug Fixes Needed:**
+
+- [ ] Fix reloading modal showing on slower/older tablets despite connection being OK
+  - Issue: `connection-monitor.js` is too aggressive for these platforms
+  - File: `static/js/connection-monitor.js`
 
 **Future Enhancements:**
 

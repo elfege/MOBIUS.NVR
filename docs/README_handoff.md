@@ -15,7 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 19, 2026 18:15 EST*
+*Last updated: January 20, 2026 09:00 EST*
+
+**Context compaction occurred at 09:00 EST on January 20, 2026**
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -98,39 +100,58 @@ Modified files:
     - 15 fetch errors before redirect (was 8)
   - Prevents false "reloading" modal on slower but connected devices
 
-**5. Fixed Neolink E1 Camera MJPEG Issue (Jan 20, ~21:00 EST)**
+**5. Neolink E1 Camera Investigation (Jan 20, 2026)**
 
 **Problem:** REOLINK Cat Feeders camera (serial: 95270000YPTKLLD6) showing static/noise instead of video.
-
-**Root Cause:** docker-compose.yml was changed from local neolink binary (v0.6.3-rc.3) to Docker Hub image (v0.6.2). The v0.6.2 image outputs MJPEG for E1 cameras instead of H.264.
 
 **Investigation Steps:**
 
 1. ffprobe showed stream was MJPEG codec (896x512) instead of expected H.264
 2. User confirmed camera works in native Reolink app
-3. Git history showed neolink config changed from local binary to Docker image
-4. Local binary version: v0.6.3-rc.3 (built Oct 23, 2025)
-5. Docker image version: v0.6.2
+3. Found local neolink binary v0.6.3-rc.3
 
-**Fix:** Reverted docker-compose.yml to use local binary:
+**INCORRECT Fix Attempted (09:00 EST):**
+- Changed docker-compose.yml to use local binary v0.6.3-rc.3
+- This BROKE REOLINK OFFICE & LAUNDRY ROOM cameras (went black)
+- Commit: `a07c4b6 Fix Neolink E1 camera MJPEG issue - revert to local v0.6.3-rc.3 binary`
 
+**Why It Was Wrong:**
+- README_project_history.md documents: **v0.6.3.rc.x has buffer overflow regression**
+- See: https://github.com/QuantumEntangledAndy/neolink/issues/349
+- The v0.6.2 Docker image was the INTENTIONAL FIX for this issue
+
+**Correction (after user feedback):**
+- Reverted docker-compose.yml back to v0.6.2 Docker image
+- Commit: `aa21c59 Revert neolink to v0.6.2 Docker image - v0.6.3.rc.x has buffer overflow`
+
+**Current docker-compose.yml neolink config:**
 ```yaml
 neolink:
-  build:
-    context: .
-    dockerfile: Dockerfile.neolink
+  # Use v0.6.2 - v0.6.3.rc.x has buffer overflow regression
+  # See: https://github.com/QuantumEntangledAndy/neolink/issues/349
+  image: quantumentangledandy/neolink:v0.6.2
+  container_name: nvr-neolink
+  restart: unless-stopped
   volumes:
-    - ./neolink/target/release/neolink:/usr/local/bin/neolink:ro
     - ./config/neolink.toml:/etc/neolink.toml:ro
+  ports:
+    - "8554:8554"
+  networks:
+    - nvr-net
 ```
 
-Modified files:
+**Status:** E1 camera MJPEG issue remains UNSOLVED - needs alternative approach that doesn't use v0.6.3.rc.x
 
-- **`docker-compose.yml`** - Reverted neolink service to use local v0.6.3-rc.3 binary
+**Lesson Learned:** Always check README_project_history.md before making architectural changes
 
 ---
 
 ## TODO List
+
+**Unsolved Issues:**
+
+- [ ] E1 camera (Cat Feeders, 95270000YPTKLLD6) showing MJPEG/static - needs solution that doesn't use v0.6.3.rc.x
+  - Possible approaches: check for newer stable neolink release, try subStream, camera firmware update
 
 **Testing Needed (after container restart):**
 

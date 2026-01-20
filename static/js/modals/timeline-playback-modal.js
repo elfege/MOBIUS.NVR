@@ -29,10 +29,16 @@ export class TimelinePlaybackModal {
         this.currentExportJobId = null;
         this.exportPollInterval = null;
 
-        // Preview state
+        // Preview state (segment-by-segment - legacy)
         this.selectedSegments = [];
         this.currentPreviewIndex = 0;
         this.isPlayingAll = false;
+
+        // Merged preview state
+        this.currentPreviewMergeJobId = null;
+        this.previewMergePollingInterval = null;
+        this.mergedPreviewReady = false;
+        this._pendingAutoPlay = false;
 
         // Canvas interaction state
         this.isDragging = false;
@@ -136,6 +142,9 @@ export class TimelinePlaybackModal {
         $('#preview-prev-btn').on('click', () => this.previewPrevious());
         $('#preview-next-btn').on('click', () => this.previewNext());
         $('#preview-play-all-btn').on('click', () => this.playAllSelected());
+
+        // Cancel preview merge button
+        $('.cancel-preview-merge-btn').on('click', () => this.cancelCurrentPreviewMerge());
 
         // Video event listeners - attach to handle playback
         this.attachVideoEventListeners();
@@ -284,6 +293,14 @@ export class TimelinePlaybackModal {
         this.isPlayingAll = false;
         this._pendingAutoPlay = false;
 
+        // Reset merged preview state
+        this.currentPreviewMergeJobId = null;
+        this.mergedPreviewReady = false;
+        if (this.previewMergePollingInterval) {
+            clearInterval(this.previewMergePollingInterval);
+            this.previewMergePollingInterval = null;
+        }
+
         // Reset UI
         this.showSection('empty', false);
         this.showSection('loading', false);
@@ -293,6 +310,7 @@ export class TimelinePlaybackModal {
         this.showSection('progress', false);
         this.showSection('download', false);
         this.showSection('preview', false);
+        this.showSection('previewMerge', false);
         $('#timeline-export-btn').prop('disabled', true);
 
         // Show modal
@@ -308,7 +326,7 @@ export class TimelinePlaybackModal {
     /**
      * Hide modal
      */
-    hide() {
+    async hide() {
         this.$modal.hide();
 
         // Cancel any ongoing export
@@ -316,11 +334,14 @@ export class TimelinePlaybackModal {
             this.cancelExport();
         }
 
-        // Clear poll interval
+        // Clear export poll interval
         if (this.exportPollInterval) {
             clearInterval(this.exportPollInterval);
             this.exportPollInterval = null;
         }
+
+        // Cleanup preview merge (cancel if running, delete temp files)
+        await this.cleanupPreviewMerge();
     }
 
     /**
@@ -695,6 +716,7 @@ export class TimelinePlaybackModal {
 
     /**
      * Start export process
+     * If merged preview is ready, promotes it instead of re-merging
      */
     async startExport() {
         if (!this.selection.start || !this.selection.end) {
@@ -702,12 +724,19 @@ export class TimelinePlaybackModal {
             return;
         }
 
+        const iosCompatible = $('#export-ios-compatible').is(':checked');
+
+        // If merged preview is ready, promote it instead of re-merging
+        if (this.mergedPreviewReady && this.currentPreviewMergeJobId) {
+            await this.promotePreviewToExport(iosCompatible);
+            return;
+        }
+
+        // Fall back to original export flow
         const start = this.selection.start < this.selection.end ?
             this.selection.start : this.selection.end;
         const end = this.selection.start < this.selection.end ?
             this.selection.end : this.selection.start;
-
-        const iosCompatible = $('#export-ios-compatible').is(':checked');
 
         this.showSection('export', false);
         this.showSection('progress', true);
@@ -742,6 +771,67 @@ export class TimelinePlaybackModal {
         } catch (error) {
             console.error('[Timeline] Export error:', error);
             this.updateExportProgress(0, `Error: ${error.message}`);
+            setTimeout(() => {
+                this.showSection('progress', false);
+                this.showSection('export', true);
+            }, 3000);
+        }
+    }
+
+    /**
+     * Promote merged preview to permanent export
+     * Reuses the already-merged temp file instead of re-merging
+     */
+    async promotePreviewToExport(iosCompatible) {
+        this.showSection('export', false);
+        this.showSection('progress', true);
+
+        if (iosCompatible) {
+            this.updateExportProgress(0, 'Converting for iOS...');
+        } else {
+            this.updateExportProgress(50, 'Preparing download...');
+        }
+
+        try {
+            const response = await fetch(
+                `/api/timeline/preview-merge/${this.currentPreviewMergeJobId}/promote`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ios_compatible: iosCompatible })
+                }
+            );
+
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error);
+
+            console.log(`[Timeline] Preview promoted to export: ${data.filename}`);
+
+            // Trigger download
+            this.updateExportProgress(100, 'Complete!');
+
+            // Store for download
+            this.completedJob = {
+                output_path: data.export_path,
+                download_url: data.download_url,
+                filename: data.filename
+            };
+
+            // Show download section
+            setTimeout(() => {
+                this.showSection('progress', false);
+                this.showSection('download', true);
+            }, 500);
+
+            // Clear preview state since file was moved
+            this.currentPreviewMergeJobId = null;
+            this.mergedPreviewReady = false;
+
+        } catch (error) {
+            console.error('[Timeline] Export promotion failed:', error);
+            this.updateExportProgress(0, `Error: ${error.message}`);
+
+            // Fall back to full export after delay
             setTimeout(() => {
                 this.showSection('progress', false);
                 this.showSection('export', true);
@@ -891,7 +981,8 @@ export class TimelinePlaybackModal {
             'export': '.timeline-export-controls',
             'progress': '.timeline-export-progress',
             'download': '.timeline-download-ready',
-            'preview': '.timeline-preview-section'
+            'preview': '.timeline-preview-section',
+            'previewMerge': '.timeline-preview-merge-progress'
         };
 
         const selector = sectionMap[section];
@@ -901,33 +992,247 @@ export class TimelinePlaybackModal {
     }
 
     // =========================================================================
-    // Preview Methods
+    // Merged Preview Methods
     // =========================================================================
 
     /**
-     * Show the preview section and load first segment
+     * Show the preview section and start merging segments
+     * Creates a single merged MP4 for preview playback
      */
-    showPreview() {
+    async showPreview() {
         if (this.selectedSegments.length === 0) {
             console.log('[Timeline] No segments to preview');
             return;
         }
 
-        this.currentPreviewIndex = 0;
-        this.isPlayingAll = false;
-        this.showSection('preview', true);
-        this.loadPreviewSegment(0);
-        this.updatePreviewControls();
+        // Cancel any existing preview merge
+        await this.cancelCurrentPreviewMerge();
 
-        console.log(`[Timeline] Preview opened with ${this.selectedSegments.length} segments`);
+        // Show preview section with merge progress
+        this.showSection('preview', true);
+        this.showSection('previewMerge', true);
+        this.updateMergeProgress(0, 'Starting merge...');
+
+        // Hide video and controls until merge completes
+        $('#timeline-preview-video').hide();
+        $('.timeline-preview-info').hide();
+        $('.timeline-preview-controls').hide();
+
+        // Extract recording IDs from selected segments
+        const segmentIds = this.selectedSegments.map(s => s.recording_id);
+
+        try {
+            // Start merge job
+            const response = await fetch('/api/timeline/preview-merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    camera_id: this.currentCameraId,
+                    segment_ids: segmentIds
+                })
+            });
+
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error);
+
+            this.currentPreviewMergeJobId = data.job_id;
+            this.startPreviewMergePolling();
+
+            console.log(`[Timeline] Preview merge started: ${data.job_id} (${segmentIds.length} segments)`);
+
+        } catch (error) {
+            console.error('[Timeline] Preview merge failed:', error);
+            this.showPreviewError(error.message);
+        }
+    }
+
+    /**
+     * Poll for preview merge job status
+     */
+    startPreviewMergePolling() {
+        this.previewMergePollingInterval = setInterval(async () => {
+            try {
+                const response = await fetch(
+                    `/api/timeline/preview-merge/${this.currentPreviewMergeJobId}`
+                );
+                const data = await response.json();
+
+                if (!data.success) throw new Error(data.error);
+
+                const job = data.job;
+                this.updateMergeProgress(job.progress_percent, this.getMergeStatusText(job.status));
+
+                if (job.status === 'completed') {
+                    this.onPreviewMergeComplete(job);
+                } else if (job.status === 'failed') {
+                    throw new Error(job.error_message || 'Merge failed');
+                } else if (job.status === 'cancelled') {
+                    this.onPreviewMergeCancelled();
+                }
+
+            } catch (error) {
+                clearInterval(this.previewMergePollingInterval);
+                this.previewMergePollingInterval = null;
+                this.showPreviewError(error.message);
+            }
+        }, 500);  // Poll every 500ms for responsive feedback
+    }
+
+    /**
+     * Get human-readable merge status text
+     */
+    getMergeStatusText(status) {
+        const statusMap = {
+            'pending': 'Preparing...',
+            'processing': 'Processing...',
+            'merging': 'Merging segments...',
+            'completed': 'Complete!',
+            'failed': 'Failed',
+            'cancelled': 'Cancelled'
+        };
+        return statusMap[status] || status;
+    }
+
+    /**
+     * Update merge progress UI
+     */
+    updateMergeProgress(percent, statusText) {
+        $('.merge-progress-fill').css('width', `${percent}%`);
+        $('.merge-percent').text(`${Math.round(percent)}%`);
+        $('.merge-status').text(statusText);
+    }
+
+    /**
+     * Handle successful preview merge completion
+     */
+    onPreviewMergeComplete(job) {
+        clearInterval(this.previewMergePollingInterval);
+        this.previewMergePollingInterval = null;
+
+        // Hide merge progress, show video
+        this.showSection('previewMerge', false);
+        $('#timeline-preview-video').show();
+        $('.timeline-preview-info').show();
+        $('.timeline-preview-controls').show();
+
+        this.mergedPreviewReady = true;
+
+        // Load merged video
+        const video = document.getElementById('timeline-preview-video');
+        video.src = `/api/timeline/preview-merge/${this.currentPreviewMergeJobId}/stream`;
+        video.load();
+
+        // Hide prev/next buttons (single merged file now)
+        $('#preview-prev-btn').hide();
+        $('#preview-next-btn').hide();
+
+        // Update preview info to show total selection info
+        this.updateMergedPreviewInfo();
+
+        console.log(`[Timeline] Preview merge complete: ${this.currentPreviewMergeJobId}`);
+    }
+
+    /**
+     * Handle preview merge cancellation
+     */
+    onPreviewMergeCancelled() {
+        clearInterval(this.previewMergePollingInterval);
+        this.previewMergePollingInterval = null;
+
+        this.showSection('previewMerge', false);
+        this.showSection('preview', false);
+        this.currentPreviewMergeJobId = null;
+
+        console.log('[Timeline] Preview merge cancelled');
+    }
+
+    /**
+     * Update preview info for merged video
+     */
+    updateMergedPreviewInfo() {
+        if (this.selectedSegments.length === 0) return;
+
+        // Get time range from first and last segment
+        const firstSeg = this.selectedSegments[0];
+        const lastSeg = this.selectedSegments[this.selectedSegments.length - 1];
+
+        const startStr = firstSeg.start_time.toLocaleTimeString();
+        const endStr = lastSeg.end_time.toLocaleTimeString();
+        $('#preview-segment-time').text(`${startStr} - ${endStr}`);
+
+        // Show segment count as type
+        const $badge = $('#preview-segment-type');
+        $badge
+            .text(`${this.selectedSegments.length} segments`)
+            .removeClass('motion continuous manual')
+            .addClass('merged');
+    }
+
+    /**
+     * Show error in preview section
+     */
+    showPreviewError(message) {
+        this.showSection('previewMerge', false);
+        $('.timeline-preview-info').html(
+            `<span class="preview-error"><i class="fas fa-exclamation-triangle"></i> ${message}</span>`
+        ).show();
+        $('.timeline-preview-controls').hide();
+    }
+
+    /**
+     * Cancel the current preview merge job
+     */
+    async cancelCurrentPreviewMerge() {
+        if (this.previewMergePollingInterval) {
+            clearInterval(this.previewMergePollingInterval);
+            this.previewMergePollingInterval = null;
+        }
+
+        if (!this.currentPreviewMergeJobId) return;
+
+        try {
+            await fetch(
+                `/api/timeline/preview-merge/${this.currentPreviewMergeJobId}/cancel`,
+                { method: 'POST' }
+            );
+            console.log(`[Timeline] Cancelled preview merge: ${this.currentPreviewMergeJobId}`);
+        } catch (error) {
+            console.warn('[Timeline] Cancel failed:', error);
+        }
+
+        this.currentPreviewMergeJobId = null;
+        this.mergedPreviewReady = false;
+    }
+
+    /**
+     * Cleanup preview merge (delete temp files)
+     */
+    async cleanupPreviewMerge() {
+        // Cancel if still running
+        await this.cancelCurrentPreviewMerge();
+
+        if (!this.currentPreviewMergeJobId) return;
+
+        try {
+            await fetch(
+                `/api/timeline/preview-merge/${this.currentPreviewMergeJobId}/cleanup`,
+                { method: 'DELETE' }
+            );
+            console.log(`[Timeline] Cleaned up preview: ${this.currentPreviewMergeJobId}`);
+        } catch (error) {
+            console.warn('[Timeline] Cleanup failed:', error);
+        }
+
+        this.currentPreviewMergeJobId = null;
+        this.mergedPreviewReady = false;
     }
 
     /**
      * Hide the preview section
      */
-    hidePreview() {
+    async hidePreview() {
         this.showSection('preview', false);
-        this.isPlayingAll = false;
+        this.showSection('previewMerge', false);
 
         // Pause and reset video
         const video = document.getElementById('timeline-preview-video');
@@ -936,171 +1241,64 @@ export class TimelinePlaybackModal {
             video.src = '';
         }
 
+        // Cleanup temp files
+        await this.cleanupPreviewMerge();
+
         console.log('[Timeline] Preview closed');
     }
 
     /**
-     * Load a specific segment for preview
-     * @param {number} index - Index in selectedSegments array
-     */
-    loadPreviewSegment(index) {
-        if (index < 0 || index >= this.selectedSegments.length) {
-            console.warn('[Timeline] Invalid segment index:', index);
-            return;
-        }
-
-        const segment = this.selectedSegments[index];
-        this.currentPreviewIndex = index;
-
-        // Build preview URL using recording ID
-        const previewUrl = `/api/timeline/preview/${segment.recording_id}`;
-
-        // Get video element
-        const video = document.getElementById('timeline-preview-video');
-        if (!video) {
-            console.error('[Timeline] Preview video element not found');
-            return;
-        }
-
-        // Flag that we're waiting for video to be ready
-        this._pendingAutoPlay = this.isPlayingAll;
-
-        // Update video source - canplay event will trigger playback if needed
-        video.src = previewUrl;
-        video.load();
-
-        // Update preview info display
-        this.updatePreviewInfo(segment);
-        this.updatePreviewControls();
-
-        console.log(`[Timeline] Loading preview segment ${index + 1}/${this.selectedSegments.length}: ${segment.recording_id}`);
-    }
-
-    /**
-     * Handle video canplay event - start playback when ready if in play-all mode
+     * Handle video canplay event
      */
     onVideoCanPlay() {
-        const video = document.getElementById('timeline-preview-video');
-        if (!video) return;
-
-        // Only auto-play if we're in play-all mode and have a pending auto-play
-        if (this._pendingAutoPlay && this.isPlayingAll) {
-            this._pendingAutoPlay = false;
-            video.play().catch(err => {
-                console.warn('[Timeline] Auto-play prevented:', err);
-                // Reset play-all mode on error
-                this.isPlayingAll = false;
-                this.updatePreviewControls();
-            });
-            console.log(`[Timeline] Auto-playing segment ${this.currentPreviewIndex + 1}/${this.selectedSegments.length}`);
-        }
-    }
-
-    /**
-     * Update the preview info display
-     * @param {object} segment - Current segment being previewed
-     */
-    updatePreviewInfo(segment) {
-        // Format time range
-        const startStr = segment.start_time.toLocaleTimeString();
-        const endStr = segment.end_time.toLocaleTimeString();
-        $('#preview-segment-time').text(`${startStr} - ${endStr}`);
-
-        // Update type badge with appropriate class
-        const $badge = $('#preview-segment-type');
-        $badge
-            .text(segment.recording_type)
-            .removeClass('motion continuous manual')
-            .addClass(segment.recording_type);
-    }
-
-    /**
-     * Update preview control buttons (prev/next enable state)
-     */
-    updatePreviewControls() {
-        const hasPrev = this.currentPreviewIndex > 0;
-        const hasNext = this.currentPreviewIndex < this.selectedSegments.length - 1;
-
-        $('#preview-prev-btn').prop('disabled', !hasPrev);
-        $('#preview-next-btn').prop('disabled', !hasNext);
-
-        // Update play all button text
-        const $playBtn = $('#preview-play-all-btn');
-        if (this.isPlayingAll) {
-            $playBtn.html('<i class="fas fa-stop"></i> Stop');
-        } else {
-            $playBtn.html('<i class="fas fa-play"></i> Play Selection');
-        }
-    }
-
-    /**
-     * Go to previous segment in preview
-     */
-    previewPrevious() {
-        if (this.currentPreviewIndex > 0) {
-            this.loadPreviewSegment(this.currentPreviewIndex - 1);
-        }
-    }
-
-    /**
-     * Go to next segment in preview
-     */
-    previewNext() {
-        if (this.currentPreviewIndex < this.selectedSegments.length - 1) {
-            this.loadPreviewSegment(this.currentPreviewIndex + 1);
-        }
-    }
-
-    /**
-     * Start playing all selected segments in sequence
-     */
-    playAllSelected() {
-        if (this.isPlayingAll) {
-            // Stop playback
-            this.isPlayingAll = false;
+        // Auto-play when merged preview is ready
+        if (this.mergedPreviewReady && this._pendingAutoPlay) {
             this._pendingAutoPlay = false;
             const video = document.getElementById('timeline-preview-video');
-            if (video) video.pause();
-            this.updatePreviewControls();
-            console.log('[Timeline] Stopped play-all mode');
-            return;
+            if (video) {
+                video.play().catch(err => {
+                    console.warn('[Timeline] Auto-play prevented:', err);
+                });
+            }
         }
-
-        // Start playing from first segment
-        this.isPlayingAll = true;
-
-        // If we're already on the first segment and video is ready, just play it
-        const video = document.getElementById('timeline-preview-video');
-        if (this.currentPreviewIndex === 0 && video && video.readyState >= 3) {
-            // Video is already loaded and ready
-            video.play().catch(err => {
-                console.warn('[Timeline] Play prevented:', err);
-                this.isPlayingAll = false;
-                this.updatePreviewControls();
-            });
-        } else {
-            // Load from first segment - canplay event will trigger playback
-            this.loadPreviewSegment(0);
-        }
-
-        this.updatePreviewControls();
-        console.log(`[Timeline] Started play-all mode with ${this.selectedSegments.length} segments`);
     }
 
     /**
-     * Handle video ended event - advance to next segment if playing all
+     * Handle video ended event
      */
     onPreviewEnded() {
-        console.log('[Timeline] Preview segment ended');
+        console.log('[Timeline] Preview playback ended');
+        // For merged preview, nothing to advance to
+    }
 
-        if (this.isPlayingAll && this.currentPreviewIndex < this.selectedSegments.length - 1) {
-            // Auto-advance to next segment
-            this.loadPreviewSegment(this.currentPreviewIndex + 1);
-        } else if (this.isPlayingAll) {
-            // All segments played
-            this.isPlayingAll = false;
-            this.updatePreviewControls();
-            console.log('[Timeline] All segments played');
+    /**
+     * Update preview control buttons
+     */
+    updatePreviewControls() {
+        // For merged preview, prev/next are hidden
+        // Just update play button state if needed
+    }
+
+    /**
+     * Legacy methods for backwards compatibility (no-ops for merged preview)
+     */
+    previewPrevious() {
+        // No-op for merged preview
+    }
+
+    previewNext() {
+        // No-op for merged preview
+    }
+
+    playAllSelected() {
+        // For merged preview, just play the video
+        const video = document.getElementById('timeline-preview-video');
+        if (video && this.mergedPreviewReady) {
+            if (video.paused) {
+                video.play().catch(err => console.warn('[Timeline] Play prevented:', err));
+            } else {
+                video.pause();
+            }
         }
     }
 }

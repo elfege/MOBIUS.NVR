@@ -78,7 +78,7 @@ fi
 if [[ -f ~/0_NVR/ensure_recording_paths.sh ]]; then
 	echo ""
 	echo "Ensuring recording path permissions..."
-	~/0_NVR/ensure_recording_paths.sh
+	~/0_NVR/ensure_recording_paths.sh >/dev/null 
 fi
 
 # Start the container

@@ -83,6 +83,21 @@ Modified files:
   - `onPreviewEnded()` - Auto-advance to next segment
 - **`start.sh`** - Added call to `ensure_recording_paths.sh` before docker compose up
 
+**4. Fixed Connection Monitor False Positives on Slow Tablets (19:30+ EST)**
+
+Branch: `connection_monitor_tablet_fix_JAN_19_2026_a`
+
+Modified files:
+- **`static/js/connection-monitor.js`**
+  - Added `_detectSlowDevice()` method to detect slower devices
+  - Detects: older iPads (iOS < 13), older Android tablets, low memory devices, slow connections
+  - Slow device thresholds (more lenient):
+    - 20 failed checks before redirect (was 10)
+    - 15 second check interval (was 10)
+    - 20 second timeout per check (was 10)
+    - 15 fetch errors before redirect (was 8)
+  - Prevents false "reloading" modal on slower but connected devices
+
 ---
 
 ## TODO List
@@ -92,18 +107,13 @@ Modified files:
 - [x] Test timeline playback shows recordings for selected date range
 - [x] Test "Export Selection" button works (CSRF fix)
 - [x] Test preview playback works in timeline modal - CONFIRMED WORKING
+- [ ] Test connection monitor on slower tablets (should no longer show false reloading modal)
 - [ ] Test storage status appears in Settings panel
 - [ ] Test "Migrate Now" button triggers migration
 - [ ] Test "Cleanup Archive" button works
 - [ ] Test "Reconcile DB" button removes orphaned entries
 - [ ] Test progress bars show correct disk usage with color coding
 - [ ] Test `ensure_recording_paths.sh` creates directories with correct permissions
-
-**Bug Fixes Needed:**
-
-- [ ] Fix reloading modal showing on slower/older tablets despite connection being OK
-  - Issue: `connection-monitor.js` is too aggressive for these platforms
-  - File: `static/js/connection-monitor.js`
 
 **Future Enhancements:**
 

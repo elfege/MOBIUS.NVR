@@ -47,7 +47,7 @@ from services.ptz.baichuan_ptz_handler import BaichuanPTZHandler
 from services.recording.recording_service import RecordingService
 from config.recording_config_loader import RecordingConfig
 from services.recording.snapshot_service import SnapshotService
-from services.recording.timeline_service import get_timeline_service, TimelineService
+from services.recording.timeline_service import get_timeline_service, TimelineService, ExportStatus
 from services.onvif.onvif_event_listener import ONVIFEventListener
 from services.credentials.reolink_credential_provider import ReolinkCredentialProvider
 from services.motion.reolink_motion_service import create_reolink_motion_service
@@ -3230,6 +3230,300 @@ def api_timeline_export_list():
 
     except Exception as e:
         logger.error(f"Timeline export list API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+########################################################
+#           🎬 PREVIEW MERGE API ROUTES 🎬
+########################################################
+
+@app.route('/api/timeline/preview-merge', methods=['POST'])
+@csrf.exempt
+def api_timeline_preview_merge_create():
+    """
+    Create a merged preview from selected segment IDs.
+
+    Merges multiple recording segments into a single temporary MP4 file
+    for preview playback. The merge runs asynchronously.
+
+    Request Body:
+        camera_id: Camera serial number
+        segment_ids: List of recording IDs to merge
+
+    Returns:
+        job_id for tracking merge progress
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+
+        camera_id = data.get('camera_id')
+        segment_ids = data.get('segment_ids', [])
+
+        if not camera_id:
+            return jsonify({'error': 'camera_id is required'}), 400
+        if not segment_ids or not isinstance(segment_ids, list):
+            return jsonify({'error': 'segment_ids must be a non-empty list'}), 400
+
+        timeline_service = get_timeline_service()
+        job = timeline_service.create_preview_merge(camera_id, segment_ids)
+
+        return jsonify({
+            'success': True,
+            'job_id': job.job_id,
+            'job': job.to_dict()
+        })
+
+    except ValueError as e:
+        logger.warning(f"Preview merge validation error: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Preview merge create error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/preview-merge/<job_id>', methods=['GET'])
+def api_timeline_preview_merge_status(job_id: str):
+    """
+    Get preview merge job status and progress.
+
+    Args:
+        job_id: Preview job ID
+
+    Returns:
+        Job status including progress_percent, status, error_message
+    """
+    try:
+        timeline_service = get_timeline_service()
+        job = timeline_service.get_preview_job(job_id)
+
+        if not job:
+            return jsonify({'error': 'Preview job not found'}), 404
+
+        return jsonify({
+            'success': True,
+            'job': job.to_dict()
+        })
+
+    except Exception as e:
+        logger.error(f"Preview merge status error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/preview-merge/<job_id>/cancel', methods=['POST'])
+@csrf.exempt
+def api_timeline_preview_merge_cancel(job_id: str):
+    """
+    Cancel a preview merge job.
+
+    Terminates the FFmpeg process and cleans up temp files.
+
+    Args:
+        job_id: Preview job ID
+    """
+    try:
+        timeline_service = get_timeline_service()
+        cancelled = timeline_service.cancel_preview_merge(job_id)
+
+        if not cancelled:
+            return jsonify({
+                'success': False,
+                'error': 'Job not found or already completed'
+            }), 404
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        logger.error(f"Preview merge cancel error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/preview-merge/<job_id>/stream', methods=['GET'])
+def api_timeline_preview_merge_stream(job_id: str):
+    """
+    Stream the merged preview file for playback.
+
+    Supports HTTP Range requests for video seeking.
+
+    Args:
+        job_id: Preview job ID
+
+    Returns:
+        Video file stream with appropriate headers
+    """
+    try:
+        timeline_service = get_timeline_service()
+        job = timeline_service.get_preview_job(job_id)
+
+        if not job:
+            return jsonify({'error': 'Preview job not found'}), 404
+
+        if job.status != ExportStatus.COMPLETED:
+            return jsonify({'error': f'Preview not ready (status: {job.status.value})'}), 400
+
+        if not job.temp_file_path or not os.path.exists(job.temp_file_path):
+            return jsonify({'error': 'Preview file not found'}), 404
+
+        file_path = job.temp_file_path
+        file_size = os.path.getsize(file_path)
+
+        # Handle Range requests for video seeking
+        range_header = request.headers.get('Range')
+
+        if range_header:
+            byte_start = 0
+            byte_end = file_size - 1
+
+            match = range_header.replace('bytes=', '').split('-')
+            if match[0]:
+                byte_start = int(match[0])
+            if match[1]:
+                byte_end = int(match[1])
+
+            byte_end = min(byte_end, file_size - 1)
+            content_length = byte_end - byte_start + 1
+
+            def generate_range():
+                with open(file_path, 'rb') as f:
+                    f.seek(byte_start)
+                    remaining = content_length
+                    chunk_size = 8192
+                    while remaining > 0:
+                        chunk = f.read(min(chunk_size, remaining))
+                        if not chunk:
+                            break
+                        remaining -= len(chunk)
+                        yield chunk
+
+            response = Response(
+                generate_range(),
+                status=206,
+                mimetype='video/mp4',
+                direct_passthrough=True
+            )
+            response.headers['Content-Range'] = f'bytes {byte_start}-{byte_end}/{file_size}'
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Content-Length'] = content_length
+            return response
+
+        # Full file response
+        return send_file(
+            file_path,
+            mimetype='video/mp4',
+            as_attachment=False
+        )
+
+    except Exception as e:
+        logger.error(f"Preview merge stream error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/preview-merge/<job_id>/cleanup', methods=['DELETE'])
+@csrf.exempt
+def api_timeline_preview_merge_cleanup(job_id: str):
+    """
+    Delete temp preview files and cleanup resources.
+
+    Should be called when modal closes or after download.
+
+    Args:
+        job_id: Preview job ID
+    """
+    try:
+        timeline_service = get_timeline_service()
+        cleaned = timeline_service.cleanup_preview(job_id)
+
+        if not cleaned:
+            return jsonify({
+                'success': False,
+                'error': 'Job not found'
+            }), 404
+
+        return jsonify({'success': True})
+
+    except Exception as e:
+        logger.error(f"Preview merge cleanup error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/preview-merge/<job_id>/promote', methods=['POST'])
+@csrf.exempt
+def api_timeline_preview_merge_promote(job_id: str):
+    """
+    Promote a preview merge to a permanent export.
+
+    Moves the temp file to exports directory. Optionally converts for iOS.
+
+    Args:
+        job_id: Preview job ID
+
+    Request Body:
+        ios_compatible: bool - Whether to convert for iOS (optional, default false)
+
+    Returns:
+        download_url for the exported file
+    """
+    try:
+        data = request.get_json() or {}
+        ios_compatible = data.get('ios_compatible', False)
+
+        timeline_service = get_timeline_service()
+        export_path = timeline_service.promote_preview_to_export(job_id, ios_compatible)
+
+        if not export_path:
+            return jsonify({'error': 'Promotion failed'}), 500
+
+        # Build download URL
+        filename = os.path.basename(export_path)
+        download_url = f'/api/timeline/export/download/{filename}'
+
+        return jsonify({
+            'success': True,
+            'export_path': export_path,
+            'download_url': download_url,
+            'filename': filename
+        })
+
+    except ValueError as e:
+        logger.warning(f"Preview promote validation error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Preview promote error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/timeline/export/download/<filename>', methods=['GET'])
+def api_timeline_export_download_by_filename(filename: str):
+    """
+    Download an exported file by filename.
+
+    Args:
+        filename: Export filename (e.g., 'T8416P0023352DA9_20260120_170000.mp4')
+
+    Returns:
+        File download
+    """
+    try:
+        timeline_service = get_timeline_service()
+        file_path = os.path.join(timeline_service.export_dir, filename)
+
+        # Validate filename (prevent directory traversal)
+        if '..' in filename or '/' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'Export file not found'}), 404
+
+        return send_file(
+            file_path,
+            mimetype='video/mp4',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.error(f"Export download error for {filename}: {e}")
         return jsonify({'error': str(e)}), 500
 
 

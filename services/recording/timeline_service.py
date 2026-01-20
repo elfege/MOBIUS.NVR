@@ -119,6 +119,57 @@ class ExportJob:
         }
 
 
+@dataclass
+class PreviewJob:
+    """
+    Tracks a preview merge job (temporary merged file for playback).
+
+    Preview jobs create a temporary merged video that can be:
+    - Played directly for preview (shows accurate total duration)
+    - Promoted to a permanent export if user downloads
+
+    Attributes:
+        job_id: Unique job identifier
+        camera_id: Camera being previewed
+        segment_ids: List of recording IDs to merge
+        status: Current job status
+        progress_percent: 0-100 merge progress
+        temp_dir: Temporary directory for merge files
+        temp_file_path: Path to merged preview file
+        error_message: Error details if failed
+        created_at: Job creation timestamp
+        ffmpeg_process: Popen object for cancellation
+        total_duration_seconds: Total duration of merged video
+        estimated_size_bytes: Estimated file size
+    """
+    job_id: str
+    camera_id: str
+    segment_ids: List[int] = field(default_factory=list)
+    status: ExportStatus = ExportStatus.PENDING
+    progress_percent: float = 0.0
+    temp_dir: Optional[str] = None
+    temp_file_path: Optional[str] = None
+    error_message: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.now)
+    ffmpeg_process: Optional[subprocess.Popen] = None
+    total_duration_seconds: int = 0
+    estimated_size_bytes: int = 0
+
+    def to_dict(self) -> Dict:
+        """Convert to JSON-serializable dict."""
+        return {
+            'job_id': self.job_id,
+            'camera_id': self.camera_id,
+            'segment_count': len(self.segment_ids),
+            'status': self.status.value,
+            'progress_percent': self.progress_percent,
+            'error_message': self.error_message,
+            'created_at': self.created_at.isoformat(),
+            'total_duration_seconds': self.total_duration_seconds,
+            'estimated_size_bytes': self.estimated_size_bytes
+        }
+
+
 class TimelineService:
     """
     Service for timeline queries, video merging, and export.
@@ -169,6 +220,10 @@ class TimelineService:
         # Active export jobs
         self.export_jobs: Dict[str, ExportJob] = {}
         self.jobs_lock = threading.RLock()
+
+        # Active preview merge jobs
+        self.preview_jobs: Dict[str, PreviewJob] = {}
+        self.preview_lock = threading.RLock()
 
         # Ensure export directory exists
         os.makedirs(self.export_dir, exist_ok=True)
@@ -864,6 +919,298 @@ class TimelineService:
                 del self.export_jobs[jid]
 
         return deleted
+
+    # =========================================================================
+    # Preview Merge Methods
+    # =========================================================================
+
+    def create_preview_merge(self, camera_id: str, segment_ids: List[int]) -> PreviewJob:
+        """
+        Create and start a preview merge job.
+
+        Creates a temporary merged video file for preview playback.
+        The merge runs in a background thread with cancellation support.
+
+        Args:
+            camera_id: Camera serial number
+            segment_ids: List of recording IDs to merge
+
+        Returns:
+            PreviewJob with job_id for tracking
+
+        Raises:
+            ValueError: If no valid segments found
+        """
+        job_id = str(uuid.uuid4())[:8]
+
+        # Validate segments exist and calculate totals
+        segments = []
+        total_duration = 0
+        total_size = 0
+
+        for seg_id in segment_ids:
+            segment = self.get_segment_by_id(seg_id)
+            if segment and os.path.exists(segment.file_path):
+                segments.append(segment)
+                total_duration += segment.duration_seconds
+                total_size += segment.file_size_bytes
+
+        if not segments:
+            raise ValueError(f"No valid recordings found for segment IDs: {segment_ids}")
+
+        job = PreviewJob(
+            job_id=job_id,
+            camera_id=camera_id,
+            segment_ids=segment_ids,
+            total_duration_seconds=total_duration,
+            estimated_size_bytes=total_size
+        )
+
+        with self.preview_lock:
+            self.preview_jobs[job_id] = job
+
+        # Start merge in background thread
+        thread = threading.Thread(
+            target=self._process_preview_merge,
+            args=(job_id, segments),
+            daemon=True,
+            name=f"preview-merge-{job_id}"
+        )
+        thread.start()
+
+        logger.info(f"Created preview merge job {job_id}: {len(segments)} segments, {total_duration}s duration")
+        return job
+
+    def _process_preview_merge(self, job_id: str, segments: List[TimelineSegment]):
+        """
+        Process preview merge job (runs in background thread).
+
+        Merges segments using FFmpeg concat demuxer (lossless, fast).
+        Stores Popen object for cancellation support.
+
+        Args:
+            job_id: Preview job ID
+            segments: List of TimelineSegment objects to merge
+        """
+        job = self.preview_jobs.get(job_id)
+        if not job:
+            return
+
+        try:
+            # Create temp directory for merge
+            temp_dir = tempfile.mkdtemp(prefix=f"preview_{job_id}_")
+            job.temp_dir = temp_dir
+            concat_list = os.path.join(temp_dir, "concat.txt")
+            output_file = os.path.join(temp_dir, "preview.mp4")
+
+            # Update status
+            job.status = ExportStatus.MERGING
+            job.progress_percent = 5
+
+            # Create concat list file
+            with open(concat_list, 'w') as f:
+                for seg in segments:
+                    safe_path = seg.file_path.replace("'", "'\\''")
+                    f.write(f"file '{safe_path}'\n")
+
+            # Build FFmpeg command
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', concat_list,
+                '-c', 'copy',
+                '-movflags', '+faststart',
+                output_file
+            ]
+
+            logger.info(f"[Preview {job_id}] Merging {len(segments)} segments...")
+
+            # Use Popen for cancellation support
+            job.ffmpeg_process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+
+            # Update progress during merge (simplified - just show it's running)
+            job.progress_percent = 50
+
+            # Wait for completion
+            stdout, stderr = job.ffmpeg_process.communicate(timeout=1800)  # 30 min timeout
+
+            if job.ffmpeg_process.returncode == 0:
+                job.status = ExportStatus.COMPLETED
+                job.progress_percent = 100
+                job.temp_file_path = output_file
+                logger.info(f"[Preview {job_id}] Merge completed: {output_file}")
+            else:
+                raise RuntimeError(f"FFmpeg merge failed: {stderr.decode()[:500]}")
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"[Preview {job_id}] Merge timed out")
+            job.status = ExportStatus.FAILED
+            job.error_message = "Merge timed out after 30 minutes"
+            if job.ffmpeg_process:
+                job.ffmpeg_process.kill()
+            if job.temp_dir:
+                shutil.rmtree(job.temp_dir, ignore_errors=True)
+
+        except Exception as e:
+            logger.error(f"[Preview {job_id}] Merge failed: {e}")
+            job.status = ExportStatus.FAILED
+            job.error_message = str(e)
+            if job.temp_dir:
+                shutil.rmtree(job.temp_dir, ignore_errors=True)
+
+    def get_preview_job(self, job_id: str) -> Optional[PreviewJob]:
+        """Get preview job by ID."""
+        return self.preview_jobs.get(job_id)
+
+    def cancel_preview_merge(self, job_id: str) -> bool:
+        """
+        Cancel a preview merge job.
+
+        Terminates the FFmpeg subprocess and cleans up temp files.
+
+        Args:
+            job_id: Preview job ID
+
+        Returns:
+            True if cancelled, False if job not found or already done
+        """
+        job = self.preview_jobs.get(job_id)
+        if not job:
+            return False
+
+        if job.status in [ExportStatus.COMPLETED, ExportStatus.FAILED, ExportStatus.CANCELLED]:
+            return False
+
+        # Terminate FFmpeg process
+        if job.ffmpeg_process and job.ffmpeg_process.poll() is None:
+            job.ffmpeg_process.terminate()
+            try:
+                job.ffmpeg_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                job.ffmpeg_process.kill()
+                job.ffmpeg_process.wait()
+
+        # Cleanup temp files
+        if job.temp_dir and os.path.exists(job.temp_dir):
+            shutil.rmtree(job.temp_dir, ignore_errors=True)
+
+        job.status = ExportStatus.CANCELLED
+        logger.info(f"[Preview {job_id}] Cancelled")
+        return True
+
+    def cleanup_preview(self, job_id: str) -> bool:
+        """
+        Delete temp preview files and remove job from tracking.
+
+        Should be called when modal closes or after download.
+
+        Args:
+            job_id: Preview job ID
+
+        Returns:
+            True if cleaned up, False if job not found
+        """
+        job = self.preview_jobs.get(job_id)
+        if not job:
+            return False
+
+        # Cancel if still running
+        if job.status in [ExportStatus.PENDING, ExportStatus.PROCESSING, ExportStatus.MERGING]:
+            self.cancel_preview_merge(job_id)
+
+        # Delete temp directory
+        if job.temp_dir and os.path.exists(job.temp_dir):
+            shutil.rmtree(job.temp_dir, ignore_errors=True)
+            logger.info(f"[Preview {job_id}] Temp files cleaned up")
+
+        # Remove from tracking
+        with self.preview_lock:
+            if job_id in self.preview_jobs:
+                del self.preview_jobs[job_id]
+
+        return True
+
+    def promote_preview_to_export(self, job_id: str, ios_compatible: bool = False) -> Optional[str]:
+        """
+        Promote a preview merge to a permanent export.
+
+        Moves the temp file to the exports directory. If iOS compatible,
+        re-encodes the file for Apple devices.
+
+        Args:
+            job_id: Preview job ID
+            ios_compatible: Whether to convert for iOS
+
+        Returns:
+            Path to exported file, or None if failed
+
+        Raises:
+            ValueError: If preview not ready
+        """
+        job = self.preview_jobs.get(job_id)
+        if not job:
+            raise ValueError(f"Preview job not found: {job_id}")
+
+        if job.status != ExportStatus.COMPLETED or not job.temp_file_path:
+            raise ValueError(f"Preview not ready for export (status: {job.status.value})")
+
+        if not os.path.exists(job.temp_file_path):
+            raise ValueError("Preview file no longer exists")
+
+        # Generate output filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"{job.camera_id}_{timestamp}"
+
+        if ios_compatible:
+            output_filename += "_ios.mp4"
+            final_file = os.path.join(self.export_dir, output_filename)
+
+            # Re-encode for iOS
+            logger.info(f"[Preview {job_id}] Converting to iOS format...")
+            ffmpeg_cmd = [
+                'ffmpeg', '-y',
+                '-i', job.temp_file_path,
+                '-c:v', self.IOS_ENCODING['video_codec'],
+                '-profile:v', self.IOS_ENCODING['video_profile'],
+                '-level:v', self.IOS_ENCODING['video_level'],
+                '-pix_fmt', self.IOS_ENCODING['pixel_format'],
+                '-c:a', self.IOS_ENCODING['audio_codec'],
+                '-b:a', self.IOS_ENCODING['audio_bitrate'],
+                '-movflags', self.IOS_ENCODING['movflags'],
+                '-preset', 'medium',
+                '-crf', '23',
+                final_file
+            ]
+
+            result = subprocess.run(
+                ffmpeg_cmd,
+                capture_output=True,
+                text=True,
+                timeout=7200  # 2 hour timeout for conversion
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(f"iOS conversion failed: {result.stderr[:500]}")
+        else:
+            output_filename += ".mp4"
+            final_file = os.path.join(self.export_dir, output_filename)
+
+            # Move file to exports
+            shutil.move(job.temp_file_path, final_file)
+
+        # Cleanup temp directory (but keep the job in memory for status queries)
+        if job.temp_dir and os.path.exists(job.temp_dir):
+            shutil.rmtree(job.temp_dir, ignore_errors=True)
+        job.temp_dir = None
+        job.temp_file_path = None
+
+        logger.info(f"[Preview {job_id}] Promoted to export: {final_file}")
+        return final_file
 
 
 # Global singleton instance

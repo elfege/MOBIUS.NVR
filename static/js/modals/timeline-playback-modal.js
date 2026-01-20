@@ -137,11 +137,36 @@ export class TimelinePlaybackModal {
         $('#preview-next-btn').on('click', () => this.previewNext());
         $('#preview-play-all-btn').on('click', () => this.playAllSelected());
 
-        // Video ended event - auto-advance when playing all
+        // Video event listeners - attach to handle playback
+        this.attachVideoEventListeners();
+    }
+
+    /**
+     * Attach video element event listeners
+     * Separated into own method so it can be called after modal is in DOM
+     */
+    attachVideoEventListeners() {
         const video = document.getElementById('timeline-preview-video');
-        if (video) {
-            video.addEventListener('ended', () => this.onPreviewEnded());
+        if (!video) {
+            console.warn('[Timeline] Video element not found - will retry when modal opens');
+            return;
         }
+
+        // Remove existing listeners to avoid duplicates
+        video.removeEventListener('ended', this._boundOnPreviewEnded);
+        video.removeEventListener('canplay', this._boundOnVideoCanPlay);
+
+        // Create bound versions of handlers
+        this._boundOnPreviewEnded = () => this.onPreviewEnded();
+        this._boundOnVideoCanPlay = () => this.onVideoCanPlay();
+
+        // Video ended event - auto-advance when playing all
+        video.addEventListener('ended', this._boundOnPreviewEnded);
+
+        // Video ready event - start playback when in play-all mode
+        video.addEventListener('canplay', this._boundOnVideoCanPlay);
+
+        console.log('[Timeline] Video event listeners attached');
     }
 
     /**
@@ -254,6 +279,10 @@ export class TimelinePlaybackModal {
         this.zoomLevel = 1;
         this.panOffset = 0;
         this.currentExportJobId = null;
+        this.selectedSegments = [];
+        this.currentPreviewIndex = 0;
+        this.isPlayingAll = false;
+        this._pendingAutoPlay = false;
 
         // Reset UI
         this.showSection('empty', false);
@@ -263,10 +292,14 @@ export class TimelinePlaybackModal {
         this.showSection('export', false);
         this.showSection('progress', false);
         this.showSection('download', false);
+        this.showSection('preview', false);
         $('#timeline-export-btn').prop('disabled', true);
 
         // Show modal
         this.$modal.show();
+
+        // Ensure video event listeners are attached (may not have been if modal wasn't in DOM during init)
+        this.attachVideoEventListeners();
 
         // Auto-load last 24 hours
         this.setPresetRange(24);
@@ -929,22 +962,38 @@ export class TimelinePlaybackModal {
             return;
         }
 
-        // Update video source
+        // Flag that we're waiting for video to be ready
+        this._pendingAutoPlay = this.isPlayingAll;
+
+        // Update video source - canplay event will trigger playback if needed
         video.src = previewUrl;
         video.load();
-
-        // Auto-play if in "play all" mode
-        if (this.isPlayingAll) {
-            video.play().catch(err => {
-                console.warn('[Timeline] Auto-play prevented:', err);
-            });
-        }
 
         // Update preview info display
         this.updatePreviewInfo(segment);
         this.updatePreviewControls();
 
         console.log(`[Timeline] Loading preview segment ${index + 1}/${this.selectedSegments.length}: ${segment.recording_id}`);
+    }
+
+    /**
+     * Handle video canplay event - start playback when ready if in play-all mode
+     */
+    onVideoCanPlay() {
+        const video = document.getElementById('timeline-preview-video');
+        if (!video) return;
+
+        // Only auto-play if we're in play-all mode and have a pending auto-play
+        if (this._pendingAutoPlay && this.isPlayingAll) {
+            this._pendingAutoPlay = false;
+            video.play().catch(err => {
+                console.warn('[Timeline] Auto-play prevented:', err);
+                // Reset play-all mode on error
+                this.isPlayingAll = false;
+                this.updatePreviewControls();
+            });
+            console.log(`[Timeline] Auto-playing segment ${this.currentPreviewIndex + 1}/${this.selectedSegments.length}`);
+        }
     }
 
     /**
@@ -1009,6 +1058,7 @@ export class TimelinePlaybackModal {
         if (this.isPlayingAll) {
             // Stop playback
             this.isPlayingAll = false;
+            this._pendingAutoPlay = false;
             const video = document.getElementById('timeline-preview-video');
             if (video) video.pause();
             this.updatePreviewControls();
@@ -1018,20 +1068,23 @@ export class TimelinePlaybackModal {
 
         // Start playing from first segment
         this.isPlayingAll = true;
-        this.loadPreviewSegment(0);
 
-        // Ensure video starts playing
+        // If we're already on the first segment and video is ready, just play it
         const video = document.getElementById('timeline-preview-video');
-        if (video) {
+        if (this.currentPreviewIndex === 0 && video && video.readyState >= 3) {
+            // Video is already loaded and ready
             video.play().catch(err => {
-                console.warn('[Timeline] Auto-play prevented:', err);
+                console.warn('[Timeline] Play prevented:', err);
                 this.isPlayingAll = false;
                 this.updatePreviewControls();
             });
+        } else {
+            // Load from first segment - canplay event will trigger playback
+            this.loadPreviewSegment(0);
         }
 
         this.updatePreviewControls();
-        console.log('[Timeline] Started play-all mode');
+        console.log(`[Timeline] Started play-all mode with ${this.selectedSegments.length} segments`);
     }
 
     /**

@@ -36,16 +36,8 @@ echo "=========================================="
 #   - Threading model works with FFmpeg subprocess calls
 #   - gevent would NOT help - FFmpeg calls are blocking I/O
 
+# Use gunicorn.conf.py for configuration including custom access log filtering
+# This filters out high-frequency /api/snap/ requests from logs
 exec gunicorn \
-    --bind 0.0.0.0:5000 \
-    --workers 1 \
-    --threads 300 \
-    --timeout 600 \
-    --graceful-timeout 30 \
-    --keep-alive 5 \
-    --access-logfile - \
-    --error-logfile - \
-    --capture-output \
-    --enable-stdio-inheritance \
-    --log-level info \
+    --config gunicorn.conf.py \
     "app:app"

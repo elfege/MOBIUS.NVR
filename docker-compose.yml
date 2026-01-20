@@ -185,15 +185,12 @@ services:
     - REOLINK_PASSWORD=${REOLINK_PASSWORD}
 
   neolink:
-    # Use local v0.6.3-rc.3 binary - works with E1 camera (H.264)
-    # Docker image v0.6.2 outputs MJPEG for E1, causing static/noise
-    build:
-      context: .
-      dockerfile: Dockerfile.neolink
+    # Use v0.6.2 - v0.6.3.rc.x has buffer overflow regression
+    # See: https://github.com/QuantumEntangledAndy/neolink/issues/349
+    image: quantumentangledandy/neolink:v0.6.2
     container_name: nvr-neolink
     restart: unless-stopped
     volumes:
-      - ./neolink/target/release/neolink:/usr/local/bin/neolink:ro
       - ./config/neolink.toml:/etc/neolink.toml:ro
     ports:
       - "8554:8554"  # RTSP - exposed for external testing (VLC)

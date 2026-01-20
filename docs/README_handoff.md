@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 20, 2026 09:00 EST*
+*Last updated: January 20, 2026 11:45 EST*
 
 **Context compaction occurred at 09:00 EST on January 20, 2026**
 
@@ -144,14 +144,31 @@ neolink:
 
 **Lesson Learned:** Always check README_project_history.md before making architectural changes
 
+**6. Fixed Neolink RTSP Path Regression (Jan 20, 11:45 EST)**
+
+**Problem:** E1 camera stream showing black/inactive despite camera being online.
+
+**Root Cause:** Code was building RTSP path as `/main` but neolink exposes `/mainStream`.
+- FFmpeg error: `[rtsp] method DESCRIBE failed: 404 Not Found`
+- Path `rtsp://neolink:8554/95270000YPTKLLD6/main` was returning 404
+
+**Fix:** Changed `streaming/handlers/reolink_stream_handler.py` line 137:
+- Before: `stream_path = 'main'`
+- After: `stream_path = 'mainStream'`
+
+**Commits:**
+- `e42242e` - Restore ensure_recording_paths.sh call in start.sh
+- `9f55671` - Fix neolink RTSP path: use /mainStream instead of /main
+
+**Result:** E1 camera stream CONFIRMED WORKING - 12.6s latency shown in UI
+
 ---
 
 ## TODO List
 
 **Unsolved Issues:**
 
-- [ ] E1 camera (Cat Feeders, 95270000YPTKLLD6) showing MJPEG/static - needs solution that doesn't use v0.6.3.rc.x
-  - Possible approaches: check for newer stable neolink release, try subStream, camera firmware update
+- [x] E1 camera (Cat Feeders, 95270000YPTKLLD6) - FIXED: was using wrong RTSP path `/main` instead of `/mainStream`
 
 **Testing Needed (after container restart):**
 

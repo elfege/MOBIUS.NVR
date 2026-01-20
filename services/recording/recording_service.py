@@ -120,8 +120,24 @@ class RecordingService:
 
         if recording_source == 'mediamtx':
             # Tap MediaMTX RTSP output (required for single-connection cameras)
+            # MediaMTX publishes two streams per camera:
+            #   - /{packager_path}      → Sub stream (320x240 transcoded)
+            #   - /{packager_path}_main → Main stream (native resolution, passthrough)
             packager_path = camera.get('packager_path', camera_id)
-            return (f"rtsp://nvr-packager:8554/{packager_path}", 'mediamtx')
+
+            # Get quality setting from recording config (default: main for best quality)
+            quality = camera_cfg.get('motion_recording', {}).get('quality', 'main')
+
+            if quality == 'main':
+                # Use main stream path for high quality recordings
+                mediamtx_path = f"{packager_path}_main"
+                logger.debug(f"Recording {camera_id} from MediaMTX main stream: {mediamtx_path}")
+            else:
+                # Use sub stream path for lower quality/smaller files
+                mediamtx_path = packager_path
+                logger.debug(f"Recording {camera_id} from MediaMTX sub stream: {mediamtx_path}")
+
+            return (f"rtsp://nvr-packager:8554/{mediamtx_path}", 'mediamtx')
 
         elif recording_source == 'rtsp':
             # Direct camera RTSP connection

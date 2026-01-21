@@ -1069,10 +1069,21 @@ export class TimelinePlaybackModal {
 
             // Show preview section with merge progress
             console.log('[Timeline] Showing preview section...');
+            console.log('[Timeline] $modal exists:', !!this.$modal);
+            console.log('[Timeline] Preview section found:', this.$modal.find('.timeline-preview-section').length);
+
             this.showSection('preview', true);
             this.showSection('previewMerge', true);
-            console.log('[Timeline] Preview section visible, checking DOM...');
-            console.log('[Timeline] Preview section display:', this.$modal.find('.timeline-preview-section').css('display'));
+
+            // DEBUG: Check if preview section is actually visible
+            const $previewSection = this.$modal.find('.timeline-preview-section');
+            console.log('[Timeline] Preview section display AFTER showSection:', $previewSection.css('display'));
+            console.log('[Timeline] Preview section visibility:', $previewSection.css('visibility'));
+            console.log('[Timeline] Preview section height:', $previewSection.height());
+
+            // DEBUG: Force show with inline style as test
+            $previewSection.css('display', 'block').css('border', '3px solid lime');
+            console.log('[Timeline] Forced display:block, display now:', $previewSection.css('display'));
 
             // Show different message for iOS (re-encoding takes longer)
             const statusMessage = this.isMobile

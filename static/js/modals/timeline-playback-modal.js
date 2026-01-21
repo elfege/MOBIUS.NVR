@@ -742,12 +742,17 @@ export class TimelinePlaybackModal {
 
         const iosCompatible = $('#export-ios-compatible').is(':checked');
 
+        console.log('[Timeline] startExport called - mergedPreviewReady:', this.mergedPreviewReady,
+            'currentPreviewMergeJobId:', this.currentPreviewMergeJobId);
+
         // If merged preview is ready, promote it instead of re-merging
         if (this.mergedPreviewReady && this.currentPreviewMergeJobId) {
+            console.log('[Timeline] Using promote path (preview already merged)');
             await this.promotePreviewToExport(iosCompatible);
             return;
         }
 
+        console.log('[Timeline] Using full export path (no merged preview ready)');
         // Fall back to original export flow
         const start = this.selection.start < this.selection.end ?
             this.selection.start : this.selection.end;
@@ -991,66 +996,114 @@ export class TimelinePlaybackModal {
     }
 
     /**
-     * Show video inline for iOS download
-     * iOS Safari doesn't handle direct downloads well, so we show the video
-     * in a player where user can long-press to save or use share sheet
+     * Show video inline for iOS download with Share button
+     * Provides two options:
+     * 1. Share button using Web Share API (if available)
+     * 2. Open in new tab button for native Safari video player
      */
     showIOSInlineDownload(downloadUrl) {
-        // Hide download ready section
-        this.showSection('download', false);
+        // Convert download URL to stream URL for inline viewing
+        const streamUrl = downloadUrl.replace('/download', '/stream');
 
-        // Show preview section with the export video
+        // Show preview section with video and save options
+        this.showSection('download', false);
         this.showSection('preview', true);
         this.showSection('previewMerge', false);
 
-        // Load export video into preview player
+        // Load video into preview player
         const $video = this.$modal.find('#timeline-preview-video');
         const video = $video[0];
-
-        // Use stream URL (not download URL) for playback
-        // The preview-merge stream endpoint works for this
-        video.src = downloadUrl.replace('/download', '/stream');
+        video.src = streamUrl;
         video.load();
         $video.show();
 
-        // Show iOS-specific save instructions
-        const $info = this.$modal.find('.timeline-preview-info');
-        $info.html(`
+        // Hide the regular preview info (absolute positioned overlay)
+        this.$modal.find('.timeline-preview-info').hide();
+
+        // Build save options HTML with Share button and Open in Tab button
+        const hasShareAPI = navigator.share && navigator.canShare;
+
+        // Create a NEW container for iOS save buttons OUTSIDE the video container
+        // This prevents z-index issues with the HTML5 video player
+        let $iosSaveContainer = this.$modal.find('.ios-save-container');
+        if (!$iosSaveContainer.length) {
+            // Insert after the preview container, before the controls
+            $iosSaveContainer = $('<div class="ios-save-container"></div>');
+            this.$modal.find('.timeline-preview-container').after($iosSaveContainer);
+        }
+
+        let buttonsHtml = '';
+        if (hasShareAPI) {
+            buttonsHtml += `
+                <button class="ios-share-btn timeline-btn timeline-btn-primary">
+                    <i class="fas fa-share-square"></i> Share / Save
+                </button>
+            `;
+        }
+        buttonsHtml += `
+            <button class="ios-open-tab-btn timeline-btn">
+                <i class="fas fa-external-link-alt"></i> Open in New Tab
+            </button>
+        `;
+
+        $iosSaveContainer.html(`
             <div class="ios-save-instructions">
-                <strong>To save video:</strong><br>
-                Long-press video → "Save to Photos"<br>
-                <em>or</em> tap <i class="fas fa-share-square"></i> Share → Save
+                <strong>Save video to Photos:</strong>
+            </div>
+            <div class="ios-save-buttons">
+                ${buttonsHtml}
+            </div>
+            <div class="ios-save-hint">
+                ${hasShareAPI ? 'Tap Share, then "Save Video"' : 'Open in tab, then tap Share → Save'}
             </div>
         `).show();
 
-        // Show controls
-        this.$modal.find('.timeline-preview-controls').show();
-        this.$modal.find('#preview-prev-btn').hide();
-        this.$modal.find('#preview-next-btn').hide();
+        // Attach share button handler
+        if (hasShareAPI) {
+            $iosSaveContainer.find('.ios-share-btn').on('click', async () => {
+                try {
+                    // Fetch the video as a blob for sharing
+                    const response = await fetch(streamUrl);
+                    const blob = await response.blob();
+                    const file = new File([blob], this.completedJob?.filename || 'video.mp4', { type: 'video/mp4' });
 
-        // Change Play button to Done button
-        const $playBtn = this.$modal.find('#preview-play-all-btn');
-        $playBtn.html('<i class="fas fa-check"></i> Done');
-        $playBtn.off('click').on('click', () => {
-            // Reset UI
-            $playBtn.html('<i class="fas fa-play"></i> Play');
+                    await navigator.share({
+                        files: [file],
+                        title: 'NVR Recording'
+                    });
+                    console.log('[Timeline] Share completed');
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.error('[Timeline] Share failed:', err);
+                        // Fall back to opening in new tab
+                        window.open(streamUrl, '_blank');
+                    }
+                }
+            });
+        }
+
+        // Attach open in tab handler
+        $iosSaveContainer.find('.ios-open-tab-btn').on('click', () => {
+            window.open(streamUrl, '_blank');
+        });
+
+        // Hide preview controls (don't need prev/next/play for iOS download)
+        this.$modal.find('.timeline-preview-controls').hide();
+
+        // Add Done button to the iOS save container
+        let $doneBtn = $iosSaveContainer.find('.ios-done-btn');
+        if (!$doneBtn.length) {
+            $doneBtn = $('<button class="ios-done-btn timeline-btn timeline-btn-success"><i class="fas fa-check"></i> Done</button>');
+            $iosSaveContainer.append($doneBtn);
+        }
+
+        $doneBtn.off('click').on('click', () => {
+            $iosSaveContainer.hide();
             this.showSection('preview', false);
             this.showSection('export', true);
             this.currentExportJobId = null;
             this.completedJob = null;
         });
-
-        // Scroll to preview section on mobile
-        const $previewSection = this.$modal.find('.timeline-preview-section');
-        const $modalBody = this.$modal.find('.timeline-modal-body');
-        setTimeout(() => {
-            const previewOffset = $previewSection.position();
-            if (previewOffset && previewOffset.top > 50) {
-                $modalBody.animate({
-                    scrollTop: $modalBody.scrollTop() + previewOffset.top - 30
-                }, 300);
-            }
-        }, 100);
     }
 
     /**
@@ -1111,6 +1164,9 @@ export class TimelinePlaybackModal {
             // Show preview section with merge progress
             this.showSection('preview', true);
             this.showSection('previewMerge', true);
+
+            // Disable export button while encoding
+            $('#timeline-export-btn').prop('disabled', true);
 
             // Get preview section reference
             const $previewSection = this.$modal.find('.timeline-preview-section');
@@ -1263,6 +1319,9 @@ export class TimelinePlaybackModal {
         $controls.show();
 
         this.mergedPreviewReady = true;
+
+        // Re-enable export button now that merge is complete
+        $('#timeline-export-btn').prop('disabled', false);
 
         // Load merged video
         const video = document.getElementById('timeline-preview-video');

@@ -803,15 +803,11 @@
     margin: 0 4px;
 }
 
-/* iOS inline save instructions (shown in preview info area) */
+/* iOS inline save instructions header */
 .ios-save-instructions {
     text-align: center;
-    font-size: 12px;
-    line-height: 1.6;
+    font-size: 14px;
     color: #fff;
-    background: rgba(124, 77, 255, 0.2);
-    padding: 8px 12px;
-    border-radius: 6px;
 }
 
 /* iOS video long-press fix - prevent text selection, enable save menu */
@@ -832,6 +828,76 @@
 
 .ios-save-instructions i {
     color: #7C4DFF;
+}
+
+/* iOS save container - sits BELOW video, not overlaid on it */
+.ios-save-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* iOS save buttons row */
+.ios-save-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.ios-share-btn,
+.ios-open-tab-btn,
+.ios-done-btn {
+    padding: 12px 20px;
+    font-size: 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ios-share-btn {
+    background: #7C4DFF;
+    color: white;
+    border: none;
+}
+
+.ios-share-btn:active {
+    background: #651FFF;
+}
+
+.ios-open-tab-btn {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.ios-open-tab-btn:active {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+.ios-done-btn {
+    margin-top: 8px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+}
+
+.ios-done-btn:active {
+    background: #388E3C;
+}
+
+.ios-save-hint {
+    font-size: 12px;
+    color: #888;
+    text-align: center;
 }
 
 

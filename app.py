@@ -3124,6 +3124,88 @@ def api_timeline_export_download(job_id: str):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/timeline/export/<job_id>/stream', methods=['GET'])
+def api_timeline_export_stream(job_id: str):
+    """
+    Stream export file for inline playback (iOS save workaround).
+
+    Unlike /download, this streams for playback (not as attachment),
+    allowing iOS users to long-press the video to save it.
+
+    Supports HTTP Range requests for seeking.
+
+    Returns:
+        Video stream with appropriate headers for inline playback
+    """
+    try:
+        timeline_service = get_timeline_service()
+        job = timeline_service.get_export_job(job_id)
+
+        if not job:
+            return jsonify({'error': f'Export job not found: {job_id}'}), 404
+
+        if job.status.value != 'completed':
+            return jsonify({'error': f'Export not ready (status: {job.status.value})'}), 400
+
+        file_path = job.output_path
+        if not file_path or not os.path.exists(file_path):
+            return jsonify({'error': 'Export file not found'}), 404
+
+        file_size = os.path.getsize(file_path)
+
+        # Handle Range requests for video seeking
+        range_header = request.headers.get('Range')
+        if range_header:
+            # Parse range header (e.g., "bytes=0-1023")
+            byte_start = 0
+            byte_end = file_size - 1
+
+            match = re.match(r'bytes=(\d*)-(\d*)', range_header)
+            if match:
+                if match.group(1):
+                    byte_start = int(match.group(1))
+                if match.group(2):
+                    byte_end = int(match.group(2))
+
+            # Clamp to file size
+            byte_end = min(byte_end, file_size - 1)
+            content_length = byte_end - byte_start + 1
+
+            def generate_range():
+                with open(file_path, 'rb') as f:
+                    f.seek(byte_start)
+                    remaining = content_length
+                    while remaining > 0:
+                        chunk_size = min(8192, remaining)
+                        data = f.read(chunk_size)
+                        if not data:
+                            break
+                        remaining -= len(data)
+                        yield data
+
+            response = Response(
+                generate_range(),
+                status=206,
+                mimetype='video/mp4',
+                direct_passthrough=True
+            )
+            response.headers['Content-Range'] = f'bytes {byte_start}-{byte_end}/{file_size}'
+            response.headers['Content-Length'] = content_length
+            response.headers['Accept-Ranges'] = 'bytes'
+            return response
+
+        # Full file request (no Range header)
+        return send_file(
+            file_path,
+            mimetype='video/mp4',
+            as_attachment=False  # Inline playback, not download
+        )
+
+    except Exception as e:
+        logger.error(f"Timeline export stream API error for {job_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/timeline/preview/<int:recording_id>', methods=['GET'])
 def api_timeline_preview(recording_id: int):
     """

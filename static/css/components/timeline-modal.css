@@ -803,6 +803,30 @@
     margin: 0 4px;
 }
 
+/* iOS inline save instructions (shown in preview info area) */
+.ios-save-instructions {
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #fff;
+    background: rgba(124, 77, 255, 0.2);
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+.ios-save-instructions strong {
+    color: #B388FF;
+}
+
+.ios-save-instructions em {
+    color: #888;
+    font-style: normal;
+}
+
+.ios-save-instructions i {
+    color: #7C4DFF;
+}
+
 
 /* =============================================================================
    Mobile-Specific Adjustments

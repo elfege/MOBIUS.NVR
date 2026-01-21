@@ -56,6 +56,27 @@
     "audio_codec": "aac",
     "audio_bitrate": "128k"
   },
+  "export_encoding": {
+    "_comment": "Settings for timeline export and preview merge",
+    "default": {
+      "_comment": "Fast stream copy - no re-encoding (used on desktop)",
+      "video_codec": "copy",
+      "audio_codec": "copy",
+      "movflags": "+faststart"
+    },
+    "ios_compatible": {
+      "_comment": "H.264 Baseline for iOS/Android/mobile compatibility",
+      "video_codec": "libx264",
+      "video_profile": "baseline",
+      "video_level": "3.1",
+      "pixel_format": "yuv420p",
+      "audio_codec": "aac",
+      "audio_bitrate": "128k",
+      "preset": "fast",
+      "crf": 23,
+      "movflags": "+faststart"
+    }
+  },
   "motion_detection": {
     "cooldown_sec": 60,
     "min_event_duration_sec": 3,

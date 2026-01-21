@@ -15,9 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 20, 2026 20:00 EST*
+*Last updated: January 20, 2026 20:06 EST*
 
-**Context compaction occurred at 20:00 EST on January 20, 2026**
+**Context compaction occurred at 20:06 EST on January 20, 2026**
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -262,6 +262,43 @@ neolink:
 
 - `1434d8c` - Add iOS/mobile compatibility for timeline playback
 - `99d6e0e` - Fix modal scrolling for smaller screens and mobile devices
+- `b5228ed` - Move iOS encoding settings to recording_settings.json config file
+
+**9. Moved iOS Encoding Settings to Config File (Jan 20, 20:06 EST)**
+
+**Problem:** iOS encoding settings (H.264 Baseline, AAC, etc.) were hardcoded in TimelineService.
+
+**Solution:** Moved settings to `config/recording_settings.json`:
+
+**Config Structure (`config/recording_settings.json`):**
+
+```json
+"export_encoding": {
+  "default": {
+    "video_codec": "copy",
+    "audio_codec": "copy",
+    "movflags": "+faststart"
+  },
+  "ios_compatible": {
+    "video_codec": "libx264",
+    "video_profile": "baseline",
+    "video_level": "3.1",
+    "pixel_format": "yuv420p",
+    "audio_codec": "aac",
+    "audio_bitrate": "128k",
+    "preset": "fast",
+    "crf": 23,
+    "movflags": "+faststart"
+  }
+}
+```
+
+**Backend Changes (`services/recording/timeline_service.py`):**
+
+- Added `_load_ios_encoding_settings()` method to load from config
+- Falls back to `DEFAULT_IOS_ENCODING` if config not found
+- All encoding methods now use `self.ios_encoding.get(key, default)` for safety
+- Config path: `/app/config/recording_settings.json` (container path)
 
 ---
 

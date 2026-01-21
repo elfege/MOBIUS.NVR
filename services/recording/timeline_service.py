@@ -1217,8 +1217,9 @@ class TimelineService:
         """
         Promote a preview merge to a permanent export.
 
-        Moves the temp file to the exports directory. If iOS compatible,
-        re-encodes the file for Apple devices.
+        Moves the temp file to the exports directory. If iOS compatible
+        is requested but preview was already iOS-encoded, just moves the file.
+        Only re-encodes if iOS is requested but preview wasn't iOS-encoded.
 
         Args:
             job_id: Preview job ID
@@ -1244,12 +1245,16 @@ class TimelineService:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_filename = f"{job.camera_id}_{timestamp}"
 
-        if ios_compatible:
+        # Check if preview was already iOS-encoded
+        # If so, we can skip re-encoding even if ios_compatible is requested
+        preview_already_ios = job.ios_compatible
+
+        if ios_compatible and not preview_already_ios:
+            # Need to re-encode for iOS (preview was stream-copy, not iOS-encoded)
             output_filename += "_ios.mp4"
             final_file = os.path.join(self.export_dir, output_filename)
 
-            # Re-encode for iOS using settings from config
-            logger.info(f"[Preview {job_id}] Converting to iOS format (config: {self.config_path})...")
+            logger.info(f"[Preview {job_id}] Converting to iOS format (preview wasn't iOS-encoded)...")
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
                 '-i', job.temp_file_path,
@@ -1275,7 +1280,12 @@ class TimelineService:
             if result.returncode != 0:
                 raise RuntimeError(f"iOS conversion failed: {result.stderr[:500]}")
         else:
-            output_filename += ".mp4"
+            # Either no iOS needed, or preview was already iOS-encoded - just move file
+            if ios_compatible and preview_already_ios:
+                output_filename += "_ios.mp4"
+                logger.info(f"[Preview {job_id}] Preview already iOS-encoded, moving directly")
+            else:
+                output_filename += ".mp4"
             final_file = os.path.join(self.export_dir, output_filename)
 
             # Move file to exports

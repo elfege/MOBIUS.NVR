@@ -12,13 +12,19 @@ export class ConnectionMonitor {
         this.isRedirecting = false;  // Guard against duplicate redirects/modals
         this.modalShown = false;  // Track if modal is already displayed
 
-        // Detect if device is likely a slower/older tablet or mobile device
-        // These devices may have slower network handling and need more lenient thresholds
-        this.isSlowDevice = this._detectSlowDevice();
+        // Detect device performance tier for appropriate thresholds
+        // Returns: 'ultra-slow', 'slow', or 'normal'
+        this.deviceTier = this._detectDeviceTier();
 
-        // Adjust thresholds based on device capability
-        // Slow devices get much more lenient settings to avoid false positives
-        if (this.isSlowDevice) {
+        // Adjust thresholds based on device capability tier
+        // Ultra-slow devices (ancient iPads with aging batteries) get extremely lenient settings
+        if (this.deviceTier === 'ultra-slow') {
+            this.maxFailedChecks = 40;        // 40 failures before redirect
+            this.checkIntervalMs = 30000;     // Check every 30 seconds
+            this.healthCheckTimeoutMs = 45000; // 45 second timeout (aging WiFi adapters)
+            this.fetchErrorThreshold = 30;    // 30 fetch errors
+            console.log('[ConnectionMonitor] ULTRA-SLOW device detected - using very lenient thresholds');
+        } else if (this.deviceTier === 'slow') {
             this.maxFailedChecks = 20;        // 20 failures before redirect (was 10)
             this.checkIntervalMs = 15000;     // Check every 15 seconds (was 10)
             this.healthCheckTimeoutMs = 20000; // 20 second timeout (was 10)
@@ -31,57 +37,103 @@ export class ConnectionMonitor {
             this.fetchErrorThreshold = 8;     // Standard: 8 fetch errors
         }
 
-        console.log('[ConnectionMonitor] Initialized - device:', this.isSlowDevice ? 'SLOW' : 'NORMAL',
+        console.log('[ConnectionMonitor] Initialized - device tier:', this.deviceTier.toUpperCase(),
             '| check interval:', this.checkIntervalMs / 1000, 's',
             '| max failures:', this.maxFailedChecks,
             '| timeout:', this.healthCheckTimeoutMs / 1000, 's');
     }
 
     /**
-     * Detect if device is likely slower/older based on various heuristics
-     * Returns true for older tablets, low-end mobile devices, etc.
+     * Detect device performance tier based on various heuristics
+     * Returns: 'ultra-slow', 'slow', or 'normal'
+     *
+     * Ultra-slow tier is for ancient devices with:
+     * - Very old iOS/Android versions
+     * - Aging batteries causing CPU throttling
+     * - Poor WiFi adapters with high latency
+     * - Very low CPU cores or memory
      */
-    _detectSlowDevice() {
+    _detectDeviceTier() {
         const ua = navigator.userAgent.toLowerCase();
 
-        // Check for older iPad models (iPad 1-4, iPad Air 1, iPad mini 1-3)
-        // These have older A-series chips and slower performance
-        const isOlderIPad = /ipad/.test(ua) && (
-            // iOS versions before 13 typically indicate older hardware
-            /os [4-9]_|os 1[0-2]_/.test(ua) ||
-            // Check for hardware concurrency (CPU cores) - older iPads have fewer
-            (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)
-        );
-
-        // Check for older Android tablets
-        const isOlderAndroidTablet = /android/.test(ua) && /tablet|pad/i.test(ua) && (
-            // Android versions before 8 are typically on older hardware
-            /android [4-7]\./.test(ua) ||
-            // Low CPU core count
-            (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)
-        );
-
-        // Check device memory (Chrome/Firefox on Android) - low memory = slow device
         // @ts-ignore - deviceMemory is not in all browsers
-        const lowMemory = navigator.deviceMemory && navigator.deviceMemory <= 2;
+        const deviceMemory = navigator.deviceMemory;
+        const cores = navigator.hardwareConcurrency;
 
-        // Check connection type if available - slow connections need more tolerance
         // @ts-ignore - connection API not in all browsers
         const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-        const slowConnection = conn && (
+
+        // ========== ULTRA-SLOW TIER DETECTION ==========
+        // Ancient iPads (iPad 2, 3, 4, Air 1, Mini 1-3) - these have aging batteries
+        // and very slow WiFi adapters. iOS 9 and below indicates truly ancient hardware.
+        const isAncientIPad = /ipad/.test(ua) && /os [4-9]_/.test(ua);
+
+        // iPads running iOS 10-12 with very few cores are also ultra-slow
+        // (iPad Air 1 has 2 cores, iPad 2/3/4 have 2 cores)
+        const isVeryOldIPad = /ipad/.test(ua) &&
+            /os 1[0-2]_/.test(ua) &&
+            cores && cores <= 2;
+
+        // Ancient Android tablets (Android 4-5) are ultra-slow
+        const isAncientAndroid = /android [4-5]\./.test(ua) && /tablet|pad/i.test(ua);
+
+        // Very low memory devices (< 1GB) are ultra-slow
+        const veryLowMemory = deviceMemory && deviceMemory < 1;
+
+        // 2G connection is ultra-slow
+        const ultraSlowConnection = conn && (
             conn.effectiveType === 'slow-2g' ||
-            conn.effectiveType === '2g' ||
+            conn.effectiveType === '2g'
+        );
+
+        // Any touch device with only 1-2 cores is ultra-slow
+        const veryLowCores = 'ontouchstart' in window && cores && cores <= 2;
+
+        // Check for ultra-slow tier
+        const isUltraSlow = isAncientIPad || isVeryOldIPad || isAncientAndroid ||
+                           veryLowMemory || ultraSlowConnection || veryLowCores;
+
+        if (isUltraSlow) {
+            console.log('[ConnectionMonitor] ULTRA-SLOW device indicators:', {
+                isAncientIPad,
+                isVeryOldIPad,
+                isAncientAndroid,
+                veryLowMemory,
+                ultraSlowConnection,
+                veryLowCores,
+                hardwareConcurrency: cores,
+                deviceMemory: deviceMemory,
+                userAgent: ua.substring(0, 100) + '...'
+            });
+            return 'ultra-slow';
+        }
+
+        // ========== SLOW TIER DETECTION ==========
+        // Older iPads (iOS 13-15 but still older hardware)
+        const isOlderIPad = /ipad/.test(ua) && (
+            /os 1[3-5]_/.test(ua) && cores && cores <= 4
+        );
+
+        // Older Android tablets (Android 6-8)
+        const isOlderAndroidTablet = /android/.test(ua) && /tablet|pad/i.test(ua) && (
+            /android [6-8]\./.test(ua) ||
+            (cores && cores <= 4)
+        );
+
+        // Low memory devices (1-2GB)
+        const lowMemory = deviceMemory && deviceMemory <= 2;
+
+        // 3G connection
+        const slowConnection = conn && (
             conn.effectiveType === '3g' ||
             conn.saveData === true
         );
 
-        // Check for any touch device (tablets/phones) with low cores
-        const isTouchWithLowCores = 'ontouchstart' in window &&
-            navigator.hardwareConcurrency &&
-            navigator.hardwareConcurrency <= 4;
+        // Touch device with 3-4 cores
+        const touchWithModerateCores = 'ontouchstart' in window && cores && cores <= 4;
 
-        // Combine all checks - if any indicate slow device, be lenient
-        const isSlow = isOlderIPad || isOlderAndroidTablet || lowMemory || slowConnection || isTouchWithLowCores;
+        const isSlow = isOlderIPad || isOlderAndroidTablet || lowMemory ||
+                       slowConnection || touchWithModerateCores;
 
         if (isSlow) {
             console.log('[ConnectionMonitor] Slow device indicators:', {
@@ -89,15 +141,15 @@ export class ConnectionMonitor {
                 isOlderAndroidTablet,
                 lowMemory,
                 slowConnection,
-                isTouchWithLowCores,
-                hardwareConcurrency: navigator.hardwareConcurrency,
-                // @ts-ignore
-                deviceMemory: navigator.deviceMemory,
+                touchWithModerateCores,
+                hardwareConcurrency: cores,
+                deviceMemory: deviceMemory,
                 userAgent: ua.substring(0, 100) + '...'
             });
+            return 'slow';
         }
 
-        return isSlow;
+        return 'normal';
     }
 
     /**

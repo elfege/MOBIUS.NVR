@@ -646,8 +646,11 @@ export class TimelinePlaybackModal {
         $('#timeline-export-btn').prop('disabled', this.selectedSegments.length === 0);
 
         // Show preview if segments selected
+        // Note: showPreview is async - catch errors to prevent silent failures
         if (this.selectedSegments.length > 0) {
-            this.showPreview();
+            this.showPreview().catch(err => {
+                console.error('[Timeline] showPreview error:', err);
+            });
         }
     }
 
@@ -1039,17 +1042,23 @@ export class TimelinePlaybackModal {
      * On iOS/mobile, automatically uses iOS-compatible encoding (H.264 Baseline)
      */
     async showPreview() {
+        console.log('[Timeline] showPreview() called, segments:', this.selectedSegments.length);
+
         if (this.selectedSegments.length === 0) {
             console.log('[Timeline] No segments to preview');
             return;
         }
 
         // Cancel any existing preview merge
+        console.log('[Timeline] Cancelling any existing preview merge...');
         await this.cancelCurrentPreviewMerge();
+        console.log('[Timeline] Cancel complete');
 
         // Show preview section with merge progress
+        console.log('[Timeline] Showing preview section...');
         this.showSection('preview', true);
         this.showSection('previewMerge', true);
+        console.log('[Timeline] Preview section visible');
 
         // Show different message for iOS (re-encoding takes longer)
         const statusMessage = this.isMobile

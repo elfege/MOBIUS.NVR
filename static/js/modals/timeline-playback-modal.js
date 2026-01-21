@@ -40,6 +40,10 @@ export class TimelinePlaybackModal {
         this.mergedPreviewReady = false;
         this._pendingAutoPlay = false;
 
+        // Device detection for iOS/mobile compatibility
+        this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
         // Canvas interaction state
         this.isDragging = false;
         this.dragStart = null;
@@ -938,35 +942,69 @@ export class TimelinePlaybackModal {
 
     /**
      * Download completed export
+     * On iOS, opens video in new tab where user can use share sheet to save to Photos
      */
     downloadExport() {
-        if (!this.currentExportJobId) return;
+        // Use completed job's download URL if available (from promote), otherwise use export job ID
+        let downloadUrl;
+        if (this.completedJob && this.completedJob.download_url) {
+            downloadUrl = this.completedJob.download_url;
+        } else if (this.currentExportJobId) {
+            downloadUrl = `/api/timeline/export/${this.currentExportJobId}/download`;
+        } else {
+            console.error('[Timeline] No download URL available');
+            return;
+        }
 
-        // Create download link
-        const downloadUrl = `/api/timeline/export/${this.currentExportJobId}/download`;
-
-        // For iOS, we might need special handling
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-
-        if (isIOS) {
-            // On iOS, open in new tab to trigger download/share sheet
+        if (this.isIOS) {
+            // On iOS, open video in new tab to trigger share sheet
+            // User can then tap share icon and choose "Save to Photos"
+            this.showIOSDownloadInstructions();
+            window.open(downloadUrl, '_blank');
+        } else if (this.isMobile) {
+            // Android and other mobile - open in new tab for native handling
             window.open(downloadUrl, '_blank');
         } else {
-            // On desktop, trigger download
+            // On desktop, trigger direct download
             const a = document.createElement('a');
             a.href = downloadUrl;
-            a.download = ''; // Let server set filename
+            a.download = this.completedJob?.filename || ''; // Let server set filename if not known
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
         }
 
-        // Reset UI after brief delay
+        // Reset UI after brief delay (longer for iOS to allow reading instructions)
+        const resetDelay = this.isIOS ? 5000 : 2000;
         setTimeout(() => {
             this.showSection('download', false);
             this.showSection('export', true);
             this.currentExportJobId = null;
-        }, 2000);
+            this.completedJob = null;
+        }, resetDelay);
+    }
+
+    /**
+     * Show iOS-specific download instructions
+     * Informs user how to save video to Photos app
+     */
+    showIOSDownloadInstructions() {
+        // Update the download ready section to show iOS instructions
+        const $downloadSection = this.$modal.find('.timeline-download-ready');
+        $downloadSection.find('.ios-instructions').remove(); // Remove any existing
+
+        const instructions = $(`
+            <div class="ios-instructions">
+                <p><strong>To save to Photos:</strong></p>
+                <ol>
+                    <li>Video will open in a new tab</li>
+                    <li>Tap the <i class="fas fa-share-square"></i> Share button</li>
+                    <li>Choose "Save to Photos"</li>
+                </ol>
+            </div>
+        `);
+
+        $downloadSection.append(instructions);
     }
 
     /**
@@ -998,6 +1036,7 @@ export class TimelinePlaybackModal {
     /**
      * Show the preview section and start merging segments
      * Creates a single merged MP4 for preview playback
+     * On iOS/mobile, automatically uses iOS-compatible encoding (H.264 Baseline)
      */
     async showPreview() {
         if (this.selectedSegments.length === 0) {
@@ -1011,7 +1050,12 @@ export class TimelinePlaybackModal {
         // Show preview section with merge progress
         this.showSection('preview', true);
         this.showSection('previewMerge', true);
-        this.updateMergeProgress(0, 'Starting merge...');
+
+        // Show different message for iOS (re-encoding takes longer)
+        const statusMessage = this.isMobile
+            ? 'Preparing video for mobile playback...'
+            : 'Starting merge...';
+        this.updateMergeProgress(0, statusMessage);
 
         // Hide video and controls until merge completes
         $('#timeline-preview-video').hide();
@@ -1022,13 +1066,15 @@ export class TimelinePlaybackModal {
         const segmentIds = this.selectedSegments.map(s => s.recording_id);
 
         try {
-            // Start merge job
+            // Start merge job - use iOS-compatible encoding on mobile devices
+            // This ensures the video plays correctly on iOS Safari and Android
             const response = await fetch('/api/timeline/preview-merge', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     camera_id: this.currentCameraId,
-                    segment_ids: segmentIds
+                    segment_ids: segmentIds,
+                    ios_compatible: this.isMobile  // Auto-enable on mobile
                 })
             });
 
@@ -1038,7 +1084,8 @@ export class TimelinePlaybackModal {
             this.currentPreviewMergeJobId = data.job_id;
             this.startPreviewMergePolling();
 
-            console.log(`[Timeline] Preview merge started: ${data.job_id} (${segmentIds.length} segments)`);
+            const modeStr = this.isMobile ? '(iOS-compatible)' : '(stream copy)';
+            console.log(`[Timeline] Preview merge started: ${data.job_id} (${segmentIds.length} segments) ${modeStr}`);
 
         } catch (error) {
             console.error('[Timeline] Preview merge failed:', error);
@@ -1080,8 +1127,23 @@ export class TimelinePlaybackModal {
 
     /**
      * Get human-readable merge status text
+     * Shows different messages for mobile (re-encoding takes longer)
      */
     getMergeStatusText(status) {
+        if (this.isMobile) {
+            // Mobile-specific messages (re-encoding for iOS/Android)
+            const statusMap = {
+                'pending': 'Preparing for mobile...',
+                'processing': 'Converting video...',
+                'merging': 'Encoding for mobile playback...',
+                'completed': 'Complete!',
+                'failed': 'Failed',
+                'cancelled': 'Cancelled'
+            };
+            return statusMap[status] || status;
+        }
+
+        // Desktop messages (stream copy is fast)
         const statusMap = {
             'pending': 'Preparing...',
             'processing': 'Processing...',

@@ -154,6 +154,7 @@ class PreviewJob:
     ffmpeg_process: Optional[subprocess.Popen] = None
     total_duration_seconds: int = 0
     estimated_size_bytes: int = 0
+    ios_compatible: bool = False
 
     def to_dict(self) -> Dict:
         """Convert to JSON-serializable dict."""
@@ -166,7 +167,8 @@ class PreviewJob:
             'error_message': self.error_message,
             'created_at': self.created_at.isoformat(),
             'total_duration_seconds': self.total_duration_seconds,
-            'estimated_size_bytes': self.estimated_size_bytes
+            'estimated_size_bytes': self.estimated_size_bytes,
+            'ios_compatible': self.ios_compatible
         }
 
 
@@ -924,7 +926,8 @@ class TimelineService:
     # Preview Merge Methods
     # =========================================================================
 
-    def create_preview_merge(self, camera_id: str, segment_ids: List[int]) -> PreviewJob:
+    def create_preview_merge(self, camera_id: str, segment_ids: List[int],
+                             ios_compatible: bool = False) -> PreviewJob:
         """
         Create and start a preview merge job.
 
@@ -934,6 +937,7 @@ class TimelineService:
         Args:
             camera_id: Camera serial number
             segment_ids: List of recording IDs to merge
+            ios_compatible: If True, re-encode to H.264 Baseline for iOS/mobile devices
 
         Returns:
             PreviewJob with job_id for tracking
@@ -963,7 +967,8 @@ class TimelineService:
             camera_id=camera_id,
             segment_ids=segment_ids,
             total_duration_seconds=total_duration,
-            estimated_size_bytes=total_size
+            estimated_size_bytes=total_size,
+            ios_compatible=ios_compatible
         )
 
         with self.preview_lock:
@@ -978,14 +983,15 @@ class TimelineService:
         )
         thread.start()
 
-        logger.info(f"Created preview merge job {job_id}: {len(segments)} segments, {total_duration}s duration")
+        logger.info(f"Created preview merge job {job_id}: {len(segments)} segments, {total_duration}s duration, ios={ios_compatible}")
         return job
 
     def _process_preview_merge(self, job_id: str, segments: List[TimelineSegment]):
         """
         Process preview merge job (runs in background thread).
 
-        Merges segments using FFmpeg concat demuxer (lossless, fast).
+        Merges segments using FFmpeg concat demuxer.
+        If ios_compatible is True, re-encodes to H.264 Baseline + AAC for iOS/mobile.
         Stores Popen object for cancellation support.
 
         Args:
@@ -1013,18 +1019,43 @@ class TimelineService:
                     safe_path = seg.file_path.replace("'", "'\\''")
                     f.write(f"file '{safe_path}'\n")
 
-            # Build FFmpeg command
-            ffmpeg_cmd = [
-                'ffmpeg', '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', concat_list,
-                '-c', 'copy',
-                '-movflags', '+faststart',
-                output_file
-            ]
-
-            logger.info(f"[Preview {job_id}] Merging {len(segments)} segments...")
+            # Build FFmpeg command based on iOS compatibility setting
+            if job.ios_compatible:
+                # Re-encode to H.264 Baseline + AAC for iOS/mobile compatibility
+                # This ensures playback works on iOS Safari, Android, and older devices
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', concat_list,
+                    # Video: H.264 Baseline profile (most compatible)
+                    '-c:v', self.IOS_ENCODING['video_codec'],
+                    '-profile:v', self.IOS_ENCODING['video_profile'],
+                    '-level:v', self.IOS_ENCODING['video_level'],
+                    '-pix_fmt', self.IOS_ENCODING['pixel_format'],
+                    # Audio: AAC (universally supported)
+                    '-c:a', self.IOS_ENCODING['audio_codec'],
+                    '-b:a', self.IOS_ENCODING['audio_bitrate'],
+                    # Fast encoding preset for preview (quality vs speed tradeoff)
+                    '-preset', 'fast',
+                    '-crf', '23',
+                    # Enable fast start for streaming
+                    '-movflags', self.IOS_ENCODING['movflags'],
+                    output_file
+                ]
+                logger.info(f"[Preview {job_id}] Merging {len(segments)} segments with iOS re-encoding...")
+            else:
+                # Fast stream copy (lossless, no re-encoding)
+                ffmpeg_cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', concat_list,
+                    '-c', 'copy',
+                    '-movflags', '+faststart',
+                    output_file
+                ]
+                logger.info(f"[Preview {job_id}] Merging {len(segments)} segments (stream copy)...")
 
             # Use Popen for cancellation support
             job.ffmpeg_process = subprocess.Popen(
@@ -1036,8 +1067,9 @@ class TimelineService:
             # Update progress during merge (simplified - just show it's running)
             job.progress_percent = 50
 
-            # Wait for completion
-            stdout, stderr = job.ffmpeg_process.communicate(timeout=1800)  # 30 min timeout
+            # Wait for completion (longer timeout for re-encoding)
+            timeout = 3600 if job.ios_compatible else 1800  # 1 hour for iOS, 30 min otherwise
+            stdout, stderr = job.ffmpeg_process.communicate(timeout=timeout)
 
             if job.ffmpeg_process.returncode == 0:
                 job.status = ExportStatus.COMPLETED

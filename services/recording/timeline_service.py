@@ -17,6 +17,7 @@ import tempfile
 import shutil
 import time
 import uuid
+import json
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List, Tuple
@@ -194,30 +195,37 @@ class TimelineService:
     # Export output directory
     EXPORT_DIR = '/recordings/exports'
 
-    # iOS-compatible encoding settings
-    # H.264 Baseline profile + AAC for maximum compatibility
-    IOS_ENCODING = {
+    # Config file path
+    CONFIG_PATH = '/app/config/recording_settings.json'
+
+    # Default iOS-compatible encoding settings (fallback if config not found)
+    DEFAULT_IOS_ENCODING = {
         'video_codec': 'libx264',
         'video_profile': 'baseline',
         'video_level': '3.1',
         'audio_codec': 'aac',
         'audio_bitrate': '128k',
         'pixel_format': 'yuv420p',
-        'movflags': '+faststart'  # Enable streaming
+        'preset': 'fast',
+        'crf': '23',
+        'movflags': '+faststart'
     }
 
     def __init__(self,
                  postgrest_url: str = "http://postgrest:3001",
-                 export_dir: Optional[str] = None):
+                 export_dir: Optional[str] = None,
+                 config_path: Optional[str] = None):
         """
         Initialize timeline service.
 
         Args:
             postgrest_url: PostgREST API endpoint for database queries
             export_dir: Directory for export output files
+            config_path: Path to recording_settings.json config file
         """
         self.postgrest_url = postgrest_url
         self.export_dir = export_dir or self.EXPORT_DIR
+        self.config_path = config_path or self.CONFIG_PATH
 
         # Active export jobs
         self.export_jobs: Dict[str, ExportJob] = {}
@@ -227,10 +235,47 @@ class TimelineService:
         self.preview_jobs: Dict[str, PreviewJob] = {}
         self.preview_lock = threading.RLock()
 
+        # Load encoding settings from config
+        self.ios_encoding = self._load_ios_encoding_settings()
+
         # Ensure export directory exists
         os.makedirs(self.export_dir, exist_ok=True)
 
         logger.info(f"TimelineService initialized - PostgREST: {postgrest_url}, Export dir: {self.export_dir}")
+
+    def _load_ios_encoding_settings(self) -> Dict:
+        """
+        Load iOS encoding settings from recording_settings.json config file.
+
+        Falls back to DEFAULT_IOS_ENCODING if config file not found or invalid.
+
+        Returns:
+            Dict with encoding settings (video_codec, video_profile, etc.)
+        """
+        try:
+            if os.path.exists(self.config_path):
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+
+                # Get export_encoding.ios_compatible section
+                export_encoding = config.get('export_encoding', {})
+                ios_settings = export_encoding.get('ios_compatible', {})
+
+                if ios_settings:
+                    # Build encoding dict, excluding comments
+                    encoding = {
+                        k: v for k, v in ios_settings.items()
+                        if not k.startswith('_')
+                    }
+                    logger.info(f"Loaded iOS encoding settings from config: {encoding}")
+                    return encoding
+
+            logger.warning(f"iOS encoding config not found at {self.config_path}, using defaults")
+            return self.DEFAULT_IOS_ENCODING.copy()
+
+        except Exception as e:
+            logger.error(f"Error loading iOS encoding config: {e}, using defaults")
+            return self.DEFAULT_IOS_ENCODING.copy()
 
     # =========================================================================
     # Timeline Query Methods
@@ -809,24 +854,24 @@ class TimelineService:
             output_file: Destination file
             job_id: Job ID for progress tracking
         """
-        logger.info(f"[Export {job_id}] Converting to iOS format...")
+        logger.info(f"[Export {job_id}] Converting to iOS format (config: {self.config_path})...")
 
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-i', input_file,
-            # Video settings
-            '-c:v', self.IOS_ENCODING['video_codec'],
-            '-profile:v', self.IOS_ENCODING['video_profile'],
-            '-level:v', self.IOS_ENCODING['video_level'],
-            '-pix_fmt', self.IOS_ENCODING['pixel_format'],
-            # Audio settings
-            '-c:a', self.IOS_ENCODING['audio_codec'],
-            '-b:a', self.IOS_ENCODING['audio_bitrate'],
-            # Output optimization
-            '-movflags', self.IOS_ENCODING['movflags'],
-            # Reasonable quality preset
+            # Video settings from config
+            '-c:v', self.ios_encoding.get('video_codec', 'libx264'),
+            '-profile:v', self.ios_encoding.get('video_profile', 'baseline'),
+            '-level:v', self.ios_encoding.get('video_level', '3.1'),
+            '-pix_fmt', self.ios_encoding.get('pixel_format', 'yuv420p'),
+            # Audio settings from config
+            '-c:a', self.ios_encoding.get('audio_codec', 'aac'),
+            '-b:a', self.ios_encoding.get('audio_bitrate', '128k'),
+            # Output optimization from config
+            '-movflags', self.ios_encoding.get('movflags', '+faststart'),
+            # Quality preset from config (use 'medium' for export vs 'fast' for preview)
             '-preset', 'medium',
-            '-crf', '23',
+            '-crf', str(self.ios_encoding.get('crf', 23)),
             output_file
         ]
 
@@ -1023,27 +1068,28 @@ class TimelineService:
             if job.ios_compatible:
                 # Re-encode to H.264 Baseline + AAC for iOS/mobile compatibility
                 # This ensures playback works on iOS Safari, Android, and older devices
+                # Settings loaded from config/recording_settings.json export_encoding.ios_compatible
                 ffmpeg_cmd = [
                     'ffmpeg', '-y',
                     '-f', 'concat',
                     '-safe', '0',
                     '-i', concat_list,
                     # Video: H.264 Baseline profile (most compatible)
-                    '-c:v', self.IOS_ENCODING['video_codec'],
-                    '-profile:v', self.IOS_ENCODING['video_profile'],
-                    '-level:v', self.IOS_ENCODING['video_level'],
-                    '-pix_fmt', self.IOS_ENCODING['pixel_format'],
+                    '-c:v', self.ios_encoding.get('video_codec', 'libx264'),
+                    '-profile:v', self.ios_encoding.get('video_profile', 'baseline'),
+                    '-level:v', self.ios_encoding.get('video_level', '3.1'),
+                    '-pix_fmt', self.ios_encoding.get('pixel_format', 'yuv420p'),
                     # Audio: AAC (universally supported)
-                    '-c:a', self.IOS_ENCODING['audio_codec'],
-                    '-b:a', self.IOS_ENCODING['audio_bitrate'],
-                    # Fast encoding preset for preview (quality vs speed tradeoff)
-                    '-preset', 'fast',
-                    '-crf', '23',
+                    '-c:a', self.ios_encoding.get('audio_codec', 'aac'),
+                    '-b:a', self.ios_encoding.get('audio_bitrate', '128k'),
+                    # Encoding quality settings from config
+                    '-preset', self.ios_encoding.get('preset', 'fast'),
+                    '-crf', str(self.ios_encoding.get('crf', 23)),
                     # Enable fast start for streaming
-                    '-movflags', self.IOS_ENCODING['movflags'],
+                    '-movflags', self.ios_encoding.get('movflags', '+faststart'),
                     output_file
                 ]
-                logger.info(f"[Preview {job_id}] Merging {len(segments)} segments with iOS re-encoding...")
+                logger.info(f"[Preview {job_id}] Merging {len(segments)} segments with iOS re-encoding (config: {self.config_path})...")
             else:
                 # Fast stream copy (lossless, no re-encoding)
                 ffmpeg_cmd = [
@@ -1202,20 +1248,20 @@ class TimelineService:
             output_filename += "_ios.mp4"
             final_file = os.path.join(self.export_dir, output_filename)
 
-            # Re-encode for iOS
-            logger.info(f"[Preview {job_id}] Converting to iOS format...")
+            # Re-encode for iOS using settings from config
+            logger.info(f"[Preview {job_id}] Converting to iOS format (config: {self.config_path})...")
             ffmpeg_cmd = [
                 'ffmpeg', '-y',
                 '-i', job.temp_file_path,
-                '-c:v', self.IOS_ENCODING['video_codec'],
-                '-profile:v', self.IOS_ENCODING['video_profile'],
-                '-level:v', self.IOS_ENCODING['video_level'],
-                '-pix_fmt', self.IOS_ENCODING['pixel_format'],
-                '-c:a', self.IOS_ENCODING['audio_codec'],
-                '-b:a', self.IOS_ENCODING['audio_bitrate'],
-                '-movflags', self.IOS_ENCODING['movflags'],
+                '-c:v', self.ios_encoding.get('video_codec', 'libx264'),
+                '-profile:v', self.ios_encoding.get('video_profile', 'baseline'),
+                '-level:v', self.ios_encoding.get('video_level', '3.1'),
+                '-pix_fmt', self.ios_encoding.get('pixel_format', 'yuv420p'),
+                '-c:a', self.ios_encoding.get('audio_codec', 'aac'),
+                '-b:a', self.ios_encoding.get('audio_bitrate', '128k'),
+                '-movflags', self.ios_encoding.get('movflags', '+faststart'),
                 '-preset', 'medium',
-                '-crf', '23',
+                '-crf', str(self.ios_encoding.get('crf', 23)),
                 final_file
             ]
 

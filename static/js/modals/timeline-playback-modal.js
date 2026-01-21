@@ -91,7 +91,13 @@ export class TimelinePlaybackModal {
         const today = new Date().toISOString().split('T')[0];
         $('#timeline-date').val(today);
 
-        console.log('[Timeline] Modal initialized');
+        // Auto-check iOS compatible checkbox on mobile devices
+        // Desktop users can still check it manually if needed
+        if (this.isMobile) {
+            $('#export-ios-compatible').prop('checked', true);
+        }
+
+        console.log('[Timeline] Modal initialized, isMobile:', this.isMobile);
     }
 
     /**

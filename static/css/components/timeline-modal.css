@@ -555,8 +555,10 @@
 .timeline-preview-section {
     background: rgba(0, 0, 0, 0.3);
     border-radius: 8px;
-    overflow: hidden;
+    overflow: visible;  /* Changed from hidden - allow content to be visible */
     margin-bottom: 12px;
+    /* Ensure section has minimum height for merge progress */
+    min-height: 80px;
 }
 
 .timeline-preview-header {
@@ -853,5 +855,47 @@
     .timeline-preview-controls {
         padding: 8px;
         gap: 6px;
+    }
+}
+
+/* =============================================================================
+   Tablet/Narrow Desktop Adjustments (480px - 768px)
+   ============================================================================= */
+
+@media (max-width: 768px) and (min-width: 481px) {
+    /* Preview section needs adequate space on tablets */
+    .timeline-preview-section {
+        min-height: 100px;
+    }
+
+    .timeline-preview-container {
+        max-height: 280px;
+    }
+
+    #timeline-preview-video {
+        max-height: 260px;
+    }
+}
+
+/* =============================================================================
+   Fix for narrow viewports where preview gets clipped
+   ============================================================================= */
+
+@media (max-width: 768px) {
+    /* Ensure preview section is visible and scrollable */
+    .timeline-preview-section {
+        overflow: visible;
+        flex-shrink: 0;  /* Don't shrink preview section */
+    }
+
+    /* Ensure merge progress is visible even on narrow screens */
+    .timeline-preview-merge-progress {
+        padding: 16px 12px;
+        min-height: 60px;
+    }
+
+    /* Make sure video container is visible */
+    .timeline-preview-container {
+        min-height: 150px;  /* Ensure container has height even while video loads */
     }
 }

@@ -15,9 +15,11 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 20, 2026 20:06 EST*
+*Last updated: January 20, 2026 20:10 EST*
 
-**Context compaction occurred at 20:06 EST on January 20, 2026**
+**Context compaction occurred at 20:09 EST on January 20, 2026**
+
+Branch: `timeline_playback_multi_segment_fix_JAN_20_2026_a`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -268,7 +270,38 @@ neolink:
 
 **Problem:** iOS encoding settings (H.264 Baseline, AAC, etc.) were hardcoded in TimelineService.
 
-**Solution:** Moved settings to `config/recording_settings.json`:
+**Solution:** Moved settings to `config/recording_settings.json`.
+
+**10. Added Ultra-Slow Device Tier for Ancient iPads (Jan 20, 20:12 EST)**
+
+**Problem:** Old iPads with aging batteries, slow WiFi adapters, and adaptive CPU throttling still showed false "Server Unavailable" modals despite previous slow device detection.
+
+**Solution:** Implemented three-tier device detection system:
+
+**File:** `static/js/connection-monitor.js`
+
+**Tier Detection Criteria:**
+
+| Tier | Detection Criteria |
+|------|-------------------|
+| **ultra-slow** | iOS 4-9, iOS 10-12 with ≤2 cores, Android 4-5, <1GB RAM, 2G connection, ≤2 cores |
+| **slow** | iOS 13-15 with ≤4 cores, Android 6-8, 1-2GB RAM, 3G connection, ≤4 cores |
+| **normal** | Everything else |
+
+**Thresholds by Tier:**
+
+| Threshold | Ultra-Slow | Slow | Normal |
+|-----------|-----------|------|--------|
+| Max failed checks | 40 | 20 | 10 |
+| Check interval | 30s | 15s | 10s |
+| Health timeout | 45s | 20s | 10s |
+| Fetch error threshold | 30 | 15 | 8 |
+
+**Commit:** `fca2c11` - Add ultra-slow device tier for ancient iPads with aging batteries
+
+---
+
+**Config Structure (`config/recording_settings.json`):
 
 **Config Structure (`config/recording_settings.json`):**
 

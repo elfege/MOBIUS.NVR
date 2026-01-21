@@ -15,9 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 20, 2026 17:23 EST*
+*Last updated: January 20, 2026 20:00 EST*
 
-**Context compaction occurred at 17:00 EST on January 20, 2026**
+**Context compaction occurred at 20:00 EST on January 20, 2026**
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -207,6 +207,61 @@ neolink:
 
 **Commits:**
 - `8cc5746` - Implement merged preview for timeline playback
+
+**8. Added iOS/Mobile Compatibility for Timeline Playback (Jan 20, 20:00 EST)**
+
+**Branch:** `timeline_playback_multi_segment_fix_JAN_20_2026_a`
+
+**Problem:** Timeline playback wasn't compatible with iOS and mobile devices. Videos wouldn't play properly, and downloads didn't work intuitively on iOS.
+
+**Solution:** Implemented comprehensive iOS/mobile support:
+
+**Backend Changes (`services/recording/timeline_service.py`):**
+
+- Added `ios_compatible` parameter to `create_preview_merge()`
+- PreviewJob dataclass now tracks `ios_compatible` flag
+- `_process_preview_merge()` re-encodes to H.264 Baseline + AAC when `ios_compatible=True`
+- Uses FFmpeg settings: `-profile:v baseline`, `-level:v 3.1`, `-c:a aac`, `-preset fast`
+- Longer timeout (1 hour) for iOS re-encoding vs 30 min for stream copy
+
+**API Changes (`app.py`):**
+
+- `POST /api/timeline/preview-merge` now accepts `ios_compatible` boolean parameter
+
+**Frontend Changes (`static/js/modals/timeline-playback-modal.js`):**
+
+- Detect iOS and mobile devices at startup (`isIOS`, `isMobile` flags)
+- Auto-enable iOS-compatible encoding on mobile devices
+- Show mobile-specific status messages during merge (e.g., "Encoding for mobile playback...")
+- Add iOS download instructions (share sheet to save to Photos)
+- `downloadExport()` handles iOS vs Android vs desktop differently:
+  - iOS: Opens in new tab + shows instructions to use share sheet
+  - Android: Opens in new tab
+  - Desktop: Direct download
+
+**CSS Changes (`static/css/components/timeline-modal.css`):**
+
+- Added `.ios-instructions` styling for share sheet instructions
+- Added mobile-specific adjustments for phones (`@media max-width: 480px`):
+  - Smaller timeline canvas (120px height)
+  - Larger touch targets
+  - `font-size: 16px` on inputs to prevent iOS zoom
+- Fixed modal scrolling for smaller screens:
+  - `flex: 1 1 auto` and `min-height: 0` on modal body
+  - `-webkit-overflow-scrolling: touch` for smooth iOS scrolling
+  - `flex-shrink: 0` on header
+  - Allow 95vh height on screens shorter than 700px
+
+**iOS Limitation Note:**
+
+- Web apps cannot directly save to iOS Photos app or create albums
+- User must use share sheet: tap Share icon → "Save to Photos"
+- A native iOS app (Swift/Capacitor) would be required for automatic album creation
+
+**Commits:**
+
+- `1434d8c` - Add iOS/mobile compatibility for timeline playback
+- `99d6e0e` - Fix modal scrolling for smaller screens and mobile devices
 
 ---
 

@@ -1,6 +1,7 @@
 /**
  * Timeline Playback Modal
  * Location: ~/0_NVR/static/js/modals/timeline-playback-modal.js
+ * Version: 2026-01-20-v2 (debug)
  *
  * Provides timeline visualization of recordings with:
  * - Drag-select time range for export
@@ -8,6 +9,8 @@
  * - Export to MP4 with iOS compatibility option
  * - Progress tracking for long exports
  */
+
+console.log('[Timeline] JS file loaded - version 2026-01-20-v2');
 
 export class TimelinePlaybackModal {
     constructor() {
@@ -1044,37 +1047,38 @@ export class TimelinePlaybackModal {
     async showPreview() {
         console.log('[Timeline] showPreview() called, segments:', this.selectedSegments.length);
 
-        if (this.selectedSegments.length === 0) {
-            console.log('[Timeline] No segments to preview');
-            return;
-        }
-
-        // Cancel any existing preview merge
-        console.log('[Timeline] Cancelling any existing preview merge...');
-        await this.cancelCurrentPreviewMerge();
-        console.log('[Timeline] Cancel complete');
-
-        // Show preview section with merge progress
-        console.log('[Timeline] Showing preview section...');
-        this.showSection('preview', true);
-        this.showSection('previewMerge', true);
-        console.log('[Timeline] Preview section visible');
-
-        // Show different message for iOS (re-encoding takes longer)
-        const statusMessage = this.isMobile
-            ? 'Preparing video for mobile playback...'
-            : 'Starting merge...';
-        this.updateMergeProgress(0, statusMessage);
-
-        // Hide video and controls until merge completes
-        $('#timeline-preview-video').hide();
-        $('.timeline-preview-info').hide();
-        $('.timeline-preview-controls').hide();
-
-        // Extract recording IDs from selected segments
-        const segmentIds = this.selectedSegments.map(s => s.recording_id);
-
         try {
+            if (this.selectedSegments.length === 0) {
+                console.log('[Timeline] No segments to preview');
+                return;
+            }
+
+            // Cancel any existing preview merge
+            console.log('[Timeline] Cancelling any existing preview merge...');
+            await this.cancelCurrentPreviewMerge();
+            console.log('[Timeline] Cancel complete');
+
+            // Show preview section with merge progress
+            console.log('[Timeline] Showing preview section...');
+            this.showSection('preview', true);
+            this.showSection('previewMerge', true);
+            console.log('[Timeline] Preview section visible, checking DOM...');
+            console.log('[Timeline] Preview section display:', this.$modal.find('.timeline-preview-section').css('display'));
+
+            // Show different message for iOS (re-encoding takes longer)
+            const statusMessage = this.isMobile
+                ? 'Preparing video for mobile playback...'
+                : 'Starting merge...';
+            this.updateMergeProgress(0, statusMessage);
+
+            // Hide video and controls until merge completes
+            $('#timeline-preview-video').hide();
+            $('.timeline-preview-info').hide();
+            $('.timeline-preview-controls').hide();
+
+            // Extract recording IDs from selected segments
+            const segmentIds = this.selectedSegments.map(s => s.recording_id);
+
             // Start merge job - use iOS-compatible encoding on mobile devices
             // This ensures the video plays correctly on iOS Safari and Android
             const response = await fetch('/api/timeline/preview-merge', {
@@ -1097,7 +1101,8 @@ export class TimelinePlaybackModal {
             console.log(`[Timeline] Preview merge started: ${data.job_id} (${segmentIds.length} segments) ${modeStr}`);
 
         } catch (error) {
-            console.error('[Timeline] Preview merge failed:', error);
+            console.error('[Timeline] Preview merge/setup failed:', error);
+            console.error('[Timeline] Error stack:', error.stack);
             this.showPreviewError(error.message);
         }
     }

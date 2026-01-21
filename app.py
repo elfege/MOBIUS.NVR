@@ -3612,6 +3612,77 @@ def api_timeline_export_download_by_filename(filename: str):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/timeline/export/stream/<filename>', methods=['GET'])
+def api_timeline_export_stream_by_filename(filename: str):
+    """
+    Stream an exported file by filename for inline playback.
+    Used for iOS save workaround where user needs to long-press video.
+
+    Args:
+        filename: Export filename (e.g., 'T8416P0023352DA9_20260120_170000.mp4')
+
+    Returns:
+        Video stream with Range support for seeking
+    """
+    try:
+        timeline_service = get_timeline_service()
+        file_path = os.path.join(timeline_service.export_dir, filename)
+
+        # Validate filename (prevent directory traversal)
+        if '..' in filename or '/' in filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+
+        if not os.path.exists(file_path):
+            return jsonify({'error': 'Export file not found'}), 404
+
+        # Get file size for Range header support
+        file_size = os.path.getsize(file_path)
+
+        # Handle Range requests for video seeking
+        range_header = request.headers.get('Range')
+        if range_header:
+            # Parse range header: "bytes=start-end"
+            match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+            if match:
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else file_size - 1
+                length = end - start + 1
+
+                def generate_range():
+                    with open(file_path, 'rb') as f:
+                        f.seek(start)
+                        remaining = length
+                        while remaining > 0:
+                            chunk_size = min(8192, remaining)
+                            data = f.read(chunk_size)
+                            if not data:
+                                break
+                            remaining -= len(data)
+                            yield data
+
+                response = Response(
+                    generate_range(),
+                    status=206,
+                    mimetype='video/mp4',
+                    direct_passthrough=True
+                )
+                response.headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+                response.headers['Accept-Ranges'] = 'bytes'
+                response.headers['Content-Length'] = length
+                return response
+
+        # No range - send full file for inline viewing (not as attachment)
+        return send_file(
+            file_path,
+            mimetype='video/mp4',
+            as_attachment=False  # Inline viewing for iOS long-press save
+        )
+
+    except Exception as e:
+        logger.error(f"Export stream error for {filename}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 ########################################################
 #           📦 STORAGE MIGRATION API ROUTES 📦
 ########################################################

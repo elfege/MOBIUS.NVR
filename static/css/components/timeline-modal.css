@@ -814,6 +814,13 @@
     border-radius: 6px;
 }
 
+/* iOS video long-press fix - prevent text selection, enable save menu */
+#timeline-preview-video {
+    -webkit-user-select: none;
+    -webkit-touch-callout: default;  /* Enable long-press context menu on iOS */
+    user-select: none;
+}
+
 .ios-save-instructions strong {
     color: #B388FF;
 }

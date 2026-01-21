@@ -6,6 +6,7 @@ Combines refactored architecture with all operational routes
 
 import os
 import sys
+import re
 from dotenv import load_dotenv
 import logging
 import socket

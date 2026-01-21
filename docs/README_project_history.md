@@ -15342,4 +15342,102 @@ For next session, key files to understand the storage system:
 
 ---
 
+## January 20-21, 2026 (20:09 EST - 00:15 EST): Timeline Playback iOS Export & Mobile Fixes
+
+**Branch:** `timeline_playback_multi_segment_fix_JAN_20_2026_a` → merged to `main`
+
+### Summary
+
+Extended timeline playback feature with comprehensive iOS/mobile support. Fixed preview visibility on narrow viewports, added iOS-compatible export options with Share and Open in New Tab buttons, optimized encoding flow to avoid redundant processing.
+
+### Key Features Implemented
+
+1. **Mobile Preview Visibility Fix**
+   - Changed `.timeline-preview-section` from `overflow: hidden` to `overflow: visible`
+   - Added min-height constraints for narrow viewports
+   - Auto-scroll to preview section on mobile when merge starts/completes
+
+2. **iOS Export Download Solution**
+   - iOS Safari doesn't handle direct video downloads well (blank page)
+   - Created `.ios-save-container` with Share button (Web Share API) and Open in New Tab button
+   - Container sits OUTSIDE video player to avoid z-index conflicts
+   - Added `/api/timeline/export/stream/<filename>` endpoint for inline playback
+
+3. **Export Optimization**
+   - Preview merge on mobile auto-encodes to iOS format (`ios_compatible: this.isMobile`)
+   - `promote_preview_to_export()` skips re-encoding when preview already iOS-encoded
+   - Flow: Select → Preview (iOS-encoded) → Export → Instant download (no wait)
+
+4. **Ultra-Slow Device Tier**
+   - Added detection for ancient iPads (iOS 9 and below, 2 cores)
+   - Very lenient thresholds: 40 failures, 30s check interval, 45s timeout
+
+### Key Commits
+
+| Commit | Description |
+|--------|-------------|
+| `71332a3` | Fix mobile preview visibility: scroll to preview section on narrow viewports |
+| `d6cc2f2` | Auto-check iOS compatible checkbox on mobile devices |
+| `7f3862b` | Fix iOS export download - show video inline for save |
+| `ae91337` | Fix iOS export: add re import, optimize promote to skip redundant encoding |
+| `0d4dbd2` | Add stream-by-filename endpoint for iOS export playback |
+| `b0c6211` | Fix iOS save buttons: move outside video container for proper z-index and clickability |
+
+### Key Files Modified
+
+| File | Changes |
+|------|---------|
+| `CLAUDE.md` | Updated RULE 9 - Simple restart OK, `./start.sh` requires authorization |
+| `app.py` | Added `import re`, stream-by-filename endpoint, stream-by-job-id endpoint |
+| `services/recording/timeline_service.py` | Added `PreviewJob` class, preview merge methods, promote optimization |
+| `static/css/components/timeline-modal.css` | Overflow visible, min-heights, iOS save container styling |
+| `static/js/modals/timeline-playback-modal.js` | iOS save buttons, export button disable, scroll-to-preview |
+| `static/js/connection-monitor.js` | Ultra-slow device tier detection |
+
+### API Endpoints Added
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/timeline/preview-merge` | POST | Start preview merge job |
+| `/api/timeline/preview-merge/<job_id>` | GET | Get merge job status |
+| `/api/timeline/preview-merge/<job_id>/cancel` | POST | Cancel merge |
+| `/api/timeline/preview-merge/<job_id>/stream` | GET | Stream merged video |
+| `/api/timeline/preview-merge/<job_id>/cleanup` | DELETE | Delete temp files |
+| `/api/timeline/preview-merge/<job_id>/promote` | POST | Promote to export |
+| `/api/timeline/export/stream/<filename>` | GET | Stream export by filename |
+
+---
+
+## TODO List (Cumulative)
+
+**Completed This Session (Jan 20-21, 2026):**
+
+- [x] Fix mobile preview section visibility (overflow: visible fix)
+- [x] Auto-check iOS checkbox on mobile
+- [x] Fix iOS export download blank page (inline playback)
+- [x] Add `import re` to app.py
+- [x] Optimize promote to skip redundant encoding
+- [x] Add stream-by-filename endpoint
+- [x] Fix iOS save buttons z-index/layout
+- [x] Grey out Export Selection during encoding
+- [x] Merge branch to main
+
+**Testing Needed:**
+
+- [ ] Test iOS inline download with Share/Open in Tab buttons
+- [ ] Test connection monitor on slower tablets
+
+**Future Enhancements:**
+
+- [ ] Scheduler integration (APScheduler) for automated migrations
+- [ ] Add pan/scroll for zoomed timeline
+
+**Deferred:**
+
+- [ ] Database-backed recording settings
+- [ ] Camera settings UI
+- [ ] Container self-restart mechanism
+
+---
+
 {% endraw %}

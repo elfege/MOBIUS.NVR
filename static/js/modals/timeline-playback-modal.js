@@ -1047,6 +1047,15 @@ export class TimelinePlaybackModal {
     async showPreview() {
         console.log('[Timeline] showPreview() called, segments:', this.selectedSegments.length);
 
+        // DEBUG: Visual indicator that showPreview was called
+        // TODO: Remove after debugging
+        const debugDiv = document.createElement('div');
+        debugDiv.id = 'debug-preview-indicator';
+        debugDiv.style.cssText = 'position:fixed;top:10px;left:10px;background:red;color:white;padding:10px;z-index:999999;font-size:14px;';
+        debugDiv.textContent = `showPreview called: ${this.selectedSegments.length} segments`;
+        document.body.appendChild(debugDiv);
+        setTimeout(() => debugDiv.remove(), 5000);
+
         try {
             if (this.selectedSegments.length === 0) {
                 console.log('[Timeline] No segments to preview');

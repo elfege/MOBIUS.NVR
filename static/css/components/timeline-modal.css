@@ -93,6 +93,13 @@
     animation: slideUp 0.3s ease;
 }
 
+/* On shorter screens, allow full height */
+@media (max-height: 700px) {
+    .timeline-modal-content {
+        max-height: 95vh;
+    }
+}
+
 @keyframes slideUp {
     from { transform: translateY(20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
@@ -110,6 +117,7 @@
     padding: 16px 20px;
     background: rgba(0, 0, 0, 0.3);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;  /* Header should not shrink */
 }
 
 .timeline-modal-header h3 {
@@ -150,9 +158,13 @@
 .timeline-modal-body {
     padding: 20px;
     overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     gap: 16px;
+    flex: 1 1 auto;  /* Allow body to shrink/grow */
+    min-height: 0;   /* Critical for flex scrolling to work */
+    -webkit-overflow-scrolling: touch;  /* Smooth scrolling on iOS */
 }
 
 

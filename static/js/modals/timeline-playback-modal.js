@@ -1,7 +1,7 @@
 /**
  * Timeline Playback Modal
  * Location: ~/0_NVR/static/js/modals/timeline-playback-modal.js
- * Version: 2026-01-20-v2 (debug)
+ * Version: 2026-01-20-v3 (mobile scroll fix)
  *
  * Provides timeline visualization of recordings with:
  * - Drag-select time range for export
@@ -10,7 +10,7 @@
  * - Progress tracking for long exports
  */
 
-console.log('[Timeline] JS file loaded - version 2026-01-20-v2');
+console.log('[Timeline] JS file loaded - version 2026-01-20-v3');
 
 export class TimelinePlaybackModal {
     constructor() {
@@ -1047,15 +1047,6 @@ export class TimelinePlaybackModal {
     async showPreview() {
         console.log('[Timeline] showPreview() called, segments:', this.selectedSegments.length);
 
-        // DEBUG: Visual indicator that showPreview was called
-        // TODO: Remove after debugging
-        const debugDiv = document.createElement('div');
-        debugDiv.id = 'debug-preview-indicator';
-        debugDiv.style.cssText = 'position:fixed;top:10px;left:10px;background:red;color:white;padding:10px;z-index:999999;font-size:14px;';
-        debugDiv.textContent = `showPreview called: ${this.selectedSegments.length} segments`;
-        document.body.appendChild(debugDiv);
-        setTimeout(() => debugDiv.remove(), 5000);
-
         try {
             if (this.selectedSegments.length === 0) {
                 console.log('[Timeline] No segments to preview');
@@ -1063,41 +1054,29 @@ export class TimelinePlaybackModal {
             }
 
             // Cancel any existing preview merge
-            console.log('[Timeline] Cancelling any existing preview merge...');
             await this.cancelCurrentPreviewMerge();
-            console.log('[Timeline] Cancel complete');
 
             // Show preview section with merge progress
-            console.log('[Timeline] Showing preview section...');
-            console.log('[Timeline] $modal exists:', !!this.$modal);
-            console.log('[Timeline] Preview section found:', this.$modal.find('.timeline-preview-section').length);
-
             this.showSection('preview', true);
             this.showSection('previewMerge', true);
 
-            // DEBUG: Check if preview section is actually visible
+            // Get preview section reference
             const $previewSection = this.$modal.find('.timeline-preview-section');
-            console.log('[Timeline] Preview section display AFTER showSection:', $previewSection.css('display'));
-            console.log('[Timeline] Preview section visibility:', $previewSection.css('visibility'));
-            console.log('[Timeline] Preview section height:', $previewSection.height());
-
-            // DEBUG: Force show with inline style as test
-            $previewSection.css('display', 'block').css('border', '3px solid lime');
-            console.log('[Timeline] Forced display:block, display now:', $previewSection.css('display'));
-
-            // DEBUG: Check modal body scroll and preview position
             const $modalBody = this.$modal.find('.timeline-modal-body');
-            console.log('[Timeline] Modal body scroll position:', $modalBody.scrollTop());
-            console.log('[Timeline] Modal body scroll height:', $modalBody[0]?.scrollHeight);
-            console.log('[Timeline] Modal body client height:', $modalBody[0]?.clientHeight);
-            console.log('[Timeline] Preview section offset top:', $previewSection.offset()?.top);
 
-            // Force scroll to preview section
-            const previewTop = $previewSection.position()?.top || 0;
-            console.log('[Timeline] Preview position relative to parent:', previewTop);
-            if (previewTop > 0) {
-                $modalBody.scrollTop(previewTop);
-                console.log('[Timeline] Scrolled modal body to:', previewTop);
+            // On mobile/narrow viewports, scroll to make preview section visible
+            // This ensures user can see the merge progress and video player
+            if (this.isMobile || window.innerWidth < 768) {
+                // Small delay to allow DOM to update before scrolling
+                setTimeout(() => {
+                    const previewOffset = $previewSection.position();
+                    if (previewOffset && previewOffset.top > 100) {
+                        // Scroll preview into view with some padding at top
+                        $modalBody.animate({
+                            scrollTop: $modalBody.scrollTop() + previewOffset.top - 50
+                        }, 300);
+                    }
+                }, 100);
             }
 
             // Show different message for iOS (re-encoding takes longer)
@@ -1220,31 +1199,16 @@ export class TimelinePlaybackModal {
         clearInterval(this.previewMergePollingInterval);
         this.previewMergePollingInterval = null;
 
-        console.log('[Timeline] onPreviewMergeComplete called');
-
         // Hide merge progress, show video
         this.showSection('previewMerge', false);
 
-        // DEBUG: Log state of elements before showing
-        const $previewSection = this.$modal.find('.timeline-preview-section');
+        // Show video and controls - use scoped selectors for reliability
         const $video = this.$modal.find('#timeline-preview-video');
         const $controls = this.$modal.find('.timeline-preview-controls');
-        const $container = this.$modal.find('.timeline-preview-container');
 
-        console.log('[Timeline] DEBUG onPreviewMergeComplete:');
-        console.log('  - Preview section display:', $previewSection.css('display'));
-        console.log('  - Preview section height:', $previewSection.height());
-        console.log('  - Video element found:', $video.length);
-        console.log('  - Container found:', $container.length);
-        console.log('  - Container height before:', $container.height());
-
-        // Show video and controls - use scoped selectors
         $video.show();
         this.$modal.find('.timeline-preview-info').show();
         $controls.show();
-
-        console.log('  - Video display after show():', $video.css('display'));
-        console.log('  - Container height after:', $container.height());
 
         this.mergedPreviewReady = true;
 
@@ -1254,11 +1218,24 @@ export class TimelinePlaybackModal {
         video.load();
 
         // Hide prev/next buttons (single merged file now)
-        $('#preview-prev-btn').hide();
-        $('#preview-next-btn').hide();
+        this.$modal.find('#preview-prev-btn').hide();
+        this.$modal.find('#preview-next-btn').hide();
 
         // Update preview info to show total selection info
         this.updateMergedPreviewInfo();
+
+        // On mobile/narrow viewports, scroll to ensure video is visible
+        if (this.isMobile || window.innerWidth < 768) {
+            const $previewSection = this.$modal.find('.timeline-preview-section');
+            const $modalBody = this.$modal.find('.timeline-modal-body');
+            const previewOffset = $previewSection.position();
+
+            if (previewOffset && previewOffset.top > 50) {
+                $modalBody.animate({
+                    scrollTop: $modalBody.scrollTop() + previewOffset.top - 30
+                }, 300);
+            }
+        }
 
         console.log(`[Timeline] Preview merge complete: ${this.currentPreviewMergeJobId}`);
     }

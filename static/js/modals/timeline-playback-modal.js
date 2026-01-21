@@ -954,7 +954,9 @@ export class TimelinePlaybackModal {
 
     /**
      * Download completed export
-     * On iOS, opens video in new tab where user can use share sheet to save to Photos
+     * On iOS, shows video inline with instructions to long-press and save
+     * On Android, opens in new tab for native handling
+     * On desktop, triggers direct download
      */
     downloadExport() {
         // Use completed job's download URL if available (from promote), otherwise use export job ID
@@ -969,54 +971,98 @@ export class TimelinePlaybackModal {
         }
 
         if (this.isIOS) {
-            // On iOS, open video in new tab to trigger share sheet
-            // User can then tap share icon and choose "Save to Photos"
-            this.showIOSDownloadInstructions();
-            window.open(downloadUrl, '_blank');
+            // On iOS, load video into the preview player and show save instructions
+            // User can long-press video or use share sheet to save
+            this.showIOSInlineDownload(downloadUrl);
         } else if (this.isMobile) {
             // Android and other mobile - open in new tab for native handling
             window.open(downloadUrl, '_blank');
+            this.resetDownloadUI(2000);
         } else {
             // On desktop, trigger direct download
             const a = document.createElement('a');
             a.href = downloadUrl;
-            a.download = this.completedJob?.filename || ''; // Let server set filename if not known
+            a.download = this.completedJob?.filename || '';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            this.resetDownloadUI(2000);
         }
+    }
 
-        // Reset UI after brief delay (longer for iOS to allow reading instructions)
-        const resetDelay = this.isIOS ? 5000 : 2000;
+    /**
+     * Show video inline for iOS download
+     * iOS Safari doesn't handle direct downloads well, so we show the video
+     * in a player where user can long-press to save or use share sheet
+     */
+    showIOSInlineDownload(downloadUrl) {
+        // Hide download ready section
+        this.showSection('download', false);
+
+        // Show preview section with the export video
+        this.showSection('preview', true);
+        this.showSection('previewMerge', false);
+
+        // Load export video into preview player
+        const $video = this.$modal.find('#timeline-preview-video');
+        const video = $video[0];
+
+        // Use stream URL (not download URL) for playback
+        // The preview-merge stream endpoint works for this
+        video.src = downloadUrl.replace('/download', '/stream');
+        video.load();
+        $video.show();
+
+        // Show iOS-specific save instructions
+        const $info = this.$modal.find('.timeline-preview-info');
+        $info.html(`
+            <div class="ios-save-instructions">
+                <strong>To save video:</strong><br>
+                Long-press video → "Save to Photos"<br>
+                <em>or</em> tap <i class="fas fa-share-square"></i> Share → Save
+            </div>
+        `).show();
+
+        // Show controls
+        this.$modal.find('.timeline-preview-controls').show();
+        this.$modal.find('#preview-prev-btn').hide();
+        this.$modal.find('#preview-next-btn').hide();
+
+        // Change Play button to Done button
+        const $playBtn = this.$modal.find('#preview-play-all-btn');
+        $playBtn.html('<i class="fas fa-check"></i> Done');
+        $playBtn.off('click').on('click', () => {
+            // Reset UI
+            $playBtn.html('<i class="fas fa-play"></i> Play');
+            this.showSection('preview', false);
+            this.showSection('export', true);
+            this.currentExportJobId = null;
+            this.completedJob = null;
+        });
+
+        // Scroll to preview section on mobile
+        const $previewSection = this.$modal.find('.timeline-preview-section');
+        const $modalBody = this.$modal.find('.timeline-modal-body');
+        setTimeout(() => {
+            const previewOffset = $previewSection.position();
+            if (previewOffset && previewOffset.top > 50) {
+                $modalBody.animate({
+                    scrollTop: $modalBody.scrollTop() + previewOffset.top - 30
+                }, 300);
+            }
+        }, 100);
+    }
+
+    /**
+     * Reset download UI after delay
+     */
+    resetDownloadUI(delay) {
         setTimeout(() => {
             this.showSection('download', false);
             this.showSection('export', true);
             this.currentExportJobId = null;
             this.completedJob = null;
-        }, resetDelay);
-    }
-
-    /**
-     * Show iOS-specific download instructions
-     * Informs user how to save video to Photos app
-     */
-    showIOSDownloadInstructions() {
-        // Update the download ready section to show iOS instructions
-        const $downloadSection = this.$modal.find('.timeline-download-ready');
-        $downloadSection.find('.ios-instructions').remove(); // Remove any existing
-
-        const instructions = $(`
-            <div class="ios-instructions">
-                <p><strong>To save to Photos:</strong></p>
-                <ol>
-                    <li>Video will open in a new tab</li>
-                    <li>Tap the <i class="fas fa-share-square"></i> Share button</li>
-                    <li>Choose "Save to Photos"</li>
-                </ol>
-            </div>
-        `);
-
-        $downloadSection.append(instructions);
+        }, delay);
     }
 
     /**

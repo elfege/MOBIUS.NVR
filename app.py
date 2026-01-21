@@ -3249,6 +3249,7 @@ def api_timeline_preview_merge_create():
     Request Body:
         camera_id: Camera serial number
         segment_ids: List of recording IDs to merge
+        ios_compatible: (optional) If true, re-encode to H.264 Baseline for iOS/mobile
 
     Returns:
         job_id for tracking merge progress
@@ -3260,6 +3261,7 @@ def api_timeline_preview_merge_create():
 
         camera_id = data.get('camera_id')
         segment_ids = data.get('segment_ids', [])
+        ios_compatible = data.get('ios_compatible', False)
 
         if not camera_id:
             return jsonify({'error': 'camera_id is required'}), 400
@@ -3267,7 +3269,7 @@ def api_timeline_preview_merge_create():
             return jsonify({'error': 'segment_ids must be a non-empty list'}), 400
 
         timeline_service = get_timeline_service()
-        job = timeline_service.create_preview_merge(camera_id, segment_ids)
+        job = timeline_service.create_preview_merge(camera_id, segment_ids, ios_compatible)
 
         return jsonify({
             'success': True,

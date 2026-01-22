@@ -15,11 +15,40 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 21, 2026 00:20 EST*
+*Last updated: January 21, 2026 21:50 EST*
 
-Branch: `main`
+Branch: `timeline_playback_JAN_19_2026_a`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Current Session (January 21, 2026 21:35-21:50 EST)
+
+### Eufy PTZ Local Control Research
+
+User asked about achieving local PTZ control for Eufy cameras without cloud authentication.
+
+**Research Conducted:**
+
+1. **Confirmed current integration uses bropat/eufy-security-client** via `eufy-security-ws` bridge
+2. **Documented why cloud auth is required:**
+   - P2P session establishment needs cloud for NAT hole punching
+   - Encryption keys derived from cloud authentication
+   - Device verification against Eufy cloud
+3. **Found reverse-engineered PTZ command IDs:**
+   - `CMD_INDOOR_PAN_CALIBRATION = 6017`
+   - `CMD_INDOOR_ROTATE = 6030`
+   - Direction values: LEFT=1, RIGHT=2, UP=3, DOWN=4
+4. **Network ports documented:** UDP 32108 (discovery), UDP 32100 (P2P)
+5. **Academic research found:** USENIX WOOT 24 paper on Eufy reverse engineering
+6. **Blue Iris finding:** Eufy PTZ doesn't work there either (same ONVIF limitation)
+7. **Custom firmware option:** Thingino (untested for PTZ)
+
+**File Created:**
+- `docs/README_eufy_ptz_research.md` - Comprehensive research documentation
+
+**Conclusion:** No fully local PTZ solution exists. Cloud auth required for P2P session keys.
 
 ---
 

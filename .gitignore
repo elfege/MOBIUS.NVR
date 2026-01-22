@@ -44,6 +44,7 @@ docs/*.md
 # Exceptions for tracked documentation
 !docs/README_handoff.md
 !docs/README_project_history.md
+!docs/README_eufy_ptz_research.md
 !docs/history/handoffs/*
 
 DOCS/

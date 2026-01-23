@@ -15,72 +15,53 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 22, 2026 07:20 EST*
+*Last updated: January 22, 2026 07:35 EST*
 
-Branch: `timeline_playback_JAN_19_2026_a`
+Branch: `main`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 22, 2026 ~07:00 EST)
+## Current Session (January 22, 2026 ~07:00-07:35 EST)
 
-### Eufy Bridge Re-enablement Investigation
+### Eufy Bridge Re-enablement - COMPLETED
 
-User created a dedicated Eufy account (`eufy@elfege.com`) with 2FA disabled for API use, then accidentally hit "Leave Home" which removed access to all cameras. After re-adding cameras to the new account, user requested Eufy bridge re-enablement.
+User created a dedicated Eufy account (`eufy@elfege.com`) with 2FA disabled for API use. After re-adding cameras to the new account, user requested Eufy bridge re-enablement.
 
-**Investigation Findings:**
+**Code Changes Made:**
 
-1. **Bridge code is heavily commented out in `app.py`** - Lines ~491-530 disabled
-2. **Environment variables exist but disabled:**
-   - `.env`: `USE_EUFY_BRIDGE=0` and `USE_EUFY_BRIDGE_WATCHDOG=0`
-3. **Credentials flow:**
-   - AWS Secrets Manager → `pull_nvr_secrets` → exports `EUFY_BRIDGE_USERNAME`/`PASSWORD`
-   - Bridge scripts: `eufy_bridge.sh` and `services/eufy/eufy_bridge.sh`
-4. **Authentication flow:**
-   - Browser-based: `https://server:8443/eufy-auth`
-   - Captcha + 2FA handled via Flask API endpoints (still present but `raise` statements added)
+| File | Change |
+|------|--------|
+| `app.py` | Uncommented bridge imports, initialization, PTZ dispatch, status endpoint |
+| `app.py` | Removed `raise` statements from auth endpoints |
+| `app.py` | Updated cleanup handlers to pass bridge parameters |
+| `.env` | Set `USE_EUFY_BRIDGE=1` and `USE_EUFY_BRIDGE_WATCHDOG=1` |
+| `services/app_restart_handler.py` | Added null checks for bridge/watchdog |
+| `low_level_handlers/cleanup_handler.py` | Updated `stop_all_services` signature, added null checks |
 
-**Files Involved:**
+**Commits:**
 
-| File | Status | Notes |
-|------|--------|-------|
-| `app.py` | Disabled | Bridge imports commented, PTZ dispatch disabled |
-| `.env` | Disabled | `USE_EUFY_BRIDGE=0` |
-| `services/eufy_service.py` | Ready | `EufyCameraService` class intact |
-| `services/eufy/eufy_bridge_client.py` | Ready | WebSocket client intact |
-| `services/eufy/eufy_bridge.sh` | Ready | Container startup script |
-| `config/eufy_bridge.json` | Placeholder | Says "NO LONGER IN USE" |
+- `e64e69f` - Re-enable Eufy bridge for PTZ control
 
-**Steps to Re-enable (for user when ready):**
+**Remaining Steps for User:**
 
 1. **Update AWS Secrets Manager:**
    - Change `EUFY_BRIDGE_USERNAME` to `eufy@elfege.com`
    - Update `EUFY_BRIDGE_PASSWORD` accordingly
 
-2. **Enable in `.env`:**
+2. **Restart container with full credential reload:**
 
-   ```bash
-   USE_EUFY_BRIDGE=1
-   USE_EUFY_BRIDGE_WATCHDOG=1
-   ```
-
-3. **Restart container with full credential reload:**
    ```bash
    ./start.sh  # NOT just docker compose restart
    ```
 
-4. **Complete browser authentication:**
+3. **Complete browser authentication:**
    - Navigate to `https://192.168.10.20:8443/eufy-auth`
-   - Enter captcha, then verification code from email
+   - Enter captcha (no email code needed since 2FA disabled)
 
-5. **Test PTZ:**
+4. **Test PTZ:**
    - Use web UI PTZ controls on any Eufy camera
-
-**Code changes NOT made** (waiting for user confirmation):
-
-- Uncommenting bridge initialization in `app.py`
-- Removing `raise` statements from auth endpoints
 
 ---
 
@@ -133,8 +114,8 @@ Key work completed:
 **Eufy Bridge Re-enablement:**
 
 - [ ] Update AWS Secrets Manager with `eufy@elfege.com` credentials
-- [ ] Set `USE_EUFY_BRIDGE=1` in `.env`
-- [ ] Uncomment bridge code in `app.py` (see investigation notes above)
+- [x] Set `USE_EUFY_BRIDGE=1` in `.env` (done in code, verify on server)
+- [x] Uncomment bridge code in `app.py`
 - [ ] Run `./start.sh` for full credential reload
 - [ ] Complete browser authentication at `/eufy-auth`
 - [ ] Test PTZ controls

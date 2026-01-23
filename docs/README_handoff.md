@@ -156,6 +156,16 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 - [ ] Implement zoom for S350 models (lens switching, not optical zoom)
 - [ ] Investigate doorbell streaming via eufy-security-ws (no RTSP port, but bridge may allow streaming like native app)
 
+**Firewall - Re-enable camera WAN blocking:**
+
+- [ ] Re-enable SonicWall `BLOCKED_CAMERAS` rule with Eufy domain whitelist
+  - **Why:** Currently disabled to allow PTZ - cameras need cloud for command relay
+  - **Security concern:** Cameras have unrestricted WAN access while rule is disabled
+  - **Solution:** Create FQDN Address Objects for Eufy domains, add Allow rule ABOVE the block rule
+  - **Domains to whitelist:** `*.eufylife.com`, `*.security.eufylife.com`, `mysecurity.eufylife.com`
+  - **Note:** May need to capture DNS queries from a camera to find all required domains
+  - **SonicWall version:** 6.5 firmware
+
 **Testing Needed:**
 
 - [ ] Test iOS inline download with Share/Open in Tab buttons

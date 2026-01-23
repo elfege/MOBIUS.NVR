@@ -1810,9 +1810,8 @@ def api_snap_camera(camera_id):
         if camera_type == 'reolink':
             frame_data = reolink_mjpeg_capture_service.get_latest_frame(camera_id)
         elif camera_type == 'unifi':
-            # UniFi uses shared frame buffer
-            if camera_id in unifi_frame_buffers:
-                frame_data = unifi_frame_buffers[camera_id]
+            # UniFi uses MJPEG capture service
+            frame_data = unifi_mjpeg_capture_service.get_latest_frame(camera_id)
 
         # Fallback to mediaserver (works for any camera with HLS running)
         if not frame_data:
@@ -2397,11 +2396,15 @@ def api_ptz_move(camera_serial, direction):
 
         # Eufy uses bridge (no ONVIF support)
         elif camera_type == 'eufy':
+            print(f"[EUFY PTZ] Request: camera={camera_serial}, direction={direction}")
+            print(f"[EUFY PTZ] Bridge status: eufy_bridge={eufy_bridge is not None}, is_running={eufy_bridge.is_running() if eufy_bridge else 'N/A'}")
             if eufy_bridge and eufy_bridge.is_running():
-                print(f"[APP.PY] Dispatching PTZ to EUFY handler")
+                print(f"[EUFY PTZ] Dispatching to bridge.move_camera()")
                 success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
+                print(f"[EUFY PTZ] Result: success={success}")
                 message = f'Camera moved {direction}' if success else 'Movement failed'
             else:
+                print(f"[EUFY PTZ] Bridge not running - returning 503")
                 return jsonify({'success': False, 'error': 'Eufy bridge not running. Check /eufy-auth'}), 503
 
         else:

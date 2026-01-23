@@ -32,8 +32,8 @@ from streaming.stream_manager import StreamManager
 
 from low_level_handlers.process_reaper import install_sigchld_handler
 
-# from services.eufy.eufy_bridge import EufyBridge
-# from services.eufy.eufy_bridge_client import submit_captcha_sync, submit_2fa_sync, check_status_sync
+from services.eufy.eufy_bridge import EufyBridge
+from services.eufy.eufy_bridge_client import submit_captcha_sync, submit_2fa_sync, check_status_sync
 from services.eufy.eufy_bridge_watchdog import BridgeWatchdog
 from services.unifi_protect_service import UniFiProtectService
 from services.unifi_service_resource_monitor import UniFiServiceResourceMonitor
@@ -488,17 +488,18 @@ try:
 
     install_sigchld_handler()
 
-    if os.getenv('USE_EUFY_BRIDGE', False).lower() in ['1', 'true']:
+    if os.getenv('USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:
         print("🌉 Initializing Eufy bridge...")
-        # Eufy bridge for PTZ control
-        # eufy_bridge = EufyBridge() # Eufy Bridge no longer in use for now
-        # print("✅ Eufy bridge initialized")
+        eufy_bridge = EufyBridge()
+        print("✅ Eufy bridge initialized")
     else:
         eufy_bridge = None
-    
-    if os.getenv('USE_EUFY_BRIDGE_WATCHDOG', False).lower() in ['1', 'true']:
-        # bridge_watchdog = BridgeWatchdog(eufy_bridge) # Eufy Bridge no longer in use for now
+
+    if os.getenv('USE_EUFY_BRIDGE_WATCHDOG', '0').lower() in ['1', 'true'] and eufy_bridge:
+        bridge_watchdog = BridgeWatchdog(eufy_bridge)
         print("✅ Eufy bridge_watchdog initialized")
+    else:
+        bridge_watchdog = None
 
     print("\n✅ All core services initialized successfully!\n")
 
@@ -508,31 +509,33 @@ except Exception as e:
     exit(1)
 
 
-# def wait_for_bridge_ready(timeout=5):
-#     """Wait for bridge to be ready"""
-#     if os.getenv('USE_EUFY_BRIDGE', False).lower() in ['1', 'true']:
-#         t0 = time.time()
-#         while time.time() - t0 < timeout:
-#             if eufy_bridge.is_running():
-#                 return True
-#             time.sleep(0.25)
-#     return False
+def wait_for_bridge_ready(timeout=5):
+    """Wait for bridge to be ready"""
+    if eufy_bridge and os.getenv('USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if eufy_bridge.is_running():
+                return True
+            time.sleep(0.25)
+    return False
 
 # ===== Auto-start Eufy Bridge =====
-# try:
-#     print("\n🌉 Starting Eufy bridge...")
-#     if os.getenv('USE_EUFY_BRIDGE', False).lower() in ['1', 'true']:
-#         if not eufy_bridge.is_running():
-#             eufy_bridge.start()
-#             if wait_for_bridge_ready():
-#                 print("✅ Bridge started successfully")
+try:
+    if eufy_bridge:
+        print("\n🌉 Starting Eufy bridge...")
+        if not eufy_bridge.is_running():
+            eufy_bridge.start()
+            if wait_for_bridge_ready():
+                print("✅ Bridge started successfully")
+            else:
+                print("⚠️  Bridge did not reach ready state in time")
 
-#     if os.getenv('USE_EUFY_BRIDGE_WATCHDOG', False).lower() in ['1', 'true']:
-#         bridge_watchdog.start_monitoring()
-#         print("✅ Bridge watchdog started")
-        
-# except Exception as e:
-#     print(f"⚠️  Bridge startup warning: {e}")
+    if bridge_watchdog:
+        bridge_watchdog.start_monitoring()
+        print("✅ Bridge watchdog started")
+
+except Exception as e:
+    print(f"⚠️  Bridge startup warning: {e}")
 
 # ===== Auto-start Streams =====
 # REMOVED: Duplicate auto-start block was here (lines 413-425)
@@ -722,7 +725,7 @@ except Exception as e:
 
 # ===== Initialize Monitoring Services =====
 try:
-    restart_handler = AppRestartHandler(stream_manager) #, bridge_watchdog) #, eufy_bridge)
+    restart_handler = AppRestartHandler(stream_manager, bridge_watchdog, eufy_bridge)
 
     if unifi_cameras:
         unifi_resource_monitor = UniFiServiceResourceMonitor(
@@ -790,12 +793,13 @@ def api_health():
 @app.route('/api/status')
 def api_status():
     """Get system status"""
-    # eufy_status = {
-    #     'bridge_running': eufy_bridge.is_running(),
-    #     'bridge_ready': eufy_bridge.is_ready(),
-    #     'total_devices': camera_repo.get_camera_count(),
-    #     'ptz_cameras': len(camera_repo.get_ptz_cameras())
-    # }
+    eufy_status = {
+        'bridge_configured': eufy_bridge is not None,
+        'bridge_running': eufy_bridge.is_running() if eufy_bridge else False,
+        'bridge_ready': eufy_bridge.is_ready() if eufy_bridge else False,
+        'total_devices': camera_repo.get_camera_count(),
+        'ptz_cameras': len(camera_repo.get_ptz_cameras())
+    }
 
     unifi_status = {
         camera_id: {
@@ -807,7 +811,7 @@ def api_status():
     }
 
     return jsonify({
-        # 'eufy': eufy_status, --- IGNORE ---
+        'eufy': eufy_status,
         'unifi': unifi_status,
         'streams': {
             'active': stream_manager.get_active_streams(),
@@ -871,13 +875,13 @@ def api_streaming_config():
         })
 
 # ===== Bridge Control Routes =====
-# DEPRECATED OR NOT IN USE FOR NOW # TBD...
 @app.route('/api/bridge/start', methods=['POST'])
 @csrf.exempt
 def api_bridge_start():
     """Start the Eufy bridge"""
     try:
-        raise # no longer in use for now. 
+        if not eufy_bridge:
+            return jsonify({'success': False, 'error': 'Eufy bridge not configured (USE_EUFY_BRIDGE=0)'}), 503
         success = eufy_bridge.start()
         return jsonify({
             'success': success,
@@ -886,13 +890,13 @@ def api_bridge_start():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# DEPRECATED OR NOT IN USE FOR NOW # TBD... 
 @app.route('/api/bridge/stop', methods=['POST'])
 @csrf.exempt
 def api_bridge_stop():
     """Stop the Eufy bridge"""
     try:
-        raise # no longer in use for now.
+        if not eufy_bridge:
+            return jsonify({'success': False, 'error': 'Eufy bridge not configured'}), 503
         eufy_bridge.stop()
         return jsonify({'success': True, 'message': 'Bridge stopped'})
     except Exception as e:
@@ -2121,7 +2125,7 @@ def submit_eufy_2fa():
 def eufy_auth_status():
     """
     Check Eufy bridge authentication status
-    
+
     Returns:
     {
         "connected": true/false,
@@ -2130,7 +2134,12 @@ def eufy_auth_status():
     }
     """
     try:
-        raise # eufy bridge no longer in use for now.
+        if not eufy_bridge:
+            return jsonify({
+                'connected': False,
+                'status': 'disabled',
+                'message': 'Eufy bridge not configured (USE_EUFY_BRIDGE=0)'
+            })
         status = check_status_sync()
         
         if status.get('connected'):
@@ -2386,14 +2395,14 @@ def api_ptz_move(camera_serial, direction):
                 success = amcrest_ptz_handler.move_camera(camera_serial, direction, camera_repo)
                 message = f'Camera moved {direction} via CGI' if success else 'Movement failed'
 
-        #######################################
-        # Eufy Bridge No longer in use for now.
-        #######################################
-        # # Eufy uses bridge (no ONVIF support)
-        # elif camera_type == 'eufy':
-        #     print(f"[APP.PY] Dispatching PTZ to EUFY handler")
-        #     success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
-        #     message = f'Camera moved {direction}' if success else 'Movement failed'
+        # Eufy uses bridge (no ONVIF support)
+        elif camera_type == 'eufy':
+            if eufy_bridge and eufy_bridge.is_running():
+                print(f"[APP.PY] Dispatching PTZ to EUFY handler")
+                success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
+                message = f'Camera moved {direction}' if success else 'Movement failed'
+            else:
+                return jsonify({'success': False, 'error': 'Eufy bridge not running. Check /eufy-auth'}), 503
 
         else:
             return jsonify({'success': False, 'error': f'PTZ not supported for camera type: {camera_type}'}), 400
@@ -4207,8 +4216,8 @@ def cleanup_handler(signum=None, frame=None):
             reolink_motion_service.stop()
 
         stop_all_services(stream_manager,
-                        #   bridge_watchdog, # Eufy Bridge no longer in use for now
-                        #   eufy_bridge, # Eufy Bridge no longer in use for now
+                          bridge_watchdog,
+                          eufy_bridge,
                           unifi_cameras,
                           unifi_resource_monitor,
                           unifi_mjpeg_capture_service,
@@ -4218,8 +4227,7 @@ def cleanup_handler(signum=None, frame=None):
         print(traceback.print_exc())
         print(f"Cleanup error: {e}")
     finally:
-        # kill_all(eufy_bridge, stream_manager) # Eufy Bridge no longer in use for now
-        kill_all(stream_manager)
+        kill_all(eufy_bridge, stream_manager)
         print("✅ Cleanup completed")
 
     if signum:
@@ -4240,7 +4248,7 @@ signal.signal(signal.SIGINT, cleanup_handler)
 signal.signal(signal.SIGTERM, cleanup_handler)
 
 # Triggered by Ctrl+Z in the terminal (SIGTSTP → normally suspends, but here we repurpose it to nuke everything at once)
-signal.signal(signal.SIGTSTP, functools.partial(kill_all)) # , eufy_bridge)) # Eufy Bridge no longer in use for now
+signal.signal(signal.SIGTSTP, functools.partial(kill_all, eufy_bridge))
 
 # ===== Run Server =====
 if __name__ == '__main__':

@@ -20,11 +20,12 @@ from low_level_handlers.process_reaper import kill_processes_by_pattern, reap_ch
 ######################### -#########################
 def stop_all_services(stream_manager,
                       bridge_watchdog,
-                    #   eufy_bridge,  # Eufy Bridge no longer in use for now
+                      eufy_bridge,
                       unifi_cameras,
                       unifi_resource_monitor,
-                      unifi_mjpeg_capture_service
-                      ):
+                      unifi_mjpeg_capture_service,
+                      reolink_mjpeg_capture_service=None,
+                      amcrest_mjpeg_capture_service=None):
     try:
         stream_manager.s = Thread(
             target=stop_all_streaming_watchdogs, args=(stream_manager,))
@@ -38,8 +39,9 @@ def stop_all_services(stream_manager,
         stream_manager.s.join(timeout=20)
         resource_monitor_thread.join(timeout=20)
 
-        # free bridge port
-        Thread(target=free_eufy_bridge_port, args=(eufy_bridge,)).start()
+        # free bridge port (only if eufy_bridge is configured)
+        if eufy_bridge:
+            Thread(target=free_eufy_bridge_port, args=(eufy_bridge,)).start()
 
         # stop remaining services
         Thread(target=stop_all_streams, args=(stream_manager,)).start()
@@ -69,6 +71,9 @@ def stop_all_streaming_watchdogs(stream_manager):
 
 def free_eufy_bridge_port(eufy_bridge):
     print("[[[[[[free_eufy_bridge_port]]]]]]")
+    if not eufy_bridge:
+        print("⏭️  No eufy_bridge configured, skipping port cleanup")
+        return
     # Verify port is freed
     for attempt in range(50):
         print("[[[[[[free_eufy_bridge_port]]]]]]")
@@ -141,11 +146,13 @@ def stop_bridge(eufy_bridge, bridge_watchdog):
     print("[[[[[[stop_bridge]]]]]]")
     # Stop bridge
     try:
-        bridge_watchdog.stop()
-        eufy_bridge.stop()
+        if bridge_watchdog:
+            bridge_watchdog.stop()
+        if eufy_bridge:
+            eufy_bridge.stop()
     except:
         print(traceback.print_exc())
-        raise Exception(f"❌ Error cleaning up camera {camera_id}")
+        raise Exception(f"❌ Error stopping bridge")
 
     print("✅ Bridge stopped")
 ######################### -#########################

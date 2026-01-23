@@ -41,8 +41,10 @@ class AppRestartHandler:
                 try:
                     # Stop bridge services
                     print("🛑 Stopping bridge services...")
-                    self.bridge_watchdog.stop()
-                    self.eufy_bridge.stop()
+                    if self.bridge_watchdog:
+                        self.bridge_watchdog.stop()
+                    if self.eufy_bridge:
+                        self.eufy_bridge.stop()
                 except:
                     pass
 

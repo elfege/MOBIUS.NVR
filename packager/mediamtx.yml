@@ -172,6 +172,10 @@ paths:
     source: publisher
   T8441P122428038A_main:
     source: publisher
+  T821451024233587:
+    source: publisher
+  T821451024233587_main:
+    source: publisher
   XCPTP369388MNVTG:
     source: publisher
   XCPTP369388MNVTG_main:

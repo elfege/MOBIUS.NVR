@@ -33,7 +33,7 @@ set -euo pipefail
 
 # Configuration
 PORT=${1:-3000}
-EUFY_CONFIG_PATH=/tmp/eufy_bridge.json
+EUFY_CONFIG_PATH=/app/config/eufy_bridge.json
 TRUSTED_DEVICE_NAME="EufyBridge"
 COUNTRY="US"
 LANGUAGE="en"

@@ -19,16 +19,16 @@ export class ConnectionMonitor {
         // Adjust thresholds based on device capability tier
         // Ultra-slow devices (ancient iPads with aging batteries) get extremely lenient settings
         if (this.deviceTier === 'ultra-slow') {
-            this.maxFailedChecks = 40;        // 40 failures before redirect
-            this.checkIntervalMs = 30000;     // Check every 30 seconds
-            this.healthCheckTimeoutMs = 45000; // 45 second timeout (aging WiFi adapters)
-            this.fetchErrorThreshold = 30;    // 30 fetch errors
+            this.maxFailedChecks = 250;        // 40 failures before redirect
+            this.checkIntervalMs = 120000;     // Check every 120 seconds
+            this.healthCheckTimeoutMs = 60000; // 60 second timeout (aging WiFi adapters)
+            this.fetchErrorThreshold = 55;    // 55 fetch errors
             console.log('[ConnectionMonitor] ULTRA-SLOW device detected - using very lenient thresholds');
         } else if (this.deviceTier === 'slow') {
-            this.maxFailedChecks = 20;        // 20 failures before redirect (was 10)
-            this.checkIntervalMs = 15000;     // Check every 15 seconds (was 10)
-            this.healthCheckTimeoutMs = 20000; // 20 second timeout (was 10)
-            this.fetchErrorThreshold = 15;    // 15 fetch errors (was 8)
+            this.maxFailedChecks = 100;        // 100 failures before redirect (was 10)
+            this.checkIntervalMs = 60000;     // Check every 60 seconds (was 10)
+            this.healthCheckTimeoutMs = 35000; // 35 second timeout (was 10)
+            this.fetchErrorThreshold = 45;    // 45 fetch errors (was 8)
             console.log('[ConnectionMonitor] Slow device detected - using lenient thresholds');
         } else {
             this.maxFailedChecks = 10;        // Standard: 10 failures
@@ -91,7 +91,7 @@ export class ConnectionMonitor {
 
         // Check for ultra-slow tier
         const isUltraSlow = isAncientIPad || isVeryOldIPad || isAncientAndroid ||
-                           veryLowMemory || ultraSlowConnection || veryLowCores;
+            veryLowMemory || ultraSlowConnection || veryLowCores;
 
         if (isUltraSlow) {
             console.log('[ConnectionMonitor] ULTRA-SLOW device indicators:', {
@@ -133,7 +133,7 @@ export class ConnectionMonitor {
         const touchWithModerateCores = 'ontouchstart' in window && cores && cores <= 4;
 
         const isSlow = isOlderIPad || isOlderAndroidTablet || lowMemory ||
-                       slowConnection || touchWithModerateCores;
+            slowConnection || touchWithModerateCores;
 
         if (isSlow) {
             console.log('[ConnectionMonitor] Slow device indicators:', {
@@ -448,11 +448,11 @@ export class ConnectionMonitor {
 
             // Skip monitoring for media/streaming URLs - these fail for content reasons, not connection issues
             const isMediaUrl = url.includes('.m3u8') ||
-                               url.includes('.ts') ||
-                               url.includes('.m4s') ||
-                               url.includes('.mp4') ||
-                               url.includes('/hls/') ||
-                               url.includes('/whep');
+                url.includes('.ts') ||
+                url.includes('.m4s') ||
+                url.includes('.mp4') ||
+                url.includes('/hls/') ||
+                url.includes('/whep');
 
             try {
                 const fetchStartTime = Date.now();

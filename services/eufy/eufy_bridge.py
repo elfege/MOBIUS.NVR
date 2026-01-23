@@ -209,7 +209,7 @@ class EufyBridge:
                 # Wait for movement duration
                 await asyncio.sleep(0.5)  # 500ms movement
 
-                # Send PTZ stop command
+                # Send PTZ stop command (some cameras don't support this - that's OK)
                 stop_cmd = {
                     "messageId": "ptz_stop",
                     "command": "device.pan_and_tilt",
@@ -219,7 +219,11 @@ class EufyBridge:
                 print(f"[EUFY PTZ CMD] Sending stop command")
                 await ws.send(json.dumps(stop_cmd))
                 stop_result = await self._wait_for_message(ws, "ptz_stop")
-                print(f"[EUFY PTZ CMD] Stop response: {stop_result}")
+                if stop_result and not stop_result.get("success", False):
+                    # Stop not supported - camera likely auto-stops after movement
+                    print(f"[EUFY PTZ CMD] Stop not supported (camera auto-stops): {stop_result.get('errorCode')}")
+                else:
+                    print(f"[EUFY PTZ CMD] Stop response: {stop_result}")
 
                 print(f"[EUFY PTZ CMD] PTZ command completed successfully")
                 return True

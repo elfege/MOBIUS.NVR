@@ -131,6 +131,23 @@ class EufyBridge:
             await asyncio.sleep(1)
         return False
     
+    async def _wait_for_message(self, ws, expected_message_id, timeout=5):
+        """Wait for a specific messageId response, discarding others"""
+        import time
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                response = await asyncio.wait_for(ws.recv(), timeout=1)
+                data = json.loads(response)
+                msg_id = data.get("messageId")
+                print(f"[EUFY PTZ CMD] Received messageId={msg_id}, waiting for {expected_message_id}")
+                if msg_id == expected_message_id:
+                    return data
+                # Keep waiting for the right message
+            except asyncio.TimeoutError:
+                continue
+        return None
+
     async def _execute_ptz_command(self, camera_serial, direction):
         """Execute PTZ command with automatic stop after duration"""
         print(f"[EUFY PTZ CMD] Starting: serial={camera_serial}, direction={direction}")
@@ -156,37 +173,37 @@ class EufyBridge:
                     "command": "set_api_schema",
                     "schemaVersion": 21
                 }))
-                schema_resp = await ws.recv()
-                print(f"[EUFY PTZ CMD] Schema response: {schema_resp}")
+                schema_result = await self._wait_for_message(ws, "schema")
+                print(f"[EUFY PTZ CMD] Schema response: {schema_result}")
 
                 # Start listening
                 await ws.send(json.dumps({
                     "messageId": "start",
                     "command": "start_listening"
                 }))
-                listen_resp = await ws.recv()
-                print(f"[EUFY PTZ CMD] Listen response: {listen_resp}")
+                listen_result = await self._wait_for_message(ws, "start")
+                print(f"[EUFY PTZ CMD] Listen response: {listen_result}")
 
                 # Send PTZ start command
                 cmd = {
-                    "messageId": "ptz_start",
+                    "messageId": "ptz_move",
                     "command": "device.pan_and_tilt",
                     "serialNumber": camera_serial,
                     "direction": direction_code
                 }
                 print(f"[EUFY PTZ CMD] Sending PTZ command: {cmd}")
                 await ws.send(json.dumps(cmd))
-                response = await ws.recv()
-                print(f"[EUFY PTZ CMD] PTZ response: {response}")
+                ptz_result = await self._wait_for_message(ws, "ptz_move")
+                print(f"[EUFY PTZ CMD] PTZ response: {ptz_result}")
 
-                start_result = json.loads(response)
-                if not start_result.get("success", False):
-                    print(f"[EUFY PTZ CMD] PTZ start command failed!")
+                if not ptz_result or not ptz_result.get("success", False):
+                    error = ptz_result.get("errorCode", "unknown") if ptz_result else "timeout"
+                    print(f"[EUFY PTZ CMD] PTZ command failed: {error}")
                     return False
 
-                # For 360 degree rotation, don't send stop
-                if direction == '360':
-                    print(f"[EUFY PTZ CMD] 360 rotation - no stop needed")
+                # For 360 degree rotation or stop command, don't send additional stop
+                if direction in ('360', 'stop'):
+                    print(f"[EUFY PTZ CMD] {direction} command - no additional stop needed")
                     return True
 
                 # Wait for movement duration
@@ -201,8 +218,8 @@ class EufyBridge:
                 }
                 print(f"[EUFY PTZ CMD] Sending stop command")
                 await ws.send(json.dumps(stop_cmd))
-                stop_response = await ws.recv()
-                print(f"[EUFY PTZ CMD] Stop response: {stop_response}")
+                stop_result = await self._wait_for_message(ws, "ptz_stop")
+                print(f"[EUFY PTZ CMD] Stop response: {stop_result}")
 
                 print(f"[EUFY PTZ CMD] PTZ command completed successfully")
                 return True

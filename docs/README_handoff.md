@@ -195,9 +195,9 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 
 - [x] Verify PTZ physically moves cameras - WORKING after firewall fix
 - [x] Test directions: up, down, left, right - WORKING
-- [ ] Implement PTZ presets for Eufy cameras (currently shows 0 presets)
-- [ ] Implement zoom for S350 models (lens switching, not optical zoom)
-- [ ] Investigate doorbell streaming via eufy-security-ws (no RTSP port, but bridge may allow streaming like native app)
+- [x] Implement PTZ presets for Eufy cameras - DONE (4 slots: 0-3)
+- [x] Research zoom for S350 models - NOT AVAILABLE (API doesn't expose lens switching)
+- [x] Research doorbell streaming - POSSIBLE via station RTSP relay (not implemented yet)
 
 **Firewall - Re-enable camera WAN blocking:**
 
@@ -208,6 +208,18 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
   - **Domains to whitelist:** `*.eufylife.com`, `*.security.eufylife.com`, `mysecurity.eufylife.com`
   - **Note:** May need to capture DNS queries from a camera to find all required domains
   - **SonicWall version:** 6.5 firmware
+
+**Eufy PTZ Features (Jan 22, 2026 ~23:30 EST):**
+
+- [x] PTZ presets implemented - 4 slots (0-3), goto/save/delete
+- [x] Research complete: Zoom/lens switching NOT available in eufy-security-client API
+  - Zoom field is hardcoded to 1.0 in station.js
+  - Lens switching (wide/telephoto) not exposed
+  - Would require reverse-engineering native app traffic
+- [x] Research complete: Doorbell streaming possible via `device.start_rtsp_livestream`
+  - Requires HomeBase as RTSP relay (station-based streaming)
+  - Alternative: P2P streaming via `device.start_livestream` (binary frames)
+  - Not implemented yet - needs EufyBridgeClient extension
 
 **Timeline Playback:**
 

@@ -22,6 +22,7 @@ Our NVR already has Eufy integration via:
 - **PTZ Control:** `eufy-security-ws` bridge (requires cloud auth, problematic)
 
 Relevant files:
+
 - `services/eufy_service.py` - EufyCameraService with bridge management
 - `services/eufy/eufy_bridge_client.py` - WebSocket client for bridge
 - `services/eufy/eufy_bridge_login.sh` - Bridge startup script
@@ -44,7 +45,7 @@ The captcha/2FA requirement blocks automated PTZ control.
 
 ### bropat/eufy-security-client
 
-The main open-source library for Eufy control: https://github.com/bropat/eufy-security-client
+The main open-source library for Eufy control: <https://github.com/bropat/eufy-security-client>
 
 #### PTZ Command Types (from `src/p2p/types.ts`)
 
@@ -133,10 +134,11 @@ From eufy-security-client README:
 
 **USENIX WOOT 24 Paper:** "Reverse Engineering the Eufy Ecosystem: A Deep Dive into Security Vulnerabilities and Proprietary Protocols"
 
-- URL: https://www.usenix.org/conference/woot24/presentation/goeman
-- PDF: https://www.usenix.org/system/files/woot24-goeman.pdf
+- URL: <https://www.usenix.org/conference/woot24/presentation/goeman>
+- PDF: <https://www.usenix.org/system/files/woot24-goeman.pdf>
 
 This paper documents:
+
 - P2P protocol reverse engineering
 - Encryption methods used
 - Security vulnerabilities found
@@ -160,17 +162,19 @@ Blue Iris would need ONVIF PTZ support, which Eufy cameras don't properly expose
 
 ### Thingino
 
-Open-source IP camera firmware: https://thingino.com/
+Open-source IP camera firmware: <https://thingino.com/>
 
 - Targets Ingenic SoC chips (common in budget cameras)
 - Successfully flashed on Eufy C-120
-- Blog post: https://blog.vasi.li/flashing-a-eufy-c-120-security-camera-with-custom-firmware/
+- Blog post: <https://blog.vasi.li/flashing-a-eufy-c-120-security-camera-with-custom-firmware/>
 
 **What it enables:**
+
 - Full local RTSP/ONVIF without cloud
 - No phoning home
 
 **Limitations:**
+
 - PTZ support not confirmed
 - Model-specific firmware required
 - Requires USB flashing (bricking risk)
@@ -182,6 +186,7 @@ Open-source IP camera firmware: https://thingino.com/
 ### 1. Session Capture & Replay (Theoretical)
 
 If someone captured the P2P session establishment packets and reverse-engineered the encryption handshake:
+
 1. Spoof cloud auth response locally
 2. Send PTZ commands directly via UDP 32100
 
@@ -190,6 +195,7 @@ If someone captured the P2P session establishment packets and reverse-engineered
 ### 2. Firmware Modification
 
 Custom firmware that:
+
 - Exposes direct PTZ HTTP endpoints
 - Implements proper ONVIF PTZ profile
 
@@ -198,6 +204,7 @@ Custom firmware that:
 ### 3. Hardware Serial Interface
 
 Some cameras have UART/debug ports that might allow:
+
 - Direct motor control
 - Firmware extraction for analysis
 
@@ -226,6 +233,7 @@ data:
 ```
 
 Or using dedicated services:
+
 - `eufy_security.ptz_up`
 - `eufy_security.ptz_down`
 - `eufy_security.ptz_left`
@@ -239,19 +247,23 @@ Or using dedicated services:
 ## Relevant Links
 
 ### Libraries & Integrations
+
 - [bropat/eufy-security-client](https://github.com/bropat/eufy-security-client) - Main Node.js library
 - [bropat/eufy-security-ws](https://github.com/bropat/eufy-security-ws) - WebSocket server wrapper
 - [fuatakgun/eufy_security](https://github.com/fuatakgun/eufy_security) - Home Assistant integration
 
 ### Documentation
+
 - [eufy-security-client types.ts](https://github.com/bropat/eufy-security-client/blob/master/src/p2p/types.ts) - Command definitions
 - [eufy-security-client station.ts](https://github.com/bropat/eufy-security-client/blob/master/src/http/station.ts) - PTZ implementation
 
 ### Research
+
 - [USENIX WOOT 24 Paper](https://www.usenix.org/conference/woot24/presentation/goeman)
 - [PPPP Protocol Overview](https://palant.info/2025/11/05/an-overview-of-the-pppp-protocol-for-iot-cameras/)
 
 ### Community Discussions
+
 - [IPCamTalk: Eufy PTZ Settings](https://ipcamtalk.com/threads/eufy-ptz-settings.67010/)
 - [AlexxIT/WebRTC Issue #217](https://github.com/AlexxIT/WebRTC/issues/217)
 - [Eufy Community: PTZ over RTSP](https://community.eufy.com/t/ptz-over-rtsp-config/1936591)
@@ -261,16 +273,19 @@ Or using dedicated services:
 ## Conclusion
 
 Local-only Eufy PTZ control remains unsolved in the open-source community. The fundamental barrier is that P2P session establishment requires cloud authentication for:
+
 1. NAT hole punching coordination
 2. Encryption key exchange
 3. Device identity verification
 
 Until someone:
+
 - Reverse engineers the full P2P handshake and encryption
 - Creates custom firmware with local PTZ endpoints
 - Finds an alternative local protocol
 
 ...we're stuck with either:
+
 - Cloud-authenticated PTZ (captcha/2FA issues)
 - No PTZ control (RTSP video only)
 

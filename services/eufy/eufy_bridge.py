@@ -27,14 +27,15 @@ class EufyBridge:
         self._running = False
         self.script_path = "./services/eufy/eufy_bridge.sh"
         
-        # PTZ direction mapping
+        # PTZ direction mapping (from eufy-security-client PanTiltDirection enum)
+        # ROTATE360=0, LEFT=1, RIGHT=2, UP=3, DOWN=4
+        # NOTE: There is NO stop command - cameras auto-stop after movement
         self.directions = {
-            'left': 0,
-            'right': 1, 
-            'up': 2,
-            'down': 3,
-            '360': 4, 
-            'stop': 5 
+            '360': 0,     # ROTATE360
+            'left': 1,    # LEFT
+            'right': 2,   # RIGHT
+            'up': 3,      # UP
+            'down': 4,    # DOWN
         }
     
     def start(self):
@@ -149,12 +150,17 @@ class EufyBridge:
         return None
 
     async def _execute_ptz_command(self, camera_serial, direction):
-        """Execute PTZ command with automatic stop after duration"""
+        """Execute PTZ command - Eufy cameras auto-stop, no explicit stop needed"""
         print(f"[EUFY PTZ CMD] Starting: serial={camera_serial}, direction={direction}")
 
         if not self.is_ready():
             print(f"[EUFY PTZ CMD] ERROR: Bridge not ready!")
             raise Exception("Bridge not ready")
+
+        # 'stop' command from frontend - Eufy doesn't support this, cameras auto-stop
+        if direction == 'stop':
+            print(f"[EUFY PTZ CMD] Stop command ignored - Eufy cameras auto-stop")
+            return True
 
         direction_code = self.directions.get(direction)
         if direction_code is None:
@@ -184,7 +190,7 @@ class EufyBridge:
                 listen_result = await self._wait_for_message(ws, "start")
                 print(f"[EUFY PTZ CMD] Listen response: {listen_result}")
 
-                # Send PTZ start command
+                # Send PTZ command
                 cmd = {
                     "messageId": "ptz_move",
                     "command": "device.pan_and_tilt",
@@ -201,31 +207,8 @@ class EufyBridge:
                     print(f"[EUFY PTZ CMD] PTZ command failed: {error}")
                     return False
 
-                # For 360 degree rotation or stop command, don't send additional stop
-                if direction in ('360', 'stop'):
-                    print(f"[EUFY PTZ CMD] {direction} command - no additional stop needed")
-                    return True
-
-                # Wait for movement duration
-                await asyncio.sleep(0.5)  # 500ms movement
-
-                # Send PTZ stop command (some cameras don't support this - that's OK)
-                stop_cmd = {
-                    "messageId": "ptz_stop",
-                    "command": "device.pan_and_tilt",
-                    "serialNumber": camera_serial,
-                    "direction": 5  # Stop command
-                }
-                print(f"[EUFY PTZ CMD] Sending stop command")
-                await ws.send(json.dumps(stop_cmd))
-                stop_result = await self._wait_for_message(ws, "ptz_stop")
-                if stop_result and not stop_result.get("success", False):
-                    # Stop not supported - camera likely auto-stops after movement
-                    print(f"[EUFY PTZ CMD] Stop not supported (camera auto-stops): {stop_result.get('errorCode')}")
-                else:
-                    print(f"[EUFY PTZ CMD] Stop response: {stop_result}")
-
-                print(f"[EUFY PTZ CMD] PTZ command completed successfully")
+                # Eufy cameras auto-stop after movement - no explicit stop needed
+                print(f"[EUFY PTZ CMD] PTZ command completed successfully (camera will auto-stop)")
                 return True
 
         except Exception as e:

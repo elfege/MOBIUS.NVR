@@ -74,12 +74,6 @@ if [[ -f ~/0_NVR/scripts/update_recording_settings.sh && -f ~/0_NVR/config/recor
 	stop_spinner
 fi
 
-if [[ -f ~/0_NVR/scripts/update_eufy_ips.sh ]]; then
-	start_spinner 20 "$CYAN Updating Eufy camera IPs in cameras.json"
-	~/0_NVR/scripts/update_eufy_ips.sh >/dev/null
-	stop_spinner
-fi
-
 # Ensure recording paths have proper permissions (UID 1000 for container appuser)
 if [[ -f ~/0_NVR/ensure_recording_paths.sh ]]; then
 	echo ""

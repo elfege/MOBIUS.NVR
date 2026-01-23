@@ -50,6 +50,7 @@ FILTERED_PATHS = [
     '/api/snap/',           # iOS polls every 1s per camera
     '/api/health',          # Health checks
     '/api/status',          # Status polling
+    '/api/camera/state/',   # Camera state polling from UI
 ]
 
 # Compiled regex for efficient filtering

@@ -130,19 +130,53 @@ cleanup() {
 trap 'pkill -f eufy-security-server; cleanup' EXIT INT TERM
 
 populate_config() {
+	# Build stationIPAddresses from cameras.json
+	# For Eufy indoor cameras, station serial = device serial
+	# This enables direct P2P connections without cloud NAT traversal
+	local CAMERAS_JSON="/app/config/cameras.json"
+	local station_ips=""
+
+	if [[ -f "$CAMERAS_JSON" ]]; then
+		log_info "Reading Eufy camera IPs from cameras.json..."
+		# Extract serial:host pairs for eufy cameras with host defined
+		station_ips=$(jq -r '
+			.devices | to_entries[]
+			| select(.value.type == "eufy" and .value.host != null)
+			| "\(.key):\(.value.host)"
+		' "$CAMERAS_JSON" | tr '\n' ' ')
+
+		if [[ -n "$station_ips" ]]; then
+			log_success "Found Eufy station IPs: $station_ips"
+		else
+			log_warn "No Eufy cameras with host IPs found in cameras.json"
+		fi
+	else
+		log_warn "cameras.json not found at $CAMERAS_JSON"
+	fi
+
+	# Build JSON config with stationIPAddresses
+	# jq will create the stationIPAddresses object from the serial:ip pairs
 	jq -n \
 		--arg user "$EUFY_BRIDGE_USERNAME" \
 		--arg pass "$EUFY_BRIDGE_PASSWORD" \
 		--arg coun "$COUNTRY" \
 		--arg lang "$LANGUAGE" \
 		--arg trust "$TRUSTED_DEVICE_NAME" \
+		--arg station_ips "$station_ips" \
 		'{
       country:$coun,
       language:$lang,
       username:$user,
       password:$pass,
       trustedDeviceName: $trust,
-      persistentDir: "/app"
+      persistentDir: "/app",
+      stationIPAddresses: (
+        if $station_ips == "" then {}
+        else
+          $station_ips | split(" ") | map(select(. != "")) | map(split(":"))
+          | map({key: .[0], value: .[1]}) | from_entries
+        end
+      )
     }' >"${EUFY_CONFIG_PATH}"
 
 	log_success "Configuration file created: ${EUFY_CONFIG_PATH}"
@@ -150,6 +184,12 @@ populate_config() {
 	echo "  Language: $LANGUAGE"
 	echo "  Trusted Device Name: $TRUSTED_DEVICE_NAME"
 	echo "  Persistent Directory: /app (for storing auth tokens)"
+
+	# Show configured station IPs
+	if [[ -n "$station_ips" ]]; then
+		echo "  Station IP Addresses (for P2P):"
+		jq -r '.stationIPAddresses | to_entries[] | "    \(.key): \(.value)"' "${EUFY_CONFIG_PATH}"
+	fi
 	echo ""
 }
 

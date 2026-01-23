@@ -24,6 +24,9 @@ services:
     container_name: unified-nvr
     ports:
       - "127.0.0.1:5000:5000"
+      # Eufy P2P communication ports (UDP)
+      - "32100:32100/udp"  # P2P data transfer
+      - "32108:32108/udp"  # P2P discovery
     environment:
       # Python buffering disabled for real-time logging
       - PYTHONUNBUFFERED=1

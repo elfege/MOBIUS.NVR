@@ -650,8 +650,9 @@ def prewarm_onvif_connections():
         elif camera_type == 'sv3c':
             username, password = sv3c_creds.get_credentials(camera_serial)
         elif camera_type == 'eufy':
-            # Eufy uses Reolink credentials (same credential structure)
-            username, password = reolink_creds.get_credentials(camera_serial)
+            # Eufy uses bridge for PTZ, not ONVIF - skip
+            print(f"  ⏭️  {camera_config.get('name', camera_serial)}: Eufy uses bridge (no ONVIF)")
+            continue
         else:
             print(f"  ⏭️  {camera_config.get('name', camera_serial)}: Unknown type '{camera_type}'")
             continue

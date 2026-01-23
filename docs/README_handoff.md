@@ -15,15 +15,58 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 23, 2026 04:25 EST*
+*Last updated: January 22, 2026 23:24 EST*
 
-Branch: `main`
+Branch: `timeline_playback_JAN_19_2026_a`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 22-23, 2026 ~22:00-04:25 EST)
+## Current Session (January 22, 2026 ~23:20 EST)
+
+### Timeline Merged Preview Implementation - VERIFIED COMPLETE
+
+Context compaction occurred. Upon review of the plan file (`recursive-soaring-wolf.md`), discovered implementation was already completed in a previous session.
+
+**All components implemented:**
+
+1. **Backend `PreviewJob` class** - `services/recording/timeline_service.py:124-173`
+   - Dataclass with job tracking (job_id, status, progress, temp paths)
+   - FFmpeg Popen storage for cancellation support
+   - `to_dict()` for JSON serialization
+
+2. **Backend preview merge methods** - `services/recording/timeline_service.py:974-1301`
+   - `create_preview_merge()` - Creates job and starts background thread
+   - `_process_preview_merge()` - FFmpeg concat with iOS re-encode option
+   - `cancel_preview_merge()` - Terminates FFmpeg, cleans temp files
+   - `cleanup_preview()` - Deletes temp directory
+   - `promote_preview_to_export()` - Moves temp to permanent export
+
+3. **API endpoints** - `app.py:3336-3580`
+   - `POST /api/timeline/preview-merge` - Start merge job
+   - `GET /api/timeline/preview-merge/<job_id>` - Get status
+   - `POST /api/timeline/preview-merge/<job_id>/cancel` - Cancel merge
+   - `GET /api/timeline/preview-merge/<job_id>/stream` - Stream video (Range support)
+   - `DELETE /api/timeline/preview-merge/<job_id>/cleanup` - Delete temp files
+   - `POST /api/timeline/preview-merge/<job_id>/promote` - Promote to export
+
+4. **Frontend** - `static/js/modals/timeline-playback-modal.js`
+   - State vars: `currentPreviewMergeJobId`, `previewMergePollingInterval`, `mergedPreviewReady`
+   - `showPreview()` - Starts merge, shows progress
+   - `startPreviewMergePolling()` - 500ms polling for status
+   - `onPreviewMergeComplete()` - Loads merged video
+   - `promotePreviewToExport()` - Reuses merge for download
+
+5. **HTML** - `templates/streams.html:313-326`
+   - Merge progress bar with fill, text, cancel button
+
+6. **CSS** - `static/css/components/timeline-modal.css:689-728`
+   - Progress bar animation, merge status styling
+
+**No code changes needed** - verified working tree is clean.
+
+---
 
 ### Eufy PTZ Fix - COMPLETED
 
@@ -165,6 +208,13 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
   - **Domains to whitelist:** `*.eufylife.com`, `*.security.eufylife.com`, `mysecurity.eufylife.com`
   - **Note:** May need to capture DNS queries from a camera to find all required domains
   - **SonicWall version:** 6.5 firmware
+
+**Timeline Playback:**
+
+- [x] Merged preview implementation - COMPLETE (verified Jan 22, 2026)
+- [ ] Test merged preview on iOS device
+- [ ] Test merged preview on Android device
+- [ ] Test export promotion (preview → download without re-merge)
 
 **Testing Needed:**
 

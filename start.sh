@@ -56,21 +56,21 @@ export LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
 stop_spinner
 set +a
 
-if [[ -f ~/0_NVR/update_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]; then
+if [[ -f ~/0_NVR/scripts/update_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]; then
 	start_spinner 20 "$CYAN Appending packager/mediamtx.yml"
-	~/0_NVR/update_mediamtx_paths.sh >/dev/null
+	~/0_NVR/scripts/update_mediamtx_paths.sh >/dev/null
 	stop_spinner
 fi
 
-if [[ -f ~/0_NVR/update_neolink_config.sh && -f ~/0_NVR/config/neolink.toml ]]; then
+if [[ -f ~/0_NVR/scripts/update_neolink_config.sh && -f ~/0_NVR/config/neolink.toml ]]; then
 	start_spinner 20 "$CYAN Updating config/neolink.toml"
-	~/0_NVR/update_neolink_config.sh >/dev/null
+	~/0_NVR/scripts/update_neolink_config.sh >/dev/null
 	stop_spinner
 fi
 
-if [[ -f ~/0_NVR/update_recording_settings.sh && -f ~/0_NVR/config/recording_settings.json ]]; then
+if [[ -f ~/0_NVR/scripts/update_recording_settings.sh && -f ~/0_NVR/config/recording_settings.json ]]; then
 	start_spinner 20 "$CYAN Syncing recording_settings.json with cameras"
-	~/0_NVR/update_recording_settings.sh >/dev/null
+	~/0_NVR/scripts/update_recording_settings.sh >/dev/null
 	stop_spinner
 fi
 

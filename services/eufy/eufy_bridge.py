@@ -74,12 +74,12 @@ class EufyBridge:
                 return False
             
             print("########### BRIDGE PROCESS STARTED ###########")
-            self.is_started = True
-            
+            self._running = True  # Mark as running so is_running() returns True
+
             # Start monitoring thread
             monitor_thread = Thread(target=self._monitor_bridge, daemon=True)
             monitor_thread.start()
-            
+
             return True
             
         except Exception as e:

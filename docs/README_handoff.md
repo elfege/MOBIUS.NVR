@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 22, 2026 07:35 EST*
+*Last updated: January 22, 2026 22:21 EST*
 
 Branch: `main`
 
@@ -23,7 +23,55 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 22, 2026 ~07:00-07:35 EST)
+## Current Session (January 22, 2026 ~22:00-22:21 EST)
+
+### Eufy PTZ Fix - COMPLETED
+
+Continued from earlier session. Fixed multiple bugs preventing Eufy PTZ from working.
+
+**Issues Found & Fixed:**
+
+1. **`_running` flag never set** - `start()` set `is_started=True` but `is_running()` checked `_running`
+2. **WebSocket response ordering** - Responses came back async, code read wrong messageId
+3. **Direction mapping completely wrong** - Had custom values instead of official enum
+4. **Stop command doesn't exist** - Eufy cameras auto-stop, no explicit stop in API
+
+**Correct PTZ Direction Mapping (from `eufy-security-client` PanTiltDirection enum):**
+
+```python
+# /app/node_modules/eufy-security-client/build/p2p/types.d.ts
+'360': 0,    # ROTATE360
+'left': 1,   # LEFT
+'right': 2,  # RIGHT
+'up': 3,     # UP
+'down': 4,   # DOWN
+# NO STOP COMMAND - cameras auto-stop after movement
+```
+
+**Code Changes:**
+
+| File | Change |
+|------|--------|
+| `services/eufy/eufy_bridge.py` | Fixed `_running` flag in `start()` |
+| `services/eufy/eufy_bridge.py` | Added `_wait_for_message()` to handle async responses |
+| `services/eufy/eufy_bridge.py` | Fixed direction mapping per official enum |
+| `services/eufy/eufy_bridge.py` | Removed stop command (doesn't exist in API) |
+| `gunicorn.conf.py` | Added `/api/camera/state/` to filtered log paths |
+| `app.py` | Fixed `unifi_frame_buffers` undefined error |
+| `app.py` | Skip Eufy in ONVIF warm-up (uses bridge, not ONVIF) |
+
+**Commits:**
+
+- `ec195da` - Silence /api/camera/state/ endpoint in access logs
+- `f28c1a5` - Fix unifi_frame_buffers error, add Eufy PTZ debug logging
+- `fb74aba` - Fix Eufy bridge: set _running flag, skip ONVIF for Eufy cameras
+- `e049e05` - Fix Eufy PTZ: wait for correct messageId response
+- `f846117` - Eufy PTZ: handle cameras that don't support stop command
+- `1b4806b` - Fix Eufy PTZ direction mapping per official PanTiltDirection enum
+
+---
+
+## Earlier Session (January 22, 2026 ~07:00-07:35 EST)
 
 ### Eufy Bridge Re-enablement - COMPLETED
 
@@ -44,24 +92,11 @@ User created a dedicated Eufy account (`eufy@elfege.com`) with 2FA disabled for 
 
 - `e64e69f` - Re-enable Eufy bridge for PTZ control
 
-**Remaining Steps for User:**
+**User Steps Completed:**
 
-1. **Update AWS Secrets Manager:**
-   - Change `EUFY_BRIDGE_USERNAME` to `eufy@elfege.com`
-   - Update `EUFY_BRIDGE_PASSWORD` accordingly
-
-2. **Restart container with full credential reload:**
-
-   ```bash
-   ./start.sh  # NOT just docker compose restart
-   ```
-
-3. **Complete browser authentication:**
-   - Navigate to `https://192.168.10.20:8443/eufy-auth`
-   - Enter captcha (no email code needed since 2FA disabled)
-
-4. **Test PTZ:**
-   - Use web UI PTZ controls on any Eufy camera
+- [x] Updated AWS Secrets Manager with `eufy@elfege.com` credentials
+- [x] Ran `./start.sh` for credential reload
+- [x] Completed browser authentication at `/eufy-auth`
 
 ---
 
@@ -94,31 +129,12 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 
 ---
 
-## Previous Session Context
-
-**Last session (Jan 20-21, 2026)** completed and ported to `docs/README_project_history.md`.
-
-For full context on timeline playback iOS export features, see the January 20-21 section in project history (search for "Timeline Playback iOS Export").
-
-Key work completed:
-
-- Mobile preview visibility fixes
-- iOS export with Share/Open in Tab buttons
-- Export optimization (skip redundant encoding)
-- Ultra-slow device tier for connection monitor
-
----
-
 ## TODO List
 
-**Eufy Bridge Re-enablement:**
+**Eufy PTZ - Testing:**
 
-- [ ] Update AWS Secrets Manager with `eufy@elfege.com` credentials
-- [x] Set `USE_EUFY_BRIDGE=1` in `.env` (done in code, verify on server)
-- [x] Uncomment bridge code in `app.py`
-- [ ] Run `./start.sh` for full credential reload
-- [ ] Complete browser authentication at `/eufy-auth`
-- [ ] Test PTZ controls
+- [ ] Verify PTZ physically moves cameras after direction mapping fix
+- [ ] Test all directions: up, down, left, right, 360
 
 **Testing Needed:**
 

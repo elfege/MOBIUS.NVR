@@ -37,6 +37,10 @@ class EufyBridge:
             'up': 3,      # UP
             'down': 4,    # DOWN
         }
+
+        # PTZ preset positions (4 slots available: 0-3)
+        # Supported on: T8416 (S350), T8425 (Floodlight), T8423 (Floodlight)
+        self.PRESET_SLOTS = 4
     
     def start(self):
         """Start the Eufy bridge process"""
@@ -249,6 +253,200 @@ class EufyBridge:
             logger.error(f"Move camera error: {e}")
             return False
             
+    # =========================================================================
+    # PTZ Preset Methods
+    # =========================================================================
+
+    async def _execute_preset_command(self, camera_serial, command, preset_index):
+        """
+        Execute PTZ preset command via WebSocket bridge.
+
+        Args:
+            camera_serial: Camera serial number (e.g., T8416P0023352DA9)
+            command: One of 'goto', 'save', 'delete'
+            preset_index: Preset slot (0-3)
+
+        Returns:
+            bool: True if command succeeded
+        """
+        print(f"[EUFY PRESET] Starting: serial={camera_serial}, cmd={command}, preset={preset_index}")
+
+        if not self.is_ready():
+            print(f"[EUFY PRESET] ERROR: Bridge not ready!")
+            raise Exception("Bridge not ready")
+
+        if not (0 <= preset_index < self.PRESET_SLOTS):
+            raise ValueError(f"Invalid preset index: {preset_index}. Must be 0-{self.PRESET_SLOTS - 1}")
+
+        # Map command names to eufy-security-ws commands
+        command_map = {
+            'goto': 'device.preset_position',
+            'save': 'device.save_preset_position',
+            'delete': 'device.delete_preset_position'
+        }
+
+        ws_command = command_map.get(command)
+        if not ws_command:
+            raise ValueError(f"Invalid preset command: {command}")
+
+        print(f"[EUFY PRESET] Command: {ws_command}, connecting to {self.bridge_url}")
+
+        try:
+            async with websockets.connect(self.bridge_url, open_timeout=5) as ws:
+                print(f"[EUFY PRESET] WebSocket connected")
+
+                # Set API schema version
+                await ws.send(json.dumps({
+                    "messageId": "schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21
+                }))
+                schema_result = await self._wait_for_message(ws, "schema")
+                print(f"[EUFY PRESET] Schema response: {schema_result}")
+
+                # Start listening
+                await ws.send(json.dumps({
+                    "messageId": "start",
+                    "command": "start_listening"
+                }))
+                listen_result = await self._wait_for_message(ws, "start")
+                print(f"[EUFY PRESET] Listen response: {listen_result}")
+
+                # Send preset command
+                cmd = {
+                    "messageId": f"preset_{command}",
+                    "command": ws_command,
+                    "serialNumber": camera_serial,
+                    "position": preset_index
+                }
+                print(f"[EUFY PRESET] Sending command: {cmd}")
+                await ws.send(json.dumps(cmd))
+                result = await self._wait_for_message(ws, f"preset_{command}")
+                print(f"[EUFY PRESET] Response: {result}")
+
+                if not result or not result.get("success", False):
+                    error = result.get("errorCode", "unknown") if result else "timeout"
+                    print(f"[EUFY PRESET] Command failed: {error}")
+                    return False
+
+                print(f"[EUFY PRESET] Command completed successfully")
+                return True
+
+        except Exception as e:
+            print(f"[EUFY PRESET] Exception: {e}")
+            logger.error(f"Preset command error: {e}")
+            return False
+
+    def goto_preset(self, camera_serial, preset_index):
+        """
+        Move camera to a saved preset position.
+
+        Args:
+            camera_serial: Camera serial number
+            preset_index: Preset slot (0-3)
+
+        Returns:
+            bool: True if command succeeded
+        """
+        print(f"[EUFY BRIDGE] goto_preset: serial={camera_serial}, preset={preset_index}")
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_preset_command(camera_serial, 'goto', preset_index)
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"goto_preset error: {e}")
+            return False
+
+    def save_preset(self, camera_serial, preset_index):
+        """
+        Save current camera position as a preset.
+
+        Args:
+            camera_serial: Camera serial number
+            preset_index: Preset slot (0-3)
+
+        Returns:
+            bool: True if command succeeded
+        """
+        print(f"[EUFY BRIDGE] save_preset: serial={camera_serial}, preset={preset_index}")
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_preset_command(camera_serial, 'save', preset_index)
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"save_preset error: {e}")
+            return False
+
+    def delete_preset(self, camera_serial, preset_index):
+        """
+        Delete a preset position.
+
+        Args:
+            camera_serial: Camera serial number
+            preset_index: Preset slot (0-3)
+
+        Returns:
+            bool: True if command succeeded
+        """
+        print(f"[EUFY BRIDGE] delete_preset: serial={camera_serial}, preset={preset_index}")
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_preset_command(camera_serial, 'delete', preset_index)
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"delete_preset error: {e}")
+            return False
+
+    def get_presets(self, camera_serial):
+        """
+        Get list of available presets for Eufy camera.
+
+        Note: Eufy cameras have 4 fixed preset slots (0-3).
+        The API doesn't return which slots are actually configured,
+        so we return all 4 slots with generic names.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            list: List of preset dicts with 'token' (index) and 'name'
+        """
+        # Eufy has 4 fixed preset slots - we can't query which are configured
+        # Return all 4 with generic names
+        return [
+            {'token': 0, 'name': 'Preset 1'},
+            {'token': 1, 'name': 'Preset 2'},
+            {'token': 2, 'name': 'Preset 3'},
+            {'token': 3, 'name': 'Preset 4'},
+        ]
+
     def _correct_direction(self, camera_serial, direction, device_manager):
         """Correct direction based on camera orientation"""
         try:

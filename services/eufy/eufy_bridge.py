@@ -133,30 +133,40 @@ class EufyBridge:
     
     async def _execute_ptz_command(self, camera_serial, direction):
         """Execute PTZ command with automatic stop after duration"""
+        print(f"[EUFY PTZ CMD] Starting: serial={camera_serial}, direction={direction}")
+
         if not self.is_ready():
+            print(f"[EUFY PTZ CMD] ERROR: Bridge not ready!")
             raise Exception("Bridge not ready")
-        
+
         direction_code = self.directions.get(direction)
         if direction_code is None:
+            print(f"[EUFY PTZ CMD] ERROR: Invalid direction: {direction}")
             raise Exception(f"Invalid direction: {direction}")
-        
+
+        print(f"[EUFY PTZ CMD] Direction code: {direction_code}, connecting to {self.bridge_url}")
+
         try:
             async with websockets.connect(self.bridge_url, open_timeout=5) as ws:
+                print(f"[EUFY PTZ CMD] WebSocket connected")
+
                 # Set API schema version
                 await ws.send(json.dumps({
                     "messageId": "schema",
                     "command": "set_api_schema",
                     "schemaVersion": 21
                 }))
-                await ws.recv()
-                
+                schema_resp = await ws.recv()
+                print(f"[EUFY PTZ CMD] Schema response: {schema_resp}")
+
                 # Start listening
                 await ws.send(json.dumps({
                     "messageId": "start",
                     "command": "start_listening"
                 }))
-                await ws.recv()
-                
+                listen_resp = await ws.recv()
+                print(f"[EUFY PTZ CMD] Listen response: {listen_resp}")
+
                 # Send PTZ start command
                 cmd = {
                     "messageId": "ptz_start",
@@ -164,59 +174,74 @@ class EufyBridge:
                     "serialNumber": camera_serial,
                     "direction": direction_code
                 }
+                print(f"[EUFY PTZ CMD] Sending PTZ command: {cmd}")
                 await ws.send(json.dumps(cmd))
                 response = await ws.recv()
-                
+                print(f"[EUFY PTZ CMD] PTZ response: {response}")
+
                 start_result = json.loads(response)
                 if not start_result.get("success", False):
+                    print(f"[EUFY PTZ CMD] PTZ start command failed!")
                     return False
-                
+
                 # For 360 degree rotation, don't send stop
                 if direction == '360':
+                    print(f"[EUFY PTZ CMD] 360 rotation - no stop needed")
                     return True
-                
+
                 # Wait for movement duration
                 await asyncio.sleep(0.5)  # 500ms movement
-                
+
                 # Send PTZ stop command
                 stop_cmd = {
-                    "messageId": "ptz_stop", 
+                    "messageId": "ptz_stop",
                     "command": "device.pan_and_tilt",
                     "serialNumber": camera_serial,
                     "direction": 5  # Stop command
                 }
+                print(f"[EUFY PTZ CMD] Sending stop command")
                 await ws.send(json.dumps(stop_cmd))
                 stop_response = await ws.recv()
-                
+                print(f"[EUFY PTZ CMD] Stop response: {stop_response}")
+
+                print(f"[EUFY PTZ CMD] PTZ command completed successfully")
                 return True
-                
+
         except Exception as e:
+            print(f"[EUFY PTZ CMD] Exception: {e}")
             logger.error(f"PTZ command error: {e}")
             return False
 
     def move_camera(self, camera_serial, direction, device_manager=None):
         """Public method to move camera with improved control"""
+        print(f"[EUFY BRIDGE] move_camera called: serial={camera_serial}, direction={direction}")
+
         if not self.is_running():
+            print(f"[EUFY BRIDGE] ERROR: Bridge not running!")
             raise Exception("Bridge not running")
-        
+
         # Apply orientation correction if device_manager is provided
         corrected_direction = direction
         if device_manager:
             corrected_direction = self._correct_direction(camera_serial, direction, device_manager)
-        
+            print(f"[EUFY BRIDGE] Direction after correction: {corrected_direction}")
+
         try:
             # Run async command in event loop
+            print(f"[EUFY BRIDGE] Creating event loop for PTZ command...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(
-                    # self._execute_ptz_command_with_stop(camera_serial, corrected_direction)
+                result = loop.run_until_complete(
                     self._execute_ptz_command(camera_serial, corrected_direction)
                 )
+                print(f"[EUFY BRIDGE] PTZ command result: {result}")
+                return result
             finally:
                 loop.close()
-                
+
         except Exception as e:
+            print(f"[EUFY BRIDGE] Move camera error: {e}")
             logger.error(f"Move camera error: {e}")
             return False
             

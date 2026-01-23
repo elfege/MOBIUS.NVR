@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 22, 2026 23:24 EST*
+*Last updated: January 22, 2026 23:55 EST*
 
 Branch: `timeline_playback_JAN_19_2026_a`
 
@@ -23,7 +23,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 22, 2026 ~23:20 EST)
+## Current Session (January 22, 2026 ~23:20-23:55 EST)
 
 ### Timeline Merged Preview Implementation - VERIFIED COMPLETE
 
@@ -220,6 +220,7 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
   - Requires HomeBase as RTSP relay (station-based streaming)
   - Alternative: P2P streaming via `device.start_livestream` (binary frames)
   - Not implemented yet - needs EufyBridgeClient extension
+  - **User has a HomeBase** - will power it up for next session
 
 **Timeline Playback:**
 

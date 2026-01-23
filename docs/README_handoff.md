@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 22, 2026 22:21 EST*
+*Last updated: January 23, 2026 04:25 EST*
 
 Branch: `main`
 
@@ -23,11 +23,28 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 22, 2026 ~22:00-22:21 EST)
+## Current Session (January 22-23, 2026 ~22:00-04:25 EST)
 
 ### Eufy PTZ Fix - COMPLETED
 
-Continued from earlier session. Fixed multiple bugs preventing Eufy PTZ from working.
+**Root Cause:** Cameras blocked from WAN access in SonicWall firewall. Eufy cameras require cloud connectivity for PTZ command relay - even with `stationIPAddresses` configured for direct P2P data, control commands still route through Eufy cloud.
+
+**Fix Applied:**
+
+1. Added `host` and `mac` fields to all Eufy cameras in `cameras.json`
+2. Updated `eufy_bridge.sh` with `populate_config()` to build `stationIPAddresses` from cameras.json
+3. Added UDP ports 32100/32108 to docker-compose.yml for P2P communication
+4. Changed config path from `/tmp/eufy_bridge.json` to `/app/config/eufy_bridge.json`
+5. Disabled SonicWall BLOCKED_CAMERAS rule to allow cameras WAN access to Eufy cloud
+6. Power cycled cameras to reconnect to Eufy cloud
+
+**PTZ now working after firewall change.**
+
+---
+
+### Earlier Eufy PTZ Fix (same session)
+
+Fixed multiple bugs preventing Eufy PTZ from working.
 
 **Issues Found & Fixed:**
 
@@ -131,10 +148,13 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 
 ## TODO List
 
-**Eufy PTZ - Testing:**
+**Eufy PTZ - Next Steps:**
 
-- [ ] Verify PTZ physically moves cameras after direction mapping fix
-- [ ] Test all directions: up, down, left, right, 360
+- [x] Verify PTZ physically moves cameras - WORKING after firewall fix
+- [x] Test directions: up, down, left, right - WORKING
+- [ ] Implement PTZ presets for Eufy cameras (currently shows 0 presets)
+- [ ] Implement zoom for S350 models (lens switching, not optical zoom)
+- [ ] Investigate doorbell streaming via eufy-security-ws (no RTSP port, but bridge may allow streaming like native app)
 
 **Testing Needed:**
 

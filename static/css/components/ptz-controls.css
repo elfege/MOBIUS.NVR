@@ -139,6 +139,31 @@
     background: rgba(40, 167, 69, 0.8);
 }
 
+/* ============================================================================
+   HOME BUTTON (recalibration/home position)
+   ============================================================================ */
+.ptz-home-controls {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+    max-width: 150px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.ptz-home-btn {
+    flex: 1;
+    aspect-ratio: auto;
+    height: 32px;
+    max-width: 80px;
+    background: rgba(255, 193, 7, 0.6);
+}
+
+.ptz-btn[data-direction="home"]:hover {
+    background: rgba(255, 193, 7, 0.8);
+}
+
 /* Hide PTZ controls in grid view on touch devices (iPhone, iPad, Android)
    PTZ remains available in fullscreen mode where it's more useful */
 @media (hover: none) {

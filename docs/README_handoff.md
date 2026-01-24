@@ -37,6 +37,13 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - Added new recalibration button with `fa-sync-alt` icon
 - Files: `ptz-controller.js:360-362`, `streams.html:194-198`, `ptz-controls.css`
 
+### Recalibration Backend Support - DONE
+**Commit**: `032ccc1`
+- ONVIF: Changed `direction == 'home'` to `direction == 'recalibrate'` in handler
+- Eufy: Added `'recalibrate': 0` mapping (same as ROTATE360)
+- Baichuan: No native support, falls back to ONVIF for Reolink cameras
+- Files: `onvif_ptz_handler.py:44,141`, `eufy_bridge.py:34`
+
 ### PTZ Reversal Double-Action Bug - DONE
 **Commit**: `5a5ab17`
 

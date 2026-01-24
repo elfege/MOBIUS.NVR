@@ -552,18 +552,10 @@ export class MultiStreamManager {
             this.stopIndividualStream(cameraId, $streamItem, cameraType, streamType, { userInitiated: true });
         });
 
-        // PTZ control handlers
-        this.$container.on('click', '.ptz-btn', (e) => {
-            e.stopPropagation();
-            const $button = $(e.target);
-            const direction = $button.data('direction');
-            const $streamItem = $button.closest('.stream-item');
-
-            if (direction && $streamItem.length) {
-                const cameraSerial = $streamItem.data('camera-serial');
-                this.executePTZ(cameraSerial, direction, $button);
-            }
-        });
+        // PTZ control handlers - REMOVED (Jan 24, 2026)
+        // This duplicate handler was causing double-action bug when Rev Pan was enabled.
+        // PTZ is now handled exclusively by ptz-controller.js which applies reversal correctly.
+        // See: ptz-controller.js:339 for the authoritative mousedown/touchstart handler.
 
         // Refresh stream handler
         this.$container.on('click', '.refresh-stream-btn', (e) => {

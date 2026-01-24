@@ -2897,6 +2897,64 @@ def api_ptz_update_reversal(camera_serial):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/camera/<camera_serial>/reboot', methods=['POST'])
+@csrf.exempt
+def api_camera_reboot(camera_serial):
+    """
+    Reboot a camera.
+
+    Requires JSON body with confirm='REBOOT' to prevent accidental reboots.
+    Supports Reolink (Baichuan), Amcrest (ONVIF), and other ONVIF cameras.
+    """
+    try:
+        # Require confirmation to prevent accidental reboots
+        data = request.get_json() or {}
+        if data.get('confirm') != 'REBOOT':
+            return jsonify({
+                'success': False,
+                'error': 'Confirmation required. Send {"confirm": "REBOOT"} to proceed.'
+            }), 400
+
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        # Check if camera supports reboot
+        capabilities = camera.get('capabilities', [])
+        if 'reboot' not in capabilities:
+            return jsonify({
+                'success': False,
+                'error': 'Camera does not support reboot capability'
+            }), 400
+
+        camera_type = camera.get('type', '').lower()
+        logger.info(f"[Reboot] Initiating reboot for {camera_serial} (type: {camera_type})")
+
+        # Route to appropriate handler based on camera type
+        if camera_type == 'reolink':
+            from services.ptz.baichuan_ptz_handler import reboot_camera_baichuan
+            success, message = reboot_camera_baichuan(camera_serial, camera)
+        elif camera_type in ('amcrest', 'sv3c'):
+            from services.onvif.onvif_ptz_handler import reboot_camera
+            success, message = reboot_camera(camera_serial, camera)
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'Reboot not implemented for camera type: {camera_type}'
+            }), 400
+
+        if success:
+            logger.info(f"[Reboot] {camera_serial}: {message}")
+            return jsonify({'success': True, 'message': message})
+        else:
+            logger.error(f"[Reboot] {camera_serial}: {message}")
+            return jsonify({'success': False, 'error': message}), 500
+
+    except Exception as e:
+        logger.error(f"Camera reboot error for {camera_serial}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 ########################################################
 #           📹 RECORDING API ROUTES 📹
 ########################################################

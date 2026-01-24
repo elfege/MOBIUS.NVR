@@ -164,6 +164,19 @@
     background: rgba(255, 193, 7, 0.8);
 }
 
+/* Recalibration button styling */
+.ptz-recal-btn {
+    flex: 1;
+    aspect-ratio: auto;
+    height: 32px;
+    max-width: 80px;
+    background: rgba(108, 117, 125, 0.6);
+}
+
+.ptz-btn[data-direction="recalibrate"]:hover {
+    background: rgba(108, 117, 125, 0.8);
+}
+
 /* Hide PTZ controls in grid view on touch devices (iPhone, iPad, Android)
    PTZ remains available in fullscreen mode where it's more useful */
 @media (hover: none) {

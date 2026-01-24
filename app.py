@@ -206,9 +206,18 @@ try:
         import requests
 
         # Collect cameras that need MJPEG pre-warming
+        # Skip cameras with stream_type: MJPEG - they don't publish to MediaMTX,
+        # so there's no RTSP stream to tap. These cameras use direct MJPEG capture
+        # via reolink_mjpeg_capture_service or similar vendor-specific services.
         cameras_to_prewarm = {}
         for camera_serial, camera_config in camera_repo.get_all_cameras().items():
             mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
+            stream_type = camera_config.get('stream_type', 'HLS').upper()
+
+            # Skip MJPEG stream_type cameras - they don't have MediaMTX streams to tap
+            if stream_type == 'MJPEG':
+                continue
+
             if mjpeg_source == 'mediaserver':
                 cameras_to_prewarm[camera_serial] = camera_config
 

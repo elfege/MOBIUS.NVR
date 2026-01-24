@@ -358,8 +358,16 @@ export class PTZController {
                 // Explicit stop button pressed
                 this.stopMovement();
             } else if (direction === 'home') {
-                // Home = go to preset 0 (not ONVIF GotoHomePosition)
-                this.gotoPreset(0, 'Home');
+                // Home = go to first preset in the list (not ONVIF GotoHomePosition)
+                const serial = this.currentCamera?.serial;
+                const presets = serial ? this.presets[serial] : null;
+                if (presets && presets.length > 0) {
+                    const firstPreset = presets[0];
+                    this.gotoPreset(firstPreset.token, firstPreset.name || 'Home');
+                } else {
+                    console.warn('[PTZ] No presets available for home button');
+                    this.showFeedback('No presets configured', 'warning');
+                }
             } else if (direction === '360' || direction === 'recalibrate') {
                 // Discrete commands (360 rotation, recalibration) - single execution
                 this.executeMovement(direction);

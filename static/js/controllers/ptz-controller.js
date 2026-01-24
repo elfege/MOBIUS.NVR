@@ -357,12 +357,14 @@ export class PTZController {
             if (direction === 'stop') {
                 // Explicit stop button pressed
                 this.stopMovement();
-            } else if (direction && direction !== '360') {
+            } else if (direction === '360' || direction === 'home') {
+                // Discrete commands (360 rotation, home position) - single execution
+                this.executeMovement(direction);
+            } else if (direction) {
+                // Continuous movement directions (left, right, up, down, zoom)
                 this.ptzTouchActive = true;
                 this.activeDirection = direction;
                 this.startMovement(direction);
-            } else if (direction === '360') {
-                this.executeMovement(direction);
             }
         });
 

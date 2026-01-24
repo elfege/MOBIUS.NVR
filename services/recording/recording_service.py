@@ -16,7 +16,7 @@ import logging
 import time
 import shutil
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional, List, Tuple
 from pathlib import Path
 
@@ -820,7 +820,9 @@ class RecordingService:
             metadata = {
                 'camera_id': camera_id,
                 'camera_name': recording['camera_name'],
-                'timestamp': datetime.now().isoformat(),
+                # Use UTC timestamp - PostgreSQL stores as TIMESTAMPTZ and
+                # timeline_service correctly parses with +00:00 suffix
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'file_path': str(recording['recording_path']),
                 'file_name': f"{recording_id}.mp4",
                 'storage_tier': 'recent',  # All recordings start in 'recent' tier
@@ -851,9 +853,10 @@ class RecordingService:
                 recording = self.active_recordings.get(recording_id)
             
             update_data = {
-                'end_timestamp': datetime.now().isoformat(),
+                # Use UTC timestamps for consistency with start timestamp
+                'end_timestamp': datetime.now(timezone.utc).isoformat(),
                 'status': status,
-                'updated_at': datetime.now().isoformat()
+                'updated_at': datetime.now(timezone.utc).isoformat()
             }
             
             # Add file size if recording completed successfully

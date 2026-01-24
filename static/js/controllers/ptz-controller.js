@@ -357,8 +357,11 @@ export class PTZController {
             if (direction === 'stop') {
                 // Explicit stop button pressed
                 this.stopMovement();
-            } else if (direction === '360' || direction === 'home') {
-                // Discrete commands (360 rotation, home position) - single execution
+            } else if (direction === 'home') {
+                // Home = go to preset 0 (not ONVIF GotoHomePosition)
+                this.gotoPreset(0, 'Home');
+            } else if (direction === '360' || direction === 'recalibrate') {
+                // Discrete commands (360 rotation, recalibration) - single execution
                 this.executeMovement(direction);
             } else if (direction) {
                 // Continuous movement directions (left, right, up, down, zoom)

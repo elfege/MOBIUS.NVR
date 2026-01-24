@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 16:37 EST*
+*Last updated: January 24, 2026 17:15 EST*
 
 Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
@@ -23,7 +23,26 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session Continued (January 24, 2026 ~15:30-16:37 EST)
+## Current Session Continued (January 24, 2026 ~15:30-17:15 EST)
+
+### MJPEG Restart Loop Fix - DONE
+
+**Commit**: `897389e`
+
+**Root Cause**: Cameras with `stream_type: MJPEG` don't publish to MediaMTX (they use direct vendor MJPEG capture). But `mjpeg_source` defaults to `'mediaserver'`, causing `auto_start_mediaserver_mjpeg()` to try tapping non-existent MediaMTX RTSP paths → 400/404 errors → DEGRADED state → watchdog restart loop.
+
+**Affected cameras** (all Reolink with `stream_type: MJPEG`):
+
+- 95270001Q3D82PF7 (MEBO)
+- 95270000D1B5FBEW (Former CAM STAIRS)
+- 95270001CSHLPO74 (Terrace South)
+- 95270001NT3KNA67 (LAUNDRY ROOM)
+
+**Fix**: Skip `stream_type == 'MJPEG'` cameras in `auto_start_mediaserver_mjpeg()` pre-warming loop.
+
+**Note**: `true_mjpeg` is a deprecated vestigial field - not used in any Python code. The plan doc (`README_plan_for_user_based_settings_implementation.md`) confirms it was replaced by `mjpeg_source`.
+
+---
 
 ### Menu Panel Mutual Exclusivity - DONE
 **Commit**: `f408450`

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 17:45 EST*
+*Last updated: January 24, 2026 18:10 EST*
 
 Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
@@ -23,7 +23,34 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session Continued (January 24, 2026 ~15:30-17:45 EST)
+## Context Compaction Note (January 24, 2026 ~17:48 EST)
+
+Context compaction occurred. Session continued on same branch.
+
+---
+
+## Current Session Continued (January 24, 2026 ~15:30-18:10 EST)
+
+### Timeline Playback Timestamp Bug - DONE
+**Commit**: `5918a11`
+
+**Symptom**: Timeline playback showed timestamps 4-5 hours off from actual recording time.
+- Camera timestamp: `16:55:43` (Amcrest)
+- Timeline displayed: `12:54:30 PM` instead of ~5:00 PM
+
+**Root Cause**: `recording_service.py` used `datetime.now().isoformat()` which produces naive datetimes (no timezone info). PostgreSQL (configured with `timezone=UTC`) interpreted these as UTC, causing a 5-hour offset when frontend converted back to local time.
+
+**Fix**: Use `datetime.now(timezone.utc).isoformat()` for all database timestamps:
+
+- `services/recording/recording_service.py:823` - `timestamp`
+- `services/recording/recording_service.py:854-856` - `end_timestamp`, `updated_at`
+- `services/recording/storage_migration.py:449` - `archived_at`
+
+**Note**: Existing recordings in the database will still have incorrect timestamps. New recordings will be correct. A migration script could be written to fix historical data if needed.
+
+---
+
+### MJPEG Restart Loop Fix - DONE
 
 ### MJPEG Restart Loop Fix - DONE
 

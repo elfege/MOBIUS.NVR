@@ -15,15 +15,59 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 22, 2026 23:55 EST*
+*Last updated: January 24, 2026 00:48 EST*
 
-Branch: `timeline_playback_JAN_19_2026_a`
+Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 22, 2026 ~23:20-23:55 EST)
+## Current Session (January 24, 2026 ~00:15-00:48 EST)
+
+### PTZ Reversal Settings for Upside-Down Cameras - COMPLETE
+
+User requested ability to reverse PTZ pan/tilt controls for cameras mounted upside down. Eufy cameras don't respect native app mirror settings for PTZ.
+
+**Implementation:**
+
+1. **Added `reversed_pan` and `reversed_tilt` to cameras.json** - All 19 cameras now have these boolean fields (defaulting to false)
+
+2. **Backend `camera_repository.py` methods:**
+   - `update_camera_ptz_reversal(serial, reversed_pan, reversed_tilt)` - Updates settings and saves to JSON
+   - `get_camera_ptz_reversal(serial)` - Returns dict with both settings
+
+3. **API Endpoints** - `app.py:2823-2888`
+   - `GET /api/ptz/<serial>/reversal` - Get current reversal settings
+   - `POST /api/ptz/<serial>/reversal` - Update settings (accepts `reversed_pan` and/or `reversed_tilt`)
+
+4. **Frontend `ptz-controller.js`:**
+   - Replaced localStorage with API-based persistence
+   - `loadReversalSettings(serial)` - Fetches from API on load
+   - `updateReversalSettings(serial, pan, tilt)` - Saves to API
+   - `applyReversal(serial, direction)` - Corrects direction before sending command
+   - Staggered loading (200ms) to avoid overwhelming server on page load
+
+5. **HTML `templates/streams.html:194-203`:**
+   - Added "Rev. Pan" and "Rev. Tilt" checkboxes to PTZ controls
+
+6. **CSS `static/css/components/ptz-controls.css:157-216`:**
+   - Styled checkbox container with flex-wrap for two checkboxes
+   - Custom checkbox appearance with green checkmark when enabled
+
+**Code Flow:**
+
+```text
+User clicks direction → startMovement(direction)
+  → applyReversal(serial, direction) [swaps left↔right or up↔down if enabled]
+  → fetch(`/api/ptz/${serial}/${correctedDirection}`)
+```
+
+**Commit:** `d3adaf6` - Add PTZ reversal settings for upside-down mounted cameras
+
+---
+
+## Previous Session (January 22, 2026 ~23:20-23:55 EST)
 
 ### Timeline Merged Preview Implementation - VERIFIED COMPLETE
 
@@ -209,9 +253,12 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
   - **Note:** May need to capture DNS queries from a camera to find all required domains
   - **SonicWall version:** 6.5 firmware
 
-**Eufy PTZ Features (Jan 22, 2026 ~23:30 EST):**
+**Eufy PTZ Features (Jan 22-24, 2026):**
 
 - [x] PTZ presets implemented - 4 slots (0-3), goto/save/delete
+- [x] PTZ reversal settings for upside-down cameras - DONE (Jan 24, 2026)
+  - Rev. Pan and Rev. Tilt checkboxes in PTZ controls UI
+  - Settings stored in cameras.json, persisted via API
 - [x] Research complete: Zoom/lens switching NOT available in eufy-security-client API
   - Zoom field is hardcoded to 1.0 in station.js
   - Lens switching (wide/telephoto) not exposed

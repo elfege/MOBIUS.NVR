@@ -191,36 +191,45 @@ export class PTZController {
 
     /**
      * Update PTZ reversal settings via API.
+     * Uses optimistic update - cache is updated immediately, API call is fire-and-forget.
      * @param {string} serial - Camera serial number
      * @param {boolean|null} reversedPan - Reverse pan setting (null to skip)
      * @param {boolean|null} reversedTilt - Reverse tilt setting (null to skip)
      */
     async updateReversalSettings(serial, reversedPan = null, reversedTilt = null) {
+        // Optimistic update - apply immediately so reversal works without waiting for API
+        if (!this.reversePanCache[serial]) {
+            this.reversePanCache[serial] = { reversed_pan: false, reversed_tilt: false };
+        }
+        if (reversedPan !== null) {
+            this.reversePanCache[serial].reversed_pan = reversedPan;
+        }
+        if (reversedTilt !== null) {
+            this.reversePanCache[serial].reversed_tilt = reversedTilt;
+        }
+        console.log(`[PTZ] Reversal cache updated for ${serial}: pan=${this.reversePanCache[serial].reversed_pan}, tilt=${this.reversePanCache[serial].reversed_tilt}`);
+
+        // Fire-and-forget API call for persistence (non-blocking)
         const payload = {};
         if (reversedPan !== null) payload.reversed_pan = reversedPan;
         if (reversedTilt !== null) payload.reversed_tilt = reversedTilt;
 
-        try {
-            const response = await fetch(`/api/ptz/${serial}/reversal`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json();
-
+        fetch(`/api/ptz/${serial}/reversal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
             if (data.success) {
-                // Update cache with response
-                this.reversePanCache[serial] = {
-                    reversed_pan: data.reversed_pan,
-                    reversed_tilt: data.reversed_tilt
-                };
-                console.log(`[PTZ] Updated reversal for ${serial}: pan=${data.reversed_pan}, tilt=${data.reversed_tilt}`);
+                console.log(`[PTZ] Reversal persisted for ${serial}`);
             } else {
-                console.error(`[PTZ] Failed to update reversal: ${data.error}`);
+                console.warn(`[PTZ] Failed to persist reversal: ${data.error}`);
             }
-        } catch (e) {
-            console.error(`[PTZ] Error updating reversal settings for ${serial}:`, e);
-        }
+        })
+        .catch(e => {
+            console.warn(`[PTZ] Error persisting reversal settings for ${serial}:`, e);
+        });
     }
 
     /**

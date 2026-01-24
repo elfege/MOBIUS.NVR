@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 00:48 EST*
+*Last updated: January 24, 2026 09:39 EST*
 
 Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
@@ -23,7 +23,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 24, 2026 ~00:15-00:48 EST)
+## Current Session (January 24, 2026 ~00:15-09:39 EST)
 
 ### PTZ Reversal Settings for Upside-Down Cameras - COMPLETE
 
@@ -44,7 +44,7 @@ User requested ability to reverse PTZ pan/tilt controls for cameras mounted upsi
 4. **Frontend `ptz-controller.js`:**
    - Replaced localStorage with API-based persistence
    - `loadReversalSettings(serial)` - Fetches from API on load
-   - `updateReversalSettings(serial, pan, tilt)` - Saves to API
+   - `updateReversalSettings(serial, pan, tilt)` - **Uses optimistic update pattern** (cache updated immediately, API call is fire-and-forget)
    - `applyReversal(serial, direction)` - Corrects direction before sending command
    - Staggered loading (200ms) to avoid overwhelming server on page load
 
@@ -63,7 +63,17 @@ User clicks direction → startMovement(direction)
   → fetch(`/api/ptz/${serial}/${correctedDirection}`)
 ```
 
-**Commit:** `d3adaf6` - Add PTZ reversal settings for upside-down mounted cameras
+**Optimistic Update Pattern (added 09:39 EST):**
+
+- Checkbox change immediately updates in-memory cache
+- Reversal works instantly without waiting for API
+- API call runs in background for persistence (non-blocking)
+- Works even if container hasn't been restarted (API endpoints not yet available)
+
+**Commits:**
+
+- `d3adaf6` - Add PTZ reversal settings for upside-down mounted cameras
+- `ecdd00f` - PTZ reversal: use optimistic update for non-blocking persistence
 
 ---
 

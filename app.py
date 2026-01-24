@@ -205,21 +205,25 @@ try:
         """
         import requests
 
-        # Collect cameras that need MJPEG pre-warming
-        # Skip cameras with stream_type: MJPEG - they don't publish to MediaMTX,
-        # so there's no RTSP stream to tap. These cameras use direct MJPEG capture
-        # via reolink_mjpeg_capture_service or similar vendor-specific services.
+        # Collect cameras that need MJPEG pre-warming (MediaMTX tap)
+        #
+        # Only cameras that publish to MediaMTX can be tapped for MJPEG:
+        # - LL_HLS, HLS, WEBRTC, NEOLINK → publish to MediaMTX → can tap
+        # - MJPEG, NEOLINK → don't publish to MediaMTX → use vendor-specific capture
+        #
+        # Vendor-specific MJPEG services:
+        # - Reolink MJPEG: snapshot polling via reolink_mjpeg_capture_service
+        # - Amcrest: true MJPEG stream via /cgi-bin/mjpg/video.cgi
         cameras_to_prewarm = {}
         for camera_serial, camera_config in camera_repo.get_all_cameras().items():
-            mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
             stream_type = camera_config.get('stream_type', 'HLS').upper()
 
-            # Skip MJPEG stream_type cameras - they don't have MediaMTX streams to tap
-            if stream_type == 'MJPEG':
+            # Only pre-warm cameras that publish to MediaMTX
+            if stream_type in ('MJPEG', 'NEOLINK'):
+                # These don't publish to MediaMTX - skip
                 continue
 
-            if mjpeg_source == 'mediaserver':
-                cameras_to_prewarm[camera_serial] = camera_config
+            cameras_to_prewarm[camera_serial] = camera_config
 
         if not cameras_to_prewarm:
             print("📭 No mediaserver MJPEG cameras to pre-warm")
@@ -1539,11 +1543,9 @@ def api_mediaserver_stream_mjpeg(camera_id):
         if not camera_config:
             return jsonify({'error': 'Camera not found'}), 404
 
-        # Verify this camera should use mediaserver MJPEG
-        mjpeg_source = camera_config.get('mjpeg_source', 'mediaserver')
-        if mjpeg_source != 'mediaserver':
-            logger.warning(f"Camera {camera_id} has mjpeg_source='{mjpeg_source}', not 'mediaserver'")
-            # Still allow it - frontend may be forcing mediaserver for portable devices
+        # Note: This endpoint taps MediaMTX RTSP for MJPEG frames.
+        # Only works for cameras that publish to MediaMTX (LL_HLS, HLS, WEBRTC).
+        # Cameras with stream_type: MJPEG use vendor-specific endpoints instead.
 
         # Add client to capture service
         if not mediaserver_mjpeg_service.add_client(camera_id, camera_config):

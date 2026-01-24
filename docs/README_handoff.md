@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 10:11 EST*
+*Last updated: January 24, 2026 16:15 EST*
 
 Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
@@ -23,7 +23,42 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 24, 2026 ~00:15-10:11 EST)
+## Current Session Continued (January 24, 2026 ~15:30-16:15 EST)
+
+### PTZ Reversal Double-Action Bug - ROOT CAUSE FOUND & FIX APPLIED
+
+**Symptom**: When Rev Pan checkbox is checked, camera moves in correct (reversed) direction, THEN moves backward (original direction). Affects BOTH Eufy AND Amcrest cameras.
+
+**Root Cause**: DUPLICATE EVENT HANDLERS on `.ptz-btn` buttons!
+
+Two separate files bind handlers to PTZ buttons that BOTH fire on the same button press:
+
+1. **`ptz-controller.js:339`** - `mousedown/touchstart` handler:
+   - Calls `applyReversal()` → sends REVERSED direction
+   - Example: User clicks "left" with Rev Pan → sends "right"
+
+2. **`stream.js:556`** - `click` handler:
+   - Calls `executePTZ()` directly → NO reversal applied
+   - Example: Same click → sends "left" (original)
+
+**Event firing order**:
+1. `mousedown` → ptz-controller.js → reversed direction → camera moves correctly
+2. `mouseup` → triggers stop
+3. `click` → stream.js → original direction → camera moves backward!
+
+**Fix Applied**: Removed duplicate `.ptz-btn` click handler from `stream.js:556-565`
+
+**Files Modified**:
+
+| File | Change |
+|------|--------|
+| `static/js/streaming/stream.js:556-565` | REMOVED duplicate PTZ click handler |
+
+**Commit**: `5a5ab17` - Fix PTZ reversal double-action: remove duplicate click handler in stream.js
+
+---
+
+## Earlier Session (January 24, 2026 ~00:15-10:11 EST)
 
 ### PTZ & Camera Control Enhancements - COMPLETE
 

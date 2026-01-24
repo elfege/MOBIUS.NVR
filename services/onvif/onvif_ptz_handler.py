@@ -40,8 +40,8 @@ class ONVIFPTZHandler:
         'down': (0, -1, 0),   # tilt down
         'zoom_in': (0, 0, 1), # zoom in
         'zoom_out': (0, 0, -1), # zoom out
-        'stop': (0, 0, 0),     # stop all movement
-        'home': None          # go to home position (handled separately)
+        'stop': (0, 0, 0),          # stop all movement
+        'recalibrate': None         # triggers ONVIF GotoHomePosition (handled separately)
     }
     
     # Credential providers (initialized on first use)
@@ -137,8 +137,8 @@ class ONVIFPTZHandler:
             if not profile_token:
                 return False, "Could not get media profile token"
 
-            # Handle home position separately
-            if direction == 'home':
+            # Handle recalibration (triggers ONVIF GotoHomePosition which does auto-tour)
+            if direction == 'recalibrate':
                 return cls.goto_home_position(ptz_service, profile_token, camera_serial)
 
             # Get movement vector

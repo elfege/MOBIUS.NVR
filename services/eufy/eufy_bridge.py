@@ -31,11 +31,12 @@ class EufyBridge:
         # ROTATE360=0, LEFT=1, RIGHT=2, UP=3, DOWN=4
         # NOTE: There is NO stop command - cameras auto-stop after movement
         self.directions = {
-            '360': 0,     # ROTATE360
-            'left': 1,    # LEFT
-            'right': 2,   # RIGHT
-            'up': 3,      # UP
-            'down': 4,    # DOWN
+            '360': 0,           # ROTATE360
+            'recalibrate': 0,   # ROTATE360 (alias for recalibration)
+            'left': 1,          # LEFT
+            'right': 2,         # RIGHT
+            'up': 3,            # UP
+            'down': 4,          # DOWN
         }
 
         # PTZ preset positions (4 slots available: 0-3)

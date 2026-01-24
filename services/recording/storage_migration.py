@@ -18,7 +18,7 @@ import logging
 import subprocess
 import requests
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 
@@ -446,7 +446,7 @@ class StorageMigrationService:
                 db_updated = self._update_recording(recording_id, {
                     'storage_tier': 'archive',
                     'file_path': str(dest_path),
-                    'archived_at': datetime.now().isoformat()
+                    'archived_at': datetime.now(timezone.utc).isoformat()
                 })
 
                 if db_updated:

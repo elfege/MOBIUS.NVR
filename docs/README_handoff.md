@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 09:39 EST*
+*Last updated: January 24, 2026 10:11 EST*
 
 Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
@@ -23,9 +23,11 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session (January 24, 2026 ~00:15-09:39 EST)
+## Current Session (January 24, 2026 ~00:15-10:11 EST)
 
-### PTZ Reversal Settings for Upside-Down Cameras - COMPLETE
+### PTZ & Camera Control Enhancements - COMPLETE
+
+#### 1. PTZ Reversal Settings for Upside-Down Cameras
 
 User requested ability to reverse PTZ pan/tilt controls for cameras mounted upside down. Eufy cameras don't respect native app mirror settings for PTZ.
 
@@ -70,10 +72,63 @@ User clicks direction → startMovement(direction)
 - API call runs in background for persistence (non-blocking)
 - Works even if container hasn't been restarted (API endpoints not yet available)
 
+#### 2. PTZ Double-Action Bug Fix (10:00 EST)
+
+**Root Cause:** Double direction correction - `eufy_bridge.py` had legacy `_correct_direction()` based on `image_mirrored`, while frontend had new `applyReversal()` based on checkbox. Double swap = no change.
+
+**Fix:** Removed backend correction from `eufy_bridge.py:move_camera()`. Direction correction now handled exclusively in frontend via `ptz-controller.js applyReversal()`.
+
+**Commit:** `0de300b` - Fix PTZ double-action: remove backend direction correction for Eufy
+
+#### 3. Stream Control Button Mutual Exclusivity (10:02 EST)
+
+**Issue:** Fullscreen and expand buttons could both be active simultaneously.
+
+**Fix:** `expandCamera()` now calls `closeFullscreen()` before entering expanded mode.
+
+**Commit:** `3d5afbd` - Fix stream control button mutual exclusivity
+
+#### 4. PTZ Home Button for Calibration (10:05 EST)
+
+**Backend:** Already existed (`POST /api/ptz/{serial}/home` → ONVIF GotoHomePosition)
+
+**Frontend added:**
+
+- HTML: Home button in PTZ controls (`templates/streams.html`)
+- CSS: Yellow/gold styling (`ptz-controls.css`)
+- JS: Handler treats 'home' as discrete command like '360' (`ptz-controller.js:357-366`)
+
+**Commit:** `323f115` - Add PTZ Home button for camera recalibration
+
+#### 5. Camera Reboot Functionality (10:08 EST)
+
+**Backend:**
+
+- `services/onvif/onvif_ptz_handler.py:reboot_camera()` - ONVIF SystemReboot
+- `services/ptz/baichuan_ptz_handler.py:reboot_camera_baichuan()` - Reolink via reolink_aio
+- `app.py: POST /api/camera/{serial}/reboot` - Requires `confirm='REBOOT'`
+
+**Frontend:**
+
+- Reboot button in stream controls (only if 'reboot' in capabilities)
+- JS handler with confirmation dialog
+
+**cameras.json:** Added 'reboot' to capabilities for 8 cameras (7 Reolink, 1 Amcrest)
+
 **Commits:**
+
+- `f02a5b7` - Add camera reboot functionality
+- `ed55e73` - Add reboot capability to Reolink and Amcrest cameras
+
+**All Session Commits:**
 
 - `d3adaf6` - Add PTZ reversal settings for upside-down mounted cameras
 - `ecdd00f` - PTZ reversal: use optimistic update for non-blocking persistence
+- `0de300b` - Fix PTZ double-action: remove backend direction correction for Eufy
+- `3d5afbd` - Fix stream control button mutual exclusivity
+- `323f115` - Add PTZ Home button for camera recalibration
+- `f02a5b7` - Add camera reboot functionality
+- `ed55e73` - Add reboot capability to Reolink and Amcrest cameras
 
 ---
 
@@ -295,6 +350,14 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 
 - [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline
+- [ ] Two-way audio (major feature - requires WebRTC sendrecv, getUserMedia, ONVIF AudioBackChannel)
+
+**Power Management (Future):**
+
+- [ ] Add `power_supply` field to cameras.json: 'hubitat', 'poe', 'none'
+- [ ] Hubitat integration for Eufy power control (add HUBITAT_API_TOKEN + HUBITAT_API_APP_NUMBER to AWS secrets)
+- [ ] Create separate power management module (backend + frontend)
+- [ ] PoE switch integration for supported cameras
 
 **Deferred:**
 

@@ -695,7 +695,7 @@ export class MultiStreamManager {
         // ============================================================================
 
         // Click on stream item (not buttons) to expand
-        this.$container.on('click', '.stream-item', (e) => {
+        this.$container.on('click', '.stream-item', async (e) => {
             // Don't expand if clicking on a button or interactive element
             if ($(e.target).closest('button, .ptz-controls, .stream-controls, a, input, select').length) {
                 return;
@@ -711,7 +711,7 @@ export class MultiStreamManager {
             if ($streamItem.hasClass('expanded')) {
                 this.collapseExpandedCamera();
             } else {
-                this.expandCamera($streamItem);
+                await this.expandCamera($streamItem);
             }
         });
 
@@ -2563,8 +2563,15 @@ export class MultiStreamManager {
      * Shows all control buttons for easy access
      * @param {jQuery} $streamItem - The stream item to expand
      */
-    expandCamera($streamItem) {
-        // First collapse any already expanded camera
+    async expandCamera($streamItem) {
+        // First exit fullscreen if active (mutual exclusivity with fullscreen mode)
+        const $fullscreenItem = $('.stream-item.css-fullscreen');
+        if ($fullscreenItem.length > 0) {
+            console.log('[Expanded] Exiting fullscreen before expanding');
+            await this.closeFullscreen();
+        }
+
+        // Then collapse any already expanded camera
         this.collapseExpandedCamera();
 
         const cameraId = $streamItem.data('camera-serial');

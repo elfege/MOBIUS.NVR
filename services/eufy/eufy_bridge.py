@@ -221,18 +221,21 @@ class EufyBridge:
             return False
 
     def move_camera(self, camera_serial, direction, device_manager=None):
-        """Public method to move camera with improved control"""
+        """Public method to move camera with improved control.
+
+        Note: Direction correction is now handled in the frontend via the
+        'Rev. Pan' and 'Rev. Tilt' checkboxes (ptz-controller.js applyReversal).
+        The legacy _correct_direction method is kept but no longer called to
+        avoid double-correction issues.
+        """
         print(f"[EUFY BRIDGE] move_camera called: serial={camera_serial}, direction={direction}")
 
         if not self.is_running():
             print(f"[EUFY BRIDGE] ERROR: Bridge not running!")
             raise Exception("Bridge not running")
 
-        # Apply orientation correction if device_manager is provided
-        corrected_direction = direction
-        if device_manager:
-            corrected_direction = self._correct_direction(camera_serial, direction, device_manager)
-            print(f"[EUFY BRIDGE] Direction after correction: {corrected_direction}")
+        # Direction correction now handled in frontend (ptz-controller.js applyReversal)
+        # to avoid double-correction when both image_mirrored and reversed_pan are set
 
         try:
             # Run async command in event loop
@@ -241,7 +244,7 @@ class EufyBridge:
             asyncio.set_event_loop(loop)
             try:
                 result = loop.run_until_complete(
-                    self._execute_ptz_command(camera_serial, corrected_direction)
+                    self._execute_ptz_command(camera_serial, direction)
                 )
                 print(f"[EUFY BRIDGE] PTZ command result: {result}")
                 return result

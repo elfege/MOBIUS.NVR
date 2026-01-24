@@ -670,6 +670,54 @@ export class MultiStreamManager {
             }
         });
 
+        // Reboot camera handler (requires confirmation)
+        this.$container.on('click', '.reboot-camera-btn', async (e) => {
+            e.stopPropagation();
+            const $streamItem = $(e.target).closest('.stream-item');
+            const cameraId = $streamItem.data('camera-serial');
+            const cameraName = $streamItem.data('camera-name');
+
+            // Show confirmation dialog
+            const confirmed = window.confirm(
+                `Are you sure you want to reboot "${cameraName}"?\n\n` +
+                `The camera will be offline for approximately 60 seconds.\n` +
+                `All streams from this camera will be interrupted.`
+            );
+
+            if (!confirmed) {
+                console.log(`[Reboot] ${cameraId}: Cancelled by user`);
+                return;
+            }
+
+            console.log(`[Reboot] ${cameraId}: Initiating camera reboot...`);
+            this.setStreamStatus($streamItem, 'loading', 'Rebooting camera...');
+
+            try {
+                const response = await fetch(`/api/camera/${cameraId}/reboot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: 'REBOOT' })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    console.log(`[Reboot] ${cameraId}: ${result.message}`);
+                    this.setStreamStatus($streamItem, 'inactive', 'Camera rebooting...');
+
+                    // Show feedback to user
+                    alert(`Reboot command sent to ${cameraName}.\n\n${result.message}`);
+                } else {
+                    throw new Error(result.error || 'Unknown error');
+                }
+
+            } catch (error) {
+                console.error(`[Reboot] ${cameraId}: Failed - ${error.message}`);
+                this.setStreamStatus($streamItem, 'error', `Reboot failed: ${error.message}`);
+                alert(`Failed to reboot ${cameraName}:\n${error.message}`);
+            }
+        });
+
         // ESC key to exit CSS fullscreen or expanded modal
         $(document).on('keydown', (e) => {
             if (e.key === 'Escape') {

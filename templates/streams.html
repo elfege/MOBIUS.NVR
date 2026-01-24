@@ -156,6 +156,11 @@
                     <button class="stream-btn btn-warning restart-stream-btn" title="Restart FFmpeg (backend)">
                         <i class="fas fa-redo-alt"></i>
                     </button>
+                    {% if 'reboot' in info.capabilities %}
+                    <button class="stream-btn btn-danger reboot-camera-btn" title="Reboot camera (requires confirmation)">
+                        <i class="fas fa-power-off"></i>
+                    </button>
+                    {% endif %}
                 </div>
             </div>
 

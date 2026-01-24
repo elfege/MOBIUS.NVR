@@ -573,3 +573,60 @@ def get_camera_presets(camera_serial: str, camera_config: Dict) -> Tuple[bool, L
 def goto_camera_preset(camera_serial: str, preset_token: str, camera_config: Dict) -> Tuple[bool, str]:
     """Convenience function to go to preset"""
     return ONVIFPTZHandler.goto_preset(camera_serial, preset_token, camera_config)
+
+
+def reboot_camera(camera_serial: str, camera_config: Dict) -> Tuple[bool, str]:
+    """
+    Reboot a camera via ONVIF SystemReboot command.
+
+    Args:
+        camera_serial: Camera serial number
+        camera_config: Camera configuration dict with host, credentials, etc.
+
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    try:
+        logger.info(f"Initiating ONVIF reboot for camera {camera_serial}")
+
+        # Get credentials based on camera type
+        camera_type = camera_config.get('type', '').lower()
+        host = camera_config.get('host')
+
+        if not host:
+            return False, "Camera host not configured"
+
+        # Get credentials
+        if camera_type == 'amcrest':
+            if ONVIFPTZHandler._amcrest_provider is None:
+                ONVIFPTZHandler._amcrest_provider = AmcrestCredentialProvider()
+            username, password = ONVIFPTZHandler._amcrest_provider.get_credentials()
+        elif camera_type == 'reolink':
+            if ONVIFPTZHandler._reolink_provider is None:
+                ONVIFPTZHandler._reolink_provider = ReolinkCredentialProvider()
+            username, password = ONVIFPTZHandler._reolink_provider.get_credentials()
+        else:
+            return False, f"Unsupported camera type for ONVIF reboot: {camera_type}"
+
+        # Connect to camera
+        onvif_port = camera_config.get('onvif_port', 80)
+        client = ONVIFClient(host, onvif_port, username, password)
+
+        if not client.connect():
+            return False, f"Failed to connect to camera ONVIF service"
+
+        # Get device management service
+        device_service = client.get_device_service()
+        if not device_service:
+            return False, "Failed to get ONVIF device service"
+
+        # Issue reboot command
+        logger.info(f"Sending SystemReboot to {camera_serial}")
+        device_service.SystemReboot()
+
+        logger.info(f"Reboot command sent successfully to {camera_serial}")
+        return True, "Reboot command sent - camera will restart in approximately 60 seconds"
+
+    except Exception as e:
+        logger.error(f"Failed to reboot camera {camera_serial}: {e}")
+        return False, f"Reboot failed: {str(e)}"

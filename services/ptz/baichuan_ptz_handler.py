@@ -398,3 +398,52 @@ def get_presets_baichuan(camera_serial: str, camera_config: Dict) -> Tuple[bool,
 def goto_preset_baichuan(camera_serial: str, preset_token: str, camera_config: Dict) -> Tuple[bool, str]:
     """Convenience function to go to preset via Baichuan."""
     return BaichuanPTZHandler.goto_preset(camera_serial, preset_token, camera_config)
+
+
+def reboot_camera_baichuan(camera_serial: str, camera_config: Dict) -> Tuple[bool, str]:
+    """
+    Reboot a Reolink camera via Baichuan protocol.
+
+    Args:
+        camera_serial: Camera serial number
+        camera_config: Camera configuration dict with host, credentials, etc.
+
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    async def _do_reboot():
+        host = camera_config.get('host')
+        if not host:
+            return False, "Camera host not configured"
+
+        # Get Reolink credentials
+        credential_provider = ReolinkCredentialProvider()
+        username, password = credential_provider.get_credentials()
+
+        logger.info(f"Initiating Baichuan reboot for camera {camera_serial} at {host}")
+
+        # Create Host instance
+        api = Host(host, username, password)
+
+        try:
+            # Login first
+            await api.get_host_data()
+
+            # Issue reboot command
+            logger.info(f"Sending reboot command to {camera_serial}")
+            await api.reboot()
+
+            logger.info(f"Reboot command sent successfully to {camera_serial}")
+            return True, "Reboot command sent - camera will restart in approximately 60 seconds"
+
+        except Exception as e:
+            logger.error(f"Failed to reboot camera {camera_serial}: {e}")
+            return False, f"Reboot failed: {str(e)}"
+        finally:
+            await api.logout()
+
+    try:
+        return asyncio.run(_do_reboot())
+    except Exception as e:
+        logger.error(f"Baichuan reboot error for {camera_serial}: {e}")
+        return False, f"Reboot failed: {str(e)}"

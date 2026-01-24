@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 16:15 EST*
+*Last updated: January 24, 2026 16:37 EST*
 
 Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
@@ -23,7 +23,22 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session Continued (January 24, 2026 ~15:30-16:15 EST)
+## Current Session Continued (January 24, 2026 ~15:30-16:37 EST)
+
+### Menu Panel Mutual Exclusivity - DONE
+**Commit**: `f408450`
+- When PTZ controls shown → hide stream controls
+- When stream controls shown → hide PTZ controls
+- File: `stream.js:817-821` and `stream.js:849-853`
+
+### Home Button = preset[0] + Recalibration Button - DONE
+**Commit**: `0d3ad5a`
+- Home button now calls `gotoPreset(0, 'Home')` instead of ONVIF GotoHomePosition
+- Added new recalibration button with `fa-sync-alt` icon
+- Files: `ptz-controller.js:360-362`, `streams.html:194-198`, `ptz-controls.css`
+
+### PTZ Reversal Double-Action Bug - DONE
+**Commit**: `5a5ab17`
 
 ### PTZ Reversal Double-Action Bug - ROOT CAUSE FOUND & FIX APPLIED
 

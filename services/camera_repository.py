@@ -212,6 +212,72 @@ class CameraRepository:
         self.cameras_data = cameras_data
         return self._save_json(self.cameras_file, cameras_data)
 
+    def update_camera_setting(self, serial: str, key: str, value) -> bool:
+        """
+        Update a single setting for a camera and save to file.
+
+        Args:
+            serial: Camera serial number
+            key: Setting key to update
+            value: New value for the setting
+
+        Returns:
+            True if successful, False otherwise
+        """
+        camera = self.get_camera(serial)
+        if not camera:
+            logger.error(f"Camera not found: {serial}")
+            return False
+
+        camera[key] = value
+        return self.save_cameras(self.cameras_data)
+
+    def update_camera_ptz_reversal(self, serial: str, reversed_pan: bool = None, reversed_tilt: bool = None) -> bool:
+        """
+        Update PTZ reversal settings for a camera.
+
+        Args:
+            serial: Camera serial number
+            reversed_pan: If provided, set reversed_pan to this value
+            reversed_tilt: If provided, set reversed_tilt to this value
+
+        Returns:
+            True if successful, False otherwise
+        """
+        camera = self.get_camera(serial)
+        if not camera:
+            logger.error(f"Camera not found: {serial}")
+            return False
+
+        if reversed_pan is not None:
+            camera['reversed_pan'] = reversed_pan
+            logger.info(f"Set reversed_pan={reversed_pan} for camera {serial}")
+
+        if reversed_tilt is not None:
+            camera['reversed_tilt'] = reversed_tilt
+            logger.info(f"Set reversed_tilt={reversed_tilt} for camera {serial}")
+
+        return self.save_cameras(self.cameras_data)
+
+    def get_camera_ptz_reversal(self, serial: str) -> Dict[str, bool]:
+        """
+        Get PTZ reversal settings for a camera.
+
+        Args:
+            serial: Camera serial number
+
+        Returns:
+            Dict with 'reversed_pan' and 'reversed_tilt' booleans
+        """
+        camera = self.get_camera(serial)
+        if not camera:
+            return {'reversed_pan': False, 'reversed_tilt': False}
+
+        return {
+            'reversed_pan': camera.get('reversed_pan', False),
+            'reversed_tilt': camera.get('reversed_tilt', False)
+        }
+
     # ===== Vendor-Specific Config Access =====
 
     def get_unifi_protect_config(self) -> Dict:

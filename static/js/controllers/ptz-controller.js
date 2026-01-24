@@ -17,6 +17,7 @@ export class PTZController {
         this.moveAcknowledged = true; // Track when camera has processed a move command
         this.moveStartTime = null; // Track when move command was sent
         this.latencyCache = {}; // In-memory cache of learned latencies per camera
+        this.reversePanCache = {}; // Per-camera reverse pan preference
         // PTZ uses ONVIF ContinuousMove - one command starts movement,
         // camera keeps moving until a Stop command is sent.
         // Latency is learned per-camera and stored in PostgreSQL via API.
@@ -27,6 +28,7 @@ export class PTZController {
 
         this.setupEventListeners();
         this.setupPresetListeners();
+        this.setupReversePanListeners();
         this.updateButtonStates();
 
         // Show preset dropdowns immediately (for debugging)
@@ -34,6 +36,9 @@ export class PTZController {
 
         // Load presets for all PTZ cameras on page load
         this.loadPresetsForAllCameras();
+
+        // Load reverse pan settings for all PTZ cameras
+        this.loadReversePanSettingsForAllCameras();
 
 
         console.log("#######################################")
@@ -133,6 +138,191 @@ export class PTZController {
         });
     }
 
+    // =========================================================================
+    // PTZ Reversal Methods (stored in cameras.json via API)
+    // For cameras mounted upside down where controls are reversed
+    // =========================================================================
+
+    /**
+     * Check if reverse pan is enabled for a camera.
+     * Uses in-memory cache populated from API on load.
+     * @param {string} serial - Camera serial number
+     * @returns {boolean} True if reverse pan is enabled
+     */
+    isReversePanEnabled(serial) {
+        if (this.reversePanCache.hasOwnProperty(serial)) {
+            return this.reversePanCache[serial].reversed_pan || false;
+        }
+        return false;
+    }
+
+    /**
+     * Check if reverse tilt is enabled for a camera.
+     * Uses in-memory cache populated from API on load.
+     * @param {string} serial - Camera serial number
+     * @returns {boolean} True if reverse tilt is enabled
+     */
+    isReverseTiltEnabled(serial) {
+        if (this.reversePanCache.hasOwnProperty(serial)) {
+            return this.reversePanCache[serial].reversed_tilt || false;
+        }
+        return false;
+    }
+
+    /**
+     * Load PTZ reversal settings from API for a camera.
+     * @param {string} serial - Camera serial number
+     */
+    async loadReversalSettings(serial) {
+        try {
+            const response = await fetch(`/api/ptz/${serial}/reversal`);
+            const data = await response.json();
+            if (data.success) {
+                this.reversePanCache[serial] = {
+                    reversed_pan: data.reversed_pan,
+                    reversed_tilt: data.reversed_tilt
+                };
+                console.log(`[PTZ] Loaded reversal for ${serial}: pan=${data.reversed_pan}, tilt=${data.reversed_tilt}`);
+            }
+        } catch (e) {
+            console.warn(`[PTZ] Failed to load reversal settings for ${serial}:`, e);
+        }
+    }
+
+    /**
+     * Update PTZ reversal settings via API.
+     * @param {string} serial - Camera serial number
+     * @param {boolean|null} reversedPan - Reverse pan setting (null to skip)
+     * @param {boolean|null} reversedTilt - Reverse tilt setting (null to skip)
+     */
+    async updateReversalSettings(serial, reversedPan = null, reversedTilt = null) {
+        const payload = {};
+        if (reversedPan !== null) payload.reversed_pan = reversedPan;
+        if (reversedTilt !== null) payload.reversed_tilt = reversedTilt;
+
+        try {
+            const response = await fetch(`/api/ptz/${serial}/reversal`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                // Update cache with response
+                this.reversePanCache[serial] = {
+                    reversed_pan: data.reversed_pan,
+                    reversed_tilt: data.reversed_tilt
+                };
+                console.log(`[PTZ] Updated reversal for ${serial}: pan=${data.reversed_pan}, tilt=${data.reversed_tilt}`);
+            } else {
+                console.error(`[PTZ] Failed to update reversal: ${data.error}`);
+            }
+        } catch (e) {
+            console.error(`[PTZ] Error updating reversal settings for ${serial}:`, e);
+        }
+    }
+
+    /**
+     * Apply PTZ reversal correction to direction if enabled.
+     * Reverses left/right for pan, up/down for tilt.
+     * @param {string} serial - Camera serial number
+     * @param {string} direction - Original direction (left, right, up, down, etc.)
+     * @returns {string} Corrected direction
+     */
+    applyReversal(serial, direction) {
+        const reversePan = this.isReversePanEnabled(serial);
+        const reverseTilt = this.isReverseTiltEnabled(serial);
+
+        // Reverse left/right if pan is reversed
+        if (reversePan) {
+            if (direction === 'left') {
+                console.log(`[PTZ] Reverse pan: left → right for ${serial}`);
+                return 'right';
+            } else if (direction === 'right') {
+                console.log(`[PTZ] Reverse pan: right → left for ${serial}`);
+                return 'left';
+            }
+        }
+
+        // Reverse up/down if tilt is reversed
+        if (reverseTilt) {
+            if (direction === 'up') {
+                console.log(`[PTZ] Reverse tilt: up → down for ${serial}`);
+                return 'down';
+            } else if (direction === 'down') {
+                console.log(`[PTZ] Reverse tilt: down → up for ${serial}`);
+                return 'up';
+            }
+        }
+
+        return direction;
+    }
+
+    /**
+     * Load PTZ reversal settings for all PTZ cameras on page load.
+     * Fetches from API and updates checkbox states.
+     */
+    loadReversePanSettingsForAllCameras() {
+        let delay = 0;
+        const staggerMs = 200; // Stagger requests to avoid overwhelming server
+
+        $('.stream-item').each((index, streamItem) => {
+            const $streamItem = $(streamItem);
+            const serial = $streamItem.data('camera-serial');
+            const $ptzControls = $streamItem.find('.ptz-controls');
+
+            // Only load for cameras with PTZ controls
+            if (serial && $ptzControls.length > 0) {
+                setTimeout(async () => {
+                    await this.loadReversalSettings(serial);
+
+                    // Update checkboxes with loaded values
+                    const $panCheckbox = $streamItem.find('.ptz-reverse-pan-checkbox');
+                    const $tiltCheckbox = $streamItem.find('.ptz-reverse-tilt-checkbox');
+
+                    if ($panCheckbox.length) {
+                        $panCheckbox.prop('checked', this.isReversePanEnabled(serial));
+                    }
+                    if ($tiltCheckbox.length) {
+                        $tiltCheckbox.prop('checked', this.isReverseTiltEnabled(serial));
+                    }
+                }, delay);
+
+                delay += staggerMs;
+            }
+        });
+    }
+
+    /**
+     * Setup event listeners for reversal checkboxes.
+     */
+    setupReversePanListeners() {
+        // Reverse Pan checkbox
+        $(document).on('change', '.ptz-reverse-pan-checkbox', async (event) => {
+            const $checkbox = $(event.currentTarget);
+            const $streamItem = $checkbox.closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+
+            if (serial) {
+                const enabled = $checkbox.is(':checked');
+                await this.updateReversalSettings(serial, enabled, null);
+            }
+        });
+
+        // Reverse Tilt checkbox
+        $(document).on('change', '.ptz-reverse-tilt-checkbox', async (event) => {
+            const $checkbox = $(event.currentTarget);
+            const $streamItem = $checkbox.closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+
+            if (serial) {
+                const enabled = $checkbox.is(':checked');
+                await this.updateReversalSettings(serial, null, enabled);
+            }
+        });
+    }
+
     setupEventListeners() {
         // Track input type to avoid mouse emulation conflicts on touch
         this.lastInputType = null;
@@ -226,10 +416,15 @@ export class PTZController {
 
         const serial = this.currentCamera.serial;
         const knownLatency = this.getCameraLatency(serial);
-        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction, 'for', serial, `(known latency: ${knownLatency}ms)`);
+
+        // Apply pan/tilt reversal if configured for this camera
+        const correctedDirection = this.applyReversal(serial, direction);
+        console.log(`[PTZ ${new Date().toISOString()}] Starting continuous move:`, direction,
+            correctedDirection !== direction ? `(reversed to: ${correctedDirection})` : '',
+            'for', serial, `(known latency: ${knownLatency}ms)`);
 
         // Fire-and-forget but track acknowledgment for stop timing
-        fetch(`/api/ptz/${serial}/${direction}`, {
+        fetch(`/api/ptz/${serial}/${correctedDirection}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         }).then(response => response.json())

@@ -2820,6 +2820,83 @@ def api_ptz_update_latency(client_uuid, camera_serial):
         logger.error(f"Update PTZ latency error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/ptz/<camera_serial>/reversal', methods=['GET'])
+@csrf.exempt
+def api_ptz_get_reversal(camera_serial):
+    """
+    Get PTZ reversal settings for a camera.
+
+    Returns:
+        JSON with reversed_pan and reversed_tilt booleans
+    """
+    try:
+        reversal = camera_repo.get_camera_ptz_reversal(camera_serial)
+        return jsonify({
+            'success': True,
+            'camera_serial': camera_serial,
+            **reversal
+        })
+    except Exception as e:
+        logger.error(f"Get PTZ reversal error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/ptz/<camera_serial>/reversal', methods=['POST'])
+@csrf.exempt
+def api_ptz_update_reversal(camera_serial):
+    """
+    Update PTZ reversal settings for a camera.
+
+    Request body:
+        reversed_pan: boolean (optional)
+        reversed_tilt: boolean (optional)
+
+    Returns:
+        JSON with success status and updated values
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+
+        reversed_pan = data.get('reversed_pan')
+        reversed_tilt = data.get('reversed_tilt')
+
+        # Validate input
+        if reversed_pan is not None and not isinstance(reversed_pan, bool):
+            return jsonify({'success': False, 'error': 'reversed_pan must be a boolean'}), 400
+        if reversed_tilt is not None and not isinstance(reversed_tilt, bool):
+            return jsonify({'success': False, 'error': 'reversed_tilt must be a boolean'}), 400
+
+        if reversed_pan is None and reversed_tilt is None:
+            return jsonify({'success': False, 'error': 'At least one of reversed_pan or reversed_tilt required'}), 400
+
+        success = camera_repo.update_camera_ptz_reversal(
+            camera_serial,
+            reversed_pan=reversed_pan,
+            reversed_tilt=reversed_tilt
+        )
+
+        if success:
+            reversal = camera_repo.get_camera_ptz_reversal(camera_serial)
+            logger.info(f"[PTZ Reversal] Updated {camera_serial}: pan={reversal['reversed_pan']}, tilt={reversal['reversed_tilt']}")
+            return jsonify({
+                'success': True,
+                'camera_serial': camera_serial,
+                **reversal
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update camera settings'}), 500
+
+    except Exception as e:
+        logger.error(f"Update PTZ reversal error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 ########################################################
 #           📹 RECORDING API ROUTES 📹
 ########################################################

@@ -2358,7 +2358,8 @@ def api_ptz_move(camera_serial, direction):
         message = ""
 
         # Check if camera should use Baichuan protocol (Reolink without ONVIF or NEOLINK streams)
-        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera)
+        # Exception: 'recalibrate' requires ONVIF GotoHomePosition, Baichuan doesn't support it
+        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera) and direction != 'recalibrate'
 
         if use_baichuan:
             # Use Baichuan for Reolink cameras without ONVIF or configured for Baichuan

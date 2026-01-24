@@ -819,6 +819,15 @@ export class MultiStreamManager {
                 $ptzControls.addClass('ptz-visible');
                 $button.addClass('ptz-active');
                 console.log(`[PTZ] ${cameraId}: Controls shown`);
+
+                // MUTUAL EXCLUSIVITY: Hide stream controls when PTZ is shown
+                const $streamControls = $streamItem.find('.stream-controls');
+                const $streamToggle = $streamItem.find('.stream-controls-toggle-btn');
+                if ($streamControls.hasClass('stream-controls-visible')) {
+                    $streamControls.removeClass('stream-controls-visible');
+                    $streamToggle.removeClass('controls-active');
+                    console.log(`[PTZ] ${cameraId}: Stream controls hidden (mutual exclusivity)`);
+                }
             }
 
             // Save preference to localStorage
@@ -851,6 +860,15 @@ export class MultiStreamManager {
                 $streamControls.addClass('stream-controls-visible');
                 $button.addClass('controls-active');
                 console.log(`[StreamControls] ${cameraId}: Controls shown`);
+
+                // MUTUAL EXCLUSIVITY: Hide PTZ controls when stream controls are shown
+                const $ptzControls = $streamItem.find('.ptz-controls');
+                const $ptzToggle = $streamItem.find('.stream-ptz-toggle-btn');
+                if ($ptzControls.hasClass('ptz-visible')) {
+                    $ptzControls.removeClass('ptz-visible');
+                    $ptzToggle.removeClass('ptz-active');
+                    console.log(`[StreamControls] ${cameraId}: PTZ controls hidden (mutual exclusivity)`);
+                }
             }
 
             // Save preference to localStorage

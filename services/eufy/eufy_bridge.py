@@ -483,6 +483,172 @@ class EufyBridge:
             return direction
     
     # =========================================================================
+    # P2P Livestream Methods (for talkback support)
+    # =========================================================================
+    # Talkback requires an active P2P livestream session. These methods manage
+    # the P2P stream lifecycle separately from RTSP streams used for viewing.
+
+    # Track active P2P livestream sessions for talkback
+    # {camera_serial: True} when P2P stream is running
+    _active_p2p_sessions = {}
+
+    async def _execute_livestream_command(self, camera_serial, command):
+        """
+        Execute P2P livestream command via WebSocket bridge.
+
+        Commands:
+            - start: Start P2P livestream (required before talkback)
+            - stop: Stop P2P livestream
+
+        Args:
+            camera_serial: Camera serial number
+            command: 'start' or 'stop'
+
+        Returns:
+            bool: True if command succeeded
+        """
+        log_prefix = "[EUFY P2P STREAM]"
+        print(f"{log_prefix} {command}: serial={camera_serial}")
+
+        if not self.is_ready():
+            print(f"{log_prefix} ERROR: Bridge not ready!")
+            raise Exception("Bridge not ready")
+
+        command_map = {
+            'start': 'device.start_livestream',
+            'stop': 'device.stop_livestream'
+        }
+
+        ws_command = command_map.get(command)
+        if not ws_command:
+            raise ValueError(f"Invalid livestream command: {command}")
+
+        try:
+            async with websockets.connect(self.bridge_url, open_timeout=10) as ws:
+                print(f"{log_prefix} WebSocket connected")
+
+                # Set API schema version
+                await ws.send(json.dumps({
+                    "messageId": "schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21
+                }))
+                await self._wait_for_message(ws, "schema")
+
+                # Start listening
+                await ws.send(json.dumps({
+                    "messageId": "start",
+                    "command": "start_listening"
+                }))
+                await self._wait_for_message(ws, "start")
+
+                # Send livestream command
+                cmd = {
+                    "messageId": f"livestream_{command}",
+                    "command": ws_command,
+                    "serialNumber": camera_serial
+                }
+                print(f"{log_prefix} Sending: {ws_command}")
+                await ws.send(json.dumps(cmd))
+
+                # Wait for response (livestream start can take a few seconds)
+                result = await self._wait_for_message(ws, f"livestream_{command}", timeout=15)
+                print(f"{log_prefix} Response: {result}")
+
+                if not result or not result.get("success", False):
+                    error = result.get("errorCode", "unknown") if result else "timeout"
+                    print(f"{log_prefix} Command failed: {error}")
+                    return False
+
+                # Track session state
+                if command == 'start':
+                    self._active_p2p_sessions[camera_serial] = True
+                elif command == 'stop':
+                    self._active_p2p_sessions.pop(camera_serial, None)
+
+                print(f"{log_prefix} {command} completed successfully")
+                return True
+
+        except Exception as e:
+            print(f"{log_prefix} Exception: {e}")
+            logger.error(f"Livestream command error: {e}")
+            return False
+
+    def start_p2p_livestream(self, camera_serial):
+        """
+        Start P2P livestream for talkback support.
+
+        This opens a P2P tunnel to the camera which is required before
+        talkback can be initiated. The stream runs alongside RTSP.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            bool: True if P2P stream started successfully
+        """
+        print(f"[EUFY BRIDGE] start_p2p_livestream: serial={camera_serial}")
+
+        # Check if already running
+        if self._active_p2p_sessions.get(camera_serial):
+            print(f"[EUFY BRIDGE] P2P stream already active for {camera_serial}")
+            return True
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_livestream_command(camera_serial, 'start')
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"start_p2p_livestream error: {e}")
+            return False
+
+    def stop_p2p_livestream(self, camera_serial):
+        """
+        Stop P2P livestream.
+
+        Should be called after talkback ends to release resources.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            bool: True if P2P stream stopped successfully
+        """
+        print(f"[EUFY BRIDGE] stop_p2p_livestream: serial={camera_serial}")
+
+        if not self._active_p2p_sessions.get(camera_serial):
+            print(f"[EUFY BRIDGE] No active P2P stream for {camera_serial}")
+            return True
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_livestream_command(camera_serial, 'stop')
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"stop_p2p_livestream error: {e}")
+            return False
+
+    def is_p2p_streaming(self, camera_serial):
+        """Check if P2P livestream is active for camera."""
+        return self._active_p2p_sessions.get(camera_serial, False)
+
+    # =========================================================================
     # Two-Way Audio (Talkback) Methods
     # =========================================================================
 
@@ -578,8 +744,8 @@ class EufyBridge:
         """
         Start talkback session with camera.
 
-        This initiates the two-way audio stream. The camera will open its
-        audio input channel and be ready to receive audio frames.
+        This first starts a P2P livestream (required by Eufy protocol),
+        then initiates the talkback audio channel.
 
         Args:
             camera_serial: Camera serial number
@@ -593,6 +759,15 @@ class EufyBridge:
             raise Exception("Bridge not running")
 
         try:
+            # Step 1: Start P2P livestream (required for talkback)
+            if not self.is_p2p_streaming(camera_serial):
+                print(f"[EUFY BRIDGE] Starting P2P livestream first...")
+                if not self.start_p2p_livestream(camera_serial):
+                    print(f"[EUFY BRIDGE] Failed to start P2P livestream")
+                    return False
+                print(f"[EUFY BRIDGE] P2P livestream ready")
+
+            # Step 2: Start talkback on the P2P session
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -603,13 +778,16 @@ class EufyBridge:
                 loop.close()
         except Exception as e:
             logger.error(f"start_talkback error: {e}")
+            # Clean up P2P stream on failure
+            self.stop_p2p_livestream(camera_serial)
             return False
 
     def stop_talkback(self, camera_serial):
         """
         Stop talkback session with camera.
 
-        Ends the two-way audio stream and releases camera audio resources.
+        Ends the talkback audio stream and also stops the P2P livestream
+        that was started for it.
 
         Args:
             camera_serial: Camera serial number
@@ -622,18 +800,29 @@ class EufyBridge:
         if not self.is_running():
             raise Exception("Bridge not running")
 
+        talkback_stopped = False
         try:
+            # Step 1: Stop talkback audio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(
+                talkback_stopped = loop.run_until_complete(
                     self._execute_talkback_command(camera_serial, 'stop')
                 )
             finally:
                 loop.close()
         except Exception as e:
             logger.error(f"stop_talkback error: {e}")
-            return False
+
+        # Step 2: Always try to stop P2P stream (cleanup)
+        try:
+            if self.is_p2p_streaming(camera_serial):
+                print(f"[EUFY BRIDGE] Stopping P2P livestream...")
+                self.stop_p2p_livestream(camera_serial)
+        except Exception as e:
+            logger.error(f"stop_p2p_livestream error during cleanup: {e}")
+
+        return talkback_stopped
 
     def send_talkback_audio(self, camera_serial, audio_data):
         """

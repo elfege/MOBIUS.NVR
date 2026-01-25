@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 11:25 EST*
+*Last updated: January 25, 2026 14:30 EST*
 
 Branch: `two_way_audio_JAN_25_2026_a`
 
@@ -53,6 +53,31 @@ Task: Implement two-way audio (talkback) for cameras that support it.
 | 11:10 | `templates/streams.html` | Added talkback button for Eufy cameras, added CSS import |
 | 11:12 | `static/js/streaming/stream.js` | Added PTT event handlers with camera name pass-through |
 | 11:25 | `static/js/streaming/talkback-manager.js` | Added `_waitForTalkbackStart()`, waiting modal with min 2s display |
+| 12:30 | `services/eufy/eufy_bridge.py` | Added persistent WebSocket sessions (`_talkback_sessions`) |
+| 13:00 | `services/eufy/eufy_bridge.py` | Added `_wait_for_livestream_ready()` - accepts video/audio data events |
+| 13:15 | `static/js/streaming/stream.js` | Added `resetAllControlStates()` - clears PTZ, audio, talkback on reload |
+| 13:45 | `services/eufy/eufy_bridge.py` | Fixed websockets 10+ compatibility (`.state` vs `.closed`) |
+
+### Debugging Session (12:30-14:30 EST)
+
+**Issue 1: `device_livestream_not_running` error**
+
+- Root cause: P2P started on one WebSocket, talkback on another (different sessions)
+- Fix: Combined into `_start_talkback_session()` with persistent WebSocket
+
+**Issue 2: Timeout waiting for `livestream started` event**
+
+- Root cause: When P2P already running, only `livestream video data` events fire
+- Fix: `_wait_for_livestream_ready()` accepts multiple event types as proof of ready
+
+**Issue 3: `'ClientConnection' object has no attribute 'closed'`**
+
+- Root cause: websockets library v16.0 changed API from `.closed` to `.state`
+- Fix: Added compatibility check for both attributes
+
+**Issue 4: Button states persisting on reload**
+
+- Fix: `resetAllControlStates()` clears localStorage preferences and DOM classes on init
 
 ### P2P Requirement Discovery
 

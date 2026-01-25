@@ -122,8 +122,8 @@ export class HubitatDevicePicker {
         // Update camera info display
         this.$modal.find('.hubitat-picker-camera-name').text(cameraName || cameraSerial);
 
-        // Reset device list
-        this.$modal.find('.hubitat-devices-list').html('');
+        // Reset device list (show it in case it was hidden from previous selection)
+        this.$modal.find('.hubitat-devices-list').html('').show();
         this.$modal.find('.hubitat-picker-status-text').text('Loading devices...');
         this.$modal.find('.hubitat-picker-status').show();
         this.$modal.find('.hubitat-show-more').hide();

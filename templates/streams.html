@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/timeline-modal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/storage-status.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/hubitat-picker.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/talkback-button.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -149,6 +150,14 @@
                 data-power-supply="{{ info.power_supply }}"
                 data-device-id="{{ info.power_supply_device_id or '' }}">
                 <i class="fas fa-plug"></i>
+            </button>
+            {% endif %}
+            {% if info.type == 'eufy' %}
+            <button class="stream-talkback-btn"
+                aria-label="Push to Talk" title="Hold to Talk (Two-Way Audio)"
+                data-camera-id="{{ serial }}"
+                data-camera-type="{{ info.type }}">
+                <i class="fas fa-microphone-alt"></i>
             </button>
             {% endif %}
 

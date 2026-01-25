@@ -882,13 +882,17 @@ export class MultiStreamManager {
         });
 
         // =====================================================================
-        // Two-Way Audio (Talkback) Push-to-Talk Handlers
+        // Two-Way Audio (Talkback) Toggle Handlers
         // =====================================================================
-        // PTT behavior: mousedown/touchstart = start talking, mouseup/touchend = stop
+        // TOGGLE behavior: click to start, click again to stop (or 10-min auto-timeout)
         // Only active for Eufy cameras (button only rendered for type='eufy')
 
-        // Start talkback on press (mouse or touch)
-        this.$container.on('mousedown touchstart', '.stream-talkback-btn', async (e) => {
+        // Track talkback timeout timer
+        let talkbackTimeoutId = null;
+        const TALKBACK_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+        // Toggle talkback on click
+        this.$container.on('click', '.stream-talkback-btn', async (e) => {
             e.preventDefault();
             e.stopPropagation();
 
@@ -897,12 +901,37 @@ export class MultiStreamManager {
             const $streamItem = $button.closest('.stream-item');
             const cameraName = $streamItem.data('camera-name') || cameraId;
 
-            // Don't start if already talking or if permission denied
-            if ($button.hasClass('talkback-active') || $button.hasClass('talkback-denied')) {
+            // If permission denied, don't proceed
+            if ($button.hasClass('talkback-denied')) {
                 return;
             }
 
-            console.log(`[Talkback] PTT pressed for ${cameraId} (${cameraName})`);
+            // If already active, stop talkback (toggle off)
+            if ($button.hasClass('talkback-active')) {
+                console.log(`[Talkback] Toggle OFF for ${cameraId}`);
+
+                // Clear timeout
+                if (talkbackTimeoutId) {
+                    clearTimeout(talkbackTimeoutId);
+                    talkbackTimeoutId = null;
+                }
+
+                // Stop talkback
+                talkbackManager.stopTalkback();
+
+                // Update UI
+                $button.removeClass('talkback-active talkback-connecting');
+                $streamItem.removeClass('talkback-active');
+                $button.removeAttr('data-talkback-status');
+                return;
+            }
+
+            // If connecting, ignore click
+            if ($button.hasClass('talkback-connecting')) {
+                return;
+            }
+
+            console.log(`[Talkback] Toggle ON for ${cameraId} (${cameraName})`);
 
             // Show connecting state (button shows connecting while modal shows funny message)
             $button.addClass('talkback-connecting');
@@ -916,8 +945,19 @@ export class MultiStreamManager {
                     $button.removeClass('talkback-connecting');
                     $button.addClass('talkback-active');
                     $streamItem.addClass('talkback-active');
-                    $button.attr('data-talkback-status', 'Talking...');
+                    $button.attr('data-talkback-status', 'Talking... (click to stop)');
                     console.log(`[Talkback] Started for ${cameraId}`);
+
+                    // Set auto-timeout (10 minutes)
+                    talkbackTimeoutId = setTimeout(() => {
+                        console.log(`[Talkback] Auto-timeout after 10 minutes for ${cameraId}`);
+                        talkbackManager.stopTalkback();
+                        $button.removeClass('talkback-active talkback-connecting');
+                        $streamItem.removeClass('talkback-active');
+                        $button.removeAttr('data-talkback-status');
+                        talkbackTimeoutId = null;
+                    }, TALKBACK_TIMEOUT_MS);
+
                 } else {
                     // Failed to start
                     $button.removeClass('talkback-connecting');
@@ -937,28 +977,6 @@ export class MultiStreamManager {
                 $button.addClass('talkback-error');
                 $button.attr('data-talkback-status', error.message || 'Error');
             }
-        });
-
-        // Stop talkback on release (mouse or touch)
-        this.$container.on('mouseup touchend mouseleave', '.stream-talkback-btn', (e) => {
-            const $button = $(e.currentTarget);
-            const $streamItem = $button.closest('.stream-item');
-
-            // Only stop if we were actively talking
-            if (!$button.hasClass('talkback-active')) {
-                return;
-            }
-
-            const cameraId = $button.data('camera-id');
-            console.log(`[Talkback] PTT released for ${cameraId}`);
-
-            // Stop talkback
-            talkbackManager.stopTalkback();
-
-            // Update UI
-            $button.removeClass('talkback-active talkback-connecting');
-            $streamItem.removeClass('talkback-active');
-            $button.removeAttr('data-talkback-status');
         });
 
         // Handle talkback manager state changes for UI updates

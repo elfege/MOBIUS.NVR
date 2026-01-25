@@ -890,20 +890,21 @@ export class MultiStreamManager {
             const $button = $(e.currentTarget);
             const cameraId = $button.data('camera-id');
             const $streamItem = $button.closest('.stream-item');
+            const cameraName = $streamItem.data('camera-name') || cameraId;
 
             // Don't start if already talking or if permission denied
             if ($button.hasClass('talkback-active') || $button.hasClass('talkback-denied')) {
                 return;
             }
 
-            console.log(`[Talkback] PTT pressed for ${cameraId}`);
+            console.log(`[Talkback] PTT pressed for ${cameraId} (${cameraName})`);
 
-            // Show connecting state
+            // Show connecting state (button shows connecting while modal shows funny message)
             $button.addClass('talkback-connecting');
 
             try {
-                // Start talkback (handles permission request and WebSocket connection)
-                const success = await talkbackManager.startTalkback(cameraId);
+                // Start talkback (shows waiting modal, handles P2P, permission, WebSocket)
+                const success = await talkbackManager.startTalkback(cameraId, cameraName);
 
                 if (success) {
                     // Update UI to show active state

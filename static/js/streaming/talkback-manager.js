@@ -53,6 +53,28 @@ export class TalkbackManager {
         this._onStateChange = null;
         this._onError = null;
 
+        // Waiting modal elements (created lazily)
+        this._waitingModal = null;
+
+        // Funny waiting messages
+        this._waitingMessages = [
+            "Warming up the megaphone...",
+            "Waking up the camera's ears...",
+            "Establishing quantum audio link...",
+            "Teaching the camera to listen...",
+            "Summoning the audio gnomes...",
+            "Untangling the sound waves...",
+            "Polishing the microphone...",
+            "Calibrating voice transmitter...",
+            "Connecting through the ether...",
+            "Preparing your dulcet tones...",
+            "Activating intercom mode...",
+            "Opening audio wormhole...",
+        ];
+
+        // Minimum display time for waiting modal (ms)
+        this._minWaitingTime = 2000;
+
         // Bind methods for event handlers
         this._handleAudioProcess = this._handleAudioProcess.bind(this);
     }
@@ -202,13 +224,17 @@ export class TalkbackManager {
      * Start talkback session with a camera.
      *
      * This is called when the user presses/holds the PTT button.
-     * It connects to the server, starts the talkback session, and begins
-     * capturing audio from the microphone.
+     * It connects to the server, starts the talkback session (which includes
+     * P2P livestream initialization), and begins capturing audio from the microphone.
+     *
+     * Shows a waiting modal with funny messages while P2P is connecting,
+     * ensuring at least 2 seconds of display time so users see the message.
      *
      * @param {string} cameraId - Camera serial number
+     * @param {string} [cameraName] - Optional display name for the modal
      * @returns {Promise<boolean>} True if talkback started successfully
      */
-    async startTalkback(cameraId) {
+    async startTalkback(cameraId, cameraName) {
         console.log(`[TalkbackManager] Starting talkback for ${cameraId}`);
 
         // Don't start if already talking
@@ -217,11 +243,16 @@ export class TalkbackManager {
             return false;
         }
 
+        // Show waiting modal immediately with funny message
+        this._showWaitingModal(cameraName || cameraId);
+        const modalStartTime = Date.now();
+
         try {
             // Ensure we have microphone permission
             if (!this.mediaStream) {
                 const hasPermission = await this.requestMicrophonePermission();
                 if (!hasPermission) {
+                    this._hideWaitingModal(false);
                     return false;
                 }
             }
@@ -234,19 +265,102 @@ export class TalkbackManager {
             // Store active camera
             this.activeCameraId = cameraId;
 
-            // Tell server to start talkback
-            this.socket.emit('start_talkback', { camera_id: cameraId });
+            // Tell server to start talkback (server handles P2P livestream start)
+            // Wait for talkback_started event to confirm P2P is ready
+            const talkbackReady = await this._waitForTalkbackStart(cameraId);
+
+            if (!talkbackReady) {
+                console.error('[TalkbackManager] Talkback start failed or timed out');
+                this._hideWaitingModal(false);
+                this.activeCameraId = null;
+                return false;
+            }
+
+            // Ensure minimum display time for the waiting modal
+            const elapsedTime = Date.now() - modalStartTime;
+            const remainingTime = this._minWaitingTime - elapsedTime;
+
+            if (remainingTime > 0) {
+                console.log(`[TalkbackManager] Waiting ${remainingTime}ms to meet minimum display time`);
+                await new Promise(resolve => setTimeout(resolve, remainingTime));
+            }
 
             // Set up audio processing
             await this._setupAudioProcessing();
+
+            // Hide modal with ready state
+            this._hideWaitingModal(true);
 
             return true;
 
         } catch (error) {
             console.error('[TalkbackManager] Start talkback error:', error);
+            this._hideWaitingModal(false);
             this._notifyError(`Failed to start talkback: ${error.message}`);
+            this.activeCameraId = null;
             return false;
         }
+    }
+
+    /**
+     * Wait for talkback_started event from server.
+     *
+     * Sends start_talkback request and waits for confirmation that P2P
+     * livestream is active and talkback is ready.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {number} [timeout=15000] - Timeout in milliseconds
+     * @returns {Promise<boolean>} True if talkback started successfully
+     * @private
+     */
+    _waitForTalkbackStart(cameraId, timeout = 15000) {
+        return new Promise((resolve) => {
+            let resolved = false;
+            let timeoutId = null;
+
+            // Handler for successful start
+            const onStarted = (data) => {
+                if (data.camera_id === cameraId && !resolved) {
+                    resolved = true;
+                    clearTimeout(timeoutId);
+                    this.socket.off('talkback_started', onStarted);
+                    this.socket.off('talkback_error', onError);
+                    resolve(true);
+                }
+            };
+
+            // Handler for errors
+            const onError = (data) => {
+                if (data.camera_id === cameraId && !resolved) {
+                    resolved = true;
+                    clearTimeout(timeoutId);
+                    this.socket.off('talkback_started', onStarted);
+                    this.socket.off('talkback_error', onError);
+                    this._notifyError(data.error || 'Talkback error');
+                    resolve(false);
+                }
+            };
+
+            // Set up listeners
+            this.socket.on('talkback_started', onStarted);
+            this.socket.on('talkback_error', onError);
+
+            // Set timeout
+            timeoutId = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    this.socket.off('talkback_started', onStarted);
+                    this.socket.off('talkback_error', onError);
+                    console.error('[TalkbackManager] Talkback start timed out');
+                    this._notifyError('Talkback connection timed out');
+                    resolve(false);
+                }
+            }, timeout);
+
+            // Send start request
+            console.log(`[TalkbackManager] Sending start_talkback for ${cameraId}`);
+            this.socket.emit('start_talkback', { camera_id: cameraId });
+        });
     }
 
     /**
@@ -254,9 +368,13 @@ export class TalkbackManager {
      *
      * Called when the user releases the PTT button.
      * Stops audio capture and notifies the server.
+     * Also hides the waiting modal if it's still showing.
      */
     stopTalkback() {
         console.log(`[TalkbackManager] Stopping talkback for ${this.activeCameraId}`);
+
+        // Always hide the waiting modal when stopping
+        this._hideWaitingModal(false);
 
         if (!this.activeCameraId) {
             console.log('[TalkbackManager] No active talkback session');
@@ -439,6 +557,139 @@ export class TalkbackManager {
     }
 
     /**
+     * Create the waiting modal DOM element.
+     *
+     * Lazily creates the modal HTML structure with spinner, message, and cancel button.
+     * The modal is appended to document.body and reused for all talkback sessions.
+     *
+     * @private
+     */
+    _createWaitingModal() {
+        if (this._waitingModal) {
+            return; // Already created
+        }
+
+        console.log('[TalkbackManager] Creating waiting modal');
+
+        // Create modal container
+        const modal = document.createElement('div');
+        modal.className = 'talkback-waiting-modal';
+        modal.innerHTML = `
+            <div class="talkback-waiting-content">
+                <div class="talkback-waiting-spinner">
+                    <i class="fas fa-microphone-alt talkback-waiting-icon"></i>
+                </div>
+                <div class="talkback-waiting-message"></div>
+                <div class="talkback-waiting-camera"></div>
+                <div class="talkback-waiting-status">Establishing P2P connection...</div>
+                <button class="talkback-waiting-cancel">Cancel</button>
+            </div>
+        `;
+
+        // Handle cancel button click
+        const cancelBtn = modal.querySelector('.talkback-waiting-cancel');
+        cancelBtn.addEventListener('click', () => {
+            console.log('[TalkbackManager] User cancelled waiting');
+            this._hideWaitingModal(false);
+            this._cancelPendingTalkback();
+        });
+
+        document.body.appendChild(modal);
+        this._waitingModal = modal;
+    }
+
+    /**
+     * Get a random funny message from the waiting messages array.
+     *
+     * @returns {string} A randomly selected message
+     * @private
+     */
+    _getRandomMessage() {
+        const index = Math.floor(Math.random() * this._waitingMessages.length);
+        return this._waitingMessages[index];
+    }
+
+    /**
+     * Show the waiting modal while P2P connection is being established.
+     *
+     * Displays a random funny message and the camera name.
+     *
+     * @param {string} cameraName - Display name of the camera
+     * @private
+     */
+    _showWaitingModal(cameraName) {
+        // Ensure modal exists
+        this._createWaitingModal();
+
+        console.log(`[TalkbackManager] Showing waiting modal for ${cameraName}`);
+
+        // Set the funny message
+        const messageEl = this._waitingModal.querySelector('.talkback-waiting-message');
+        messageEl.textContent = this._getRandomMessage();
+
+        // Set the camera name
+        const cameraEl = this._waitingModal.querySelector('.talkback-waiting-camera');
+        cameraEl.textContent = cameraName || 'Camera';
+
+        // Reset status text
+        const statusEl = this._waitingModal.querySelector('.talkback-waiting-status');
+        statusEl.textContent = 'Establishing P2P connection...';
+
+        // Remove ready class if present
+        this._waitingModal.classList.remove('ready');
+
+        // Show the modal
+        this._waitingModal.classList.add('visible');
+    }
+
+    /**
+     * Hide the waiting modal, optionally showing a ready state first.
+     *
+     * @param {boolean} ready - If true, briefly show ready state before hiding
+     * @private
+     */
+    _hideWaitingModal(ready = false) {
+        if (!this._waitingModal) {
+            return;
+        }
+
+        console.log(`[TalkbackManager] Hiding waiting modal (ready: ${ready})`);
+
+        if (ready) {
+            // Show ready state briefly
+            const statusEl = this._waitingModal.querySelector('.talkback-waiting-status');
+            statusEl.textContent = 'Ready! Hold to talk...';
+            this._waitingModal.classList.add('ready');
+
+            // Hide after a short delay to let user see the ready state
+            setTimeout(() => {
+                this._waitingModal.classList.remove('visible', 'ready');
+            }, 500);
+        } else {
+            // Hide immediately
+            this._waitingModal.classList.remove('visible', 'ready');
+        }
+    }
+
+    /**
+     * Cancel a pending talkback request (user clicked cancel on waiting modal).
+     *
+     * @private
+     */
+    _cancelPendingTalkback() {
+        console.log('[TalkbackManager] Cancelling pending talkback');
+
+        // Tell server to cancel/stop if we've already sent start_talkback
+        if (this.socket && this.isConnected && this.activeCameraId) {
+            this.socket.emit('stop_talkback', { camera_id: this.activeCameraId });
+        }
+
+        // Reset state
+        this.activeCameraId = null;
+        this._notifyStateChange('idle');
+    }
+
+    /**
      * Clean up all resources.
      *
      * Should be called when the manager is no longer needed.
@@ -456,6 +707,12 @@ export class TalkbackManager {
         if (this.mediaStream) {
             this.mediaStream.getTracks().forEach(track => track.stop());
             this.mediaStream = null;
+        }
+
+        // Remove waiting modal from DOM
+        if (this._waitingModal) {
+            this._waitingModal.remove();
+            this._waitingModal = null;
         }
 
         this.isConnected = false;

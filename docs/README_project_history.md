@@ -15408,34 +15408,238 @@ Extended timeline playback feature with comprehensive iOS/mobile support. Fixed 
 
 ---
 
+## January 22-25, 2026: PTZ Enhancements, Power Management, WebRTC Retry
+
+**Branches:** `ptz_reversal_settings_JAN_24_2026_a`, `timeline_playback_JAN_19_2026_a`
+
+### Session Overview
+
+Major enhancements across multiple areas:
+1. PTZ control improvements (reversal settings, presets, recalibration)
+2. Eufy bridge fixes (PTZ direction mapping, cloud auth)
+3. Power management implementation (Hubitat + UniFi POE)
+4. WebRTC fullscreen quality retry logic
+
+---
+
+### 1. PTZ Reversal Settings for Upside-Down Cameras (Jan 24)
+
+User requested ability to reverse PTZ pan/tilt controls for cameras mounted upside down.
+
+**Implementation:**
+
+| Component | Details |
+|-----------|---------|
+| `cameras.json` | Added `reversed_pan`, `reversed_tilt` boolean fields to all 19 cameras |
+| `camera_repository.py` | Added `update_camera_ptz_reversal()`, `get_camera_ptz_reversal()` methods |
+| `app.py` | Added `GET/POST /api/ptz/<serial>/reversal` endpoints |
+| `ptz-controller.js` | API-based persistence, `applyReversal()` for direction correction |
+| `streams.html` | Added "Rev. Pan" and "Rev. Tilt" checkboxes in PTZ controls |
+| `ptz-controls.css` | Styled checkbox container with custom appearance |
+
+**Code Flow:**
+```text
+User clicks direction → startMovement(direction)
+  → applyReversal(serial, direction) [swaps left↔right or up↔down if enabled]
+  → fetch(`/api/ptz/${serial}/${correctedDirection}`)
+```
+
+**Optimistic Update Pattern:** Checkbox change immediately updates in-memory cache, API call runs in background for persistence.
+
+---
+
+### 2. PTZ Double-Action Bug Fix (Jan 24)
+
+**Symptom:** When reversal enabled, camera moved correctly then moved backward.
+
+**Root Cause:** Duplicate event handlers on `.ptz-btn`:
+1. `ptz-controller.js:339` - `mousedown/touchstart` → reversed direction
+2. `stream.js:556` - `click` → original direction (NO reversal)
+
+**Fix:** Removed duplicate click handler from `stream.js:556-565`.
+
+---
+
+### 3. PTZ Home Button & Recalibration (Jan 24)
+
+- **Home button**: Changed to call `gotoPreset(0, 'Home')` instead of ONVIF GotoHomePosition
+- **Recalibration button**: New button with `fa-sync-alt` icon for ONVIF GotoHomePosition
+- **Backend**: Added `'recalibrate'` direction handling in `onvif_ptz_handler.py`
+
+---
+
+### 4. Eufy Bridge Fixes (Jan 22)
+
+**Issues Found & Fixed:**
+
+| Issue | Fix |
+|-------|-----|
+| `_running` flag never set | Fixed in `start()` method |
+| WebSocket response ordering | Added `_wait_for_message()` for async responses |
+| Direction mapping wrong | Fixed per official `PanTiltDirection` enum |
+| Stop command doesn't exist | Removed - Eufy cameras auto-stop |
+
+**Correct PTZ Direction Mapping:**
+```python
+'360': 0,    # ROTATE360
+'left': 1,   # LEFT
+'right': 2,  # RIGHT
+'up': 3,     # UP
+'down': 4,   # DOWN
+# NO STOP COMMAND - cameras auto-stop after movement
+```
+
+**Firewall Fix:** Disabled SonicWall `BLOCKED_CAMERAS` rule - Eufy cameras need cloud for PTZ command relay.
+
+---
+
+### 5. Timeline Playback Timestamp Bug Fix (Jan 24)
+
+**Symptom:** Timeline showed timestamps 4-5 hours off from actual recording time.
+
+**Root Cause:** `recording_service.py` used `datetime.now().isoformat()` (naive datetime). PostgreSQL interpreted as UTC, causing offset.
+
+**Fix:** Use `datetime.now(timezone.utc).isoformat()` for all database timestamps:
+- `recording_service.py:823` - `timestamp`
+- `recording_service.py:854-856` - `end_timestamp`, `updated_at`
+- `storage_migration.py:449` - `archived_at`
+
+---
+
+### 6. Power Management Implementation (Jan 24)
+
+#### Hubitat Power Service
+
+Power cycling for cameras via Hubitat smart plugs.
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `services/power/__init__.py` | Module exports |
+| `services/power/hubitat_power_service.py` | Hubitat Maker API integration |
+| `static/js/modals/hubitat-device-picker.js` | Device picker with smart matching |
+| `static/css/components/hubitat-picker.css` | Modal styling |
+| `static/js/controllers/power-controller.js` | Power button logic |
+
+**Features:**
+- Auto power cycle on OFFLINE state (3+ failures via CameraStateTracker callback)
+- 5-minute cooldown between cycles per camera
+- Device discovery with name-based smart matching
+- Manual power cycle via API
+
+**API Endpoints:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/hubitat/devices/switch` | GET | List all Hubitat switch devices |
+| `/api/cameras/<serial>/power_supply` | GET/POST | Get/set power supply config |
+| `/api/power/<serial>/cycle` | POST | Manual power cycle (Hubitat) |
+| `/api/power/<serial>/status` | GET | Power cycle status |
+| `/api/hubitat/cameras` | GET | List hubitat-powered cameras |
+
+**Configuration:**
+```
+HUBITAT_API_TOKEN=         # From AWS Secrets Manager
+HUBITAT_API_APP_NUMBER=    # From AWS Secrets Manager
+HUBITAT_HUB_IP=192.168.10.72
+```
+
+#### UniFi POE Power Service
+
+Power cycling for POE cameras via UniFi Network Controller.
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `services/power/unifi_poe_service.py` | UniFi Controller API integration |
+
+**Features:**
+- Auto power cycle on OFFLINE state
+- 5-minute cooldown per camera
+- Switch and port discovery
+- Support for UDM and standard controller types
+
+**API Endpoints:**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/unifi-poe/switches` | GET | List all UniFi switches |
+| `/api/unifi-poe/switches/<mac>/ports` | GET | List ports on a switch |
+| `/api/cameras/<serial>/poe_config` | GET/POST | Get/set POE config |
+| `/api/poe/<serial>/cycle` | POST | Manual POE power cycle |
+
+**Configuration:**
+```
+UNIFI_CONTROLLER_HOST=
+UNIFI_CONTROLLER_USERNAME=  # Local user (not SSO)
+UNIFI_CONTROLLER_PASSWORD=
+UNIFI_CONTROLLER_SITE=default
+UNIFI_CONTROLLER_TYPE=udm
+```
+
+---
+
+### 7. WebRTC Fullscreen Quality Recovery (Jan 25)
+
+**Issue:** When fullscreen falls back from main to sub stream, it never retries main stream.
+
+**Fix Applied** (`79afe6f`):
+
+1. **`_startMainStreamWithRetry()` method** - Tries main stream up to 3 times with exponential backoff (2s, 4s, 8s delays)
+2. **`_scheduleMainStreamUpgrade()` method** - Background recovery from sub → main (10s, 20s, 40s, 60s)
+3. **Updated `openFullscreen()`** to use retry helper in all branches
+4. **Added cleanup in `closeFullscreen()`** - Clears retry timer and quality data
+
+---
+
+### Key Commits
+
+| Commit | Description |
+|--------|-------------|
+| `d3adaf6` | Add PTZ reversal settings for upside-down mounted cameras |
+| `0de300b` | Fix PTZ double-action: remove backend direction correction for Eufy |
+| `5a5ab17` | Fix PTZ reversal double-action: remove duplicate click handler |
+| `5918a11` | Fix timeline timestamp timezone offset |
+| `897389e` | Fix MJPEG restart loop for cameras that don't publish to MediaMTX |
+| `79afe6f` | Add exponential backoff retry for main stream in fullscreen mode |
+
+---
+
 ## TODO List (Cumulative)
 
-**Completed This Session (Jan 20-21, 2026):**
+**Completed (Jan 22-25, 2026):**
 
-- [x] Fix mobile preview section visibility (overflow: visible fix)
-- [x] Auto-check iOS checkbox on mobile
-- [x] Fix iOS export download blank page (inline playback)
-- [x] Add `import re` to app.py
-- [x] Optimize promote to skip redundant encoding
-- [x] Add stream-by-filename endpoint
-- [x] Fix iOS save buttons z-index/layout
-- [x] Grey out Export Selection during encoding
-- [x] Merge branch to main
+- [x] PTZ reversal settings for upside-down cameras
+- [x] PTZ Home button → preset[0]
+- [x] PTZ Recalibration button
+- [x] Fix PTZ double-action bug
+- [x] Fix Eufy PTZ direction mapping
+- [x] Fix timeline timestamp timezone
+- [x] Hubitat power service implementation
+- [x] UniFi POE power service implementation
+- [x] Device picker modal with smart matching
+- [x] Power button in stream controls
+- [x] WebRTC fullscreen retry logic
 
 **Testing Needed:**
 
+- [ ] Test fullscreen quality recovery
 - [ ] Test iOS inline download with Share/Open in Tab buttons
 - [ ] Test connection monitor on slower tablets
 
 **Future Enhancements:**
 
+- [ ] Two-way audio (major feature - requires WebRTC sendrecv, getUserMedia, ONVIF AudioBackChannel)
 - [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline
+- [ ] Re-enable SonicWall camera blocking with Eufy domain whitelist
 
 **Deferred:**
 
 - [ ] Database-backed recording settings
-- [ ] Camera settings UI
+- [ ] Camera settings UI (power settings modal)
 - [ ] Container self-restart mechanism
 
 ---

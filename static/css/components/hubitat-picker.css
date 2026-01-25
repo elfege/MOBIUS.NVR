@@ -201,45 +201,91 @@
 
 /* ============================================================================
    POWER BUTTON IN STREAM CONTROLS
+   Positioned in bottom row next to playback button
    ============================================================================ */
 
-/* Power button - matches other stream control buttons */
+/* Power button - matches other bottom-row stream control buttons */
 .stream-power-btn {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: rgba(255, 255, 255, 0.8);
+    position: absolute;
+    bottom: 8px;
+    right: 140px;  /* Offset from playback button (96px + 44px) */
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #FF9800;  /* Orange accent for power */
+    padding: 8px 12px;
     cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 4px;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
+    z-index: 10;
+    font-size: 16px;
+    opacity: 0;
+    pointer-events: auto;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+/* Show on hover for desktop */
+.stream-item:hover .stream-power-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .stream-power-btn {
+        opacity: 0.7;
+    }
+
+    .stream-power-btn:active {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.8);
+    }
+}
+
+/* Desktop hover effect */
 .stream-power-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 152, 0, 0.3);
+    border-color: #FF9800;
     color: #fff;
+    transform: scale(1.05);
+}
+
+.stream-power-btn:active {
+    transform: scale(0.95);
 }
 
 /* Power button states */
 .stream-power-btn.power-configured {
-    color: #4CAF50;
+    color: #4CAF50;  /* Green when device is configured */
+}
+
+.stream-power-btn.power-configured:hover {
+    background: rgba(76, 175, 80, 0.3);
+    border-color: #4CAF50;
 }
 
 .stream-power-btn.power-cycling {
     color: #FFC107;
+    opacity: 1;  /* Always visible when cycling */
     animation: power-pulse 1s infinite;
 }
 
 .stream-power-btn.power-error {
     color: #f44336;
+    opacity: 1;  /* Always visible on error */
+}
+
+.stream-power-btn.power-error:hover {
+    background: rgba(244, 67, 54, 0.3);
+    border-color: #f44336;
 }
 
 /* Power button not available (no power_supply set) */
 .stream-power-btn.power-unavailable {
     opacity: 0.3;
     cursor: not-allowed;
+    pointer-events: none;
 }
 
 @keyframes power-pulse {

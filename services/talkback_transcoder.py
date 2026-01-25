@@ -258,6 +258,8 @@ class TalkbackTranscoder:
         """Reader thread: reads AAC frames from FFmpeg stdout and calls callback."""
         log_prefix = f"{self._log_prefix} [Reader]"
 
+        print(f"{log_prefix} Reader thread started")
+
         # ADTS frame header is 7 bytes, contains frame length
         # We read in chunks and the callback handles the actual framing
         CHUNK_SIZE = 1024  # Read 1KB at a time
@@ -270,8 +272,18 @@ class TalkbackTranscoder:
                 if not aac_chunk:
                     # FFmpeg closed stdout (likely process ended)
                     if self._running:
-                        logger.warning(f"{log_prefix} FFmpeg stdout closed")
+                        logger.warning(f"{log_prefix} FFmpeg stdout closed unexpectedly")
+                        # Check if FFmpeg died
+                        if self._process:
+                            retcode = self._process.poll()
+                            if retcode is not None:
+                                stderr = self._process.stderr.read() if self._process.stderr else ''
+                                print(f"{log_prefix} FFmpeg exited with code {retcode}, stderr: {stderr}")
                     break
+
+                # Log first frame and every 50th frame
+                if self._frames_out == 0 or self._frames_out % 50 == 0:
+                    print(f"{log_prefix} Read AAC chunk #{self._frames_out}, size={len(aac_chunk)}B")
 
                 # Call the callback with AAC data
                 try:

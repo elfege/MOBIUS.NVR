@@ -152,11 +152,12 @@
                 <i class="fas fa-plug"></i>
             </button>
             {% endif %}
-            {% if info.type == 'eufy' %}
+            {% if 'two_way_audio' in info.capabilities %}
             <button class="stream-talkback-btn"
                 aria-label="Push to Talk" title="Hold to Talk (Two-Way Audio)"
                 data-camera-id="{{ serial }}"
-                data-camera-type="{{ info.type }}">
+                data-camera-type="{{ info.type }}"
+                data-camera-name="{{ info.name }}">
                 <i class="fas fa-microphone-alt"></i>
             </button>
             {% endif %}

@@ -204,6 +204,64 @@ class EufyBridge:
         print(f"{log_prefix} Timeout waiting for event '{event_name}'")
         return None
 
+    async def _wait_for_livestream_ready(self, ws, serial_number, timeout=15):
+        """
+        Wait for livestream to be ready - accepts multiple event types.
+
+        When starting a P2P livestream:
+        - NEW stream: fires 'livestream started' event
+        - ALREADY RUNNING stream: immediately sends 'livestream video data' events
+
+        This method accepts either as proof that the stream is ready.
+
+        Args:
+            ws: WebSocket connection
+            serial_number: Camera serial number to match
+            timeout: Maximum wait time in seconds
+
+        Returns:
+            dict: The event data if found, None if timeout
+        """
+        import time
+        log_prefix = "[EUFY LIVESTREAM]"
+        start = time.time()
+
+        # Events that indicate the livestream is ready
+        ready_events = {'livestream started', 'livestream video data', 'livestream audio data'}
+
+        print(f"{log_prefix} Waiting for livestream ready for {serial_number} (timeout={timeout}s)")
+        print(f"{log_prefix} Accepting events: {ready_events}")
+
+        while time.time() - start < timeout:
+            try:
+                response = await asyncio.wait_for(ws.recv(), timeout=1)
+                data = json.loads(response)
+
+                # Check if this is an event message
+                if data.get("type") == "event":
+                    event_data = data.get("event", {})
+                    event_type = event_data.get("event")
+                    event_serial = event_data.get("serialNumber")
+
+                    # Check if this is a ready event for our camera
+                    if event_type in ready_events and event_serial == serial_number:
+                        print(f"{log_prefix} Livestream ready! (received: {event_type})")
+                        return data
+                    else:
+                        # Log but continue waiting
+                        print(f"{log_prefix} Received event: {event_type} for {event_serial}")
+                else:
+                    # Log other message types
+                    msg_id = data.get("messageId", "unknown")
+                    msg_type = data.get("type", "unknown")
+                    print(f"{log_prefix} Received {msg_type} message (id={msg_id})")
+
+            except asyncio.TimeoutError:
+                continue
+
+        print(f"{log_prefix} Timeout waiting for livestream ready")
+        return None
+
     async def _execute_ptz_command(self, camera_serial, direction):
         """Execute PTZ command - Eufy cameras auto-stop, no explicit stop needed"""
         print(f"[EUFY PTZ CMD] Starting: serial={camera_serial}, direction={direction}")
@@ -888,11 +946,12 @@ class EufyBridge:
                 await ws.close()
                 return False
 
-            # Wait for 'livestream started' event
+            # Wait for 'livestream started' event OR data events (stream already active)
             is_async = result.get("result", {}).get("async", False)
             if is_async:
-                print(f"{log_prefix} Waiting for 'livestream started' event...")
-                event = await self._wait_for_event(ws, "livestream started", camera_serial, timeout=15)
+                print(f"{log_prefix} Waiting for livestream to be ready...")
+                # Accept either 'livestream started' (new stream) or 'livestream video data' (already running)
+                event = await self._wait_for_livestream_ready(ws, camera_serial, timeout=15)
                 if not event:
                     print(f"{log_prefix} Timeout waiting for P2P stream")
                     await ws.close()

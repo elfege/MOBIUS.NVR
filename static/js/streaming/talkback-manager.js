@@ -49,6 +49,16 @@ export class TalkbackManager {
         // Microphone permission state
         this.microphonePermission = 'unknown'; // 'granted', 'denied', 'prompt', 'unknown'
 
+        // Available microphone devices
+        this.availableMicrophones = [];
+        this.selectedMicrophoneId = null;  // null = default device
+
+        // Audio level visualization
+        this._analyserNode = null;
+        this._visualizationCanvas = null;
+        this._visualizationCtx = null;
+        this._visualizationAnimationId = null;
+
         // Event callbacks
         this._onStateChange = null;
         this._onError = null;
@@ -77,6 +87,46 @@ export class TalkbackManager {
 
         // Bind methods for event handlers
         this._handleAudioProcess = this._handleAudioProcess.bind(this);
+        this._drawVisualization = this._drawVisualization.bind(this);
+    }
+
+    /**
+     * Enumerate available microphone devices.
+     *
+     * @returns {Promise<Array>} Array of {deviceId, label} objects
+     */
+    async enumerateMicrophones() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            this.availableMicrophones = devices
+                .filter(d => d.kind === 'audioinput')
+                .map(d => ({
+                    deviceId: d.deviceId,
+                    label: d.label || `Microphone ${d.deviceId.slice(0, 8)}...`
+                }));
+            console.log('[TalkbackManager] Found microphones:', this.availableMicrophones);
+            return this.availableMicrophones;
+        } catch (error) {
+            console.error('[TalkbackManager] Failed to enumerate devices:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Select a specific microphone device.
+     *
+     * @param {string|null} deviceId - Device ID to use, or null for default
+     */
+    async selectMicrophone(deviceId) {
+        console.log(`[TalkbackManager] Selecting microphone: ${deviceId || 'default'}`);
+        this.selectedMicrophoneId = deviceId;
+
+        // If we have an active stream, re-request with new device
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+            this.mediaStream = null;
+            await this.requestMicrophonePermission();
+        }
     }
 
     /**
@@ -91,19 +141,31 @@ export class TalkbackManager {
         console.log('[TalkbackManager] Requesting microphone permission');
 
         try {
+            // Build audio constraints
+            const audioConstraints = {
+                echoCancellation: true,      // Prevent feedback loops
+                noiseSuppression: true,       // Reduce background noise
+                autoGainControl: true,        // Normalize volume levels
+                sampleRate: 16000,            // 16kHz for voice
+                channelCount: 1               // Mono
+            };
+
+            // Add specific device if selected
+            if (this.selectedMicrophoneId) {
+                audioConstraints.deviceId = { exact: this.selectedMicrophoneId };
+            }
+
             // Request microphone with optimal settings for voice
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,      // Prevent feedback loops
-                    noiseSuppression: true,       // Reduce background noise
-                    autoGainControl: true,        // Normalize volume levels
-                    sampleRate: 16000,            // 16kHz for voice
-                    channelCount: 1               // Mono
-                }
+                audio: audioConstraints
             });
 
             this.microphonePermission = 'granted';
             console.log('[TalkbackManager] Microphone permission granted');
+
+            // Enumerate devices now that we have permission (labels visible)
+            await this.enumerateMicrophones();
+
             return true;
 
         } catch (error) {
@@ -417,6 +479,11 @@ export class TalkbackManager {
         // Create source from microphone stream
         const source = this.audioContext.createMediaStreamSource(this.mediaStream);
 
+        // Create AnalyserNode for audio visualization
+        this._analyserNode = this.audioContext.createAnalyser();
+        this._analyserNode.fftSize = 256;
+        this._analyserNode.smoothingTimeConstant = 0.8;
+
         // Create ScriptProcessor for capturing audio frames
         // Buffer size: 4096 samples (~256ms at 16kHz)
         // Input channels: 1 (mono)
@@ -426,11 +493,121 @@ export class TalkbackManager {
         // Process audio frames
         this.scriptProcessor.onaudioprocess = this._handleAudioProcess;
 
-        // Connect: microphone -> processor -> destination (required for processor to work)
-        source.connect(this.scriptProcessor);
+        // Connect: microphone -> analyser -> processor -> destination
+        source.connect(this._analyserNode);
+        this._analyserNode.connect(this.scriptProcessor);
         this.scriptProcessor.connect(this.audioContext.destination);
 
+        // Start visualization if canvas is available
+        this._startVisualization();
+
         console.log('[TalkbackManager] Audio processing started');
+    }
+
+    /**
+     * Start the audio waveform visualization.
+     * @private
+     */
+    _startVisualization() {
+        if (!this._visualizationCanvas || !this._analyserNode) {
+            return;
+        }
+
+        console.log('[TalkbackManager] Starting audio visualization');
+        this._visualizationCtx = this._visualizationCanvas.getContext('2d');
+        this._drawVisualization();
+    }
+
+    /**
+     * Stop the audio waveform visualization.
+     * @private
+     */
+    _stopVisualization() {
+        if (this._visualizationAnimationId) {
+            cancelAnimationFrame(this._visualizationAnimationId);
+            this._visualizationAnimationId = null;
+        }
+
+        // Clear the canvas
+        if (this._visualizationCtx && this._visualizationCanvas) {
+            this._visualizationCtx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            this._visualizationCtx.fillRect(0, 0, this._visualizationCanvas.width, this._visualizationCanvas.height);
+        }
+    }
+
+    /**
+     * Draw a single frame of the audio waveform visualization.
+     * Uses requestAnimationFrame for smooth animation.
+     * @private
+     */
+    _drawVisualization() {
+        if (!this._analyserNode || !this._visualizationCtx || !this._visualizationCanvas) {
+            return;
+        }
+
+        // Request next frame
+        this._visualizationAnimationId = requestAnimationFrame(this._drawVisualization);
+
+        const canvas = this._visualizationCanvas;
+        const ctx = this._visualizationCtx;
+        const analyser = this._analyserNode;
+
+        // Get time domain data (waveform)
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteTimeDomainData(dataArray);
+
+        // Clear canvas
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw waveform
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = this.isTalking ? '#4CAF50' : '#2196F3';
+        ctx.beginPath();
+
+        const sliceWidth = canvas.width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+            const v = dataArray[i] / 128.0;  // Normalize to 0-2
+            const y = (v * canvas.height) / 2;
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+
+            x += sliceWidth;
+        }
+
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+
+        // Draw center line
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, canvas.height / 2);
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+
+        // Calculate and display audio level
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            const v = (dataArray[i] - 128) / 128;
+            sum += v * v;
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+        const level = Math.min(100, Math.round(rms * 200));
+
+        // Draw level indicator bar at bottom
+        const barHeight = 4;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+        ctx.fillStyle = level > 50 ? '#4CAF50' : '#2196F3';
+        ctx.fillRect(0, canvas.height - barHeight, (level / 100) * canvas.width, barHeight);
     }
 
     /**
@@ -469,6 +646,14 @@ export class TalkbackManager {
      */
     _teardownAudioProcessing() {
         console.log('[TalkbackManager] Tearing down audio processing');
+
+        // Stop visualization
+        this._stopVisualization();
+
+        if (this._analyserNode) {
+            this._analyserNode.disconnect();
+            this._analyserNode = null;
+        }
 
         if (this.scriptProcessor) {
             this.scriptProcessor.disconnect();
@@ -559,8 +744,8 @@ export class TalkbackManager {
     /**
      * Create the waiting modal DOM element.
      *
-     * Lazily creates the modal HTML structure with spinner, message, and cancel button.
-     * The modal is appended to document.body and reused for all talkback sessions.
+     * Lazily creates the modal HTML structure with spinner, message, cancel button,
+     * microphone selector, and audio waveform visualization.
      *
      * @private
      */
@@ -581,6 +766,24 @@ export class TalkbackManager {
                 </div>
                 <div class="talkback-waiting-message"></div>
                 <div class="talkback-waiting-camera"></div>
+
+                <!-- Audio waveform visualization -->
+                <div class="talkback-visualization-container">
+                    <canvas class="talkback-visualization-canvas" width="300" height="60"></canvas>
+                    <div class="talkback-visualization-label">Audio Input</div>
+                </div>
+
+                <!-- Microphone selector -->
+                <div class="talkback-mic-selector-container">
+                    <label class="talkback-mic-label">
+                        <i class="fas fa-microphone"></i>
+                        Microphone:
+                    </label>
+                    <select class="talkback-mic-selector">
+                        <option value="">Default</option>
+                    </select>
+                </div>
+
                 <div class="talkback-waiting-status">Establishing P2P connection...</div>
                 <button class="talkback-waiting-cancel">Cancel</button>
             </div>
@@ -594,8 +797,47 @@ export class TalkbackManager {
             this._cancelPendingTalkback();
         });
 
+        // Handle microphone selection
+        const micSelector = modal.querySelector('.talkback-mic-selector');
+        micSelector.addEventListener('change', async (e) => {
+            const deviceId = e.target.value || null;
+            console.log(`[TalkbackManager] User selected microphone: ${deviceId || 'default'}`);
+            await this.selectMicrophone(deviceId);
+        });
+
+        // Store reference to canvas for visualization
+        this._visualizationCanvas = modal.querySelector('.talkback-visualization-canvas');
+
         document.body.appendChild(modal);
         this._waitingModal = modal;
+    }
+
+    /**
+     * Populate the microphone selector dropdown.
+     * @private
+     */
+    async _populateMicrophoneSelector() {
+        if (!this._waitingModal) return;
+
+        const selector = this._waitingModal.querySelector('.talkback-mic-selector');
+        if (!selector) return;
+
+        // Enumerate microphones
+        await this.enumerateMicrophones();
+
+        // Clear existing options (except default)
+        selector.innerHTML = '<option value="">Default</option>';
+
+        // Add each microphone
+        for (const mic of this.availableMicrophones) {
+            const option = document.createElement('option');
+            option.value = mic.deviceId;
+            option.textContent = mic.label;
+            if (mic.deviceId === this.selectedMicrophoneId) {
+                option.selected = true;
+            }
+            selector.appendChild(option);
+        }
     }
 
     /**
@@ -612,7 +854,8 @@ export class TalkbackManager {
     /**
      * Show the waiting modal while P2P connection is being established.
      *
-     * Displays a random funny message and the camera name.
+     * Displays a random funny message, camera name, microphone selector, and
+     * audio visualization.
      *
      * @param {string} cameraName - Display name of the camera
      * @private
@@ -637,6 +880,9 @@ export class TalkbackManager {
 
         // Remove ready class if present
         this._waitingModal.classList.remove('ready');
+
+        // Populate microphone selector
+        this._populateMicrophoneSelector();
 
         // Show the modal
         this._waitingModal.classList.add('visible');

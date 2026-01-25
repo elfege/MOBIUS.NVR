@@ -26,6 +26,8 @@ import queue
 import base64
 import logging
 import time
+import select
+import os
 from typing import Optional, Callable, Dict
 
 logger = logging.getLogger(__name__)
@@ -141,7 +143,7 @@ class TalkbackTranscoder:
                 daemon=True
             )
             self._reader_thread.start()
-            print(f"{self._log_prefix} Reader thread started: {self._reader_thread.is_alive()}")
+            print(f"{self._log_prefix} Reader thread started: {self._reader_thread.is_alive()}", flush=True)
 
             # Start writer thread (feeds PCM to FFmpeg stdin)
             self._writer_thread = threading.Thread(
@@ -261,11 +263,19 @@ class TalkbackTranscoder:
         """Reader thread: reads AAC frames from FFmpeg stdout and calls callback."""
         log_prefix = f"{self._log_prefix} [Reader]"
 
-        print(f"{log_prefix} Reader thread function entered")
+        print(f"{log_prefix} Reader thread function entered", flush=True)
 
         # AAC frames are small, typically 100-300 bytes for voice at 20kbps
-        # We read whatever is available to minimize latency
+        # Read in small chunks for low latency
         CHUNK_SIZE = 512
+
+        # Make stdout non-blocking so we can poll for data
+        stdout_fd = self._process.stdout.fileno()
+        import fcntl
+        fl = fcntl.fcntl(stdout_fd, fcntl.F_GETFL)
+        fcntl.fcntl(stdout_fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
+        print(f"{log_prefix} Set stdout to non-blocking mode", flush=True)
 
         read_count = 0
         while self._running and self._process:
@@ -278,12 +288,23 @@ class TalkbackTranscoder:
                         stderr_data = self._process.stderr.read()
                     except:
                         pass
-                    print(f"{log_prefix} FFmpeg exited with code {retcode}, stderr: {stderr_data.decode('utf-8', errors='ignore')}")
+                    print(f"{log_prefix} FFmpeg exited with code {retcode}, stderr: {stderr_data.decode('utf-8', errors='ignore')}", flush=True)
                     break
 
+                # Use select to wait for data with timeout
+                readable, _, _ = select.select([self._process.stdout], [], [], 0.1)
+
+                if not readable:
+                    # No data available yet, continue waiting
+                    continue
+
                 # Read AAC data from FFmpeg stdout
-                # Note: This will block until data is available
-                aac_chunk = self._process.stdout.read(CHUNK_SIZE)
+                try:
+                    aac_chunk = self._process.stdout.read(CHUNK_SIZE)
+                except BlockingIOError:
+                    # No data ready despite select (race condition)
+                    continue
+
                 read_count += 1
 
                 if not aac_chunk:
@@ -294,9 +315,9 @@ class TalkbackTranscoder:
 
                 # Log progress
                 if self._frames_out == 0:
-                    print(f"{log_prefix} First AAC chunk received! size={len(aac_chunk)}B")
+                    print(f"{log_prefix} First AAC chunk received! size={len(aac_chunk)}B", flush=True)
                 elif self._frames_out % 50 == 0:
-                    print(f"{log_prefix} Read AAC chunk #{self._frames_out}, size={len(aac_chunk)}B")
+                    print(f"{log_prefix} Read AAC chunk #{self._frames_out}, size={len(aac_chunk)}B", flush=True)
 
                 # Call the callback with AAC data
                 try:
@@ -308,6 +329,8 @@ class TalkbackTranscoder:
             except Exception as e:
                 if self._running:
                     logger.error(f"{log_prefix} Read error: {e}")
+                    import traceback
+                    print(f"{log_prefix} Exception: {traceback.format_exc()}", flush=True)
                 break
 
         logger.debug(f"{log_prefix} Reader thread exiting")

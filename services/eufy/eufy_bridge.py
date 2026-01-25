@@ -154,6 +154,56 @@ class EufyBridge:
                 continue
         return None
 
+    async def _wait_for_event(self, ws, event_name, serial_number, timeout=15):
+        """
+        Wait for a specific event from the WebSocket.
+
+        Events have format: {'type': 'event', 'event': {'source': 'device',
+                            'event': 'livestream started', 'serialNumber': 'XXX'}}
+
+        Args:
+            ws: WebSocket connection
+            event_name: Event name to wait for (e.g., 'livestream started')
+            serial_number: Camera serial number to match
+            timeout: Maximum wait time in seconds
+
+        Returns:
+            dict: The event data if found, None if timeout
+        """
+        import time
+        log_prefix = "[EUFY EVENT]"
+        start = time.time()
+
+        print(f"{log_prefix} Waiting for event '{event_name}' for {serial_number} (timeout={timeout}s)")
+
+        while time.time() - start < timeout:
+            try:
+                response = await asyncio.wait_for(ws.recv(), timeout=1)
+                data = json.loads(response)
+
+                # Check if this is an event message
+                if data.get("type") == "event":
+                    event_data = data.get("event", {})
+                    event_type = event_data.get("event")
+                    event_serial = event_data.get("serialNumber")
+
+                    print(f"{log_prefix} Received event: {event_type} for {event_serial}")
+
+                    if event_type == event_name and event_serial == serial_number:
+                        print(f"{log_prefix} Matched target event!")
+                        return data
+                else:
+                    # Log other message types
+                    msg_id = data.get("messageId", "unknown")
+                    msg_type = data.get("type", "unknown")
+                    print(f"{log_prefix} Received {msg_type} message (id={msg_id}), continuing to wait...")
+
+            except asyncio.TimeoutError:
+                continue
+
+        print(f"{log_prefix} Timeout waiting for event '{event_name}'")
+        return None
+
     async def _execute_ptz_command(self, camera_serial, direction):
         """Execute PTZ command - Eufy cameras auto-stop, no explicit stop needed"""
         print(f"[EUFY PTZ CMD] Starting: serial={camera_serial}, direction={direction}")
@@ -500,6 +550,10 @@ class EufyBridge:
             - start: Start P2P livestream (required before talkback)
             - stop: Stop P2P livestream
 
+        The start command returns with {async: True} immediately, but the actual
+        stream takes a few seconds to establish. We must wait for the
+        'livestream started' event before the stream is ready for talkback.
+
         Args:
             camera_serial: Camera serial number
             command: 'start' or 'stop'
@@ -519,6 +573,12 @@ class EufyBridge:
             'stop': 'device.stop_livestream'
         }
 
+        # Map commands to the events we need to wait for
+        event_map = {
+            'start': 'livestream started',
+            'stop': 'livestream stopped'
+        }
+
         ws_command = command_map.get(command)
         if not ws_command:
             raise ValueError(f"Invalid livestream command: {command}")
@@ -535,7 +595,7 @@ class EufyBridge:
                 }))
                 await self._wait_for_message(ws, "schema")
 
-                # Start listening
+                # Start listening (required to receive events)
                 await ws.send(json.dumps({
                     "messageId": "start",
                     "command": "start_listening"
@@ -551,14 +611,31 @@ class EufyBridge:
                 print(f"{log_prefix} Sending: {ws_command}")
                 await ws.send(json.dumps(cmd))
 
-                # Wait for response (livestream start can take a few seconds)
-                result = await self._wait_for_message(ws, f"livestream_{command}", timeout=15)
-                print(f"{log_prefix} Response: {result}")
+                # Wait for command acknowledgment
+                result = await self._wait_for_message(ws, f"livestream_{command}", timeout=10)
+                print(f"{log_prefix} Command response: {result}")
 
                 if not result or not result.get("success", False):
                     error = result.get("errorCode", "unknown") if result else "timeout"
                     print(f"{log_prefix} Command failed: {error}")
                     return False
+
+                # For 'start' command: wait for 'livestream started' event
+                # The command returns {async: True} but stream isn't ready until event fires
+                if command == 'start':
+                    is_async = result.get("result", {}).get("async", False)
+                    if is_async:
+                        print(f"{log_prefix} Async operation - waiting for 'livestream started' event...")
+                        event = await self._wait_for_event(
+                            ws,
+                            event_map[command],
+                            camera_serial,
+                            timeout=15
+                        )
+                        if not event:
+                            print(f"{log_prefix} Timeout waiting for livestream started event")
+                            return False
+                        print(f"{log_prefix} Livestream started event received!")
 
                 # Track session state
                 if command == 'start':

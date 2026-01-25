@@ -817,12 +817,109 @@ class EufyBridge:
             logger.error(f"Talkback command error: {e}")
             return False
 
+    async def _start_talkback_with_p2p(self, camera_serial):
+        """
+        Start P2P livestream and talkback in a SINGLE WebSocket session.
+
+        CRITICAL: The P2P stream only stays alive while the WebSocket connection
+        that started it remains open. We MUST start livestream and talkback
+        in the same WebSocket session, then keep it open for audio transmission.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            bool: True if talkback started successfully
+        """
+        log_prefix = "[EUFY TALKBACK+P2P]"
+        print(f"{log_prefix} Starting combined P2P + talkback for {camera_serial}")
+
+        if not self.is_ready():
+            print(f"{log_prefix} ERROR: Bridge not ready!")
+            raise Exception("Bridge not ready")
+
+        try:
+            async with websockets.connect(self.bridge_url, open_timeout=10) as ws:
+                print(f"{log_prefix} WebSocket connected")
+
+                # Set API schema version
+                await ws.send(json.dumps({
+                    "messageId": "schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21
+                }))
+                await self._wait_for_message(ws, "schema")
+
+                # Start listening (required to receive events)
+                await ws.send(json.dumps({
+                    "messageId": "start",
+                    "command": "start_listening"
+                }))
+                await self._wait_for_message(ws, "start")
+
+                # === Step 1: Start P2P livestream ===
+                print(f"{log_prefix} Step 1: Starting P2P livestream...")
+                await ws.send(json.dumps({
+                    "messageId": "livestream_start",
+                    "command": "device.start_livestream",
+                    "serialNumber": camera_serial
+                }))
+
+                # Wait for command acknowledgment
+                result = await self._wait_for_message(ws, "livestream_start", timeout=10)
+                print(f"{log_prefix} P2P command response: {result}")
+
+                if not result or not result.get("success", False):
+                    error = result.get("errorCode", "unknown") if result else "timeout"
+                    print(f"{log_prefix} P2P start failed: {error}")
+                    return False
+
+                # Wait for 'livestream started' event
+                is_async = result.get("result", {}).get("async", False)
+                if is_async:
+                    print(f"{log_prefix} Waiting for 'livestream started' event...")
+                    event = await self._wait_for_event(ws, "livestream started", camera_serial, timeout=15)
+                    if not event:
+                        print(f"{log_prefix} Timeout waiting for P2P stream")
+                        return False
+                    print(f"{log_prefix} P2P livestream ready!")
+
+                self._active_p2p_sessions[camera_serial] = True
+
+                # === Step 2: Start talkback (on the SAME WebSocket session) ===
+                print(f"{log_prefix} Step 2: Starting talkback...")
+                await ws.send(json.dumps({
+                    "messageId": "talkback_start",
+                    "command": "device.start_talkback",
+                    "serialNumber": camera_serial
+                }))
+
+                result = await self._wait_for_message(ws, "talkback_start", timeout=10)
+                print(f"{log_prefix} Talkback response: {result}")
+
+                if not result or not result.get("success", False):
+                    error = result.get("errorCode", "unknown") if result else "timeout"
+                    print(f"{log_prefix} Talkback start failed: {error}")
+                    # Clean up P2P
+                    self._active_p2p_sessions.pop(camera_serial, None)
+                    return False
+
+                print(f"{log_prefix} Talkback started successfully!")
+                return True
+
+        except Exception as e:
+            print(f"{log_prefix} Exception: {e}")
+            logger.error(f"start_talkback_with_p2p error: {e}")
+            self._active_p2p_sessions.pop(camera_serial, None)
+            return False
+
     def start_talkback(self, camera_serial):
         """
         Start talkback session with camera.
 
-        This first starts a P2P livestream (required by Eufy protocol),
-        then initiates the talkback audio channel.
+        This starts a P2P livestream and talkback in a SINGLE WebSocket session.
+        The P2P stream only stays alive while the WebSocket is connected, so we
+        must start both in the same session.
 
         Args:
             camera_serial: Camera serial number
@@ -836,27 +933,16 @@ class EufyBridge:
             raise Exception("Bridge not running")
 
         try:
-            # Step 1: Start P2P livestream (required for talkback)
-            if not self.is_p2p_streaming(camera_serial):
-                print(f"[EUFY BRIDGE] Starting P2P livestream first...")
-                if not self.start_p2p_livestream(camera_serial):
-                    print(f"[EUFY BRIDGE] Failed to start P2P livestream")
-                    return False
-                print(f"[EUFY BRIDGE] P2P livestream ready")
-
-            # Step 2: Start talkback on the P2P session
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 return loop.run_until_complete(
-                    self._execute_talkback_command(camera_serial, 'start')
+                    self._start_talkback_with_p2p(camera_serial)
                 )
             finally:
                 loop.close()
         except Exception as e:
             logger.error(f"start_talkback error: {e}")
-            # Clean up P2P stream on failure
-            self.stop_p2p_livestream(camera_serial)
             return False
 
     def stop_talkback(self, camera_serial):

@@ -1,0 +1,248 @@
+/* ============================================================================
+   HUBITAT DEVICE PICKER MODAL
+   Modal for selecting Hubitat smart plug devices to associate with cameras.
+   ============================================================================ */
+
+/* Modal overlay - covers entire screen */
+.hubitat-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Show modal when visible class is added */
+.hubitat-modal.hubitat-modal-visible {
+    display: flex;
+}
+
+/* Modal content container */
+.hubitat-modal-content {
+    background: #1a1a2e;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 400px;
+    max-height: 80vh;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Modal header */
+.hubitat-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hubitat-modal-header h3 {
+    margin: 0;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+/* Close button */
+.hubitat-modal-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.hubitat-modal-close:hover {
+    color: #fff;
+}
+
+/* Modal body */
+.hubitat-modal-body {
+    padding: 1rem 1.25rem;
+    overflow-y: auto;
+    max-height: calc(80vh - 60px);
+}
+
+/* Camera info display */
+.hubitat-picker-camera-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+}
+
+.hubitat-picker-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.85rem;
+}
+
+.hubitat-picker-camera-name {
+    color: #fff;
+    font-weight: 500;
+}
+
+/* Status message area */
+.hubitat-picker-status {
+    text-align: center;
+    padding: 1rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.hubitat-picker-status-text {
+    font-size: 0.9rem;
+}
+
+/* Device list */
+.hubitat-devices-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+/* Individual device item */
+.hubitat-device-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.hubitat-device-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Matching device highlight */
+.hubitat-device-item.hubitat-device-match {
+    background: rgba(76, 175, 80, 0.15);
+    border-color: rgba(76, 175, 80, 0.3);
+}
+
+.hubitat-device-item.hubitat-device-match:hover {
+    background: rgba(76, 175, 80, 0.25);
+    border-color: rgba(76, 175, 80, 0.5);
+}
+
+/* Device icon */
+.hubitat-device-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #4CAF50;
+    font-size: 0.9rem;
+}
+
+/* Device label */
+.hubitat-device-label {
+    flex: 1;
+    color: #fff;
+    font-size: 0.95rem;
+}
+
+/* Match badge */
+.hubitat-device-match-badge {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    background: rgba(76, 175, 80, 0.3);
+    color: #81C784;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Show more button container */
+.hubitat-show-more {
+    margin-top: 0.75rem;
+    text-align: center;
+    display: none;
+}
+
+/* Show more button */
+.hubitat-show-more-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.hubitat-show-more-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #fff;
+}
+
+/* ============================================================================
+   POWER BUTTON IN STREAM CONTROLS
+   ============================================================================ */
+
+/* Power button - matches other stream control buttons */
+.stream-power-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stream-power-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+/* Power button states */
+.stream-power-btn.power-configured {
+    color: #4CAF50;
+}
+
+.stream-power-btn.power-cycling {
+    color: #FFC107;
+    animation: power-pulse 1s infinite;
+}
+
+.stream-power-btn.power-error {
+    color: #f44336;
+}
+
+/* Power button not available (no power_supply set) */
+.stream-power-btn.power-unavailable {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+@keyframes power-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}

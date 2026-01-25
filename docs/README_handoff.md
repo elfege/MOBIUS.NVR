@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 14:30 EST*
+*Last updated: January 25, 2026 15:15 EST*
 
 Branch: `two_way_audio_JAN_25_2026_a`
 
@@ -57,6 +57,11 @@ Task: Implement two-way audio (talkback) for cameras that support it.
 | 13:00 | `services/eufy/eufy_bridge.py` | Added `_wait_for_livestream_ready()` - accepts video/audio data events |
 | 13:15 | `static/js/streaming/stream.js` | Added `resetAllControlStates()` - clears PTZ, audio, talkback on reload |
 | 13:45 | `services/eufy/eufy_bridge.py` | Fixed websockets 10+ compatibility (`.state` vs `.closed`) |
+| 14:30 | `services/talkback_transcoder.py` | **NEW** - FFmpeg PCM→AAC transcoder for Eufy |
+| 14:35 | `app.py` | Integrated transcoder manager with talkback namespace |
+| 14:45 | `static/js/streaming/talkback-manager.js` | Added mic selector, waveform visualization, toggle mode |
+| 14:50 | `static/css/components/talkback-button.css` | Added visualization canvas and mic dropdown styles |
+| 15:10 | `services/talkback_transcoder.py` | Fixed reader thread: non-blocking I/O with select() |
 
 ### Debugging Session (12:30-14:30 EST)
 
@@ -78,6 +83,18 @@ Task: Implement two-way audio (talkback) for cameras that support it.
 **Issue 4: Button states persisting on reload**
 
 - Fix: `resetAllControlStates()` clears localStorage preferences and DOM classes on init
+
+**Issue 5: Audio not playing on camera speaker**
+
+- Root cause: Eufy requires AAC ADTS format, not raw PCM
+- Discovery: Found via GitHub eufy-security-client issue #153
+- Fix: Created `services/talkback_transcoder.py` - FFmpeg transcoder PCM→AAC
+- Audio specs: 16kHz, mono, 20kbps, ADTS container
+
+**Issue 6: Transcoder reader thread blocking forever**
+
+- Root cause: `read()` call blocks indefinitely waiting for FFmpeg output
+- Fix: Use non-blocking I/O with `select()` and `O_NONBLOCK` flag
 
 ### P2P Requirement Discovery
 
@@ -133,8 +150,11 @@ Browser                    Flask Backend              Camera
 
 - Used WebSocket (not WebRTC ingress) because MediaMTX does NOT support WHIP
 - Push-to-talk (PTT) model: hold button to talk, release to stop
-- Audio format: 16kHz mono 16-bit PCM, base64 encoded
+- Audio format: Browser captures 16kHz mono 16-bit PCM → FFmpeg transcodes to AAC ADTS → sent to Eufy bridge
 - P2P started on talkback, stopped on release (not kept alive)
+- Toggle mode: Click to start, click again to stop (10-min auto-timeout)
+- Mic selector: User can choose microphone device from dropdown
+- Waveform visualization: Real-time oscilloscope display of microphone input
 
 ### Testing Required
 

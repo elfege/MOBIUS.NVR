@@ -46,6 +46,14 @@ Task: Implement two-way audio for cameras that support it.
 
 ## TODO List
 
+**HIGH PRIORITY - Security:**
+
+- [ ] **Eufy bridge credentials**: Stop writing `username`/`password` to `eufy_bridge.json`
+  - Currently `eufy_bridge.sh` writes credentials to JSON (lines 169-170)
+  - JSON should only contain: `country`, `language`, `trustedDeviceName`, `persistentDir`, `stationIPAddresses`
+  - Check if `eufy-security-ws` supports reading credentials from env vars instead of config file
+  - If not, may need to modify bridge startup or find alternative approach
+
 **Two-Way Audio:**
 
 - [ ] Research ONVIF AudioBackChannel specification

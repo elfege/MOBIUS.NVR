@@ -1827,6 +1827,8 @@ def handle_stream_events_disconnect():
 _active_talkback_sessions = {}  # {camera_serial: client_sid}
 
 
+_aac_frame_count = 0  # Track frames for logging
+
 def _on_aac_frame_ready(camera_serial: str, aac_data: bytes):
     """
     Callback called by TalkbackTranscoder when AAC audio frame is ready.
@@ -1838,9 +1840,11 @@ def _on_aac_frame_ready(camera_serial: str, aac_data: bytes):
         camera_serial: Camera serial number
         aac_data: Raw AAC ADTS bytes
     """
+    global _aac_frame_count
     import base64
 
     if not eufy_bridge or not eufy_bridge.is_running():
+        print(f"[Talkback AAC] Bridge not running, dropping frame")
         return
 
     # Encode AAC bytes to base64 for JSON transmission
@@ -1848,7 +1852,12 @@ def _on_aac_frame_ready(camera_serial: str, aac_data: bytes):
 
     # Send to Eufy bridge
     try:
-        eufy_bridge.send_talkback_audio(camera_serial, aac_base64)
+        result = eufy_bridge.send_talkback_audio(camera_serial, aac_base64)
+        _aac_frame_count += 1
+        # Log every 10th frame
+        if _aac_frame_count % 10 == 0:
+            print(f"[Talkback AAC] Sent AAC frame #{_aac_frame_count} to {camera_serial}, "
+                  f"size={len(aac_data)}B, result={result}")
     except Exception as e:
         print(f"[Talkback AAC] Error sending to bridge: {e}")
 

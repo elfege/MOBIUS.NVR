@@ -338,3 +338,85 @@
     50% { transform: scale(1.2); }
     100% { transform: scale(1); }
 }
+
+/* ============================================================================
+   AUDIO VISUALIZATION
+   Real-time waveform display showing microphone input
+   ============================================================================ */
+
+.talkback-visualization-container {
+    margin: 1rem 0;
+    padding: 0.5rem;
+    background: rgba(0, 0, 0, 0.5);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.talkback-visualization-canvas {
+    display: block;
+    width: 100%;
+    height: 60px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.talkback-visualization-label {
+    margin-top: 0.25rem;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ============================================================================
+   MICROPHONE SELECTOR
+   Dropdown to choose audio input device
+   ============================================================================ */
+
+.talkback-mic-selector-container {
+    margin: 1rem 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.talkback-mic-label {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.talkback-mic-label i {
+    font-size: 0.9rem;
+}
+
+.talkback-mic-selector {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    max-width: 200px;
+    transition: all 0.2s;
+}
+
+.talkback-mic-selector:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.talkback-mic-selector:focus {
+    outline: none;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+.talkback-mic-selector option {
+    background: #1a1a1a;
+    color: #fff;
+}

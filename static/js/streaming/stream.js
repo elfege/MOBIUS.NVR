@@ -348,6 +348,11 @@ export class MultiStreamManager {
 
     init() {
         console.log('========== MultiStreamManager INIT() CALLED ==========');
+
+        // Reset all control states FIRST to prevent stale cache states
+        // This clears PTZ panels, audio unmute, stream controls, talkback buttons
+        this.resetAllControlStates();
+
         this.setupLayout();
         this.setupEventListeners();
         this.updateStreamCount();
@@ -975,6 +980,54 @@ export class MultiStreamManager {
                 });
             }
         });
+    }
+
+    /**
+     * Reset all control states on page load.
+     *
+     * This ensures a clean state on reload, preventing cached/stale states
+     * from persisting due to browser cache weirdness. Clears:
+     * - PTZ panel visibility
+     * - Stream controls visibility
+     * - Audio unmute state
+     * - Talkback button state
+     *
+     * Called early in init() before any streams are loaded.
+     */
+    resetAllControlStates() {
+        console.log('[Init] Resetting all control states to default...');
+
+        // Clear localStorage preferences that persist control states
+        try {
+            localStorage.removeItem('cameraAudioPreferences');
+            localStorage.removeItem('cameraPTZPreferences');
+            localStorage.removeItem('cameraStreamControlsPreferences');
+            console.log('[Init] Cleared control preferences from localStorage');
+        } catch (e) {
+            console.warn('[Init] Failed to clear localStorage preferences:', e);
+        }
+
+        // Reset all PTZ panels to hidden
+        this.$container.find('.ptz-controls').removeClass('ptz-visible');
+        this.$container.find('.stream-ptz-toggle-btn').removeClass('ptz-active');
+
+        // Reset all stream controls to hidden
+        this.$container.find('.stream-controls').removeClass('controls-visible');
+        this.$container.find('.stream-controls-toggle-btn').removeClass('controls-active');
+
+        // Reset all audio buttons to muted state
+        this.$container.find('.stream-audio-btn').removeClass('audio-active');
+        this.$container.find('.stream-audio-btn i').removeClass('fa-volume-up').addClass('fa-volume-mute');
+
+        // Mute all video elements
+        this.$container.find('video').each(function() {
+            this.muted = true;
+        });
+
+        // Reset talkback buttons
+        this.$container.find('.stream-talkback-btn').removeClass('active');
+
+        console.log('[Init] All control states reset to defaults');
     }
 
     /**

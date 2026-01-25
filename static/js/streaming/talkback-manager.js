@@ -789,12 +789,20 @@ export class TalkbackManager {
             </div>
         `;
 
-        // Handle cancel button click
+        // Handle cancel/hide button click
         const cancelBtn = modal.querySelector('.talkback-waiting-cancel');
         cancelBtn.addEventListener('click', () => {
-            console.log('[TalkbackManager] User cancelled waiting');
-            this._hideWaitingModal(false);
-            this._cancelPendingTalkback();
+            // Check if we're in talking state vs waiting state
+            if (this._waitingModal.classList.contains('talking')) {
+                // In talking state: just hide the modal, keep session active
+                console.log('[TalkbackManager] User hiding modal (session stays active)');
+                this._closeModalOnly();
+            } else {
+                // In waiting state: cancel the pending talkback
+                console.log('[TalkbackManager] User cancelled waiting');
+                this._hideWaitingModal(false);
+                this._cancelPendingTalkback();
+            }
         });
 
         // Handle microphone selection
@@ -910,8 +918,8 @@ export class TalkbackManager {
 
             // Update UI for talking state
             messageEl.textContent = 'Talking...';
-            statusEl.textContent = 'Audio is being transmitted. Click Stop to end.';
-            cancelBtn.textContent = 'Stop';
+            statusEl.textContent = 'Audio is being transmitted. Click mic button to stop.';
+            cancelBtn.textContent = 'Hide';
 
             // Add talking class for styling
             this._waitingModal.classList.add('ready', 'talking');
@@ -928,6 +936,28 @@ export class TalkbackManager {
                 cancelBtn.textContent = 'Cancel';
             }
         }
+    }
+
+    /**
+     * Close the modal without stopping the talkback session.
+     *
+     * Used when user clicks "Hide" during an active talkback session.
+     * The talkback continues in the background; user can stop it via the mic button.
+     *
+     * @private
+     */
+    _closeModalOnly() {
+        if (!this._waitingModal) {
+            return;
+        }
+
+        console.log('[TalkbackManager] Hiding modal (session remains active)');
+
+        // Just hide the modal - keep 'ready' and 'talking' classes for state tracking
+        this._waitingModal.classList.remove('visible');
+
+        // Stop visualization to save CPU (audio still being sent)
+        this._stopVisualization();
     }
 
     /**

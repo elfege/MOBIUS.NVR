@@ -15,9 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 20:45 EST*
+*Last updated: January 25, 2026 10:15 EST*
 
-Branch: `timeline_playback_JAN_19_2026_a`
+Branch: `ptz_reversal_settings_JAN_24_2026_a`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -29,7 +29,38 @@ Context compaction occurred. Session continued on same branch.
 
 ---
 
-## Current Session (January 24, 2026 ~18:30-20:45 EST)
+## Current Session (January 25, 2026 ~10:00-10:15 EST)
+
+### WebRTC Fullscreen Quality Recovery - COMPLETE
+
+**Issue**: When fullscreen mode falls back from main stream to sub stream (due to connection errors), it NEVER retries main stream. User sees low-res forever even if main stream becomes available.
+
+**Fix Applied** (`79afe6f`):
+
+1. **Added `_startMainStreamWithRetry()` method** - Tries main stream up to 3 times with exponential backoff (2s, 4s, 8s delays)
+   - Checks if still in fullscreen before each retry
+   - Falls back to sub stream if all retries fail
+   - Schedules background upgrade attempts
+
+2. **Added `_scheduleMainStreamUpgrade()` method** - Background recovery from sub → main
+   - Retry delays: 10s, 20s, 40s, 60s
+   - Only runs while in fullscreen and on sub quality
+   - Stops sub, tries main, restarts sub if fails
+
+3. **Updated `openFullscreen()` to use retry helper** in three places:
+   - SNAPSHOT → main stream switch
+   - MJPEG → main stream switch
+   - LL_HLS/NEOLINK/WEBRTC → main stream switch
+
+4. **Added cleanup in `closeFullscreen()`**:
+   - Clears `main-stream-retry-timer` to prevent stale upgrade attempts
+   - Clears `fullscreen-quality` data attribute in all branches (snapshot, MJPEG, HLS/WebRTC)
+
+**Commit**: `79afe6f` - Add exponential backoff retry for main stream in fullscreen mode
+
+---
+
+## Previous Session (January 24, 2026 ~18:30-20:45 EST)
 
 ### Power Management Implementation
 
@@ -561,10 +592,20 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 - [x] Add Hubitat API endpoints (`/api/hubitat/devices/switch`, `/api/cameras/.../power_supply`)
 - [x] Add UniFi POE API endpoints (`/api/unifi-poe/switches`, `/api/cameras/.../poe_config`)
 - [x] Create device picker modal (`static/js/modals/hubitat-device-picker.js`)
-- [ ] Create CSS for device picker modal
+- [x] Create CSS for device picker modal
+- [x] Add power button to stream controls UI
+- [x] Fix power button CSS positioning
+- [x] Fix device picker list visibility bug
+- [x] Add Hubitat hub IP to .env (192.168.10.72)
 - [ ] Add power settings to camera settings modal
-- [ ] Add power button to stream controls UI
 - [ ] Test with one camera
+
+**WebRTC Fullscreen Quality:**
+
+- [x] Add retry logic for fullscreen main stream (exponential backoff)
+- [x] Add background upgrade scheduler (sub → main recovery)
+- [x] Add timer cleanup on fullscreen exit
+- [ ] Test fullscreen quality recovery
 
 **Deferred:**
 

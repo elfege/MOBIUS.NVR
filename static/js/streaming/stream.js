@@ -22,6 +22,7 @@ import { WebRTCStreamManager } from './webrtc-stream.js';
 import { CameraStateMonitor } from './camera-state-monitor.js';
 import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
 import { SnapshotStreamManager } from './snapshot-stream.js';
+import { talkbackManager } from './talkback-manager.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
@@ -873,6 +874,105 @@ export class MultiStreamManager {
 
             // Save preference to localStorage
             this.saveStreamControlsPreference(cameraId, !isVisible);
+        });
+
+        // =====================================================================
+        // Two-Way Audio (Talkback) Push-to-Talk Handlers
+        // =====================================================================
+        // PTT behavior: mousedown/touchstart = start talking, mouseup/touchend = stop
+        // Only active for Eufy cameras (button only rendered for type='eufy')
+
+        // Start talkback on press (mouse or touch)
+        this.$container.on('mousedown touchstart', '.stream-talkback-btn', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const $button = $(e.currentTarget);
+            const cameraId = $button.data('camera-id');
+            const $streamItem = $button.closest('.stream-item');
+
+            // Don't start if already talking or if permission denied
+            if ($button.hasClass('talkback-active') || $button.hasClass('talkback-denied')) {
+                return;
+            }
+
+            console.log(`[Talkback] PTT pressed for ${cameraId}`);
+
+            // Show connecting state
+            $button.addClass('talkback-connecting');
+
+            try {
+                // Start talkback (handles permission request and WebSocket connection)
+                const success = await talkbackManager.startTalkback(cameraId);
+
+                if (success) {
+                    // Update UI to show active state
+                    $button.removeClass('talkback-connecting');
+                    $button.addClass('talkback-active');
+                    $streamItem.addClass('talkback-active');
+                    $button.attr('data-talkback-status', 'Talking...');
+                    console.log(`[Talkback] Started for ${cameraId}`);
+                } else {
+                    // Failed to start
+                    $button.removeClass('talkback-connecting');
+                    $button.addClass('talkback-error');
+                    $button.attr('data-talkback-status', 'Failed to start');
+                    console.error(`[Talkback] Failed to start for ${cameraId}`);
+
+                    // Clear error state after 3 seconds
+                    setTimeout(() => {
+                        $button.removeClass('talkback-error');
+                        $button.removeAttr('data-talkback-status');
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error(`[Talkback] Error starting:`, error);
+                $button.removeClass('talkback-connecting');
+                $button.addClass('talkback-error');
+                $button.attr('data-talkback-status', error.message || 'Error');
+            }
+        });
+
+        // Stop talkback on release (mouse or touch)
+        this.$container.on('mouseup touchend mouseleave', '.stream-talkback-btn', (e) => {
+            const $button = $(e.currentTarget);
+            const $streamItem = $button.closest('.stream-item');
+
+            // Only stop if we were actively talking
+            if (!$button.hasClass('talkback-active')) {
+                return;
+            }
+
+            const cameraId = $button.data('camera-id');
+            console.log(`[Talkback] PTT released for ${cameraId}`);
+
+            // Stop talkback
+            talkbackManager.stopTalkback();
+
+            // Update UI
+            $button.removeClass('talkback-active talkback-connecting');
+            $streamItem.removeClass('talkback-active');
+            $button.removeAttr('data-talkback-status');
+        });
+
+        // Handle talkback manager state changes for UI updates
+        talkbackManager.onStateChange((state) => {
+            console.log(`[Talkback] State changed: ${state}`);
+        });
+
+        // Handle talkback errors
+        talkbackManager.onError((error) => {
+            console.error(`[Talkback] Error: ${error}`);
+
+            // Check if it's a permission error
+            if (error.includes('denied') || error.includes('Microphone')) {
+                // Mark all talkback buttons as denied
+                this.$container.find('.stream-talkback-btn').each((_, btn) => {
+                    const $btn = $(btn);
+                    $btn.addClass('talkback-denied');
+                    $btn.attr('data-talkback-status', 'Microphone denied');
+                });
+            }
         });
     }
 

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 15:15 EST*
+*Last updated: January 25, 2026 16:10 EST*
 
 Branch: `two_way_audio_JAN_25_2026_a`
 
@@ -40,7 +40,7 @@ See `docs/README_project_history.md` for complete history. Recent sessions (Jan 
 
 Task: Implement two-way audio (talkback) for cameras that support it.
 
-**Status**: Phase 1 (Eufy cameras) implementation complete with waiting modal. Ready for testing.
+**Status**: ✅ Phase 1 (Eufy cameras) COMPLETE - Two-way audio working end-to-end!
 
 ### Files Modified/Created
 
@@ -62,6 +62,9 @@ Task: Implement two-way audio (talkback) for cameras that support it.
 | 14:45 | `static/js/streaming/talkback-manager.js` | Added mic selector, waveform visualization, toggle mode |
 | 14:50 | `static/css/components/talkback-button.css` | Added visualization canvas and mic dropdown styles |
 | 15:10 | `services/talkback_transcoder.py` | Fixed reader thread: non-blocking I/O with select() |
+| 15:45 | `services/eufy/eufy_bridge.py` | **FINAL FIX**: Changed audio buffer from base64 string to byte array |
+| 16:08 | `config/cameras.json` | Added `two_way_audio` capability to all 9 Eufy cameras |
+| 16:09 | `templates/streams.html` | Changed talkback button check from type==eufy to capabilities.two_way_audio |
 
 ### Debugging Session (12:30-14:30 EST)
 
@@ -95,6 +98,14 @@ Task: Implement two-way audio (talkback) for cameras that support it.
 
 - Root cause: `read()` call blocks indefinitely waiting for FFmpeg output
 - Fix: Use non-blocking I/O with `select()` and `O_NONBLOCK` flag
+
+**Issue 7: Audio buffer format - THE FINAL FIX (15:45 EST)**
+
+- Root cause: eufy-security-ws uses `Buffer.from(message.buffer)` which interprets strings as UTF-8
+- When we sent base64 string, it was treated as UTF-8 bytes, not decoded binary
+- Fix: Decode base64 to bytes, send as list of integers (byte values)
+- Changed from: `"buffer": base64_audio_data` (string)
+- Changed to: `"buffer": list(base64.b64decode(audio_data))` (array of ints)
 
 ### P2P Requirement Discovery
 
@@ -194,7 +205,8 @@ Browser                    Flask Backend              Camera
 
 **Two-Way Audio - Phase 2:**
 
-- [ ] Test Eufy talkback end-to-end (Phase 1)
+- [x] Test Eufy talkback end-to-end (Phase 1) - WORKING!
+- [x] Add `two_way_audio` capability to cameras.json
 - [ ] Reolink support via Baichuan protocol / FFmpeg RTSP backchannel
 - [ ] ONVIF AudioBackChannel for UniFi/Amcrest cameras
 
@@ -202,7 +214,7 @@ Browser                    Flask Backend              Camera
 
 - [ ] Test fullscreen quality recovery (WebRTC retry)
 - [ ] Test iOS inline download
-- [ ] Test two-way audio on Eufy cameras
+- [x] Test two-way audio on Eufy cameras - WORKING!
 
 **Future Enhancements:**
 

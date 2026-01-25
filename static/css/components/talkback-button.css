@@ -1,0 +1,222 @@
+/* ============================================================================
+   TALKBACK BUTTON IN STREAM CONTROLS
+   Push-to-talk button for two-way audio with cameras.
+   Positioned in bottom row next to power button.
+   ============================================================================ */
+
+/* Talkback button - matches other bottom-row stream control buttons */
+.stream-talkback-btn {
+    position: absolute;
+    bottom: 8px;
+    right: 188px;  /* Offset from power button (140px + 48px) */
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #2196F3;  /* Blue accent for audio */
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    z-index: 10;
+    font-size: 16px;
+    opacity: 0;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Prevent text selection during long press */
+    user-select: none;
+    -webkit-user-select: none;
+    /* Prevent context menu on long press (mobile) */
+    -webkit-touch-callout: none;
+}
+
+/* Show on hover for desktop */
+.stream-item:hover .stream-talkback-btn {
+    opacity: 1;
+}
+
+/* Always visible on touch devices */
+@media (hover: none) {
+    .stream-talkback-btn {
+        opacity: 0.7;
+    }
+
+    .stream-talkback-btn:active {
+        opacity: 1;
+        background: rgba(33, 150, 243, 0.3);
+    }
+}
+
+/* Desktop hover effect */
+.stream-talkback-btn:hover {
+    background: rgba(33, 150, 243, 0.3);
+    border-color: #2196F3;
+    color: #fff;
+    transform: scale(1.05);
+}
+
+/* ============================================================================
+   TALKBACK BUTTON STATES
+   ============================================================================ */
+
+/* Active/talking state - bright red when PTT is held */
+.stream-talkback-btn.talkback-active {
+    background: rgba(244, 67, 54, 0.5);
+    border-color: #f44336;
+    color: #fff;
+    opacity: 1;
+    animation: talkback-pulse 0.8s ease-in-out infinite;
+    transform: scale(1.1);
+}
+
+/* Microphone icon animation while talking */
+.stream-talkback-btn.talkback-active i {
+    animation: mic-glow 0.4s ease-in-out infinite alternate;
+}
+
+/* Connecting state - yellow pulse */
+.stream-talkback-btn.talkback-connecting {
+    color: #FFC107;
+    opacity: 1;
+    animation: connecting-pulse 0.5s infinite;
+}
+
+/* Permission denied state - grayed out with warning */
+.stream-talkback-btn.talkback-denied {
+    color: #9E9E9E;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.stream-talkback-btn.talkback-denied:hover {
+    background: rgba(158, 158, 158, 0.2);
+    border-color: #9E9E9E;
+    transform: none;
+}
+
+/* Error state */
+.stream-talkback-btn.talkback-error {
+    color: #f44336;
+    opacity: 1;
+}
+
+.stream-talkback-btn.talkback-error:hover {
+    background: rgba(244, 67, 54, 0.3);
+    border-color: #f44336;
+}
+
+/* Not supported state (non-Eufy cameras for now) */
+.stream-talkback-btn.talkback-unsupported {
+    display: none;  /* Hidden for unsupported cameras */
+}
+
+/* ============================================================================
+   ANIMATIONS
+   ============================================================================ */
+
+/* Pulsing glow when actively talking */
+@keyframes talkback-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
+    }
+}
+
+/* Microphone icon glow effect */
+@keyframes mic-glow {
+    from {
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+    }
+    to {
+        text-shadow: 0 0 15px rgba(255, 255, 255, 0.8);
+    }
+}
+
+/* Connecting animation */
+@keyframes connecting-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ============================================================================
+   TALKBACK STATUS TOOLTIP
+   Shows connection/permission status on hover.
+   ============================================================================ */
+
+.stream-talkback-btn::before {
+    content: attr(data-talkback-status);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #fff;
+    font-size: 11px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    margin-bottom: 4px;
+}
+
+.stream-talkback-btn:hover::before {
+    opacity: 1;
+}
+
+/* Only show tooltip when there's status text */
+.stream-talkback-btn:not([data-talkback-status])::before,
+.stream-talkback-btn[data-talkback-status=""]::before {
+    display: none;
+}
+
+/* ============================================================================
+   VISUAL FEEDBACK OVERLAY
+   Semi-transparent overlay on video when talking.
+   ============================================================================ */
+
+.stream-item.talkback-active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+        circle at center,
+        rgba(244, 67, 54, 0.05) 0%,
+        rgba(244, 67, 54, 0.15) 100%
+    );
+    pointer-events: none;
+    z-index: 5;
+    animation: overlay-pulse 1s ease-in-out infinite;
+}
+
+@keyframes overlay-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+/* ============================================================================
+   RESPONSIVE ADJUSTMENTS
+   ============================================================================ */
+
+/* Smaller screens - adjust button positions */
+@media (max-width: 768px) {
+    .stream-talkback-btn {
+        right: 170px;  /* Slightly closer on mobile */
+        padding: 6px 10px;
+        font-size: 14px;
+    }
+}
+
+/* Very small streams in grid view */
+.stream-item.stream-small .stream-talkback-btn {
+    right: 150px;
+    padding: 4px 8px;
+    font-size: 12px;
+}

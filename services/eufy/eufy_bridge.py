@@ -1010,7 +1010,8 @@ class EufyBridge:
             return False
 
         ws = session.get('ws')
-        if not ws or ws.closed:
+        # websockets 10+ uses .state instead of .closed
+        if not ws or (hasattr(ws, 'closed') and ws.closed) or (hasattr(ws, 'state') and ws.state.name != 'OPEN'):
             print(f"[EUFY AUDIO] WebSocket closed for {camera_serial}")
             self._talkback_sessions.pop(camera_serial, None)
             return False
@@ -1046,7 +1047,9 @@ class EufyBridge:
             return True
 
         ws = session.get('ws')
-        if ws and not ws.closed:
+        # websockets 10+ uses .state instead of .closed
+        ws_is_open = ws and ((hasattr(ws, 'closed') and not ws.closed) or (hasattr(ws, 'state') and ws.state.name == 'OPEN'))
+        if ws_is_open:
             try:
                 # Stop talkback
                 await ws.send(json.dumps({

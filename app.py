@@ -1928,15 +1928,16 @@ def handle_start_talkback(data):
         success = eufy_bridge.start_talkback(camera_id)
         if success:
             _active_talkback_sessions[camera_id] = sid
-            logger.info(f"[Talkback] Started for {camera_id}")
+            print(f"[Talkback] ✅ Started for {camera_id}, sid={sid[:8]}..., emitting talkback_started")
             emit('talkback_started', {'camera_id': camera_id})
         else:
+            print(f"[Talkback] ❌ Failed to start for {camera_id}")
             emit('talkback_error', {
                 'camera_id': camera_id,
                 'error': 'Failed to start talkback'
             })
     except Exception as e:
-        logger.error(f"[Talkback] Error starting talkback: {e}")
+        print(f"[Talkback] ❌ Exception starting talkback: {e}")
         emit('talkback_error', {'camera_id': camera_id, 'error': str(e)})
 
 
@@ -1957,19 +1958,27 @@ def handle_audio_frame(data):
     audio_data = data.get('audio_data')
 
     if not camera_id or not audio_data:
+        print(f"[Talkback Audio] Malformed: camera={camera_id}, audio_len={len(audio_data) if audio_data else 0}")
         return  # Silently ignore malformed frames
 
     # Verify this client owns the session
-    if _active_talkback_sessions.get(camera_id) != sid:
+    session_sid = _active_talkback_sessions.get(camera_id)
+    if session_sid != sid:
+        print(f"[Talkback Audio] Session mismatch: camera={camera_id}, "
+              f"req_sid={sid[:8]}..., session_sid={session_sid[:8] if session_sid else 'None'}...")
         return  # Silently ignore if not the session owner
 
     # Send audio to camera
     if eufy_bridge and eufy_bridge.is_running():
         try:
-            eufy_bridge.send_talkback_audio(camera_id, audio_data)
+            result = eufy_bridge.send_talkback_audio(camera_id, audio_data)
+            # Log every 10th frame to avoid spam (roughly every 2.5 seconds at 4096 sample buffers)
+            import random
+            if random.random() < 0.1:
+                print(f"[Talkback Audio] Sent frame to {camera_id}, len={len(audio_data)}, result={result}")
         except Exception as e:
             # Log but don't emit error for every frame
-            logger.debug(f"[Talkback] Audio frame error: {e}")
+            print(f"[Talkback Audio] Send error: {e}")
 
 
 @socketio.on('stop_talkback', namespace='/talkback')

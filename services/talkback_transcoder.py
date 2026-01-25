@@ -104,7 +104,7 @@ class TalkbackTranscoder:
             cmd = [
                 'ffmpeg',
                 '-hide_banner',
-                '-loglevel', 'error',
+                '-loglevel', 'warning',  # Show warnings too for debugging
                 # Input format: raw PCM
                 '-f', 's16le',              # Signed 16-bit little-endian
                 '-ar', str(self.sample_rate),  # 16 kHz
@@ -113,6 +113,8 @@ class TalkbackTranscoder:
                 # Output format: AAC ADTS
                 '-c:a', 'aac',              # Use built-in AAC encoder
                 '-b:a', self.bitrate,       # 20 kbps
+                '-flush_packets', '1',       # Flush output immediately
+                '-fflags', '+flush_packets', # Additional flush flag
                 '-f', 'adts',               # ADTS container (raw AAC frames)
                 'pipe:1'                    # Write to stdout
             ]
@@ -139,6 +141,7 @@ class TalkbackTranscoder:
                 daemon=True
             )
             self._reader_thread.start()
+            print(f"{self._log_prefix} Reader thread started: {self._reader_thread.is_alive()}")
 
             # Start writer thread (feeds PCM to FFmpeg stdin)
             self._writer_thread = threading.Thread(
@@ -258,31 +261,41 @@ class TalkbackTranscoder:
         """Reader thread: reads AAC frames from FFmpeg stdout and calls callback."""
         log_prefix = f"{self._log_prefix} [Reader]"
 
-        print(f"{log_prefix} Reader thread started")
+        print(f"{log_prefix} Reader thread function entered")
 
-        # ADTS frame header is 7 bytes, contains frame length
-        # We read in chunks and the callback handles the actual framing
-        CHUNK_SIZE = 1024  # Read 1KB at a time
+        # AAC frames are small, typically 100-300 bytes for voice at 20kbps
+        # We read whatever is available to minimize latency
+        CHUNK_SIZE = 512
 
+        read_count = 0
         while self._running and self._process:
             try:
-                # Read AAC data from FFmpeg stdout
-                aac_chunk = self._process.stdout.read(CHUNK_SIZE)
-
-                if not aac_chunk:
-                    # FFmpeg closed stdout (likely process ended)
-                    if self._running:
-                        logger.warning(f"{log_prefix} FFmpeg stdout closed unexpectedly")
-                        # Check if FFmpeg died
-                        if self._process:
-                            retcode = self._process.poll()
-                            if retcode is not None:
-                                stderr = self._process.stderr.read() if self._process.stderr else ''
-                                print(f"{log_prefix} FFmpeg exited with code {retcode}, stderr: {stderr}")
+                # Check if FFmpeg process is still alive
+                if self._process.poll() is not None:
+                    retcode = self._process.returncode
+                    stderr_data = b''
+                    try:
+                        stderr_data = self._process.stderr.read()
+                    except:
+                        pass
+                    print(f"{log_prefix} FFmpeg exited with code {retcode}, stderr: {stderr_data.decode('utf-8', errors='ignore')}")
                     break
 
-                # Log first frame and every 50th frame
-                if self._frames_out == 0 or self._frames_out % 50 == 0:
+                # Read AAC data from FFmpeg stdout
+                # Note: This will block until data is available
+                aac_chunk = self._process.stdout.read(CHUNK_SIZE)
+                read_count += 1
+
+                if not aac_chunk:
+                    # FFmpeg closed stdout
+                    if self._running:
+                        logger.warning(f"{log_prefix} FFmpeg stdout closed (read returned empty)")
+                    break
+
+                # Log progress
+                if self._frames_out == 0:
+                    print(f"{log_prefix} First AAC chunk received! size={len(aac_chunk)}B")
+                elif self._frames_out % 50 == 0:
                     print(f"{log_prefix} Read AAC chunk #{self._frames_out}, size={len(aac_chunk)}B")
 
                 # Call the callback with AAC data

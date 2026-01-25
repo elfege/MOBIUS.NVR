@@ -482,6 +482,190 @@ class EufyBridge:
             logger.error(f"Error correcting direction for {camera_serial}: {e}")
             return direction
     
+    # =========================================================================
+    # Two-Way Audio (Talkback) Methods
+    # =========================================================================
+
+    async def _execute_talkback_command(self, camera_serial, command, audio_data=None):
+        """
+        Execute talkback command via WebSocket bridge.
+
+        The eufy-security-client supports two-way audio through TalkbackStream.
+        Commands:
+            - start_talkback: Initiates talkback session with camera
+            - stop_talkback: Ends talkback session
+            - talkback_audio_data: Sends audio frame to camera (requires audio_data)
+
+        Args:
+            camera_serial: Camera serial number (e.g., T8416P0023352DA9)
+            command: One of 'start', 'stop', 'audio_data'
+            audio_data: Base64-encoded audio data (only for 'audio_data' command)
+
+        Returns:
+            bool: True if command succeeded
+        """
+        log_prefix = "[EUFY TALKBACK]"
+        print(f"{log_prefix} Starting: serial={camera_serial}, cmd={command}")
+
+        if not self.is_ready():
+            print(f"{log_prefix} ERROR: Bridge not ready!")
+            raise Exception("Bridge not ready")
+
+        # Map command names to eufy-security-ws commands
+        command_map = {
+            'start': 'device.start_talkback',
+            'stop': 'device.stop_talkback',
+            'audio_data': 'device.talkback_audio_data'
+        }
+
+        ws_command = command_map.get(command)
+        if not ws_command:
+            raise ValueError(f"Invalid talkback command: {command}")
+
+        print(f"{log_prefix} Command: {ws_command}, connecting to {self.bridge_url}")
+
+        try:
+            async with websockets.connect(self.bridge_url, open_timeout=5) as ws:
+                print(f"{log_prefix} WebSocket connected")
+
+                # Set API schema version
+                await ws.send(json.dumps({
+                    "messageId": "schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21
+                }))
+                schema_result = await self._wait_for_message(ws, "schema")
+                print(f"{log_prefix} Schema response: {schema_result}")
+
+                # Start listening
+                await ws.send(json.dumps({
+                    "messageId": "start",
+                    "command": "start_listening"
+                }))
+                listen_result = await self._wait_for_message(ws, "start")
+                print(f"{log_prefix} Listen response: {listen_result}")
+
+                # Build talkback command
+                cmd = {
+                    "messageId": f"talkback_{command}",
+                    "command": ws_command,
+                    "serialNumber": camera_serial
+                }
+
+                # Add audio data for audio_data command
+                if command == 'audio_data' and audio_data:
+                    cmd["audioData"] = audio_data
+
+                print(f"{log_prefix} Sending command: {cmd.get('command')} (data len: {len(audio_data) if audio_data else 0})")
+                await ws.send(json.dumps(cmd))
+                result = await self._wait_for_message(ws, f"talkback_{command}")
+                print(f"{log_prefix} Response: {result}")
+
+                if not result or not result.get("success", False):
+                    error = result.get("errorCode", "unknown") if result else "timeout"
+                    print(f"{log_prefix} Command failed: {error}")
+                    return False
+
+                print(f"{log_prefix} Command completed successfully")
+                return True
+
+        except Exception as e:
+            print(f"{log_prefix} Exception: {e}")
+            logger.error(f"Talkback command error: {e}")
+            return False
+
+    def start_talkback(self, camera_serial):
+        """
+        Start talkback session with camera.
+
+        This initiates the two-way audio stream. The camera will open its
+        audio input channel and be ready to receive audio frames.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            bool: True if talkback session started successfully
+        """
+        print(f"[EUFY BRIDGE] start_talkback: serial={camera_serial}")
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_talkback_command(camera_serial, 'start')
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"start_talkback error: {e}")
+            return False
+
+    def stop_talkback(self, camera_serial):
+        """
+        Stop talkback session with camera.
+
+        Ends the two-way audio stream and releases camera audio resources.
+
+        Args:
+            camera_serial: Camera serial number
+
+        Returns:
+            bool: True if talkback session stopped successfully
+        """
+        print(f"[EUFY BRIDGE] stop_talkback: serial={camera_serial}")
+
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_talkback_command(camera_serial, 'stop')
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"stop_talkback error: {e}")
+            return False
+
+    def send_talkback_audio(self, camera_serial, audio_data):
+        """
+        Send audio frame to camera for talkback.
+
+        Audio must be sent after start_talkback() and before stop_talkback().
+        Format expected: Base64-encoded PCM audio (16kHz, mono, 16-bit).
+
+        Args:
+            camera_serial: Camera serial number
+            audio_data: Base64-encoded audio data
+
+        Returns:
+            bool: True if audio frame sent successfully
+        """
+        # Note: Not logging every audio frame to avoid log spam
+        if not self.is_running():
+            raise Exception("Bridge not running")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(
+                    self._execute_talkback_command(camera_serial, 'audio_data', audio_data)
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            logger.error(f"send_talkback_audio error: {e}")
+            return False
+
     def __del__(self):
         """Cleanup on destruction"""
         self.stop()

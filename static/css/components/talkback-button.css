@@ -339,6 +339,28 @@
     100% { transform: scale(1); }
 }
 
+/* Talking state - red/active appearance */
+.talkback-waiting-modal.talking .talkback-waiting-icon {
+    color: #f44336;
+    animation: talking-pulse 1s ease-in-out infinite;
+}
+
+.talkback-waiting-modal.talking .talkback-waiting-spinner {
+    border-color: rgba(244, 67, 54, 0.3);
+    border-top-color: #f44336;
+    animation: spin 1s linear infinite;
+}
+
+.talkback-waiting-modal.talking .talkback-waiting-message {
+    color: #f44336;
+    font-weight: 600;
+}
+
+@keyframes talking-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+}
+
 /* ============================================================================
    AUDIO VISUALIZATION
    Real-time waveform display showing microphone input

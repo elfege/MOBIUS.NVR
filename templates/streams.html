@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/recording-modal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/timeline-modal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/storage-status.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/hubitat-picker.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -141,6 +142,15 @@
                 data-camera-id="{{ serial }}">
                 <i class="fas fa-history"></i>
             </button>
+            {% if info.power_supply and info.power_supply != 'none' %}
+            <button class="stream-power-btn {% if info.power_supply_device_id or info.poe_switch_mac %}power-configured{% endif %}"
+                aria-label="Power Control" title="Power Cycle Camera"
+                data-camera-id="{{ serial }}"
+                data-power-supply="{{ info.power_supply }}"
+                data-device-id="{{ info.power_supply_device_id or '' }}">
+                <i class="fas fa-plug"></i>
+            </button>
+            {% endif %}
 
             <div class="stream-controls">
                 <div class="control-row">
@@ -458,6 +468,8 @@
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controls.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/modals/timeline-playback-modal.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/modals/hubitat-device-picker.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/controllers/power-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/ptz-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/utils/eufy-auth-notifier.js') }}"></script>

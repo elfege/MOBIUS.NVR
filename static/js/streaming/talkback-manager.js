@@ -889,9 +889,10 @@ export class TalkbackManager {
     }
 
     /**
-     * Hide the waiting modal, optionally showing a ready state first.
+     * Transition modal to active "talking" state instead of hiding.
+     * For toggle mode: modal stays visible showing waveform while talking.
      *
-     * @param {boolean} ready - If true, briefly show ready state before hiding
+     * @param {boolean} ready - If true, transition to talking state; false hides immediately
      * @private
      */
     _hideWaitingModal(ready = false) {
@@ -899,21 +900,33 @@ export class TalkbackManager {
             return;
         }
 
-        console.log(`[TalkbackManager] Hiding waiting modal (ready: ${ready})`);
+        console.log(`[TalkbackManager] Transitioning modal (ready: ${ready})`);
 
         if (ready) {
-            // Show ready state briefly
+            // Transition to "talking" state - keep modal visible
+            const messageEl = this._waitingModal.querySelector('.talkback-waiting-message');
             const statusEl = this._waitingModal.querySelector('.talkback-waiting-status');
-            statusEl.textContent = 'Ready! Hold to talk...';
-            this._waitingModal.classList.add('ready');
+            const cancelBtn = this._waitingModal.querySelector('.talkback-waiting-cancel');
 
-            // Hide after a short delay to let user see the ready state
-            setTimeout(() => {
-                this._waitingModal.classList.remove('visible', 'ready');
-            }, 500);
+            // Update UI for talking state
+            messageEl.textContent = 'Talking...';
+            statusEl.textContent = 'Audio is being transmitted. Click Stop to end.';
+            cancelBtn.textContent = 'Stop';
+
+            // Add talking class for styling
+            this._waitingModal.classList.add('ready', 'talking');
+
+            // Keep modal visible - do NOT hide it
+            console.log('[TalkbackManager] Modal stays visible in talking state');
         } else {
-            // Hide immediately
-            this._waitingModal.classList.remove('visible', 'ready');
+            // Hide immediately (user cancelled or error)
+            this._waitingModal.classList.remove('visible', 'ready', 'talking');
+
+            // Reset button text for next use
+            const cancelBtn = this._waitingModal.querySelector('.talkback-waiting-cancel');
+            if (cancelBtn) {
+                cancelBtn.textContent = 'Cancel';
+            }
         }
     }
 

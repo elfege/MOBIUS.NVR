@@ -34,6 +34,7 @@ from low_level_handlers.process_reaper import install_sigchld_handler
 
 from services.eufy.eufy_bridge import EufyBridge
 from services.eufy.eufy_bridge_client import submit_captcha_sync, submit_2fa_sync, check_status_sync
+from services.talkback_transcoder import TalkbackTranscoderManager
 from services.eufy.eufy_bridge_watchdog import BridgeWatchdog
 from services.unifi_protect_service import UniFiProtectService
 from services.unifi_service_resource_monitor import UniFiServiceResourceMonitor
@@ -1826,6 +1827,36 @@ def handle_stream_events_disconnect():
 _active_talkback_sessions = {}  # {camera_serial: client_sid}
 
 
+def _on_aac_frame_ready(camera_serial: str, aac_data: bytes):
+    """
+    Callback called by TalkbackTranscoder when AAC audio frame is ready.
+
+    This is where we send the transcoded AAC audio to the Eufy bridge.
+    The bridge expects base64-encoded AAC ADTS frames.
+
+    Args:
+        camera_serial: Camera serial number
+        aac_data: Raw AAC ADTS bytes
+    """
+    import base64
+
+    if not eufy_bridge or not eufy_bridge.is_running():
+        return
+
+    # Encode AAC bytes to base64 for JSON transmission
+    aac_base64 = base64.b64encode(aac_data).decode('ascii')
+
+    # Send to Eufy bridge
+    try:
+        eufy_bridge.send_talkback_audio(camera_serial, aac_base64)
+    except Exception as e:
+        print(f"[Talkback AAC] Error sending to bridge: {e}")
+
+
+# Talkback transcoder manager: converts PCM to AAC for Eufy cameras
+_talkback_transcoder_manager = TalkbackTranscoderManager(on_aac_frame=_on_aac_frame_ready)
+
+
 @socketio.on('connect', namespace='/talkback')
 def handle_talkback_connect():
     """
@@ -1855,6 +1886,9 @@ def handle_talkback_disconnect():
         if session_sid == sid:
             logger.info(f"[Talkback] Client {sid[:8]}... disconnected, stopping session for {camera_serial}")
             try:
+                # Stop the transcoder first
+                _talkback_transcoder_manager.stop_transcoder(camera_serial)
+                # Then stop the Eufy bridge talkback
                 if eufy_bridge and eufy_bridge.is_running():
                     eufy_bridge.stop_talkback(camera_serial)
             except Exception as e:
@@ -1925,10 +1959,22 @@ def handle_start_talkback(data):
         return
 
     try:
+        # Start Eufy bridge talkback session
         success = eufy_bridge.start_talkback(camera_id)
         if success:
+            # Start FFmpeg transcoder (PCM → AAC) for this camera
+            transcoder_started = _talkback_transcoder_manager.start_transcoder(camera_id)
+            if not transcoder_started:
+                print(f"[Talkback] ⚠️ Transcoder failed to start for {camera_id}, stopping bridge session")
+                eufy_bridge.stop_talkback(camera_id)
+                emit('talkback_error', {
+                    'camera_id': camera_id,
+                    'error': 'Failed to start audio transcoder'
+                })
+                return
+
             _active_talkback_sessions[camera_id] = sid
-            print(f"[Talkback] ✅ Started for {camera_id}, sid={sid[:8]}..., emitting talkback_started")
+            print(f"[Talkback] ✅ Started for {camera_id} (bridge + transcoder), sid={sid[:8]}...")
             emit('talkback_started', {'camera_id': camera_id})
         else:
             print(f"[Talkback] ❌ Failed to start for {camera_id}")
@@ -1944,10 +1990,12 @@ def handle_start_talkback(data):
 @socketio.on('audio_frame', namespace='/talkback')
 def handle_audio_frame(data):
     """
-    Send audio frame to camera.
+    Receive PCM audio frame from browser and feed to transcoder.
 
     Audio data should be base64-encoded PCM audio (16kHz, mono, 16-bit).
-    This is called repeatedly while the PTT button is held.
+    The transcoder converts PCM to AAC and sends it to the Eufy bridge.
+
+    This is called repeatedly while the talkback is active.
 
     Args:
         data: {'camera_id': 'T8416P...', 'audio_data': 'base64...'}
@@ -1968,17 +2016,17 @@ def handle_audio_frame(data):
               f"req_sid={sid[:8]}..., session_sid={session_sid[:8] if session_sid else 'None'}...")
         return  # Silently ignore if not the session owner
 
-    # Send audio to camera
-    if eufy_bridge and eufy_bridge.is_running():
-        try:
-            result = eufy_bridge.send_talkback_audio(camera_id, audio_data)
-            # Log every 10th frame to avoid spam (roughly every 2.5 seconds at 4096 sample buffers)
-            import random
-            if random.random() < 0.1:
-                print(f"[Talkback Audio] Sent frame to {camera_id}, len={len(audio_data)}, result={result}")
-        except Exception as e:
-            # Log but don't emit error for every frame
-            print(f"[Talkback Audio] Send error: {e}")
+    # Feed PCM audio to the transcoder (which converts to AAC and sends to Eufy)
+    # The transcoder's callback (_on_aac_frame_ready) handles sending to eufy_bridge
+    try:
+        result = _talkback_transcoder_manager.feed_pcm_base64(camera_id, audio_data)
+        # Log every 10th frame to avoid spam
+        import random
+        if random.random() < 0.1:
+            print(f"[Talkback Audio] Fed PCM to transcoder for {camera_id}, len={len(audio_data)}, result={result}")
+    except Exception as e:
+        # Log but don't emit error for every frame
+        print(f"[Talkback Audio] Transcoder feed error: {e}")
 
 
 @socketio.on('stop_talkback', namespace='/talkback')
@@ -2012,7 +2060,13 @@ def handle_stop_talkback(data):
         })
         return
 
-    # Stop talkback
+    # Stop the transcoder first (prevents more audio being sent)
+    try:
+        _talkback_transcoder_manager.stop_transcoder(camera_id)
+    except Exception as e:
+        logger.error(f"[Talkback] Error stopping transcoder: {e}")
+
+    # Stop Eufy bridge talkback
     if eufy_bridge and eufy_bridge.is_running():
         try:
             eufy_bridge.stop_talkback(camera_id)

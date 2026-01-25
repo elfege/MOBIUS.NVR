@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 10:45 EST*
+*Last updated: January 25, 2026 11:15 EST*
 
 Branch: `two_way_audio_JAN_25_2026_a`
 
@@ -36,11 +36,61 @@ See `docs/README_project_history.md` for complete history. Recent sessions (Jan 
 
 ## Current Session (January 25, 2026)
 
-### Two-Way Audio Implementation - PLANNING
+### Two-Way Audio Implementation - Phase 1 Complete (Eufy)
 
-Task: Implement two-way audio for cameras that support it.
+Task: Implement two-way audio (talkback) for cameras that support it.
 
-**Current status**: Audio playback already works. Need to add microphone capture and transmission.
+**Status**: Phase 1 (Eufy cameras) implementation complete. Ready for testing.
+
+### Files Modified/Created
+
+| Time (EST) | File | Change |
+|------------|------|--------|
+| 10:56 | `services/eufy/eufy_bridge.py` | Added talkback methods: `start_talkback()`, `stop_talkback()`, `send_talkback_audio()` |
+| 11:00 | `app.py` | Added `/talkback` WebSocket namespace with session management |
+| 11:05 | `static/js/streaming/talkback-manager.js` | **NEW** - Browser microphone capture via getUserMedia, WebSocket audio transmission |
+| 11:08 | `static/css/components/talkback-button.css` | **NEW** - PTT button styling with states (active, connecting, denied, error) |
+| 11:10 | `templates/streams.html` | Added talkback button for Eufy cameras, added CSS import |
+| 11:12 | `static/js/streaming/stream.js` | Added PTT event handlers (mousedown/touchstart → start, mouseup/touchend → stop) |
+
+### Architecture
+
+```text
+Browser                    Flask Backend              Camera
+   |                            |                        |
+   | getUserMedia()             |                        |
+   | (microphone capture)       |                        |
+   |                            |                        |
+   |--- WebSocket audio ------->|                        |
+   |    /talkback namespace     |                        |
+   |                            |--- Eufy Bridge ------->|
+   |                            |    P2P protocol        |
+```
+
+**Key decisions:**
+
+- Used WebSocket (not WebRTC ingress) because MediaMTX does NOT support WHIP
+- Push-to-talk (PTT) model: hold button to talk, release to stop
+- Audio format: 16kHz mono 16-bit PCM, base64 encoded
+
+### Testing Required
+
+1. **Browser test**:
+   - Navigate to streams page
+   - Find Eufy camera (should show microphone button)
+   - Click and hold talkback button
+   - Speak into computer microphone
+   - Verify audio plays through camera speaker
+   - Release button, verify transmission stops
+
+2. **Console checks**:
+   - `getUserMedia` permission granted
+   - WebSocket connected to `/talkback`
+   - Audio frames being sent
+
+3. **Backend logs**:
+   - `[Talkback] Client connected`
+   - `[Eufy] Talkback started for {serial}`
 
 ---
 
@@ -54,18 +104,17 @@ Task: Implement two-way audio for cameras that support it.
   - Check if `eufy-security-ws` supports reading credentials from env vars instead of config file
   - If not, may need to modify bridge startup or find alternative approach
 
-**Two-Way Audio:**
+**Two-Way Audio - Phase 2:**
 
-- [ ] Research ONVIF AudioBackChannel specification
-- [ ] Research camera-specific audio input protocols (Eufy, Reolink, Amcrest)
-- [ ] Design WebRTC sendrecv architecture
-- [ ] Implement getUserMedia for microphone capture
-- [ ] Backend audio routing
+- [ ] Test Eufy talkback end-to-end (Phase 1)
+- [ ] Reolink support via Baichuan protocol / FFmpeg RTSP backchannel
+- [ ] ONVIF AudioBackChannel for UniFi/Amcrest cameras
 
 **Testing Needed:**
 
 - [ ] Test fullscreen quality recovery (WebRTC retry)
 - [ ] Test iOS inline download
+- [ ] Test two-way audio on Eufy cameras
 
 **Future Enhancements:**
 

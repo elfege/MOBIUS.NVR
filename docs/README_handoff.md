@@ -15,21 +15,110 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 24, 2026 18:10 EST*
+*Last updated: January 24, 2026 20:45 EST*
 
-Branch: `ptz_reversal_settings_JAN_24_2026_a`
+Branch: `timeline_playback_JAN_19_2026_a`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Context Compaction Note (January 24, 2026 ~17:48 EST)
+## Context Compaction Note (January 24, 2026 ~20:00 EST)
 
 Context compaction occurred. Session continued on same branch.
 
 ---
 
-## Current Session Continued (January 24, 2026 ~15:30-18:10 EST)
+## Current Session (January 24, 2026 ~18:30-20:45 EST)
+
+### Power Management Implementation
+
+#### Hubitat Power Service - COMPLETE
+
+Implemented power cycling for cameras via Hubitat smart plugs.
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `services/power/__init__.py` | Module exports |
+| `services/power/hubitat_power_service.py` | Hubitat Maker API integration |
+| `static/js/modals/hubitat-device-picker.js` | Device picker modal with smart matching |
+
+**Features:**
+- Auto power cycle on OFFLINE state (3+ failures via CameraStateTracker callback)
+- 5-minute cooldown between cycles per camera
+- Device discovery with name-based smart matching
+- Manual power cycle via API
+- User-configurable `power_supply` type per camera
+
+**API Endpoints:**
+- `GET /api/hubitat/devices/switch` - List all Hubitat switch devices
+- `GET/POST /api/cameras/<serial>/power_supply` - Get/set power supply config
+- `POST /api/power/<serial>/cycle` - Manual power cycle (Hubitat)
+- `GET /api/power/<serial>/status` - Power cycle status
+- `GET /api/hubitat/cameras` - List hubitat-powered cameras
+
+**Configuration:**
+```
+# .env
+HUBITAT_API_TOKEN=         # From AWS Secrets Manager
+HUBITAT_API_APP_NUMBER=    # From AWS Secrets Manager
+HUBITAT_HUB_IP=hubitat.local
+```
+
+#### UniFi POE Power Service - COMPLETE
+
+Implemented power cycling for POE cameras via UniFi Network Controller.
+
+**Files Created:**
+
+| File | Purpose |
+|------|---------|
+| `services/power/unifi_poe_service.py` | UniFi Controller API integration |
+
+**Features:**
+- Auto power cycle on OFFLINE state (via CameraStateTracker callback)
+- 5-minute cooldown between cycles per camera
+- Switch and port discovery
+- Support for UDM and standard controller types
+- Session-based authentication with auto-refresh
+
+**API Endpoints:**
+- `GET /api/unifi-poe/switches` - List all UniFi switches
+- `GET /api/unifi-poe/switches/<mac>/ports` - List ports on a switch
+- `GET/POST /api/cameras/<serial>/poe_config` - Get/set POE config
+- `POST /api/poe/<serial>/cycle` - Manual POE power cycle
+- `GET /api/poe/<serial>/status` - POE power cycle status
+- `GET /api/unifi-poe/cameras` - List POE-powered cameras
+
+**Configuration:**
+```
+# .env
+UNIFI_CONTROLLER_HOST=     # Controller IP/hostname
+UNIFI_CONTROLLER_USERNAME= # Local user (not SSO)
+UNIFI_CONTROLLER_PASSWORD= # Local user password
+UNIFI_CONTROLLER_SITE=default
+UNIFI_CONTROLLER_TYPE=udm  # or 'controller'
+```
+
+**Camera Config Fields:**
+```json
+{
+  "power_supply": "poe",
+  "poe_switch_mac": "aa:bb:cc:dd:ee:ff",
+  "poe_port": 12
+}
+```
+
+**Research Sources:**
+- [aiounifi](https://github.com/Kane610/aiounifi) - Python library for UniFi
+- [unifi_poe](https://github.com/ep1cman/unifi_poe) - CLI tool reference
+- [Home Assistant UniFi](https://www.home-assistant.io/integrations/unifi/) - POE control patterns
+
+---
+
+## Previous Session (January 24, 2026 ~15:30-18:10 EST)
 
 ### Timeline Playback Timestamp Bug - DONE
 **Commit**: `5918a11`
@@ -463,12 +552,19 @@ User asked about achieving local PTZ control for Eufy cameras without cloud auth
 - [ ] Add pan/scroll for zoomed timeline
 - [ ] Two-way audio (major feature - requires WebRTC sendrecv, getUserMedia, ONVIF AudioBackChannel)
 
-**Power Management (Future):**
+**Power Management:**
 
-- [ ] Add `power_supply` field to cameras.json: 'hubitat', 'poe', 'none'
-- [ ] Hubitat integration for Eufy power control (add HUBITAT_API_TOKEN + HUBITAT_API_APP_NUMBER to AWS secrets)
-- [ ] Create separate power management module (backend + frontend)
-- [ ] PoE switch integration for supported cameras
+- [x] Add `power_supply` field to cameras.json: 'hubitat', 'poe', 'none'
+- [x] Hubitat integration for Eufy power control (HUBITAT_API_TOKEN + HUBITAT_API_APP_NUMBER added to AWS secrets)
+- [x] Create Hubitat power service module (`services/power/hubitat_power_service.py`)
+- [x] Create UniFi POE power service module (`services/power/unifi_poe_service.py`)
+- [x] Add Hubitat API endpoints (`/api/hubitat/devices/switch`, `/api/cameras/.../power_supply`)
+- [x] Add UniFi POE API endpoints (`/api/unifi-poe/switches`, `/api/cameras/.../poe_config`)
+- [x] Create device picker modal (`static/js/modals/hubitat-device-picker.js`)
+- [ ] Create CSS for device picker modal
+- [ ] Add power settings to camera settings modal
+- [ ] Add power button to stream controls UI
+- [ ] Test with one camera
 
 **Deferred:**
 

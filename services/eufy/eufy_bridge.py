@@ -1017,11 +1017,13 @@ class EufyBridge:
             return False
 
         try:
+            # eufy-security-ws expects 'buffer' property, not 'audioData'
+            # The buffer should be base64-encoded AAC ADTS audio
             await ws.send(json.dumps({
                 "messageId": "talkback_audio",
                 "command": "device.talkback_audio_data",
                 "serialNumber": camera_serial,
-                "audioData": audio_data
+                "buffer": audio_data  # Changed from 'audioData' to 'buffer'
             }))
             return True
         except Exception as e:

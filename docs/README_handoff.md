@@ -15,9 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 16:10 EST*
+*Last updated: January 25, 2026 16:20 EST*
 
-Branch: `two_way_audio_JAN_25_2026_a`
+Branch: `two_way_audio_JAN_25_2026_b`
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
@@ -25,24 +25,81 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## Previous Work Summary
 
-See `docs/README_project_history.md` for complete history. Recent sessions (Jan 22-25):
+See `docs/README_project_history.md` for complete history.
 
-- PTZ reversal settings for upside-down cameras
-- Eufy bridge PTZ fixes (direction mapping, cloud auth)
-- Power management (Hubitat smart plugs + UniFi POE)
-- WebRTC fullscreen quality retry logic
+### Branch `two_way_audio_JAN_25_2026_a` - MERGED to main (16:18 EST)
+
+Phase 1 (Eufy talkback) COMPLETE:
+- Two-way audio working end-to-end for all 9 Eufy cameras
+- Key files: `services/eufy/eufy_bridge.py`, `services/talkback_transcoder.py`, `static/js/streaming/talkback-manager.js`
+- Audio format: PCM → FFmpeg → AAC ADTS → Eufy P2P tunnel
+- Final fix: Audio buffer sent as byte array (not base64 string) to eufy-security-ws
 
 ---
 
-## Current Session (January 25, 2026)
+## Current Session (January 25, 2026) - Branch _b
 
-### Two-Way Audio Implementation - Phase 1 Complete (Eufy)
+### Two-Way Audio Implementation - Phase 2: ONVIF AudioBackChannel
 
-Task: Implement two-way audio (talkback) for cameras that support it.
+Task: Implement two-way audio for ONVIF-compatible cameras (UniFi, Amcrest).
 
-**Status**: ✅ Phase 1 (Eufy cameras) COMPLETE - Two-way audio working end-to-end!
+**Status**: 🔄 Starting Phase 2
 
-### Files Modified/Created
+### Cameras with ONVIF capability (potential two-way audio)
+
+| Camera | Serial | Type | ONVIF |
+|--------|--------|------|-------|
+| OFFICE KITCHEN | 68d49398005cf203e400043f | unifi | ✅ |
+| MEBO | 95270001Q3D82PF7 | reolink | ✅ |
+| Living_REOLINK | XCPTP369388MNVTG | reolink | ✅ |
+| SV3C_Living_3 | C6F0SgZ0N0PoL2 | sv3c | ✅ |
+| Former CAM STAIRS | 95270000D1B5FBEW | reolink | ✅ |
+| REOLINK OFFICE | 95270001CSO4BPDZ | reolink | ✅ |
+| Terrace South | 95270001CSHLPO74 | reolink | ✅ |
+| LAUNDRY ROOM | 95270001NT3KNA67 | reolink | ✅ |
+| AMCREST LOBBY | AMC043145A67EFBF79 | amcrest | ✅ |
+
+**Note**: Not all ONVIF cameras support AudioBackChannel - need to test each.
+
+### Research Findings (16:25 EST)
+
+#### ONVIF AudioBackChannel Protocol
+
+- Requires RTSP `Require: www.onvif.org/ver20/backchannel` header
+- SDP response contains two audio tracks: `a=recvonly` (camera→client) and `a=sendonly` (client→camera)
+- Audio codec: G.711 (PCMU/PCMA) at 8kHz recommended for compatibility
+- Client MUST wait for 200 OK to PLAY request before sending audio
+
+#### Key Discovery: FFmpeg and MediaMTX Limitations
+
+- **FFmpeg does NOT support ONVIF AudioBackChannel natively**
+- **MediaMTX does NOT support RTSP backchannel** (issue #941 still open)
+- These are fundamental limitations - not configuration issues
+
+#### Implementation Options
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **go2rtc** | Native ONVIF backchannel support, actively maintained | New dependency, another streaming server |
+| **Reolink Baichuan** | Direct protocol, reolink_aio already installed | Only for Reolink cameras, library doesn't expose audio sending |
+| **Custom RTSP client** | No new dependencies | Complex to implement, handle RTP packaging |
+| **FFmpeg RTSP push** | Simple | Only works for cameras with RTSP backchannel (non-ONVIF) |
+
+#### reolink_aio Library Analysis
+
+- Detects `two_way_audio` capability
+- Only exposes volume control settings (`volume_speak`, `visitorLoudspeaker`)
+- Does NOT have methods for sending/streaming audio data
+- Would need library extension or alternative approach
+
+### Files Modified/Created (Branch _b)
+
+| Time (EST) | File | Change |
+|------------|------|--------|
+| 16:20 | `.gitignore` | Fixed `*temp*` pattern that was ignoring `templates/` folder |
+| 16:30 | `docs/README_handoff.md` | Added ONVIF research findings |
+
+### Previous branch _a modifications
 
 | Time (EST) | File | Change |
 |------------|------|--------|

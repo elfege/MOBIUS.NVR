@@ -2075,6 +2075,177 @@ export class MultiStreamManager {
         }
     }
 
+    /**
+     * Start fullscreen main stream with retry logic.
+     * If main stream fails, starts sub stream but schedules retry attempts
+     * with exponential backoff to re-attempt main stream.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {HTMLVideoElement} videoEl - Video element to attach stream to
+     * @param {jQuery} $streamItem - Stream item jQuery element
+     * @param {boolean} useWebRTC - Whether to use WebRTC (true) or HLS (false)
+     * @returns {Promise<{success: boolean, streamType: string, quality: string}>}
+     */
+    async _startMainStreamWithRetry(cameraId, videoEl, $streamItem, useWebRTC) {
+        const maxRetries = 3;
+        const baseDelayMs = 2000;  // 2 seconds initial delay, doubles each retry
+
+        // Clear any existing retry timer for this camera
+        const existingTimer = $streamItem.data('main-stream-retry-timer');
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+            $streamItem.data('main-stream-retry-timer', null);
+        }
+
+        // Try to start main stream
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                if (attempt > 0) {
+                    const delay = baseDelayMs * Math.pow(2, attempt - 1);
+                    console.log(`[Fullscreen] ${cameraId}: Retry ${attempt}/${maxRetries} for main stream in ${delay}ms...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+
+                    // Check if still in fullscreen mode before retry
+                    if (!$streamItem.hasClass('css-fullscreen')) {
+                        console.log(`[Fullscreen] ${cameraId}: No longer in fullscreen, aborting retry`);
+                        return { success: false, streamType: 'none', quality: 'none' };
+                    }
+                }
+
+                // Attempt main stream
+                if (useWebRTC) {
+                    const dtlsEnabled = await isDTLSEnabled();
+                    if (dtlsEnabled || !isIOSDevice()) {
+                        await this.webrtcManager.startStream(cameraId, videoEl, 'main');
+                        console.log(`[Fullscreen] ${cameraId}: ✓ WebRTC main stream started (attempt ${attempt + 1})`);
+                        $streamItem.data('fullscreen-stream-type', 'webrtc');
+                        $streamItem.data('switched-to-main', true);
+                        $streamItem.data('fullscreen-quality', 'main');
+                        return { success: true, streamType: 'webrtc', quality: 'main' };
+                    } else {
+                        // iOS without DTLS - must use HLS
+                        console.log(`[Fullscreen] ${cameraId}: iOS without DTLS - using HLS`);
+                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                        $streamItem.data('fullscreen-stream-type', 'hls');
+                        $streamItem.data('switched-to-main', true);
+                        $streamItem.data('fullscreen-quality', 'main');
+                        return { success: true, streamType: 'hls', quality: 'main' };
+                    }
+                } else {
+                    await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                    console.log(`[Fullscreen] ${cameraId}: ✓ HLS main stream started (attempt ${attempt + 1})`);
+                    $streamItem.data('fullscreen-stream-type', 'hls');
+                    $streamItem.data('switched-to-main', true);
+                    $streamItem.data('fullscreen-quality', 'main');
+                    return { success: true, streamType: 'hls', quality: 'main' };
+                }
+            } catch (e) {
+                console.warn(`[Fullscreen] ${cameraId}: Main stream attempt ${attempt + 1} failed:`, e.message);
+                if (attempt === maxRetries) {
+                    // All retries exhausted, fall back to sub stream
+                    console.error(`[Fullscreen] ${cameraId}: All main stream attempts failed, falling back to sub`);
+                    break;
+                }
+            }
+        }
+
+        // Fall back to sub stream
+        try {
+            await this.hlsManager.startStream(cameraId, videoEl, 'sub');
+            console.log(`[Fullscreen] ${cameraId}: ✓ Fell back to HLS sub stream`);
+            $streamItem.data('fullscreen-stream-type', 'hls');
+            $streamItem.data('switched-to-main', false);
+            $streamItem.data('fullscreen-quality', 'sub');
+
+            // Schedule background retry to upgrade to main stream
+            this._scheduleMainStreamUpgrade(cameraId, videoEl, $streamItem, useWebRTC);
+
+            return { success: true, streamType: 'hls', quality: 'sub' };
+        } catch (subError) {
+            console.error(`[Fullscreen] ${cameraId}: Even sub stream failed:`, subError);
+            return { success: false, streamType: 'none', quality: 'none' };
+        }
+    }
+
+    /**
+     * Schedule background retry to upgrade from sub to main stream.
+     * Runs periodic retries with exponential backoff while in fullscreen mode.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {HTMLVideoElement} videoEl - Video element
+     * @param {jQuery} $streamItem - Stream item element
+     * @param {boolean} useWebRTC - Whether to use WebRTC
+     */
+    _scheduleMainStreamUpgrade(cameraId, videoEl, $streamItem, useWebRTC) {
+        const retryDelays = [10000, 20000, 40000, 60000];  // 10s, 20s, 40s, 60s
+        let retryIndex = 0;
+
+        const attemptUpgrade = async () => {
+            // Check if still in fullscreen and still on sub quality
+            if (!$streamItem.hasClass('css-fullscreen')) {
+                console.log(`[Fullscreen] ${cameraId}: No longer in fullscreen, stopping upgrade attempts`);
+                return;
+            }
+
+            if ($streamItem.data('fullscreen-quality') === 'main') {
+                console.log(`[Fullscreen] ${cameraId}: Already on main quality, stopping upgrade attempts`);
+                return;
+            }
+
+            console.log(`[Fullscreen] ${cameraId}: Attempting upgrade to main stream...`);
+
+            try {
+                // Stop current sub stream
+                this.hlsManager.stopStream(cameraId);
+
+                // Try main stream
+                if (useWebRTC) {
+                    const dtlsEnabled = await isDTLSEnabled();
+                    if (dtlsEnabled || !isIOSDevice()) {
+                        await this.webrtcManager.startStream(cameraId, videoEl, 'main');
+                        console.log(`[Fullscreen] ${cameraId}: ✓ Upgraded to WebRTC main stream`);
+                        $streamItem.data('fullscreen-stream-type', 'webrtc');
+                        $streamItem.data('fullscreen-quality', 'main');
+                        $streamItem.data('switched-to-main', true);
+                        return;  // Success - stop retrying
+                    }
+                }
+
+                // HLS main
+                await this.hlsManager.startStream(cameraId, videoEl, 'main');
+                console.log(`[Fullscreen] ${cameraId}: ✓ Upgraded to HLS main stream`);
+                $streamItem.data('fullscreen-stream-type', 'hls');
+                $streamItem.data('fullscreen-quality', 'main');
+                $streamItem.data('switched-to-main', true);
+
+            } catch (e) {
+                console.warn(`[Fullscreen] ${cameraId}: Upgrade to main failed, staying on sub:`, e.message);
+
+                // Restart sub stream if it was stopped
+                try {
+                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
+                } catch (subError) {
+                    console.error(`[Fullscreen] ${cameraId}: Failed to restart sub stream:`, subError);
+                }
+
+                // Schedule next retry if we haven't exhausted all delays
+                if (retryIndex < retryDelays.length - 1) {
+                    retryIndex++;
+                }
+                const nextDelay = retryDelays[retryIndex];
+                console.log(`[Fullscreen] ${cameraId}: Next upgrade attempt in ${nextDelay / 1000}s`);
+
+                const timer = setTimeout(attemptUpgrade, nextDelay);
+                $streamItem.data('main-stream-retry-timer', timer);
+            }
+        };
+
+        // Start first upgrade attempt after initial delay
+        const timer = setTimeout(attemptUpgrade, retryDelays[0]);
+        $streamItem.data('main-stream-retry-timer', timer);
+        console.log(`[Fullscreen] ${cameraId}: Scheduled main stream upgrade in ${retryDelays[0] / 1000}s`);
+    }
+
     async openFullscreen(cameraId, name, cameraType, streamType) {
         try {
             // Prevent opening if already in fullscreen
@@ -2127,37 +2298,10 @@ export class MultiStreamManager {
                     videoEl = $streamItem.find('.stream-video')[0];
                 }
 
-                // Start fullscreen stream based on user preference (WebRTC or HLS)
-                try {
-                    const useWebRTC = isFullscreenWebRTCEnabled();
-                    if (useWebRTC) {
-                        // User prefers WebRTC for lower latency
-                        const dtlsEnabled = await isDTLSEnabled();
-                        if (dtlsEnabled || !isIOSDevice()) {
-                            // WebRTC available (DTLS for iOS, or non-iOS)
-                            await this.webrtcManager.startStream(cameraId, videoEl, 'main');
-                            console.log(`[Fullscreen] ✓ Switched to WebRTC main stream for ${cameraId}`);
-                            $streamItem.data('fullscreen-stream-type', 'webrtc');
-                        } else {
-                            // iOS without DTLS - must use HLS
-                            console.log(`[Fullscreen] iOS without DTLS - using HLS for ${cameraId}`);
-                            await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                            $streamItem.data('fullscreen-stream-type', 'hls');
-                        }
-                    } else {
-                        // User prefers HLS (default behavior)
-                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                        console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
-                        $streamItem.data('fullscreen-stream-type', 'hls');
-                    }
-                    $streamItem.data('switched-from-snapshot', true);
-                    $streamItem.data('switched-to-main', true);
-                } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch to main stream:`, e);
-                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
-                    $streamItem.data('switched-from-snapshot', true);
-                    $streamItem.data('fullscreen-stream-type', 'hls');
-                }
+                // Start fullscreen stream with retry logic
+                const useWebRTC = isFullscreenWebRTCEnabled();
+                await this._startMainStreamWithRetry(cameraId, videoEl, $streamItem, useWebRTC);
+                $streamItem.data('switched-from-snapshot', true);
                 return;
             }
 
@@ -2182,38 +2326,10 @@ export class MultiStreamManager {
                     videoEl = $streamItem.find('.stream-video')[0];
                 }
 
-                // Start fullscreen stream based on user preference (WebRTC or HLS)
-                try {
-                    const useWebRTC = isFullscreenWebRTCEnabled();
-                    if (useWebRTC) {
-                        // User prefers WebRTC for lower latency
-                        const dtlsEnabled = await isDTLSEnabled();
-                        if (dtlsEnabled || !isIOSDevice()) {
-                            // WebRTC available (DTLS for iOS, or non-iOS)
-                            await this.webrtcManager.startStream(cameraId, videoEl, 'main');
-                            console.log(`[Fullscreen] ✓ Switched to WebRTC main stream for ${cameraId}`);
-                            $streamItem.data('fullscreen-stream-type', 'webrtc');
-                        } else {
-                            // iOS without DTLS - must use HLS
-                            console.log(`[Fullscreen] iOS without DTLS - using HLS for ${cameraId}`);
-                            await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                            $streamItem.data('fullscreen-stream-type', 'hls');
-                        }
-                    } else {
-                        // User prefers HLS (default behavior)
-                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                        console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
-                        $streamItem.data('fullscreen-stream-type', 'hls');
-                    }
-                    $streamItem.data('switched-from-mjpeg', true);
-                    $streamItem.data('switched-to-main', true);
-                } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch to main stream:`, e);
-                    // Fall back to HLS sub
-                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
-                    $streamItem.data('switched-from-mjpeg', true);
-                    $streamItem.data('fullscreen-stream-type', 'hls');
-                }
+                // Start fullscreen stream with retry logic
+                const useWebRTC = isFullscreenWebRTCEnabled();
+                await this._startMainStreamWithRetry(cameraId, videoEl, $streamItem, useWebRTC);
+                $streamItem.data('switched-from-mjpeg', true);
                 return; // Don't process other stream type switches
             }
 
@@ -2231,34 +2347,8 @@ export class MultiStreamManager {
                 this.hlsManager.stopStream(cameraId);
                 this.webrtcManager.stopStream(cameraId);
 
-                // Start main stream based on user preference
-                try {
-                    if (useWebRTC) {
-                        // User prefers WebRTC for lower latency
-                        const dtlsEnabled = await isDTLSEnabled();
-                        if (dtlsEnabled || !isIOSDevice()) {
-                            await this.webrtcManager.startStream(cameraId, videoEl, 'main');
-                            console.log(`[Fullscreen] ✓ Switched to WebRTC main stream for ${cameraId}`);
-                            $streamItem.data('fullscreen-stream-type', 'webrtc');
-                        } else {
-                            // iOS without DTLS - must use HLS
-                            console.log(`[Fullscreen] iOS without DTLS - using HLS for ${cameraId}`);
-                            await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                            $streamItem.data('fullscreen-stream-type', 'hls');
-                        }
-                    } else {
-                        // User prefers HLS (default behavior)
-                        await this.hlsManager.startStream(cameraId, videoEl, 'main');
-                        console.log(`[Fullscreen] ✓ Switched to HLS main stream for ${cameraId}`);
-                        $streamItem.data('fullscreen-stream-type', 'hls');
-                    }
-                    $streamItem.data('switched-to-main', true);
-                } catch (e) {
-                    console.error(`[Fullscreen] Failed to switch to main stream:`, e);
-                    // Fall back to HLS sub
-                    await this.hlsManager.startStream(cameraId, videoEl, 'sub');
-                    $streamItem.data('fullscreen-stream-type', 'hls');
-                }
+                // Start main stream with retry logic
+                await this._startMainStreamWithRetry(cameraId, videoEl, $streamItem, useWebRTC);
             }
 
             // Pause (not stop) all other streams
@@ -2378,6 +2468,15 @@ export class MultiStreamManager {
             }
 
             const fullscreenCameraId = $fullscreenItem.data('camera-serial');
+
+            // Clear any pending main stream retry/upgrade timer
+            const retryTimer = $fullscreenItem.data('main-stream-retry-timer');
+            if (retryTimer) {
+                clearTimeout(retryTimer);
+                $fullscreenItem.data('main-stream-retry-timer', null);
+                console.log(`[Fullscreen] Cleared main stream retry timer for ${fullscreenCameraId}`);
+            }
+
             const switchedToMain = $fullscreenItem.data('switched-to-main');
             const switchedFromMJPEG = $fullscreenItem.data('switched-from-mjpeg');
             const switchedFromSnapshot = $fullscreenItem.data('switched-from-snapshot');
@@ -2441,6 +2540,7 @@ export class MultiStreamManager {
                 // Clear flags
                 $fullscreenItem.removeData('switched-from-snapshot');
                 $fullscreenItem.removeData('switched-to-main');
+                $fullscreenItem.removeData('fullscreen-quality');
             }
             // Portable device (non-iOS): Switch back from HLS/WebRTC to MJPEG for grid view
             else if (switchedFromMJPEG && originalStreamType) {
@@ -2491,6 +2591,7 @@ export class MultiStreamManager {
                 // Clear flags
                 $fullscreenItem.removeData('switched-from-mjpeg');
                 $fullscreenItem.removeData('switched-to-main');
+                $fullscreenItem.removeData('fullscreen-quality');
             }
             // If we switched to main stream, switch back to sub stream
             // Note: Fullscreen may have used WebRTC even if original was HLS (user preference)
@@ -2524,6 +2625,7 @@ export class MultiStreamManager {
                 // Clear the flags
                 $fullscreenItem.removeData('switched-to-main');
                 $fullscreenItem.removeData('fullscreen-stream-type');
+                $fullscreenItem.removeData('fullscreen-quality');
             }
 
             // Resume previously paused streams

@@ -1815,6 +1815,272 @@ def handle_stream_events_disconnect():
     logger.info(f"StreamEvents: Client {sid[:8]}... disconnected")
 
 
+# ============================================================================
+# Two-Way Audio (Talkback) WebSocket Namespace
+# ============================================================================
+# Clients connect to /talkback to send microphone audio to cameras.
+# Uses push-to-talk model: client emits start_talkback, sends audio_frames,
+# then stop_talkback when done.
+
+# Track active talkback sessions to prevent multiple clients talking to same camera
+_active_talkback_sessions = {}  # {camera_serial: client_sid}
+
+
+@socketio.on('connect', namespace='/talkback')
+def handle_talkback_connect():
+    """
+    Handle WebSocket connection for two-way audio.
+
+    Client connects to /talkback namespace to send microphone audio to cameras.
+    This uses a push-to-talk model where the client holds a button to talk.
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+    logger.info(f"[Talkback] Client {sid[:8]}... connected")
+    emit('connected', {'status': 'ok', 'sid': sid})
+
+
+@socketio.on('disconnect', namespace='/talkback')
+def handle_talkback_disconnect():
+    """
+    Handle WebSocket disconnection from talkback namespace.
+
+    Automatically stops any active talkback session for this client.
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+
+    # Find and stop any active session for this client
+    for camera_serial, session_sid in list(_active_talkback_sessions.items()):
+        if session_sid == sid:
+            logger.info(f"[Talkback] Client {sid[:8]}... disconnected, stopping session for {camera_serial}")
+            try:
+                if eufy_bridge and eufy_bridge.is_running():
+                    eufy_bridge.stop_talkback(camera_serial)
+            except Exception as e:
+                logger.error(f"[Talkback] Error stopping session on disconnect: {e}")
+            del _active_talkback_sessions[camera_serial]
+
+    logger.info(f"[Talkback] Client {sid[:8]}... disconnected")
+
+
+@socketio.on('start_talkback', namespace='/talkback')
+def handle_start_talkback(data):
+    """
+    Start talkback session with a camera.
+
+    Initiates two-way audio with the specified camera. Only one client can
+    talk to a camera at a time (mutex on camera_serial).
+
+    Args:
+        data: {'camera_id': 'T8416P0023352DA9'}
+
+    Emits:
+        talkback_started: {'camera_id': str} on success
+        talkback_error: {'camera_id': str, 'error': str} on failure
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+    camera_id = data.get('camera_id')
+
+    if not camera_id:
+        emit('talkback_error', {'error': 'No camera_id provided'})
+        return
+
+    logger.info(f"[Talkback] Client {sid[:8]}... starting talkback for {camera_id}")
+
+    # Check if another client already has an active session
+    if camera_id in _active_talkback_sessions:
+        other_sid = _active_talkback_sessions[camera_id]
+        if other_sid != sid:
+            logger.warning(f"[Talkback] Camera {camera_id} already in use by {other_sid[:8]}...")
+            emit('talkback_error', {
+                'camera_id': camera_id,
+                'error': 'Camera is in use by another client'
+            })
+            return
+
+    # Validate camera exists and supports talkback
+    camera = camera_repo.get_camera(camera_id)
+    if not camera:
+        emit('talkback_error', {'camera_id': camera_id, 'error': 'Camera not found'})
+        return
+
+    camera_type = camera.get('type', '').lower()
+
+    # Currently only Eufy cameras are supported
+    if camera_type != 'eufy':
+        emit('talkback_error', {
+            'camera_id': camera_id,
+            'error': f'Talkback not yet supported for {camera_type} cameras'
+        })
+        return
+
+    # Start talkback via Eufy bridge
+    if not eufy_bridge or not eufy_bridge.is_running():
+        emit('talkback_error', {
+            'camera_id': camera_id,
+            'error': 'Eufy bridge not running'
+        })
+        return
+
+    try:
+        success = eufy_bridge.start_talkback(camera_id)
+        if success:
+            _active_talkback_sessions[camera_id] = sid
+            logger.info(f"[Talkback] Started for {camera_id}")
+            emit('talkback_started', {'camera_id': camera_id})
+        else:
+            emit('talkback_error', {
+                'camera_id': camera_id,
+                'error': 'Failed to start talkback'
+            })
+    except Exception as e:
+        logger.error(f"[Talkback] Error starting talkback: {e}")
+        emit('talkback_error', {'camera_id': camera_id, 'error': str(e)})
+
+
+@socketio.on('audio_frame', namespace='/talkback')
+def handle_audio_frame(data):
+    """
+    Send audio frame to camera.
+
+    Audio data should be base64-encoded PCM audio (16kHz, mono, 16-bit).
+    This is called repeatedly while the PTT button is held.
+
+    Args:
+        data: {'camera_id': 'T8416P...', 'audio_data': 'base64...'}
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+    camera_id = data.get('camera_id')
+    audio_data = data.get('audio_data')
+
+    if not camera_id or not audio_data:
+        return  # Silently ignore malformed frames
+
+    # Verify this client owns the session
+    if _active_talkback_sessions.get(camera_id) != sid:
+        return  # Silently ignore if not the session owner
+
+    # Send audio to camera
+    if eufy_bridge and eufy_bridge.is_running():
+        try:
+            eufy_bridge.send_talkback_audio(camera_id, audio_data)
+        except Exception as e:
+            # Log but don't emit error for every frame
+            logger.debug(f"[Talkback] Audio frame error: {e}")
+
+
+@socketio.on('stop_talkback', namespace='/talkback')
+def handle_stop_talkback(data):
+    """
+    Stop talkback session.
+
+    Ends the two-way audio stream and releases the camera.
+
+    Args:
+        data: {'camera_id': 'T8416P...'}
+
+    Emits:
+        talkback_stopped: {'camera_id': str}
+    """
+    from flask import request as flask_request
+    sid = flask_request.sid
+    camera_id = data.get('camera_id')
+
+    if not camera_id:
+        emit('talkback_error', {'error': 'No camera_id provided'})
+        return
+
+    logger.info(f"[Talkback] Client {sid[:8]}... stopping talkback for {camera_id}")
+
+    # Verify this client owns the session
+    if _active_talkback_sessions.get(camera_id) != sid:
+        emit('talkback_error', {
+            'camera_id': camera_id,
+            'error': 'No active session for this camera'
+        })
+        return
+
+    # Stop talkback
+    if eufy_bridge and eufy_bridge.is_running():
+        try:
+            eufy_bridge.stop_talkback(camera_id)
+        except Exception as e:
+            logger.error(f"[Talkback] Error stopping talkback: {e}")
+
+    # Release session
+    if camera_id in _active_talkback_sessions:
+        del _active_talkback_sessions[camera_id]
+
+    emit('talkback_stopped', {'camera_id': camera_id})
+    logger.info(f"[Talkback] Stopped for {camera_id}")
+
+
+@app.route('/api/talkback/<camera_serial>/capabilities')
+def api_talkback_capabilities(camera_serial):
+    """
+    Check if camera supports two-way audio (talkback).
+
+    Returns camera's talkback capability based on camera type.
+    Currently only Eufy cameras are fully supported.
+
+    Args:
+        camera_serial: Camera serial number
+
+    Returns:
+        JSON with supported flag and optional details
+    """
+    try:
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        camera_type = camera.get('type', '').lower()
+
+        # Capability matrix
+        capabilities = {
+            'eufy': {
+                'supported': True,
+                'method': 'p2p',
+                'ready': eufy_bridge is not None and eufy_bridge.is_running()
+            },
+            'reolink': {
+                'supported': False,  # Not yet implemented
+                'method': 'baichuan',
+                'ready': False
+            },
+            'amcrest': {
+                'supported': False,  # Not yet implemented
+                'method': 'onvif',
+                'ready': False
+            },
+            'unifi': {
+                'supported': False,  # Not yet implemented
+                'method': 'onvif',
+                'ready': False
+            }
+        }
+
+        cap = capabilities.get(camera_type, {
+            'supported': False,
+            'method': 'unknown',
+            'ready': False
+        })
+
+        return jsonify({
+            'success': True,
+            'camera': camera_serial,
+            'camera_type': camera_type,
+            **cap
+        })
+
+    except Exception as e:
+        logger.error(f"[Talkback] Capabilities error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/status/websocket-mjpeg')
 def api_websocket_mjpeg_status():
     """Get status of WebSocket MJPEG service"""

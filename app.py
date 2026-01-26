@@ -1822,48 +1822,101 @@ def handle_stream_events_disconnect():
 # Clients connect to /talkback to send microphone audio to cameras.
 # Uses push-to-talk model: client emits start_talkback, sends audio_frames,
 # then stop_talkback when done.
+#
+# Supported protocols:
+# - eufy_p2p: Eufy cameras via P2P tunnel (PCM -> AAC transcoding)
+# - onvif: ONVIF backchannel via go2rtc (PCM -> G.711 transcoding by go2rtc)
 
-# Track active talkback sessions to prevent multiple clients talking to same camera
-_active_talkback_sessions = {}  # {camera_serial: client_sid}
+# Track active talkback sessions with protocol info
+# Format: {camera_serial: {'sid': client_sid, 'protocol': 'eufy_p2p'|'onvif', 'go2rtc_stream': stream_name|None}}
+_active_talkback_sessions = {}
+
+# go2rtc client for ONVIF backchannel
+from services.go2rtc_client import get_go2rtc_client
+_go2rtc_client = None
+
+def _get_go2rtc_client():
+    """Get or initialize go2rtc client singleton."""
+    global _go2rtc_client
+    if _go2rtc_client is None:
+        _go2rtc_client = get_go2rtc_client()
+    return _go2rtc_client
 
 
-_aac_frame_count = 0  # Track frames for logging
+_audio_frame_count = 0  # Track frames for logging
 
-def _on_aac_frame_ready(camera_serial: str, aac_data: bytes):
+def _on_transcoded_frame_ready(camera_serial: str, audio_data: bytes):
     """
-    Callback called by TalkbackTranscoder when AAC audio frame is ready.
+    Callback called by TalkbackTranscoder when transcoded audio frame is ready.
 
-    This is where we send the transcoded AAC audio to the Eufy bridge.
-    The bridge expects base64-encoded AAC ADTS frames.
+    Routes audio to the appropriate destination based on the active session's protocol:
+    - eufy_p2p: Send AAC ADTS frames to Eufy bridge
+    - onvif: Send G.711 PCMU frames to go2rtc backchannel
 
     Args:
         camera_serial: Camera serial number
-        aac_data: Raw AAC ADTS bytes
+        audio_data: Transcoded audio bytes (AAC for Eufy, G.711 for ONVIF)
     """
-    global _aac_frame_count
+    global _audio_frame_count
     import base64
+    import asyncio
 
-    if not eufy_bridge or not eufy_bridge.is_running():
-        print(f"[Talkback AAC] Bridge not running, dropping frame")
+    # Get session info to determine protocol
+    session_info = _active_talkback_sessions.get(camera_serial)
+    if not session_info:
+        # No active session, drop frame
         return
 
-    # Encode AAC bytes to base64 for JSON transmission
-    aac_base64 = base64.b64encode(aac_data).decode('ascii')
+    if isinstance(session_info, dict):
+        protocol = session_info.get('protocol', 'eufy_p2p')
+        go2rtc_stream = session_info.get('go2rtc_stream')
+    else:
+        protocol = 'eufy_p2p'
+        go2rtc_stream = None
 
-    # Send to Eufy bridge
-    try:
-        result = eufy_bridge.send_talkback_audio(camera_serial, aac_base64)
-        _aac_frame_count += 1
-        # Log every 10th frame
-        if _aac_frame_count % 10 == 0:
-            print(f"[Talkback AAC] Sent AAC frame #{_aac_frame_count} to {camera_serial}, "
-                  f"size={len(aac_data)}B, result={result}")
-    except Exception as e:
-        print(f"[Talkback AAC] Error sending to bridge: {e}")
+    _audio_frame_count += 1
+
+    if protocol == 'onvif' and go2rtc_stream:
+        # ===== ONVIF: Send to go2rtc backchannel =====
+        try:
+            go2rtc = _get_go2rtc_client()
+
+            # Run async send in new event loop (since we're in sync callback)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(go2rtc.send_audio(go2rtc_stream, audio_data))
+            finally:
+                loop.close()
+
+            # Log every 10th frame
+            if _audio_frame_count % 10 == 0:
+                print(f"[Talkback ONVIF] Sent G.711 frame #{_audio_frame_count} to {go2rtc_stream}, "
+                      f"size={len(audio_data)}B, result={result}")
+        except Exception as e:
+            print(f"[Talkback ONVIF] Error sending to go2rtc: {e}")
+
+    else:
+        # ===== EUFY: Send AAC to bridge =====
+        if not eufy_bridge or not eufy_bridge.is_running():
+            print(f"[Talkback AAC] Bridge not running, dropping frame")
+            return
+
+        # Encode AAC bytes to base64 for JSON transmission
+        aac_base64 = base64.b64encode(audio_data).decode('ascii')
+
+        try:
+            result = eufy_bridge.send_talkback_audio(camera_serial, aac_base64)
+            # Log every 10th frame
+            if _audio_frame_count % 10 == 0:
+                print(f"[Talkback AAC] Sent AAC frame #{_audio_frame_count} to {camera_serial}, "
+                      f"size={len(audio_data)}B, result={result}")
+        except Exception as e:
+            print(f"[Talkback AAC] Error sending to bridge: {e}")
 
 
-# Talkback transcoder manager: converts PCM to AAC for Eufy cameras
-_talkback_transcoder_manager = TalkbackTranscoderManager(on_aac_frame=_on_aac_frame_ready)
+# Talkback transcoder manager: converts PCM to appropriate format (AAC for Eufy, G.711 for ONVIF)
+_talkback_transcoder_manager = TalkbackTranscoderManager(on_aac_frame=_on_transcoded_frame_ready)
 
 
 @socketio.on('connect', namespace='/talkback')
@@ -1934,7 +1987,8 @@ def handle_start_talkback(data):
 
     # Check if another client already has an active session
     if camera_id in _active_talkback_sessions:
-        other_sid = _active_talkback_sessions[camera_id]
+        session_info = _active_talkback_sessions[camera_id]
+        other_sid = session_info.get('sid') if isinstance(session_info, dict) else session_info
         if other_sid != sid:
             logger.warning(f"[Talkback] Camera {camera_id} already in use by {other_sid[:8]}...")
             emit('talkback_error', {
@@ -1964,49 +2018,116 @@ def handle_start_talkback(data):
     protocol = two_way_audio_config.get('protocol', 'eufy_p2p')
     logger.info(f"[Talkback] Camera {camera_id} using protocol: {protocol}")
 
-    # Currently only Eufy P2P protocol is fully implemented
-    if protocol != 'eufy_p2p':
-        emit('talkback_error', {
-            'camera_id': camera_id,
-            'error': f'Talkback protocol "{protocol}" not yet implemented (only eufy_p2p supported)'
-        })
-        return
-
-    # Start talkback via Eufy bridge (for eufy_p2p protocol)
-    if not eufy_bridge or not eufy_bridge.is_running():
-        emit('talkback_error', {
-            'camera_id': camera_id,
-            'error': 'Eufy bridge not running'
-        })
-        return
-
-    try:
-        # Start Eufy bridge talkback session
-        success = eufy_bridge.start_talkback(camera_id)
-        if success:
-            # Start FFmpeg transcoder with camera-specific audio settings
-            transcoder_started = _talkback_transcoder_manager.start_transcoder(camera_id, camera)
-            if not transcoder_started:
-                print(f"[Talkback] ⚠️ Transcoder failed to start for {camera_id}, stopping bridge session")
-                eufy_bridge.stop_talkback(camera_id)
-                emit('talkback_error', {
-                    'camera_id': camera_id,
-                    'error': 'Failed to start audio transcoder'
-                })
-                return
-
-            _active_talkback_sessions[camera_id] = sid
-            print(f"[Talkback] ✅ Started for {camera_id} (bridge + transcoder), sid={sid[:8]}...")
-            emit('talkback_started', {'camera_id': camera_id})
-        else:
-            print(f"[Talkback] ❌ Failed to start for {camera_id}")
+    # Handle each protocol type
+    if protocol == 'eufy_p2p':
+        # ===== EUFY P2P PROTOCOL =====
+        if not eufy_bridge or not eufy_bridge.is_running():
             emit('talkback_error', {
                 'camera_id': camera_id,
-                'error': 'Failed to start talkback'
+                'error': 'Eufy bridge not running'
             })
-    except Exception as e:
-        print(f"[Talkback] ❌ Exception starting talkback: {e}")
-        emit('talkback_error', {'camera_id': camera_id, 'error': str(e)})
+            return
+
+        try:
+            # Start Eufy bridge talkback session
+            success = eufy_bridge.start_talkback(camera_id)
+            if success:
+                # Start FFmpeg transcoder with camera-specific audio settings
+                transcoder_started = _talkback_transcoder_manager.start_transcoder(camera_id, camera)
+                if not transcoder_started:
+                    print(f"[Talkback] Transcoder failed to start for {camera_id}, stopping bridge session")
+                    eufy_bridge.stop_talkback(camera_id)
+                    emit('talkback_error', {
+                        'camera_id': camera_id,
+                        'error': 'Failed to start audio transcoder'
+                    })
+                    return
+
+                _active_talkback_sessions[camera_id] = {
+                    'sid': sid,
+                    'protocol': 'eufy_p2p',
+                    'go2rtc_stream': None
+                }
+                print(f"[Talkback] Started eufy_p2p for {camera_id}, sid={sid[:8]}...")
+                emit('talkback_started', {'camera_id': camera_id})
+            else:
+                print(f"[Talkback] Failed to start eufy_p2p for {camera_id}")
+                emit('talkback_error', {
+                    'camera_id': camera_id,
+                    'error': 'Failed to start talkback'
+                })
+        except Exception as e:
+            print(f"[Talkback] Exception starting eufy_p2p: {e}")
+            emit('talkback_error', {'camera_id': camera_id, 'error': str(e)})
+
+    elif protocol == 'onvif':
+        # ===== ONVIF BACKCHANNEL VIA GO2RTC =====
+        onvif_config = two_way_audio_config.get('onvif', {})
+        go2rtc_stream = onvif_config.get('go2rtc_stream')
+
+        if not go2rtc_stream:
+            emit('talkback_error', {
+                'camera_id': camera_id,
+                'error': 'No go2rtc_stream configured for this camera'
+            })
+            return
+
+        try:
+            # Get go2rtc client and start backchannel
+            go2rtc = _get_go2rtc_client()
+
+            # Run async call in event loop
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                success = loop.run_until_complete(go2rtc.start_backchannel(go2rtc_stream))
+            finally:
+                loop.close()
+
+            if success:
+                # Start FFmpeg transcoder (PCM -> G.711 PCMU for ONVIF)
+                transcoder_started = _talkback_transcoder_manager.start_transcoder(camera_id, camera)
+                if not transcoder_started:
+                    print(f"[Talkback] Transcoder failed for ONVIF {camera_id}")
+                    # Stop go2rtc backchannel
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(go2rtc.stop_backchannel(go2rtc_stream))
+                    finally:
+                        loop.close()
+                    emit('talkback_error', {
+                        'camera_id': camera_id,
+                        'error': 'Failed to start audio transcoder'
+                    })
+                    return
+
+                _active_talkback_sessions[camera_id] = {
+                    'sid': sid,
+                    'protocol': 'onvif',
+                    'go2rtc_stream': go2rtc_stream
+                }
+                print(f"[Talkback] Started onvif for {camera_id} via go2rtc stream {go2rtc_stream}, sid={sid[:8]}...")
+                emit('talkback_started', {'camera_id': camera_id})
+            else:
+                print(f"[Talkback] Failed to start go2rtc backchannel for {go2rtc_stream}")
+                emit('talkback_error', {
+                    'camera_id': camera_id,
+                    'error': 'Failed to connect to camera via ONVIF backchannel'
+                })
+        except Exception as e:
+            print(f"[Talkback] Exception starting onvif: {e}")
+            import traceback
+            traceback.print_exc()
+            emit('talkback_error', {'camera_id': camera_id, 'error': str(e)})
+
+    else:
+        # Unsupported protocol
+        emit('talkback_error', {
+            'camera_id': camera_id,
+            'error': f'Talkback protocol "{protocol}" not yet implemented'
+        })
 
 
 @socketio.on('audio_frame', namespace='/talkback')
@@ -2032,20 +2153,40 @@ def handle_audio_frame(data):
         return  # Silently ignore malformed frames
 
     # Verify this client owns the session
-    session_sid = _active_talkback_sessions.get(camera_id)
+    session_info = _active_talkback_sessions.get(camera_id)
+    if not session_info:
+        return  # No active session
+
+    # Handle both old format (just sid) and new format (dict with sid, protocol)
+    if isinstance(session_info, dict):
+        session_sid = session_info.get('sid')
+        protocol = session_info.get('protocol', 'eufy_p2p')
+        go2rtc_stream = session_info.get('go2rtc_stream')
+    else:
+        # Legacy format - just sid
+        session_sid = session_info
+        protocol = 'eufy_p2p'
+        go2rtc_stream = None
+
     if session_sid != sid:
         print(f"[Talkback Audio] Session mismatch: camera={camera_id}, "
               f"req_sid={sid[:8]}..., session_sid={session_sid[:8] if session_sid else 'None'}...")
         return  # Silently ignore if not the session owner
 
-    # Feed PCM audio to the transcoder (which converts to AAC and sends to Eufy)
-    # The transcoder's callback (_on_aac_frame_ready) handles sending to eufy_bridge
+    # Route audio based on protocol
     try:
-        result = _talkback_transcoder_manager.feed_pcm_base64(camera_id, audio_data)
+        if protocol == 'onvif' and go2rtc_stream:
+            # ONVIF: Feed to transcoder, transcoder sends G.711 to go2rtc
+            # The transcoder's callback will be modified to route to go2rtc
+            result = _talkback_transcoder_manager.feed_pcm_base64(camera_id, audio_data)
+        else:
+            # Eufy: Feed to transcoder (which converts to AAC and sends to Eufy bridge)
+            result = _talkback_transcoder_manager.feed_pcm_base64(camera_id, audio_data)
+
         # Log every 10th frame to avoid spam
         import random
         if random.random() < 0.1:
-            print(f"[Talkback Audio] Fed PCM to transcoder for {camera_id}, len={len(audio_data)}, result={result}")
+            print(f"[Talkback Audio] Fed PCM to transcoder for {camera_id} ({protocol}), len={len(audio_data)}, result={result}")
     except Exception as e:
         # Log but don't emit error for every frame
         print(f"[Talkback Audio] Transcoder feed error: {e}")
@@ -2074,8 +2215,26 @@ def handle_stop_talkback(data):
 
     logger.info(f"[Talkback] Client {sid[:8]}... stopping talkback for {camera_id}")
 
-    # Verify this client owns the session
-    if _active_talkback_sessions.get(camera_id) != sid:
+    # Get session info and verify ownership
+    session_info = _active_talkback_sessions.get(camera_id)
+    if not session_info:
+        emit('talkback_error', {
+            'camera_id': camera_id,
+            'error': 'No active session for this camera'
+        })
+        return
+
+    # Handle both old format (just sid) and new format (dict)
+    if isinstance(session_info, dict):
+        session_sid = session_info.get('sid')
+        protocol = session_info.get('protocol', 'eufy_p2p')
+        go2rtc_stream = session_info.get('go2rtc_stream')
+    else:
+        session_sid = session_info
+        protocol = 'eufy_p2p'
+        go2rtc_stream = None
+
+    if session_sid != sid:
         emit('talkback_error', {
             'camera_id': camera_id,
             'error': 'No active session for this camera'
@@ -2088,19 +2247,35 @@ def handle_stop_talkback(data):
     except Exception as e:
         logger.error(f"[Talkback] Error stopping transcoder: {e}")
 
-    # Stop Eufy bridge talkback
-    if eufy_bridge and eufy_bridge.is_running():
+    # Stop based on protocol
+    if protocol == 'onvif' and go2rtc_stream:
+        # Stop go2rtc backchannel
         try:
-            eufy_bridge.stop_talkback(camera_id)
+            go2rtc = _get_go2rtc_client()
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(go2rtc.stop_backchannel(go2rtc_stream))
+            finally:
+                loop.close()
+            logger.info(f"[Talkback] Stopped go2rtc backchannel for {go2rtc_stream}")
         except Exception as e:
-            logger.error(f"[Talkback] Error stopping talkback: {e}")
+            logger.error(f"[Talkback] Error stopping go2rtc backchannel: {e}")
+    else:
+        # Stop Eufy bridge talkback
+        if eufy_bridge and eufy_bridge.is_running():
+            try:
+                eufy_bridge.stop_talkback(camera_id)
+            except Exception as e:
+                logger.error(f"[Talkback] Error stopping eufy talkback: {e}")
 
     # Release session
     if camera_id in _active_talkback_sessions:
         del _active_talkback_sessions[camera_id]
 
     emit('talkback_stopped', {'camera_id': camera_id})
-    logger.info(f"[Talkback] Stopped for {camera_id}")
+    logger.info(f"[Talkback] Stopped {protocol} for {camera_id}")
 
 
 @app.route('/api/talkback/<camera_serial>/capabilities')

@@ -259,7 +259,7 @@ startnvr    # Full restart with credential reload (./start.sh) - STRICTLY FORBID
 **Permission rules:**
 
 - **Simple restart (`docker compose restart`)**: Claude CAN execute without asking
-- **Full restart (`./start.sh` or `startnvr`)**: **STRICTLY FORBIDDEN** - Claude must NEVER run this, not even ask. Simply note that it needs to be done and move on.
+- **Full restart (`./start.sh` or `startnvr`)**: **STRICTLY FORBIDDEN** - Claude must NEVER run this, not even ask. Simply note that it needs to be done and move on. **EXCEPTION**: Only allowed if user explicitly says "autonomous mode" in the current conversation.
 
 **Critical notes:**
 

@@ -19,7 +19,7 @@ import requests
 import os
 from typing import Dict, Optional, Tuple
 from collections import defaultdict
-from urllib.parse import urlencode
+from urllib.parse import urlencode, quote
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,10 @@ class SV3CMJPEGCaptureService:
         # Build URL based on auth type
         if auth_type == 'query_params' and username and password:
             # Most common for hi3510: query parameter authentication
-            return f"http://{host}{endpoint}?user={username}&pwd={password}"
+            # URL-encode credentials to handle special characters (#, $, etc.)
+            encoded_user = quote(username, safe='')
+            encoded_pwd = quote(password, safe='')
+            return f"http://{host}{endpoint}?user={encoded_user}&pwd={encoded_pwd}"
         elif auth_type == 'none' or (not username and not password):
             # No auth required
             return f"http://{host}{endpoint}"

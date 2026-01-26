@@ -272,9 +272,9 @@
     },
     "C6F0SgZ0N0PoL2": {
       "motion_recording": {
-        "enabled": true,
+        "enabled": false,
         "detection_method": "ffmpeg",
-        "recording_source": "mediamtx",
+        "recording_source": "mjpeg_service",
         "segment_duration_sec": 30,
         "pre_buffer_enabled": false,
         "pre_buffer_sec": 10,

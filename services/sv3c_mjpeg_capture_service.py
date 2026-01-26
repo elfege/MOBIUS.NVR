@@ -4,9 +4,9 @@ SV3C MJPEG Capture Service - Single source, multiple client architecture
 Prevents resource multiplication for SV3C MJPEG streams via snapshot polling.
 Follows the same modular pattern as reolink_mjpeg_capture_service.py
 
-SV3C cameras use the hi3510 chipset which provides CGI snapshot endpoints:
-- /snapshot.cgi?user={user}&pwd={pass}
-- /cgi-bin/hi3510/param.cgi?cmd=snap&-getpic (with basic auth)
+SV3C cameras use the hi3510 chipset which provides HTTP snapshot endpoints:
+- /tmpfs/auto.jpg (with Basic Auth) - TESTED WORKING
+- /snapshot.cgi?user={user}&pwd={pass} - NOT available on all models
 
 This service polls snapshots and serves them as MJPEG to multiple browser clients,
 bypassing the unstable RTSP stream that breaks MediaMTX.
@@ -75,26 +75,28 @@ class SV3CMJPEGCaptureService:
         """
         Build the snapshot URL for SV3C/hi3510 cameras.
 
-        hi3510 chipset supports multiple snapshot endpoints:
-        1. /snapshot.cgi?user={user}&pwd={pass} (query param auth)
-        2. /cgi-bin/hi3510/param.cgi?cmd=snap&-getpic (basic auth or query)
-        3. /cgi-bin/snapshot.cgi?chn=0&u={user}&p={pass}
+        TESTED WORKING endpoint for this SV3C model:
+        - /tmpfs/auto.jpg with Basic Auth (returns HTTP 200)
+
+        NOT working (returns 404):
+        - /snapshot.cgi
+        - /cgi-bin/hi3510/param.cgi?cmd=snap
 
         Config can override the endpoint via sv3c_snap.endpoint field.
+        Default is now /tmpfs/auto.jpg with basic_auth (tested working).
         """
         # Check for custom endpoint in config
         if sv3c_snap_config:
-            endpoint = sv3c_snap_config.get('endpoint', '/snapshot.cgi')
-            auth_type = sv3c_snap_config.get('auth_type', 'query_params')
+            endpoint = sv3c_snap_config.get('endpoint', '/tmpfs/auto.jpg')
+            auth_type = sv3c_snap_config.get('auth_type', 'basic_auth')
         else:
-            # Default: use /snapshot.cgi with query param auth
-            endpoint = '/snapshot.cgi'
-            auth_type = 'query_params'
+            # Default: use /tmpfs/auto.jpg with basic auth (TESTED WORKING)
+            endpoint = '/tmpfs/auto.jpg'
+            auth_type = 'basic_auth'
 
         # Build URL based on auth type
         if auth_type == 'query_params' and username and password:
-            # Most common for hi3510: query parameter authentication
-            # URL-encode credentials to handle special characters (#, $, etc.)
+            # Query parameter authentication (not supported by all models)
             encoded_user = quote(username, safe='')
             encoded_pwd = quote(password, safe='')
             return f"http://{host}{endpoint}?user={encoded_user}&pwd={encoded_pwd}"
@@ -135,7 +137,7 @@ class SV3CMJPEGCaptureService:
                     'username': username,
                     'password': password,
                     'snap_url': snap_url,
-                    'auth_type': sv3c_snap_config.get('auth_type', 'query_params'),
+                    'auth_type': sv3c_snap_config.get('auth_type', 'basic_auth'),
                     'width': mjpeg_config.get('width'),
                     'height': mjpeg_config.get('height'),
                     'fps': mjpeg_config.get('fps', 7),  # SV3C default lower than Reolink

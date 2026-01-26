@@ -15,9 +15,11 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 16:20 EST*
+*Last updated: January 25, 2026 17:45 EST*
 
 Branch: `two_way_audio_JAN_25_2026_b`
+
+**Context compaction occurred at 17:45 EST** - see session summary below.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 

@@ -723,7 +723,8 @@ export class MultiStreamManager {
                 const $fullscreenItem = $('.stream-item.css-fullscreen');
                 if ($fullscreenItem.length > 0) {
                     console.log('[Fullscreen] ESC key pressed, exiting fullscreen');
-                    this.closeFullscreen();
+                    // Force immediate UI exit in case closeFullscreen is stuck
+                    this.forceExitFullscreen();
                     return;
                 }
                 // Then check expanded modal
@@ -733,6 +734,24 @@ export class MultiStreamManager {
                     this.collapseExpandedCamera();
                 }
             }
+        });
+
+        // Global emergency exit - triple-click anywhere to force exit fullscreen
+        // Useful when stream is frozen and button/ESC not responding
+        let tripleClickTimer = null;
+        let clickCount = 0;
+        $(document).on('click', () => {
+            clickCount++;
+            if (clickCount >= 3) {
+                const $fullscreenItem = $('.stream-item.css-fullscreen');
+                if ($fullscreenItem.length > 0) {
+                    console.log('[Fullscreen] Emergency triple-click exit');
+                    this.forceExitFullscreen();
+                }
+                clickCount = 0;
+            }
+            clearTimeout(tripleClickTimer);
+            tripleClickTimer = setTimeout(() => { clickCount = 0; }, 500);
         });
 
         // ============================================================================
@@ -2209,12 +2228,23 @@ export class MultiStreamManager {
         const $indicator = $streamItem.find('.stream-indicator');
         const $statusText = $indicator.find('span');
 
+        // Handle "Signal Lost" overlay - show when stream fails/is loading, hide when live
+        // Signal Lost is shown for error, failed, and extended loading states
+        const showSignalLost = ['error', 'failed'].includes(status) ||
+            (status === 'loading' && /retry|nuclear|reconnect/i.test(text));
+
+        if (showSignalLost) {
+            $streamItem.addClass('signal-lost');
+        } else if (status === 'live') {
+            $streamItem.removeClass('signal-lost');
+        }
+
         // Check if quiet mode is enabled
         const quietMode = localStorage.getItem('quietStatusMessages') === 'true';
 
         if (quietMode) {
             // In quiet mode, only show important statuses
-            // Important: Starting, Connecting, Live, Failed, Error, Stopped
+            // Important: Starting, Connecting, Live, Failed, Error, Stopped, Signal Lost
             // Verbose (hidden): Refreshing, Degraded, Recovered, Buffering, Retry, Restarting, Nuclear
             const importantPatterns = [
                 /^Starting/i,
@@ -2223,6 +2253,7 @@ export class MultiStreamManager {
                 /^Failed/i,
                 /^Error/i,
                 /^Stopped/i,
+                /^Signal Lost/i,
                 /^$/  // Empty text (for active status with no message)
             ];
 
@@ -2628,16 +2659,29 @@ export class MultiStreamManager {
     }
 
     async closeFullscreen() {
+        // CRITICAL: First, immediately exit fullscreen UI to restore grid view
+        // This ensures the user can exit even if stream operations hang
+        const $fullscreenItem = $('.stream-item.css-fullscreen');
+
+        if ($fullscreenItem.length === 0) {
+            console.log('[Fullscreen] No fullscreen stream found');
+            // Reset processing flag in case it got stuck
+            this._fullscreenProcessing = false;
+            return;
+        }
+
+        // STEP 1: Immediate UI exit - happens synchronously, no async ops
+        $fullscreenItem.removeClass('css-fullscreen');
+        localStorage.removeItem('fullscreenCameraSerial');
+        console.log('[Fullscreen] CSS fullscreen class removed - UI exited immediately');
+
+        // Reset processing flag early so button becomes responsive
+        this._fullscreenProcessing = false;
+
+        // STEP 2: Async cleanup with timeout protection
+        // If any stream operation hangs, the UI is already restored
         try {
-            console.log('[Fullscreen] Closing CSS fullscreen...');
-
-            // Find the fullscreen stream item
-            const $fullscreenItem = $('.stream-item.css-fullscreen');
-
-            if ($fullscreenItem.length === 0) {
-                console.log('[Fullscreen] No fullscreen stream found');
-                return;
-            }
+            console.log('[Fullscreen] Starting async cleanup...');
 
             const fullscreenCameraId = $fullscreenItem.data('camera-serial');
 
@@ -2655,14 +2699,6 @@ export class MultiStreamManager {
             const originalStreamType = $fullscreenItem.data('original-stream-type');
             const streamType = $fullscreenItem.data('stream-type');
             const cameraType = $fullscreenItem.data('camera-type');
-
-            // Remove CSS fullscreen class
-            $fullscreenItem.removeClass('css-fullscreen');
-            console.log('[Fullscreen] CSS fullscreen class removed');
-
-            // Clear localStorage
-            localStorage.removeItem('fullscreenCameraSerial');
-            console.log('[Fullscreen] Cleared localStorage');
 
             // iOS: Switch back from HLS/WebRTC to SNAPSHOT for grid view
             if (switchedFromSnapshot && originalStreamType) {
@@ -2882,6 +2918,45 @@ export class MultiStreamManager {
         } catch (error) {
             console.error('[Fullscreen] Error closing fullscreen:', error);
         }
+    }
+
+    /**
+     * Force exit fullscreen - emergency fallback when stream is frozen.
+     *
+     * Unlike closeFullscreen(), this method:
+     * 1. Immediately removes CSS class (no async operations)
+     * 2. Clears localStorage
+     * 3. Resets processing flags
+     * 4. Does NOT attempt to stop/restart streams (they may be frozen)
+     *
+     * User can then manually restart streams if needed.
+     */
+    forceExitFullscreen() {
+        console.log('[Fullscreen] FORCE EXIT - bypassing stream operations');
+
+        // Immediately remove fullscreen class from ALL stream items (safety)
+        $('.stream-item.css-fullscreen').removeClass('css-fullscreen');
+
+        // Clear localStorage
+        localStorage.removeItem('fullscreenCameraSerial');
+
+        // Reset all processing flags
+        this._fullscreenProcessing = false;
+        window._fullscreenLocked = false;
+
+        // Clear paused streams list (won't try to resume)
+        this.pausedStreams = [];
+
+        console.log('[Fullscreen] FORCE EXIT complete - UI restored to grid view');
+
+        // Call the normal closeFullscreen after a delay to do cleanup
+        // This runs async and won't block the UI
+        setTimeout(() => {
+            console.log('[Fullscreen] Running deferred cleanup...');
+            this.closeFullscreen().catch(e => {
+                console.warn('[Fullscreen] Deferred cleanup error (ignored):', e);
+            });
+        }, 500);
     }
 
     // ============================================================================

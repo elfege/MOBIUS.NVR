@@ -80,11 +80,13 @@ class TalkbackTranscoder:
             self.codec = audio_out.get('codec', 'aac')
             self.container = audio_out.get('container', 'adts')
             self.protocol = twa.get('protocol', 'eufy_p2p')
+            # Speaker volume: 0-100, converted to FFmpeg volume filter value (0.0-1.0+)
+            self.speaker_volume = twa.get('speaker_volume', 100)
 
             logger.info(
                 f"[TalkbackTranscoder:{camera_serial[:8]}] Loaded settings from config: "
                 f"protocol={self.protocol}, codec={self.codec}, sample_rate={self.sample_rate}, "
-                f"channels={self.channels}, bitrate={self.bitrate}"
+                f"channels={self.channels}, bitrate={self.bitrate}, speaker_volume={self.speaker_volume}%"
             )
         else:
             # Use defaults (backwards compatibility)
@@ -94,6 +96,7 @@ class TalkbackTranscoder:
             self.codec = 'aac'
             self.container = 'adts'
             self.protocol = 'eufy_p2p'
+            self.speaker_volume = 100  # 100% = no change
 
         # FFmpeg process and threads
         self._process: Optional[subprocess.Popen] = None
@@ -137,6 +140,13 @@ class TalkbackTranscoder:
                 '-ac', str(self.channels),     # Channels from config
                 '-i', 'pipe:0',             # Read from stdin
             ]
+
+            # Add volume filter if speaker_volume is not 100%
+            # FFmpeg volume filter: 1.0 = 100%, 0.5 = 50%, 2.0 = 200%
+            if self.speaker_volume != 100:
+                volume_factor = self.speaker_volume / 100.0
+                cmd.extend(['-af', f'volume={volume_factor:.2f}'])
+                logger.info(f"{self._log_prefix} Applying volume filter: {volume_factor:.2f} ({self.speaker_volume}%)")
 
             # Add codec-specific output settings
             if self.codec == 'aac':

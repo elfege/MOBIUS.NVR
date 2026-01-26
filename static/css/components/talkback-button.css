@@ -442,3 +442,97 @@
     background: #1a1a1a;
     color: #fff;
 }
+
+/* ============================================================================
+   SPEAKER VOLUME SLIDER
+   Controls audio output level to camera speaker
+   ============================================================================ */
+
+.talkback-volume-container {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.talkback-volume-label {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    margin-bottom: 0.5rem;
+}
+
+.talkback-volume-label i {
+    font-size: 0.9rem;
+    color: #4CAF50;
+}
+
+.talkback-volume-slider-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    justify-content: center;
+}
+
+.talkback-volume-slider {
+    width: 180px;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+.talkback-volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.talkback-volume-slider::-webkit-slider-thumb:hover {
+    background: #66BB6A;
+    transform: scale(1.1);
+}
+
+.talkback-volume-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #4CAF50;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.talkback-volume-slider::-moz-range-thumb:hover {
+    background: #66BB6A;
+    transform: scale(1.1);
+}
+
+.talkback-volume-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4CAF50;
+    min-width: 45px;
+    text-align: center;
+}
+
+.talkback-volume-note {
+    margin-top: 0.5rem;
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
+    text-align: center;
+}

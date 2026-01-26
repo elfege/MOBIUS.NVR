@@ -199,6 +199,29 @@ services:
     - REOLINK_USERNAME=${REOLINK_USERNAME}
     - REOLINK_PASSWORD=${REOLINK_PASSWORD}
 
+  # go2rtc - ONVIF AudioBackChannel and WebRTC two-way audio
+  # Used for cameras that support ONVIF backchannel (UniFi, Amcrest, SV3C, Reolink)
+  # Flow 3: go2rtc handles backchannel, MediaMTX serves video to browser
+  go2rtc:
+    image: alexxit/go2rtc:latest
+    container_name: nvr-go2rtc
+    restart: unless-stopped
+    volumes:
+      - ./config/go2rtc.yaml:/config/go2rtc.yaml:ro
+    ports:
+      - "1984:1984"    # Web UI and API
+      - "8555:8555"    # RTSP server (internal streams)
+      - "8556:8556"    # WebRTC signaling (if needed later)
+      - "8557:8557/udp"  # WebRTC media UDP
+    environment:
+      - TZ=America/New_York
+      # Camera credentials for ONVIF backchannel
+      - SV3C_PASSWORD=${SV3C_PASSWORD}
+      - AMCREST_LOBBY_USERNAME=${AMCREST_LOBBY_USERNAME}
+      - AMCREST_LOBBY_PASSWORD=${AMCREST_LOBBY_PASSWORD}
+    networks:
+      - nvr-net
+
   neolink:
     # Use v0.6.2 - v0.6.3.rc.x has buffer overflow regression
     # See: https://github.com/QuantumEntangledAndy/neolink/issues/349

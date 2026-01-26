@@ -15,17 +15,17 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 09:22 EST*
+*Last updated: January 26, 2026 10:05 EST*
 
 Branch: `power_cycle_safety_fix_JAN_26_2026_a`
 
-**Context compaction occurred at 09:13 EST on January 26, 2026**
+**Context compaction occurred at 09:55 EST on January 26, 2026**
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session Summary (Jan 26, 2026 09:13-09:22 EST)
+## Session Summary (Jan 26, 2026 09:13-10:05 EST)
 
 ### CRITICAL: Power Cycle Safety Fix
 
@@ -86,6 +86,43 @@ Updated `rtsp_input` parameters for hi3510 chipset:
 3. `09bc54c` - Add power-cycle settings UI to camera settings modal
 4. `4534f15` - Fix ffmpeg_params.py null/none handling to allow valid falsy values
 5. `cf3bc37` - Update SV3C rtsp_input with longer timeouts and reconnect options
+6. `191d3a5` - Update README_handoff.md with session summary (Jan 26, 2026 09:13-09:22 EST)
+7. `5a68f8a` - Skip underscore-prefixed keys in ffmpeg_params.py
+
+### FFmpeg Parameter Underscore Key Fix
+
+**File:** `streaming/ffmpeg_params.py`
+
+Added check to skip `_note` and `_notes` keys (documentation fields) when building FFmpeg parameters:
+
+```python
+# Skip documentation/metadata keys (start with underscore)
+if key.startswith('_'):
+    continue
+```
+
+### SV3C RTSP Permission Check Discussion
+
+User showed screenshot of SV3C camera settings with "RTSP Permission check: On/Off" option. This setting on hi3510 chipset cameras:
+- **ON**: Requires authentication for RTSP connections (default)
+- **OFF**: Allows anonymous RTSP connections
+
+**Recommendation**: Turning OFF could help stability by reducing connection overhead (no auth negotiation), but has security implications if camera is on an untrusted network.
+
+### Pending: Speaker Volume Control Feature
+
+User requested individual volume control for the talkback (speaker) button. Assessment:
+
+- **Current state**: `two_way_audio` config exists but has no `volume` or `speaker_volume` field
+- **Frontend**: TalkbackManager modal shows microphone selector and waveform, but no volume slider
+- **Backend**: FFmpeg transcoder (`talkback_transcoder.py`) could apply gain via `-af volume=X` filter
+- **Alternative**: Some cameras (Eufy, Reolink via Baichuan) may support native speaker volume commands
+
+**Implementation approach** (to be done):
+
+1. Add `speaker_volume` field to `two_way_audio` schema (0-100, default 100)
+2. Add volume slider to talkback modal UI
+3. Apply gain in FFmpeg transcoder OR use native camera API
 
 ---
 
@@ -107,6 +144,7 @@ See earlier session (Jan 26, 2026 01:00-02:45 EST) in this file's previous versi
 - [x] Add power-cycle settings to camera settings modal UI with warning
 - [x] Update ffmpeg_params.py null/none handling to be explicit
 - [x] Update SV3C rtsp_input with longer timeouts and reconnect options
+- [x] Skip underscore-prefixed keys (`_note`, `_notes`) in ffmpeg_params.py
 
 **HIGH PRIORITY - Security:**
 
@@ -127,5 +165,9 @@ See earlier session (Jan 26, 2026 01:00-02:45 EST) in this file's previous versi
 - [ ] Test SV3C with new rtsp_input parameters (15s timeout, reconnect options)
 - [ ] Test power-cycle UI in settings modal
 - [ ] Verify auto power-cycle is disabled by default
+
+**New Feature Requests:**
+
+- [ ] Add speaker volume control to talkback modal (individual per-camera volume)
 
 ---

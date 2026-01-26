@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVR System - Engineering Architecture (Updated January 19, 2026)</title>
+    <title>NVR System - Engineering Architecture (Updated January 26, 2026)</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
         body {
@@ -196,7 +196,7 @@
         <h1>Unified NVR System - Engineering Architecture</h1>
         
         <div class="critical-note">
-            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, snapshot polling, and Neolink (Baichuan) protocols. Mobile-optimized with iOS snapshot polling and Android MJPEG for grid view. <em>Last updated: January 18, 2026.</em>
+            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, recording, and <strong>two-way audio (talkback)</strong> across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, snapshot polling, and Neolink (Baichuan) protocols. Features include <strong>playback volume control</strong> with per-camera persistence and <strong>go2rtc integration</strong> for ONVIF AudioBackChannel. Mobile-optimized with iOS snapshot polling and Android MJPEG for grid view. <em>Last updated: January 26, 2026.</em>
         </div>
 
         <div class="key-metrics">
@@ -1081,6 +1081,81 @@ sequenceDiagram
             </ul>
         </div>
 
+        <!-- AUDIO ARCHITECTURE -->
+        <h2>Level 8: Audio Architecture (Jan 2026)</h2>
+
+        <div class="architecture-note">
+            <h3>Playback Volume Control</h3>
+            <p>Per-camera volume control with browser persistence:</p>
+            <ul>
+                <li><strong>UI:</strong> Click speaker icon → popup with slider (0-100%) and mute toggle</li>
+                <li><strong>Storage:</strong> localStorage <code>cameraAudioPreferences[cameraId] = { volume: 75, muted: false }</code></li>
+                <li><strong>Implementation:</strong> <code>static/js/streaming/stream.js</code> - event handlers for slider input/change</li>
+                <li><strong>Styling:</strong> <code>static/css/components/stream-volume-popup.css</code></li>
+            </ul>
+        </div>
+
+        <div class="architecture-note">
+            <h3>Two-Way Audio (Talkback)</h3>
+            <p>Browser microphone → camera speaker communication:</p>
+            <ul>
+                <li><strong>Eufy (Working):</strong> Browser → WebSocket → Flask → <code>TalkbackTranscoder</code> (FFmpeg: 16kHz mono AAC ADTS 20kbps) → Eufy P2P Bridge → Camera</li>
+                <li><strong>ONVIF (via go2rtc):</strong> Browser → WebSocket → Flask → go2rtc API → ONVIF AudioBackChannel → Camera</li>
+                <li><strong>go2rtc Service:</strong> <code>nvr-go2rtc</code> container handles ONVIF backchannel while MediaMTX serves video (avoids dual-connection issues)</li>
+            </ul>
+        </div>
+
+        <div class="critical-note">
+            <h3>go2rtc Configuration</h3>
+            <p>File: <code>config/go2rtc.yaml</code></p>
+            <ul>
+                <li><strong>API:</strong> Port 1984 - Web UI and REST API</li>
+                <li><strong>RTSP:</strong> Port 8555 - Internal RTSP server</li>
+                <li><strong>WebRTC:</strong> Port 8556 - WebRTC signaling</li>
+                <li><strong>Streams:</strong> ONVIF-only connections for cameras with AudioBackChannel capability</li>
+                <li><strong>Note:</strong> Credentials injected via environment variables from AWS Secrets Manager</li>
+            </ul>
+        </div>
+
+        <table>
+            <tr>
+                <th>Camera Type</th>
+                <th>Protocol</th>
+                <th>Status</th>
+                <th>Configuration</th>
+            </tr>
+            <tr>
+                <td>Eufy</td>
+                <td>Eufy P2P Bridge</td>
+                <td>Working</td>
+                <td><code>two_way_audio.protocol: "eufy_p2p"</code></td>
+            </tr>
+            <tr>
+                <td>SV3C</td>
+                <td>ONVIF AudioBackChannel</td>
+                <td>Configured</td>
+                <td><code>two_way_audio.onvif.go2rtc_stream</code></td>
+            </tr>
+            <tr>
+                <td>Amcrest</td>
+                <td>ONVIF AudioBackChannel</td>
+                <td>Configured</td>
+                <td><code>two_way_audio.onvif.go2rtc_stream</code></td>
+            </tr>
+            <tr>
+                <td>Reolink</td>
+                <td>Baichuan</td>
+                <td>Future</td>
+                <td>Not yet implemented</td>
+            </tr>
+            <tr>
+                <td>UniFi</td>
+                <td>Protect API</td>
+                <td>Future</td>
+                <td>Requires Protect API integration</td>
+            </tr>
+        </table>
+
         <!-- SUMMARY -->
         <h2>Architecture Summary</h2>
 
@@ -1098,6 +1173,8 @@ sequenceDiagram
                 <li><strong>Motion Detection:</strong> Three methods - Reolink Baichuan (push), ONVIF PullPoint (poll), FFmpeg scene detection (universal)</li>
                 <li><strong>Pre-Buffer Recording:</strong> Rolling 5-second segment buffer for motion recordings; FFmpeg concat for final output</li>
                 <li><strong>ONVIF PTZ:</strong> Standardized control with adaptive latency learning stored in PostgreSQL</li>
+                <li><strong>Two-Way Audio:</strong> Eufy talkback via P2P bridge; ONVIF backchannel via go2rtc for SV3C/Amcrest</li>
+                <li><strong>Playback Volume:</strong> Per-camera volume slider with localStorage persistence</li>
                 <li><strong>Docker-First:</strong> Full containerization with docker-compose; timezone sync for accurate timestamps</li>
             </ul>
         </div>
@@ -1126,6 +1203,8 @@ sequenceDiagram
                 <li><strong>FFmpeg Config:</strong> <code>streaming/ffmpeg_params.py</code></li>
                 <li><strong>Camera Config:</strong> <code>config/cameras.json</code></li>
                 <li><strong>Recording Config:</strong> <code>config/recording_settings.json</code></li>
+                <li><strong>go2rtc Config:</strong> <code>config/go2rtc.yaml</code></li>
+                <li><strong>Talkback Transcoder:</strong> <code>services/talkback_transcoder.py</code></li>
                 <li><strong>Recording Service:</strong> <code>services/recording/recording_service.py</code></li>
                 <li><strong>Segment Buffer:</strong> <code>services/recording/segment_buffer.py</code></li>
                 <li><strong>Storage Manager:</strong> <code>services/recording/storage_manager.py</code></li>

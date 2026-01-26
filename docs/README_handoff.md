@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 10:05 EST*
+*Last updated: January 26, 2026 10:20 EST*
 
 Branch: `power_cycle_safety_fix_JAN_26_2026_a`
 
@@ -109,20 +109,31 @@ User showed screenshot of SV3C camera settings with "RTSP Permission check: On/O
 
 **Recommendation**: Turning OFF could help stability by reducing connection overhead (no auth negotiation), but has security implications if camera is on an untrusted network.
 
-### Pending: Speaker Volume Control Feature
+### Speaker Volume Control Feature - IMPLEMENTED
 
-User requested individual volume control for the talkback (speaker) button. Assessment:
+Added individual volume control for talkback (speaker) button. Commit: `1cfd0b2`
 
-- **Current state**: `two_way_audio` config exists but has no `volume` or `speaker_volume` field
-- **Frontend**: TalkbackManager modal shows microphone selector and waveform, but no volume slider
-- **Backend**: FFmpeg transcoder (`talkback_transcoder.py`) could apply gain via `-af volume=X` filter
-- **Alternative**: Some cameras (Eufy, Reolink via Baichuan) may support native speaker volume commands
+**Schema** (`config/cameras.json`):
 
-**Implementation approach** (to be done):
+- Added `speaker_volume` field (0-150, default 100) to all 19 cameras' `two_way_audio` config
+- 100 = normal volume, 0 = muted, 150 = 1.5x boost
 
-1. Add `speaker_volume` field to `two_way_audio` schema (0-100, default 100)
-2. Add volume slider to talkback modal UI
-3. Apply gain in FFmpeg transcoder OR use native camera API
+**Backend**:
+
+- `services/talkback_transcoder.py`: Reads `speaker_volume` from camera config
+- Applies FFmpeg `-af volume=X` filter when volume != 100%
+- New API endpoint: `POST /api/cameras/<serial>/speaker_volume`
+
+**Frontend** (`static/js/streaming/talkback-manager.js`):
+
+- Added volume slider (0-150%) to talkback modal UI
+- Slider shows real-time value and persists to server on change
+- Per-camera volume saved and loaded automatically
+
+**CSS** (`static/css/components/talkback-button.css`):
+
+- Green slider matching speaker/volume theme
+- Note explaining what the slider controls
 
 ---
 
@@ -166,8 +177,8 @@ See earlier session (Jan 26, 2026 01:00-02:45 EST) in this file's previous versi
 - [ ] Test power-cycle UI in settings modal
 - [ ] Verify auto power-cycle is disabled by default
 
-**New Feature Requests:**
+**Completed This Session (continued):**
 
-- [ ] Add speaker volume control to talkback modal (individual per-camera volume)
+- [x] Add speaker volume control to talkback modal (individual per-camera volume)
 
 ---

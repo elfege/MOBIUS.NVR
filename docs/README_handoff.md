@@ -15,89 +15,98 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 08:17 EST*
+*Last updated: January 26, 2026 09:22 EST*
 
-Branch: `main` (session wrapped up)
+Branch: `power_cycle_safety_fix_JAN_26_2026_a`
 
-**Context compaction occurred at 08:16 EST on January 26, 2026**
+**Context compaction occurred at 09:13 EST on January 26, 2026**
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session Summary (Jan 26, 2026 01:00-02:45 EST)
+## Session Summary (Jan 26, 2026 09:13-09:22 EST)
 
-### SV3C MJPEG Snap-Polling Implementation
+### CRITICAL: Power Cycle Safety Fix
 
-Created dedicated MJPEG snap-polling service for SV3C camera (hi3510 chipset).
+Fixed a dangerous auto power-cycle behavior where cameras could be power-cycled without explicit user consent.
 
-**Files Created:**
-- `services/sv3c_mjpeg_capture_service.py` - Single-source, multi-client MJPEG via HTTP snapshots
+**Problem:**
+- `hubitat_power_service.py` automatically power-cycled cameras when OFFLINE
+- Only required `power_supply: hubitat` and `power_supply_device_id` configured
+- NO explicit opt-in setting existed
+- Cooldown was only 5 minutes
 
-**Files Modified:**
-- `app.py` - Added `/api/sv3c/<camera_id>/stream/mjpeg` route + MJPEG camera isolation in `/api/stream/start`
-- `static/js/streaming/mjpeg-stream.js` - Added SV3C case routing to dedicated endpoint
-- `static/js/streaming/snapshot-stream.js` - Skip HLS/RTSP for native MJPEG cameras
-- `static/js/streaming/stream.js` - Added SV3C to native MJPEG list, skip pre-warm for MJPEG cameras
-- `services/motion/ffmpeg_motion_detector.py` - Skip FFmpeg motion for MJPEG cameras
+**Solution Implemented:**
 
-**Key Discovery:**
-- `/snapshot.cgi` returns 404 on this SV3C model
-- `/tmpfs/auto.jpg` with Basic Auth works (HTTP 200, ~100KB images)
-- Camera can only handle ~1 concurrent connection
+1. **Schema Addition** (`config/cameras.json`):
+   - Added `power_cycle_on_failure` object to ALL 19 cameras
+   - Default: `enabled: false` (safe)
+   - Configurable: `cooldown_hours: 24` (default)
+   - Includes `_note` documentation
 
-### MJPEG Camera Isolation
+2. **Backend Safety Check** (`services/power/hubitat_power_service.py`):
+   - Added opt-in check in `_on_camera_state_change()`
+   - Cameras MUST have `power_cycle_on_failure.enabled: true` for auto power-cycle
+   - Cooldown now reads from camera config (default 24 hours)
+   - Manual `power_cycle()` API bypasses opt-in (operators can always trigger)
 
-Implemented complete isolation of MJPEG cameras from MediaMTX/RTSP paths:
+3. **UI Settings** (`static/js/forms/recording-settings-form.js`, `app.py`):
+   - Added Power Management section to camera settings modal
+   - Warning banner about automatic power cycling
+   - Enable/disable checkbox, cooldown hours input
+   - Disables controls if camera is not hubitat-powered or has no device ID
+   - Extended `/api/cameras/<serial>/power_supply` endpoint for the new settings
 
-1. **Backend `/api/stream/start`** - Returns MJPEG URL directly for `stream_type: MJPEG` cameras
-2. **Frontend `preWarmHLSStreams()`** - Skips MJPEG cameras entirely
-3. **Frontend `snapshot-stream.js`** - Checks camera type before calling HLS start
-4. **FFmpeg Motion Detection** - Skips MJPEG cameras (would require RTSP)
+### FFmpeg Parameter Fix
 
-**Rationale:** Budget cameras like SV3C can only handle 1 connection. MJPEG snap-polling is the ONLY connection - no RTSP, no FFmpeg, no MediaMTX.
+**File:** `streaming/ffmpeg_params.py`
 
-### max_connections Schema Addition
+Fixed null/none handling that was incorrectly skipping valid falsy values:
+- Previous: `if not value` would skip `0`, `False`
+- Now explicitly checks: `None`, `""`, `"N/A"`, `"none"`, `"null"`
+- Allows `0` and `False` to pass through correctly
 
-Added `max_connections` parameter to all 19 cameras in `cameras.json`:
+### SV3C RTSP Stability Improvement
 
-| max_connections | Cameras |
-|-----------------|---------|
-| **3** | UniFi (OFFICE KITCHEN), Amcrest (LOBBY), Reolink Living |
-| **2** | Other Reolink cameras (6 total) |
-| **1** | All Eufy (9) + SV3C (1) |
+**File:** `config/cameras.json` (SV3C camera)
 
-**Schema placement:** Right after `stream_type` with `_max_connections_note` documentation.
-
-**Purpose:** Future enforcement of connection limits, UI warnings, automatic snap-polling selection.
+Updated `rtsp_input` parameters for hi3510 chipset:
+- `timeout`: 5s → 15s
+- `stimeout`: added 15s socket timeout
+- `analyzeduration`: 1s → 2s
+- `probesize`: 1MB → 2MB
+- `fflags`: `nobuffer` → `nobuffer+genpts`
+- Added: `reconnect: 1`, `reconnect_streamed: 1`, `reconnect_delay_max: 5`
 
 ### Commits Made
 
-1. `c10880b` - Fix SV3C snapshot endpoint: use /tmpfs/auto.jpg with Basic Auth
-2. `ba10e76` - Fix: Skip HLS/RTSP start for native MJPEG cameras in snapshot mode
-3. `beaba78` - Isolate MJPEG cameras from MediaMTX/RTSP paths completely
-4. `51bc355` - Add max_connections parameter to all cameras in cameras.json
-5. `66ec151` - Update cameras.json: power_supply_device_id for LAUNDRY ROOM
-
-### Final State
-
-- **SV3C** is set to `stream_type: WEBRTC` (user preference over slow MJPEG)
-- **SV3C MJPEG service** is available if needed (`/api/sv3c/{id}/stream/mjpeg`)
-- **max_connections: 1** for SV3C enables future automatic MJPEG selection
-- All changes merged to main and pushed
+1. `a28d36d` - Add power_cycle_on_failure schema to all 19 cameras (disabled by default)
+2. `aede0af` - Add opt-in safety check for auto power-cycle in hubitat_power_service.py
+3. `09bc54c` - Add power-cycle settings UI to camera settings modal
+4. `4534f15` - Fix ffmpeg_params.py null/none handling to allow valid falsy values
+5. `cf3bc37` - Update SV3C rtsp_input with longer timeouts and reconnect options
 
 ---
 
 ## Previous Session Context
 
-See `docs/README_project_history.md` for:
-- Eufy two-way audio implementation (Phase 1 complete)
-- go2rtc ONVIF backchannel setup
-- Camera schema `two_way_audio` settings
+See earlier session (Jan 26, 2026 01:00-02:45 EST) in this file's previous version for:
+- SV3C MJPEG Snap-Polling Implementation
+- MJPEG Camera Isolation
+- max_connections Schema Addition
 
 ---
 
 ## TODO List
+
+**Completed This Session:**
+
+- [x] Add power_cycle_on_failure schema to all cameras (enabled: false by default)
+- [x] Update hubitat_power_service.py with opt-in check and 24h configurable cooldown
+- [x] Add power-cycle settings to camera settings modal UI with warning
+- [x] Update ffmpeg_params.py null/none handling to be explicit
+- [x] Update SV3C rtsp_input with longer timeouts and reconnect options
 
 **HIGH PRIORITY - Security:**
 
@@ -113,16 +122,10 @@ See `docs/README_project_history.md` for:
 - [ ] Test Reolink E1 Zoom ONVIF two-way audio
 - [ ] Create Flask handler for `protocol: onvif` routing
 
-**SV3C / Budget Camera:**
-
-- [x] Create SV3C MJPEG snap-polling service
-- [x] Add max_connections schema to cameras.json
-- [ ] Implement automatic MJPEG selection when `max_connections: 1`
-- [ ] UI warning when enabling features that exceed connection limit
-
 **Testing Needed:**
 
-- [ ] Test SV3C with WEBRTC (current config)
-- [ ] Test MJPEG endpoint if WEBRTC fails: `/api/sv3c/C6F0SgZ0N0PoL2/stream/mjpeg`
+- [ ] Test SV3C with new rtsp_input parameters (15s timeout, reconnect options)
+- [ ] Test power-cycle UI in settings modal
+- [ ] Verify auto power-cycle is disabled by default
 
 ---

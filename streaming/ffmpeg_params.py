@@ -66,7 +66,12 @@ class FFmpegHLSParamBuilder:
 
             # --- iterate other params
             for key, value in cfg.items():
-                if not value or value == "N/A":
+                # Skip null/empty values, but allow 0 and False as valid values
+                # This handles: None, "", "N/A", "none", "null"
+                # But preserves: 0, False, and other falsy but valid values
+                if value is None or value == "" or value == "N/A":
+                    continue
+                if isinstance(value, str) and value.lower() in ("none", "null"):
                     continue
 
                 # conditional filtering for sub/main variants
@@ -93,7 +98,10 @@ class FFmpegHLSParamBuilder:
                 # list of values
                 if isinstance(value, list):
                     for entry in value:
-                        if not entry or entry == "N/A":
+                        # Skip null/empty entries in list, but allow 0 and False
+                        if entry is None or entry == "" or entry == "N/A":
+                            continue
+                        if isinstance(entry, str) and entry.lower() in ("none", "null"):
                             continue
                         # special case: scale mapping
                         if mapped == "scale" and isinstance(entry, str) and "x" in entry:

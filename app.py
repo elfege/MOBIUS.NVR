@@ -42,6 +42,7 @@ from services.app_restart_handler import AppRestartHandler
 from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
 from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
+from services.sv3c_mjpeg_capture_service import sv3c_mjpeg_capture_service
 from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
 from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
 from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
@@ -2555,6 +2556,149 @@ def api_reolink_stream_mjpeg_main(camera_id):
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
     except Exception as e:
         return f"Stream error: {e}", 500
+
+########################################################-########################################################
+#                                📷 SV3C MJPEG STREAM ROUTES (hi3510 chipset)
+########################################################-########################################################
+@app.route('/api/sv3c/<camera_id>/stream/mjpeg')
+@csrf.exempt
+def api_sv3c_stream_mjpeg_default(camera_id):
+    """
+    MJPEG stream for SV3C cameras via snapshot polling.
+    SV3C uses hi3510 chipset with CGI snapshot endpoints.
+    Bypasses unstable RTSP by polling snapshots directly.
+    """
+    stream = request.args.get('stream', 'sub')
+    if stream == 'sub':
+        return api_sv3c_stream_mjpeg_sub(camera_id)
+    else:
+        return api_sv3c_stream_mjpeg_main(camera_id)
+
+
+def api_sv3c_stream_mjpeg_sub(camera_id):
+    """
+    MJPEG sub stream for SV3C cameras via snapshot polling.
+    Uses single-source, multi-client architecture.
+    """
+    logger.info(f"Client requesting SV3C MJPEG stream for {camera_id}")
+
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            logger.error(f"Camera {camera_id} not found")
+            return "Camera not found", 404
+
+        if camera.get('type') != 'sv3c':
+            logger.error(f"Camera {camera_id} is not a SV3C camera (type={camera.get('type')})")
+            return "Not a SV3C camera", 400
+
+        # Get MJPEG snap configuration
+        mjpeg_config = camera.get('mjpeg_snap', {})
+        sub_config = mjpeg_config.get('sub', mjpeg_config)
+        if not sub_config.get('enabled', True):
+            logger.warning(f"MJPEG snap not enabled for camera {camera_id}")
+            return "MJPEG snap not enabled for this camera", 400
+
+        # Build camera config with sub stream settings
+        camera_with_sub = camera.copy()
+        camera_with_sub['mjpeg_snap'] = sub_config
+        camera_with_sub['mjpeg_snap']['snap_type'] = 'sub'
+
+        # Add client to capture service
+        if not sv3c_mjpeg_capture_service.add_client(camera_id, camera_with_sub, camera_repo):
+            logger.error(f"Failed to add client for SV3C MJPEG stream {camera_id}")
+            return "Failed to start capture", 500
+
+        def generate():
+            """Generator reads from shared frame buffer"""
+            logger.info(f"[SV3C MJPEG] Client connected to {camera_id}")
+
+            try:
+                last_frame_number = -1
+
+                while True:
+                    frame_data = sv3c_mjpeg_capture_service.get_latest_frame(camera_id)
+
+                    if frame_data:
+                        if frame_data['frame_number'] != last_frame_number:
+                            snapshot = frame_data['data']
+                            last_frame_number = frame_data['frame_number']
+
+                            yield (b'--jpgboundary\r\n'
+                                   b'Content-Type: image/jpeg\r\n' +
+                                   f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                                   snapshot + b'\r\n')
+
+                    time.sleep(0.033)  # ~30 FPS check rate
+
+            except GeneratorExit:
+                logger.info(f"[SV3C MJPEG] Client disconnected from {camera_id}")
+                sv3c_mjpeg_capture_service.remove_client(camera_id)
+            except Exception as e:
+                logger.error(f"[SV3C MJPEG] Stream error for {camera_id}: {e}")
+                sv3c_mjpeg_capture_service.remove_client(camera_id)
+
+        return Response(generate(),
+                        mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+
+    except Exception as e:
+        logger.error(f"Failed to start SV3C MJPEG stream for {camera_id}: {e}")
+        return f"Stream error: {e}", 500
+
+
+def api_sv3c_stream_mjpeg_main(camera_id):
+    """
+    MJPEG main stream for SV3C cameras (fullscreen mode).
+    Uses higher resolution but more bandwidth.
+    """
+    logger.info(f"Client requesting SV3C MJPEG MAIN stream for {camera_id}")
+
+    try:
+        camera = camera_repo.get_camera(camera_id)
+        if not camera:
+            return "Camera not found", 404
+
+        if camera.get('type') != 'sv3c':
+            return "Not a SV3C camera", 400
+
+        mjpeg_snap = camera.get('mjpeg_snap', {})
+        main_config = mjpeg_snap.get('main', mjpeg_snap.get('sub', mjpeg_snap))
+
+        if not main_config.get('enabled', True):
+            return "MJPEG snap not enabled for this camera", 400
+
+        camera_main = camera.copy()
+        camera_main['mjpeg_snap'] = main_config.copy()
+        camera_main['mjpeg_snap']['snap_type'] = 'main'
+
+        camera_id_main = f"{camera_id}_main"
+
+        if not sv3c_mjpeg_capture_service.add_client(camera_id_main, camera_main, camera_repo):
+            return "Failed to start capture", 500
+
+        def generate():
+            try:
+                last_frame_number = -1
+                while True:
+                    frame_data = sv3c_mjpeg_capture_service.get_latest_frame(camera_id_main)
+                    if frame_data and frame_data['frame_number'] != last_frame_number:
+                        snapshot = frame_data['data']
+                        last_frame_number = frame_data['frame_number']
+                        yield (b'--jpgboundary\r\n'
+                               b'Content-Type: image/jpeg\r\n' +
+                               f'Content-Length: {len(snapshot)}\r\n\r\n'.encode() +
+                               snapshot + b'\r\n')
+                    time.sleep(0.033)
+            except GeneratorExit:
+                sv3c_mjpeg_capture_service.remove_client(camera_id_main)
+            except Exception as e:
+                logger.error(f"[SV3C MJPEG MAIN] Error {camera_id}: {e}")
+                sv3c_mjpeg_capture_service.remove_client(camera_id_main)
+
+        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+    except Exception as e:
+        return f"Stream error: {e}", 500
+
 
 ########################################################-########################################################
 #                                ⚙️⚙️⚙️⚙️ EUFY BRIDGE AUTHENTICATION ROUTES ⚙️⚙️⚙️⚙️

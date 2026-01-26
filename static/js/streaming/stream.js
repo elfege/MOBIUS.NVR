@@ -807,12 +807,16 @@ export class MultiStreamManager {
             $popup.toggle();
 
             if ($popup.is(':visible')) {
-                // Load current values into popup
+                // Load current values into popup - use ACTUAL video state, not just stored prefs
                 const pref = this.getAudioPreference(cameraId);
-                $popup.find('.volume-slider').val(pref.volume);
-                $popup.find('.volume-value').text(`${pref.volume}%`);
-                this.updateMuteButtonIcon($popup, pref.muted);
-                console.log(`[Audio] ${cameraId}: Volume popup opened (volume=${pref.volume}%, muted=${pref.muted})`);
+                const currentVolume = Math.round(videoEl.volume * 100);
+                const currentMuted = videoEl.muted;
+
+                // Use stored volume if available, but actual muted state from video element
+                $popup.find('.volume-slider').val(pref.volume || currentVolume);
+                $popup.find('.volume-value').text(`${pref.volume || currentVolume}%`);
+                this.updateMuteButtonIcon($popup, currentMuted);
+                console.log(`[Audio] ${cameraId}: Volume popup opened (volume=${pref.volume}%, muted=${currentMuted})`);
             }
         });
 
@@ -830,17 +834,19 @@ export class MultiStreamManager {
             const videoEl = $streamItem.find('.stream-video')[0];
             if (videoEl) {
                 videoEl.volume = volume / 100;
-                // If volume > 0 and was muted, unmute
+
+                // If volume > 0 and was muted, unmute automatically
                 if (volume > 0 && videoEl.muted) {
                     videoEl.muted = false;
-                    this.updateMuteButtonIcon($popup, false);
-                    this.updateAudioButtonIcon($streamItem, false);
                 }
-                // If volume is 0, show as muted
+                // If volume is 0, mute
                 if (volume === 0) {
-                    this.updateMuteButtonIcon($popup, true);
-                    this.updateAudioButtonIcon($streamItem, true);
+                    videoEl.muted = true;
                 }
+
+                // Always sync icons with actual muted state
+                this.updateMuteButtonIcon($popup, videoEl.muted);
+                this.updateAudioButtonIcon($streamItem, videoEl.muted);
             }
         });
 

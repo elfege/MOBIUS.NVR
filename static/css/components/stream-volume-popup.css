@@ -4,11 +4,27 @@
    Volume and mute state persists across page reload.
    ============================================================================ */
 
-/* Volume popup container - positioned above the audio button */
+/* Container wrapping button and popup - enables relative positioning for popup dropdown */
+.volume-control-container {
+    position: absolute;
+    top: 0.5rem;
+    right: 3.5rem;  /* Match original .stream-audio-btn position */
+    z-index: 25;
+}
+
+/* Override the audio button positioning since it's now inside the container */
+.volume-control-container .stream-audio-btn {
+    position: relative;
+    top: auto;
+    right: auto;
+}
+
+/* Volume popup - drops down from the audio button */
 .volume-popup {
     position: absolute;
-    bottom: 50px;  /* Above the audio button */
-    right: 8px;
+    top: 100%;  /* Drop down from the container/button */
+    right: 0;
+    margin-top: 4px;  /* Small gap between button and popup */
     background: rgba(0, 0, 0, 0.9);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);

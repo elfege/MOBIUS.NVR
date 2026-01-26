@@ -71,6 +71,14 @@ class FFmpegMotionDetector:
             logger.info(f"Already detecting motion for {camera_id}")
             return True
 
+        # MJPEG cameras are completely isolated from RTSP paths
+        # FFmpeg motion detection would require RTSP connection which overwhelms budget cameras
+        # These cameras should use alternative motion detection (ONVIF events, snap comparison, etc.)
+        stream_type = camera.get('stream_type', '').upper()
+        if stream_type == 'MJPEG':
+            logger.info(f"Skipping FFmpeg motion detection for MJPEG camera {camera.get('name', camera_id)} - use ONVIF or snap-based detection instead")
+            return False
+
         # Get camera-specific settings from recording config
         cooldown_sec = 60
         if self.recording_config:

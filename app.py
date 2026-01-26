@@ -1043,6 +1043,33 @@ def api_stream_start(camera_serial):
 
         print(f"Attempting to start camera {camera_serial} - {camera_name}")
 
+        # MJPEG cameras are completely isolated from HLS/RTSP paths
+        # They use snap-polling services which are the ONLY connection to the camera
+        # Returning success with MJPEG URL so frontend doesn't retry
+        stream_type = camera.get('stream_type', '')
+        if stream_type == 'MJPEG':
+            camera_type = camera.get('type', '').lower()
+            print(f"[API] {camera_serial} is MJPEG camera - skipping HLS/RTSP start")
+            # Return appropriate MJPEG endpoint based on camera type
+            if camera_type == 'sv3c':
+                mjpeg_url = f"/api/sv3c/{camera_serial}/stream/mjpeg"
+            elif camera_type == 'reolink':
+                mjpeg_url = f"/api/reolink/{camera_serial}/stream/mjpeg"
+            elif camera_type == 'amcrest':
+                mjpeg_url = f"/api/amcrest/{camera_serial}/stream/mjpeg"
+            elif camera_type == 'unifi':
+                mjpeg_url = f"/api/unifi/{camera_serial}/stream/mjpeg"
+            else:
+                mjpeg_url = f"/api/mediaserver/{camera_serial}/stream/mjpeg"
+            return jsonify({
+                'success': True,
+                'camera_serial': camera_serial,
+                'camera_name': camera_name,
+                'stream_url': mjpeg_url,
+                'stream_type': 'MJPEG',
+                'message': f'MJPEG stream for {camera_name} (no HLS needed)'
+            })
+
         # Validate streaming capability
         if not ptz_validator.is_streaming_capable(camera_serial):
             return jsonify({'success': False, 'error': 'Camera does not support streaming'}), 400

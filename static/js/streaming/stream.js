@@ -785,37 +785,106 @@ export class MultiStreamManager {
             this.collapseExpandedCamera();
         });
 
-        // Audio mute/unmute toggle handler
+        // Audio button click - toggle volume popup visibility
         this.$container.on('click', '.stream-audio-btn', (e) => {
             e.stopPropagation();
             const $button = $(e.currentTarget);
             const $streamItem = $button.closest('.stream-item');
+            const $popup = $streamItem.find('.volume-popup');
             const $video = $streamItem.find('.stream-video');
             const videoEl = $video[0];
             const cameraId = $streamItem.data('camera-serial');
 
             if (!videoEl || videoEl.tagName !== 'VIDEO') {
-                console.log('[Audio] Not a video element, cannot toggle audio');
+                console.log('[Audio] Not a video element, cannot show volume popup');
                 return;
             }
 
+            // Close any other open popups first
+            this.$container.find('.volume-popup').not($popup).hide();
+
+            // Toggle this popup
+            $popup.toggle();
+
+            if ($popup.is(':visible')) {
+                // Load current values into popup
+                const pref = this.getAudioPreference(cameraId);
+                $popup.find('.volume-slider').val(pref.volume);
+                $popup.find('.volume-value').text(`${pref.volume}%`);
+                this.updateMuteButtonIcon($popup, pref.muted);
+                console.log(`[Audio] ${cameraId}: Volume popup opened (volume=${pref.volume}%, muted=${pref.muted})`);
+            }
+        });
+
+        // Volume slider input - real-time feedback while dragging
+        this.$container.on('input', '.volume-slider', (e) => {
+            const $slider = $(e.target);
+            const $popup = $slider.closest('.volume-popup');
+            const $streamItem = $popup.closest('.stream-item');
+            const volume = parseInt($slider.val(), 10);
+
+            // Update display
+            $popup.find('.volume-value').text(`${volume}%`);
+
+            // Apply immediately to video
+            const videoEl = $streamItem.find('.stream-video')[0];
+            if (videoEl) {
+                videoEl.volume = volume / 100;
+                // If volume > 0 and was muted, unmute
+                if (volume > 0 && videoEl.muted) {
+                    videoEl.muted = false;
+                    this.updateMuteButtonIcon($popup, false);
+                    this.updateAudioButtonIcon($streamItem, false);
+                }
+                // If volume is 0, show as muted
+                if (volume === 0) {
+                    this.updateMuteButtonIcon($popup, true);
+                    this.updateAudioButtonIcon($streamItem, true);
+                }
+            }
+        });
+
+        // Volume slider change - persist when user releases slider
+        this.$container.on('change', '.volume-slider', (e) => {
+            const $slider = $(e.target);
+            const $popup = $slider.closest('.volume-popup');
+            const $streamItem = $popup.closest('.stream-item');
+            const cameraId = $streamItem.data('camera-serial');
+            const volume = parseInt($slider.val(), 10);
+            const videoEl = $streamItem.find('.stream-video')[0];
+            const muted = videoEl ? videoEl.muted : true;
+
+            this.saveAudioPreference(cameraId, volume, muted);
+            console.log(`[Audio] ${cameraId}: Volume saved (volume=${volume}%, muted=${muted})`);
+        });
+
+        // Mute button in popup
+        this.$container.on('click', '.volume-mute-btn', (e) => {
+            e.stopPropagation();
+            const $btn = $(e.currentTarget);
+            const $popup = $btn.closest('.volume-popup');
+            const $streamItem = $popup.closest('.stream-item');
+            const cameraId = $streamItem.data('camera-serial');
+            const videoEl = $streamItem.find('.stream-video')[0];
+
+            if (!videoEl) return;
+
             // Toggle muted state
             videoEl.muted = !videoEl.muted;
+            this.updateMuteButtonIcon($popup, videoEl.muted);
+            this.updateAudioButtonIcon($streamItem, videoEl.muted);
 
-            // Update button icon and state
-            const $icon = $button.find('i');
-            if (videoEl.muted) {
-                $icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
-                $button.removeClass('audio-active');
-                console.log(`[Audio] ${cameraId}: Muted`);
-            } else {
-                $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
-                $button.addClass('audio-active');
-                console.log(`[Audio] ${cameraId}: Unmuted`);
+            // Save preference
+            const pref = this.getAudioPreference(cameraId);
+            this.saveAudioPreference(cameraId, pref.volume, videoEl.muted);
+            console.log(`[Audio] ${cameraId}: ${videoEl.muted ? 'Muted' : 'Unmuted'}`);
+        });
+
+        // Close volume popup when clicking outside
+        $(document).on('click', (e) => {
+            if (!$(e.target).closest('.volume-popup, .stream-audio-btn').length) {
+                this.$container.find('.volume-popup').hide();
             }
-
-            // Save preference to localStorage
-            this.saveAudioPreference(cameraId, !videoEl.muted);
         });
 
         // PTZ controls toggle handler
@@ -1068,12 +1137,17 @@ export class MultiStreamManager {
     }
 
     /**
-     * Save audio preference to localStorage
+     * Save audio preference to localStorage.
+     * Stores both volume (0-100) and muted state.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {number} volume - Volume level 0-100
+     * @param {boolean} muted - Whether audio is muted
      */
-    saveAudioPreference(cameraId, enabled) {
+    saveAudioPreference(cameraId, volume, muted) {
         try {
             const prefs = JSON.parse(localStorage.getItem('cameraAudioPreferences') || '{}');
-            prefs[cameraId] = enabled;
+            prefs[cameraId] = { volume, muted };
             localStorage.setItem('cameraAudioPreferences', JSON.stringify(prefs));
         } catch (e) {
             console.warn('[Audio] Failed to save preference:', e);
@@ -1131,14 +1205,63 @@ export class MultiStreamManager {
     }
 
     /**
-     * Get audio preference from localStorage
+     * Get audio preference from localStorage.
+     * Returns object with volume and muted state.
+     * Handles legacy boolean format for backwards compatibility.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @returns {{ volume: number, muted: boolean }} - Audio preferences
      */
     getAudioPreference(cameraId) {
         try {
             const prefs = JSON.parse(localStorage.getItem('cameraAudioPreferences') || '{}');
-            return prefs[cameraId] || false;  // Default to muted
+            const pref = prefs[cameraId];
+
+            // Handle legacy boolean format (true = unmuted, false = muted)
+            if (typeof pref === 'boolean') {
+                return { volume: 100, muted: !pref };
+            }
+
+            // Return stored preference or default (100% volume, muted)
+            return pref || { volume: 100, muted: true };
         } catch (e) {
-            return false;
+            return { volume: 100, muted: true };
+        }
+    }
+
+    /**
+     * Update the mute button icon inside the volume popup.
+     *
+     * @param {jQuery} $popup - The volume popup element
+     * @param {boolean} muted - Whether audio is muted
+     */
+    updateMuteButtonIcon($popup, muted) {
+        const $icon = $popup.find('.volume-mute-btn i');
+        const $btn = $popup.find('.volume-mute-btn');
+        if (muted) {
+            $icon.removeClass('fa-volume-up fa-volume-down').addClass('fa-volume-mute');
+            $btn.addClass('muted');
+        } else {
+            $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
+            $btn.removeClass('muted');
+        }
+    }
+
+    /**
+     * Update the main audio button icon in the stream controls.
+     *
+     * @param {jQuery} $streamItem - The stream item container
+     * @param {boolean} muted - Whether audio is muted
+     */
+    updateAudioButtonIcon($streamItem, muted) {
+        const $button = $streamItem.find('.stream-audio-btn');
+        const $icon = $button.find('i');
+        if (muted) {
+            $icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
+            $button.removeClass('audio-active');
+        } else {
+            $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
+            $button.addClass('audio-active');
         }
     }
 
@@ -1187,28 +1310,27 @@ export class MultiStreamManager {
     }
 
     /**
-     * Apply saved audio preference to a video element
+     * Apply saved audio preference to a video element.
+     * Restores both volume level and muted state from localStorage.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {jQuery} $streamItem - The stream item container
      */
     applyAudioPreference(cameraId, $streamItem) {
-        const enabled = this.getAudioPreference(cameraId);
+        const pref = this.getAudioPreference(cameraId);
         const $video = $streamItem.find('.stream-video');
-        const $button = $streamItem.find('.stream-audio-btn');
         const videoEl = $video[0];
 
         if (!videoEl || videoEl.tagName !== 'VIDEO') return;
 
-        // Apply preference (false = muted, true = unmuted)
-        videoEl.muted = !enabled;
+        // Apply volume (0-100 -> 0.0-1.0) and muted state
+        videoEl.volume = pref.volume / 100;
+        videoEl.muted = pref.muted;
 
-        // Update button state
-        const $icon = $button.find('i');
-        if (enabled) {
-            $icon.removeClass('fa-volume-mute').addClass('fa-volume-up');
-            $button.addClass('audio-active');
-        } else {
-            $icon.removeClass('fa-volume-up').addClass('fa-volume-mute');
-            $button.removeClass('audio-active');
-        }
+        // Update main audio button icon
+        this.updateAudioButtonIcon($streamItem, pref.muted);
+
+        console.log(`[Audio] ${cameraId}: Restored volume=${pref.volume}%, muted=${pref.muted}`);
     }
 
     /**

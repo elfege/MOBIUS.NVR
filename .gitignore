@@ -41,6 +41,7 @@ config/
 # Exceptions for tracked documentation
 docs/*.md
 !docs/README_project_history.md
+!docs/README_handoff.md
 
 
 

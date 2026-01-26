@@ -24,6 +24,10 @@ PROJECT_ROOT = SCRIPT_DIR.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 CAMERAS_JSON = CONFIG_DIR / "cameras.json"
 CAMERAS_EXAMPLE = PROJECT_ROOT / "cameras.json.example"
+RECORDING_SETTINGS_JSON = CONFIG_DIR / "recording_settings.json"
+RECORDING_SETTINGS_EXAMPLE = PROJECT_ROOT / "recording_settings.json.example"
+GO2RTC_YAML = CONFIG_DIR / "go2rtc.yaml"
+GO2RTC_EXAMPLE = PROJECT_ROOT / "go2rtc.yaml.example"
 
 
 def generate_uuid():
@@ -167,6 +171,108 @@ def sanitize_two_way_audio(twa_data, fake_serial):
     return sanitized
 
 
+def sanitize_go2rtc():
+    """
+    Sanitize go2rtc.yaml by replacing IPs and camera-specific names with examples.
+    """
+    if not GO2RTC_YAML.exists():
+        print(f"Warning: {GO2RTC_YAML} not found, skipping")
+        return
+
+    # Create a sanitized example go2rtc.yaml
+    example_content = '''# go2rtc Configuration for NVR System
+# Purpose: ONVIF AudioBackChannel (two-way audio) for cameras that support it
+#
+# Architecture (Flow 3):
+#   Browser -> Flask WebSocket -> go2rtc API -> ONVIF Backchannel -> Camera
+#   Camera -> RTSP -> MediaMTX (unchanged for video)
+#
+# go2rtc handles ONLY the audio backchannel, MediaMTX continues serving video.
+#
+# Documentation: https://github.com/AlexxIT/go2rtc
+
+api:
+  listen: ":1984"           # Web UI and API
+  origin: "*"               # Allow CORS for NVR integration
+
+rtsp:
+  listen: ":8555"           # RTSP server (internal use)
+
+webrtc:
+  listen: ":8556"           # WebRTC signaling
+  ice_servers:
+    - urls: ["stun:stun.l.google.com:19302"]
+
+# Stream definitions for cameras with ONVIF AudioBackChannel
+# Note: Credentials are injected via environment variables in docker-compose
+#
+# IMPORTANT: We only configure ONVIF here for backchannel (two-way audio).
+# Video/RTSP is handled by MediaMTX - do NOT add RTSP sources here as it would
+# create a second connection to cameras that only support one RTSP session.
+streams:
+  # Example Camera 1 (has ONVIF two-way audio)
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  camera_1:
+    - "onvif://admin:${CAMERA1_PASSWORD}@192.168.1.101:8080"
+
+  # Example Camera 2 (has ONVIF two-way audio)
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  camera_2:
+    - "onvif://${CAMERA2_USERNAME}:${CAMERA2_PASSWORD}@192.168.1.102:80"
+
+  # Example Camera 3 (indoor PTZ with speaker)
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  camera_3:
+    - "onvif://${CAMERA3_USERNAME}:${CAMERA3_PASSWORD}@192.168.1.103:8000"
+
+# Note: UniFi cameras are NOT included here because they're accessed via
+# UniFi Protect controller, not direct RTSP/ONVIF. UniFi Protect has its own
+# two-way audio mechanism via the Protect API.
+'''
+
+    with open(GO2RTC_EXAMPLE, "w") as f:
+        f.write(example_content)
+
+    print(f"Generated {GO2RTC_EXAMPLE}")
+    print(f"  - Sanitized go2rtc configuration")
+
+
+def sanitize_recording_settings(cameras_serial_map):
+    """
+    Sanitize recording_settings.json using the same serial mapping.
+
+    Args:
+        cameras_serial_map: Dict mapping original serial -> sanitized serial
+    """
+    if not RECORDING_SETTINGS_JSON.exists():
+        print(f"Warning: {RECORDING_SETTINGS_JSON} not found, skipping")
+        return
+
+    with open(RECORDING_SETTINGS_JSON, "r") as f:
+        data = json.load(f)
+
+    sanitized = {}
+    count = 0
+
+    for original_serial, settings in data.items():
+        # Use the same mapping from cameras.json if available
+        if original_serial in cameras_serial_map:
+            new_serial = cameras_serial_map[original_serial]
+        else:
+            # Generate new UUID for serials not in cameras.json
+            new_serial = generate_uuid()
+
+        sanitized[new_serial] = settings
+        count += 1
+
+    with open(RECORDING_SETTINGS_EXAMPLE, "w") as f:
+        json.dump(sanitized, f, indent=2)
+        f.write("\n")
+
+    print(f"Generated {RECORDING_SETTINGS_EXAMPLE}")
+    print(f"  - Sanitized {count} recording settings")
+
+
 def main():
     """Main entry point."""
     if not CAMERAS_JSON.exists():
@@ -178,15 +284,20 @@ def main():
         data = json.load(f)
 
     # Sanitize each camera (key is "devices" in cameras.json)
+    # Also build mapping of original serial -> sanitized serial for recording_settings
     sanitized_data = {"devices": {}}
+    serial_mapping = {}  # original_serial -> new_serial
 
-    for index, (serial, camera_data) in enumerate(data.get("devices", {}).items()):
+    for index, (original_serial, camera_data) in enumerate(data.get("devices", {}).items()):
         camera_type = camera_data.get("type", "unknown")
         sanitized_camera = sanitize_camera(camera_data, index, camera_type)
 
         # Use the new fake serial as the key
         new_serial = sanitized_camera.get("serial", generate_uuid())
         sanitized_data["devices"][new_serial] = sanitized_camera
+
+        # Track mapping for recording_settings.json
+        serial_mapping[original_serial] = new_serial
 
     # Copy any top-level non-devices keys (like settings, metadata)
     for key, value in data.items():
@@ -198,13 +309,19 @@ def main():
             else:
                 sanitized_data[key] = value
 
-    # Write example file
+    # Write cameras.json.example
     with open(CAMERAS_EXAMPLE, "w") as f:
         json.dump(sanitized_data, f, indent=2)
         f.write("\n")  # Trailing newline
 
     print(f"Generated {CAMERAS_EXAMPLE}")
     print(f"  - Sanitized {len(sanitized_data['devices'])} cameras")
+
+    # Also sanitize recording_settings.json using the same serial mapping
+    sanitize_recording_settings(serial_mapping)
+
+    # Also sanitize go2rtc.yaml
+    sanitize_go2rtc()
 
     return 0
 

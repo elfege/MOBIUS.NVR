@@ -34,7 +34,6 @@ config/
 !config/cameras.json.example
 !config/recording_settings.json.example
 !config/go2rtc.yaml.example
-!config/recording_config.json
 !config/cameras_json_notes.json
 !config/recording_config_loader.py
 

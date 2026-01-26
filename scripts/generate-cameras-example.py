@@ -23,11 +23,11 @@ SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 CAMERAS_JSON = CONFIG_DIR / "cameras.json"
-CAMERAS_EXAMPLE = PROJECT_ROOT / "cameras.json.example"
+CAMERAS_EXAMPLE = CONFIG_DIR / "cameras.json.example"
 RECORDING_SETTINGS_JSON = CONFIG_DIR / "recording_settings.json"
-RECORDING_SETTINGS_EXAMPLE = PROJECT_ROOT / "recording_settings.json.example"
+RECORDING_SETTINGS_EXAMPLE = CONFIG_DIR / "recording_settings.json.example"
 GO2RTC_YAML = CONFIG_DIR / "go2rtc.yaml"
-GO2RTC_EXAMPLE = PROJECT_ROOT / "go2rtc.yaml.example"
+GO2RTC_EXAMPLE = CONFIG_DIR / "go2rtc.yaml.example"
 
 
 def generate_uuid():

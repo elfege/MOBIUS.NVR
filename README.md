@@ -8,13 +8,17 @@ The Unified NVR abstracts vendor-specific camera protocols behind a common strea
 
 ## Features
 
-- **Multi-Vendor Support**: Eufy, Reolink, UniFi Protect, Amcrest cameras
+- **Multi-Vendor Support**: Eufy, Reolink, UniFi Protect, Amcrest, SV3C cameras
 - **Streaming Protocols**: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS, MJPEG proxy
-- **PTZ Control**: ONVIF and vendor-specific (Amcrest CGI) pan/tilt/zoom
+- **Two-Way Audio**: Talkback support for Eufy cameras; ONVIF backchannel via go2rtc for SV3C/Amcrest
+- **Playback Volume Control**: Per-camera volume slider with mute toggle, persists across page reload
+- **PTZ Control**: ONVIF and vendor-specific (Amcrest CGI, Reolink Baichuan) pan/tilt/zoom
 - **Recording**: Continuous (24/7) and motion-triggered recording
 - **Snapshots**: Periodic JPEG capture from streams
 - **Health Monitoring**: Backend watchdog + frontend blank-frame detection
+- **Power Cycle Safety**: Optional auto power-cycle for Hubitat-connected cameras (disabled by default, 24h cooldown)
 - **Credential Security**: AWS Secrets Manager integration
+- **Config Sanitization**: Pre-commit hook auto-generates sanitized example configs
 - **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
 - **Docker Deployment**: Full containerization with docker-compose
 
@@ -307,6 +311,29 @@ FLASK_PORT=5000
 - **Mobile**: `forceMJPEG` is automatic; only need `useWebSocketMJPEG=true`
 - **Example**: `https://server:8443/streams?forceMJPEG=true&useWebSocketMJPEG=true`
 
+## Audio Features
+
+### Playback Volume Control
+
+Click the speaker icon on any stream to access:
+- **Volume Slider**: Adjust playback volume (0-100%)
+- **Mute Toggle**: Quick mute/unmute
+- **Persistence**: Volume and mute state saved per-camera in localStorage
+
+### Two-Way Audio (Talkback)
+
+| Camera Type | Protocol | Status |
+| ----------- | -------- | ------ |
+| Eufy | Eufy P2P Bridge | Working - click mic icon to talk |
+| SV3C | ONVIF AudioBackChannel (via go2rtc) | Configured, needs testing |
+| Amcrest | ONVIF AudioBackChannel (via go2rtc) | Configured, needs testing |
+| Reolink | Baichuan (not yet implemented) | Future enhancement |
+| UniFi | Protect API (not yet implemented) | Future enhancement |
+
+**Architecture**: Browser → WebSocket → Flask → FFmpeg transcoder → Camera
+
+For ONVIF cameras, go2rtc handles the backchannel connection while MediaMTX continues serving video.
+
 ## Docker Services
 
 ```yaml
@@ -314,6 +341,7 @@ services:
   nvr-edge:           # Nginx reverse proxy - HTTPS (:8443), HTTP redirect (:8081)
   unified-nvr:        # Flask application (:5000 internal)
   nvr-packager:       # MediaMTX - HLS (:8888), WebRTC (:8889), RTSP (:8554)
+  nvr-go2rtc:         # go2rtc - ONVIF AudioBackChannel (:1984 API, :8555 RTSP, :8556 WebRTC)
   nvr-neolink:        # Neolink Baichuan→RTSP bridge
   nvr-postgrest:      # Recording metadata API
   nvr-postgres:       # Recording database

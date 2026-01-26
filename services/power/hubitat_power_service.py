@@ -18,11 +18,16 @@ Architecture:
     Smart Plug → Camera Power Cycle
 
 Features:
-- Automatic power cycling when camera goes OFFLINE
-- 5-minute cooldown between power cycles per camera
-- Manual power control via API endpoints
+- Automatic power cycling when camera goes OFFLINE (requires opt-in via power_cycle_on_failure.enabled)
+- Configurable cooldown between power cycles (default 24 hours for safety)
+- Manual power control via API endpoints (bypasses cooldown)
 - Device discovery with smart matching based on camera name
 - Hubitat device ID saved to cameras.json for persistence
+
+Safety:
+- Auto power-cycle requires explicit opt-in: power_cycle_on_failure.enabled = true
+- Default cooldown is 24 hours to prevent excessive cycling
+- Manual power_cycle() API bypasses cooldown for operator control
 
 Hubitat Maker API:
     GET http://{hub_ip}/apps/api/{app_number}/devices/all?access_token={token}
@@ -319,30 +324,50 @@ class HubitatPowerService:
             )
             return
 
-        # Trigger power cycle (with cooldown check)
-        self._maybe_power_cycle(camera_id, str(device_id))
+        # CRITICAL: Check if auto power-cycle is explicitly enabled for this camera
+        # This is an opt-in safety feature - cameras must have power_cycle_on_failure.enabled = true
+        power_cycle_config = camera.get('power_cycle_on_failure', {})
+        if not power_cycle_config.get('enabled', False):
+            logger.debug(
+                f"[HUBITAT] Camera {camera_id} power_cycle_on_failure not enabled - "
+                "skipping auto power-cycle (this is a safety feature)"
+            )
+            return
 
-    def _maybe_power_cycle(self, camera_id: str, device_id: str) -> bool:
+        # Trigger power cycle (with cooldown check)
+        self._maybe_power_cycle(camera_id, str(device_id), camera)
+
+    def _maybe_power_cycle(self, camera_id: str, device_id: str, camera: Optional[Dict] = None) -> bool:
         """
         Attempt to power cycle a camera if cooldown has elapsed.
 
         Args:
             camera_id: Camera serial number
             device_id: Hubitat device ID
+            camera: Camera config dict (optional, used for cooldown_hours setting)
 
         Returns:
             True if power cycle was started, False if skipped
         """
         with self._lock:
-            # Check cooldown
+            # Check cooldown - read from camera config if available, else use class default
+            # Default is 24 hours (86400 seconds) for safety
+            if camera:
+                power_cycle_config = camera.get('power_cycle_on_failure', {})
+                cooldown_hours = power_cycle_config.get('cooldown_hours', 24)
+                cooldown_seconds = cooldown_hours * 3600  # Convert hours to seconds
+            else:
+                cooldown_seconds = self.POWER_CYCLE_COOLDOWN_SECONDS
+
             last_cycle = self._last_power_cycle.get(camera_id, 0)
             elapsed = time.time() - last_cycle
 
-            if elapsed < self.POWER_CYCLE_COOLDOWN_SECONDS:
-                remaining = self.POWER_CYCLE_COOLDOWN_SECONDS - elapsed
+            if elapsed < cooldown_seconds:
+                remaining = cooldown_seconds - elapsed
+                remaining_hours = remaining / 3600
                 logger.info(
                     f"[HUBITAT] Camera {camera_id} power cycle skipped - "
-                    f"cooldown active ({remaining:.0f}s remaining)"
+                    f"cooldown active ({remaining_hours:.1f}h remaining)"
                 )
                 return False
 
@@ -530,10 +555,12 @@ class HubitatPowerService:
             }
 
         # Force power cycle (ignore cooldown for manual trigger)
+        # Manual triggers bypass the power_cycle_on_failure.enabled check - operators can always
+        # manually power-cycle a camera even if auto-cycling is disabled
         with self._lock:
             self._last_power_cycle[camera_id] = 0  # Reset cooldown
 
-        started = self._maybe_power_cycle(camera_id, str(device_id))
+        started = self._maybe_power_cycle(camera_id, str(device_id), camera)
 
         if started:
             return {'success': True, 'message': 'Power cycle started'}

@@ -15,17 +15,54 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 10:20 EST*
+*Last updated: January 26, 2026 11:14 EST*
 
 Branch: `power_cycle_safety_fix_JAN_26_2026_a`
 
-**Context compaction occurred at 09:55 EST on January 26, 2026**
+**Context compaction occurred at 10:05 EST on January 26, 2026**
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session Summary (Jan 26, 2026 09:13-10:05 EST)
+## Session Summary (Jan 26, 2026 10:05-11:14 EST)
+
+### Playback Volume Slider Feature
+
+Implemented volume control popup for stream audio (audio FROM camera TO browser - playback volume).
+
+**User Requirements:**
+- Click speaker button → popup with slider + mute toggle
+- Preserve volume across page reload (not reset to muted)
+- Add tooltip to guide user ("Click to adjust volume")
+
+**Implementation:**
+
+1. **New CSS** (`static/css/components/stream-volume-popup.css`):
+   - Dark popup with blur backdrop
+   - Blue slider thumb matching UI theme
+   - Mute button turns red when muted
+   - Responsive adjustments for mobile
+
+2. **HTML** (`templates/streams.html`):
+   - Added volume popup after audio button
+   - Contains: mute button + slider (0-100%) + value display
+   - Updated button tooltip: "Click to adjust volume"
+
+3. **JavaScript** (`static/js/streaming/stream.js`):
+   - Changed audio button click to show popup (not toggle mute)
+   - Volume slider applies in real-time while dragging
+   - Mute button in popup toggles independently
+   - Click outside popup closes it
+   - **localStorage format changed**: boolean → `{ volume: number, muted: boolean }`
+   - Backwards compatible with legacy boolean format
+   - `applyAudioPreference()` now restores volume + muted state on page load
+
+**Commit:** `67660c2` - Add playback volume slider popup for stream audio control
+
+---
+
+## Previous Session Summary (Jan 26, 2026 09:13-10:05 EST)
 
 ### CRITICAL: Power Cycle Safety Fix
 

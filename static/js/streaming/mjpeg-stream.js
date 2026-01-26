@@ -59,8 +59,12 @@ export class MJPEGStreamManager {
             mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
         } else if (normalizedType === 'amcrest') {
             mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        } else if (normalizedType === 'sv3c') {
+            // SV3C cameras use hi3510 chipset with CGI snapshot endpoint
+            // Direct snap-polling bypasses unstable RTSP stream
+            mjpegUrl = `/api/sv3c/${cameraId}/stream/mjpeg?stream=${stream || 'sub'}&t=${Date.now()}`;
         } else {
-            // All other camera types (eufy, sv3c, neolink, etc.) use mediaserver
+            // All other camera types (eufy, neolink, etc.) use mediaserver
             // This taps the existing MediaMTX RTSP stream and extracts JPEG frames
             // CRITICAL: MediaMTX must have the stream published first (via HLS FFmpeg)
             usesMediaserver = true;

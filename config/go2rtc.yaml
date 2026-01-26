@@ -40,6 +40,12 @@ streams:
   amcrest_lobby:
     - "onvif://${AMCREST_LOBBY_USERNAME}:${AMCREST_LOBBY_PASSWORD}@192.168.10.34:80"
 
+  # Reolink E1 Zoom - LAUNDRY ROOM (95270001NT3KNA67)
+  # Indoor PTZ camera with confirmed speaker capability
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  laundry_room:
+    - "onvif://${REOLINK_API_USERNAME}:${REOLINK_API_PASSWORD}@192.168.10.118:8000"
+
 # Note: UniFi camera (68d49398005cf203e400043f) is NOT included here
 # because it's accessed via UniFi Protect controller (192.168.10.3), not direct RTSP/ONVIF.
 # UniFi Protect has its own two-way audio mechanism that would need

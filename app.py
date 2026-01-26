@@ -3735,9 +3735,13 @@ def api_camera_power_supply(camera_serial):
     """
     Get or set power supply settings for a camera.
 
-    GET: Returns current power_supply and power_supply_device_id
-    POST: Updates power_supply and/or power_supply_device_id from JSON body:
-          {power_supply: "hubitat", device_id: 123}
+    GET: Returns current power_supply, power_supply_device_id, and power_cycle_on_failure settings
+    POST: Updates power_supply, power_supply_device_id, and/or power_cycle_on_failure from JSON body:
+          {
+            power_supply: "hubitat",
+            device_id: 123,
+            power_cycle_on_failure: {enabled: true, cooldown_hours: 24}
+          }
     """
     camera = camera_repo.get_camera(camera_serial)
     if not camera:
@@ -3748,7 +3752,12 @@ def api_camera_power_supply(camera_serial):
             'camera_serial': camera_serial,
             'power_supply': camera.get('power_supply'),
             'power_supply_device_id': camera.get('power_supply_device_id'),
-            'power_supply_types': hubitat_power_service.get_power_supply_types() if hubitat_power_service else ['hubitat', 'poe', 'none']
+            'power_supply_types': hubitat_power_service.get_power_supply_types() if hubitat_power_service else ['hubitat', 'poe', 'none'],
+            'power_cycle_on_failure': camera.get('power_cycle_on_failure', {
+                'enabled': False,
+                'cooldown_hours': 24,
+                '_note': 'If true, camera will be auto power-cycled when OFFLINE. Max once per cooldown_hours.'
+            })
         })
 
     # POST - update settings
@@ -3781,12 +3790,25 @@ def api_camera_power_supply(camera_serial):
         else:
             camera_repo.update_camera_setting(camera_serial, 'power_supply_device_id', int(device_id))
 
+    # Update power_cycle_on_failure settings if provided
+    power_cycle_config = data.get('power_cycle_on_failure')
+    if power_cycle_config is not None:
+        # Merge with existing settings to preserve _note
+        existing_config = camera.get('power_cycle_on_failure', {})
+        updated_config = {
+            'enabled': power_cycle_config.get('enabled', existing_config.get('enabled', False)),
+            'cooldown_hours': power_cycle_config.get('cooldown_hours', existing_config.get('cooldown_hours', 24)),
+            '_note': existing_config.get('_note', 'If true, camera will be auto power-cycled when OFFLINE. Max once per cooldown_hours.')
+        }
+        camera_repo.update_camera_setting(camera_serial, 'power_cycle_on_failure', updated_config)
+
     # Return updated settings
     camera = camera_repo.get_camera(camera_serial)
     return jsonify({
         'success': True,
         'power_supply': camera.get('power_supply'),
-        'power_supply_device_id': camera.get('power_supply_device_id')
+        'power_supply_device_id': camera.get('power_supply_device_id'),
+        'power_cycle_on_failure': camera.get('power_cycle_on_failure')
     })
 
 

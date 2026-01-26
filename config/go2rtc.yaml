@@ -23,17 +23,21 @@ webrtc:
 
 # Stream definitions for cameras with ONVIF AudioBackChannel
 # Note: Credentials are injected via environment variables in docker-compose
+#
+# IMPORTANT: We only configure ONVIF here for backchannel (two-way audio).
+# Video/RTSP is handled by MediaMTX - do NOT add RTSP sources here as it would
+# create a second connection to cameras that only support one RTSP session.
 streams:
   # SV3C Living Room (C6F0SgZ0N0PoL2)
   # Confirmed two-way audio via admin UI (has output volume setting)
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
   sv3c_living:
-    - "rtsp://admin:${SV3C_PASSWORD}@192.168.10.90:554/11"
     - "onvif://admin:${SV3C_PASSWORD}@192.168.10.90:8080"
 
   # Amcrest Lobby (AMC043145A67EFBF79)
   # ONVIF backchannel support expected
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
   amcrest_lobby:
-    - "rtsp://${AMCREST_LOBBY_USERNAME}:${AMCREST_LOBBY_PASSWORD}@192.168.10.34:554/cam/realmonitor?channel=1&subtype=0"
     - "onvif://${AMCREST_LOBBY_USERNAME}:${AMCREST_LOBBY_PASSWORD}@192.168.10.34:80"
 
 # Note: UniFi camera (68d49398005cf203e400043f) is NOT included here

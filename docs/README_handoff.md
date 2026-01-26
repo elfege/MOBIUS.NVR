@@ -48,13 +48,27 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Next step:** Continue go2rtc ONVIF backchannel integration for two-way audio
 
-## Decision: SV3C Camera Deprioritized (23:57 EST)
+## Decision: ONVIF Two-Way Audio Parked (00:10 EST)
 
-User confirmed SV3C camera is unreliable ("piece of garbage"). With Eufy two-way audio working (Phase 1 complete), focus shifts to:
+**Hardware limitations prevent testing:**
 
-- Eufy cameras are primary - better quality among budget options
-- ONVIF backchannel via go2rtc remains available for Amcrest/UniFi if needed
-- SV3C two-way audio testing deprioritized
+- **SV3C**: Has speaker, but camera unreliable + located outside in cold weather
+- **Amcrest**: Reliable ONVIF, but no speaker connected
+
+**Status**: go2rtc infrastructure deployed and ready. Flask handler integration deferred until hardware available for testing.
+
+**What's complete:**
+
+- go2rtc container running (port 1984)
+- ONVIF streams configured in `config/go2rtc.yaml`
+- Removed RTSP from go2rtc to prevent duplicate connections
+
+**What's pending:**
+
+- `services/go2rtc_client.py` - API client for backchannel
+- `app.py` talkback handler routing for `protocol: onvif`
+
+**Eufy two-way audio (Phase 1) is the win** - 9 cameras working end-to-end.
 
 ---
 
@@ -331,8 +345,10 @@ Browser                    Flask Backend              Camera
 
 - [x] Test Eufy talkback end-to-end (Phase 1) - WORKING!
 - [x] Add `two_way_audio` capability to cameras.json
-- [ ] Reolink support via Baichuan protocol / FFmpeg RTSP backchannel
-- [ ] ONVIF AudioBackChannel for UniFi/Amcrest cameras
+- [x] Deploy go2rtc container for ONVIF backchannel
+- [x] Configure go2rtc.yaml with ONVIF streams (SV3C, Amcrest)
+- [ ] ONVIF AudioBackChannel Flask integration - PARKED (no test hardware)
+- [ ] Reolink Baichuan audio sending - PARKED (library doesn't expose it)
 
 **Testing Needed:**
 

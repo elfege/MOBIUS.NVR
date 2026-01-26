@@ -41,7 +41,7 @@ config/
 # Exceptions for tracked documentation
 docs/*.md
 !docs/README_project_history.md
-!docs/README_eufy_ptz_research.md
+
 
 
 DOCS/

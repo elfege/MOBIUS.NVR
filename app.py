@@ -1951,15 +1951,28 @@ def handle_start_talkback(data):
 
     camera_type = camera.get('type', '').lower()
 
-    # Currently only Eufy cameras are supported
-    if camera_type != 'eufy':
+    # Check if camera has two_way_audio enabled in config
+    two_way_audio_config = camera.get('two_way_audio', {})
+    if not two_way_audio_config.get('enabled', False):
         emit('talkback_error', {
             'camera_id': camera_id,
-            'error': f'Talkback not yet supported for {camera_type} cameras'
+            'error': 'Two-way audio not enabled for this camera'
         })
         return
 
-    # Start talkback via Eufy bridge
+    # Get the protocol to use
+    protocol = two_way_audio_config.get('protocol', 'eufy_p2p')
+    logger.info(f"[Talkback] Camera {camera_id} using protocol: {protocol}")
+
+    # Currently only Eufy P2P protocol is fully implemented
+    if protocol != 'eufy_p2p':
+        emit('talkback_error', {
+            'camera_id': camera_id,
+            'error': f'Talkback protocol "{protocol}" not yet implemented (only eufy_p2p supported)'
+        })
+        return
+
+    # Start talkback via Eufy bridge (for eufy_p2p protocol)
     if not eufy_bridge or not eufy_bridge.is_running():
         emit('talkback_error', {
             'camera_id': camera_id,
@@ -1971,8 +1984,8 @@ def handle_start_talkback(data):
         # Start Eufy bridge talkback session
         success = eufy_bridge.start_talkback(camera_id)
         if success:
-            # Start FFmpeg transcoder (PCM → AAC) for this camera
-            transcoder_started = _talkback_transcoder_manager.start_transcoder(camera_id)
+            # Start FFmpeg transcoder with camera-specific audio settings
+            transcoder_started = _talkback_transcoder_manager.start_transcoder(camera_id, camera)
             if not transcoder_started:
                 print(f"[Talkback] ⚠️ Transcoder failed to start for {camera_id}, stopping bridge session")
                 eufy_bridge.stop_talkback(camera_id)

@@ -51,6 +51,7 @@ class TalkbackTranscoder:
         self,
         camera_serial: str,
         on_aac_frame: Callable[[str, bytes], None],
+        camera_settings: Optional[Dict] = None,
         sample_rate: int = 16000,
         channels: int = 1,
         bitrate: str = '20k'
@@ -61,15 +62,38 @@ class TalkbackTranscoder:
         Args:
             camera_serial: Camera identifier for logging/callbacks
             on_aac_frame: Callback(camera_serial, aac_bytes) called when AAC frame ready
-            sample_rate: Input PCM sample rate (default 16000 Hz)
-            channels: Input channel count (default 1 = mono)
-            bitrate: AAC output bitrate (default '20k')
+            camera_settings: Camera config dict containing two_way_audio settings (optional)
+            sample_rate: Input PCM sample rate (default 16000 Hz, overridden by camera_settings)
+            channels: Input channel count (default 1 = mono, overridden by camera_settings)
+            bitrate: AAC output bitrate (default '20k', overridden by camera_settings)
         """
         self.camera_serial = camera_serial
         self.on_aac_frame = on_aac_frame
-        self.sample_rate = sample_rate
-        self.channels = channels
-        self.bitrate = bitrate
+
+        # Load settings from camera config if provided
+        if camera_settings:
+            twa = camera_settings.get('two_way_audio', {})
+            audio_out = twa.get('audio_output', {})
+            self.sample_rate = audio_out.get('sample_rate') or sample_rate
+            self.channels = audio_out.get('channels') or channels
+            self.bitrate = audio_out.get('bitrate') or bitrate
+            self.codec = audio_out.get('codec', 'aac')
+            self.container = audio_out.get('container', 'adts')
+            self.protocol = twa.get('protocol', 'eufy_p2p')
+
+            logger.info(
+                f"[TalkbackTranscoder:{camera_serial[:8]}] Loaded settings from config: "
+                f"protocol={self.protocol}, codec={self.codec}, sample_rate={self.sample_rate}, "
+                f"channels={self.channels}, bitrate={self.bitrate}"
+            )
+        else:
+            # Use defaults (backwards compatibility)
+            self.sample_rate = sample_rate
+            self.channels = channels
+            self.bitrate = bitrate
+            self.codec = 'aac'
+            self.container = 'adts'
+            self.protocol = 'eufy_p2p'
 
         # FFmpeg process and threads
         self._process: Optional[subprocess.Popen] = None
@@ -101,25 +125,62 @@ class TalkbackTranscoder:
         logger.info(f"{self._log_prefix} Starting FFmpeg PCM→AAC transcoder")
 
         try:
-            # FFmpeg command: read PCM from stdin, output AAC ADTS to stdout
-            # Using libfdk_aac for better quality if available, fallback to aac
+            # FFmpeg command: read PCM from stdin, output to configured format
+            # Build codec-specific command based on camera settings
             cmd = [
                 'ffmpeg',
                 '-hide_banner',
                 '-loglevel', 'warning',  # Show warnings too for debugging
                 # Input format: raw PCM
                 '-f', 's16le',              # Signed 16-bit little-endian
-                '-ar', str(self.sample_rate),  # 16 kHz
-                '-ac', str(self.channels),     # Mono
+                '-ar', str(self.sample_rate),  # Sample rate from config
+                '-ac', str(self.channels),     # Channels from config
                 '-i', 'pipe:0',             # Read from stdin
-                # Output format: AAC ADTS
-                '-c:a', 'aac',              # Use built-in AAC encoder
-                '-b:a', self.bitrate,       # 20 kbps
+            ]
+
+            # Add codec-specific output settings
+            if self.codec == 'aac':
+                # AAC codec (for Eufy cameras)
+                cmd.extend([
+                    '-c:a', 'aac',              # AAC encoder
+                    '-b:a', self.bitrate or '20k',  # Bitrate
+                ])
+            elif self.codec == 'pcmu':
+                # G.711 mu-law (for ONVIF cameras)
+                cmd.extend([
+                    '-c:a', 'pcm_mulaw',        # G.711 mu-law encoder
+                    '-ar', '8000',              # G.711 requires 8kHz
+                    '-ac', '1',                 # Mono
+                ])
+            elif self.codec == 'pcma':
+                # G.711 A-law (alternative for ONVIF)
+                cmd.extend([
+                    '-c:a', 'pcm_alaw',         # G.711 A-law encoder
+                    '-ar', '8000',              # G.711 requires 8kHz
+                    '-ac', '1',                 # Mono
+                ])
+            else:
+                # Default to AAC
+                cmd.extend([
+                    '-c:a', 'aac',
+                    '-b:a', self.bitrate or '20k',
+                ])
+
+            # Add output format and flush settings
+            cmd.extend([
                 '-flush_packets', '1',       # Flush output immediately
                 '-fflags', '+flush_packets', # Additional flush flag
-                '-f', 'adts',               # ADTS container (raw AAC frames)
-                'pipe:1'                    # Write to stdout
-            ]
+            ])
+
+            # Output container format
+            if self.container == 'adts' or self.codec == 'aac':
+                cmd.extend(['-f', 'adts'])   # ADTS container for AAC
+            elif self.codec in ('pcmu', 'pcma'):
+                cmd.extend(['-f', 'mulaw' if self.codec == 'pcmu' else 'alaw'])
+            else:
+                cmd.extend(['-f', 'adts'])   # Default
+
+            cmd.append('pipe:1')  # Write to stdout
 
             logger.info(f"{self._log_prefix} FFmpeg command: {' '.join(cmd)}")
 
@@ -390,12 +451,13 @@ class TalkbackTranscoderManager:
         self._transcoders: Dict[str, TalkbackTranscoder] = {}
         self._lock = threading.Lock()
 
-    def start_transcoder(self, camera_serial: str) -> bool:
+    def start_transcoder(self, camera_serial: str, camera_settings: Optional[Dict] = None) -> bool:
         """
         Start a transcoder for a camera.
 
         Args:
             camera_serial: Camera identifier
+            camera_settings: Camera config dict containing two_way_audio settings (optional)
 
         Returns:
             bool: True if started successfully
@@ -411,10 +473,11 @@ class TalkbackTranscoderManager:
                     self._transcoders[camera_serial].stop()
                     del self._transcoders[camera_serial]
 
-            # Create and start new transcoder
+            # Create and start new transcoder with camera settings
             transcoder = TalkbackTranscoder(
                 camera_serial=camera_serial,
-                on_aac_frame=self.on_aac_frame
+                on_aac_frame=self.on_aac_frame,
+                camera_settings=camera_settings
             )
 
             if transcoder.start():

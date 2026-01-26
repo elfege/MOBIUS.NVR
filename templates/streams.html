@@ -152,12 +152,13 @@
                 <i class="fas fa-plug"></i>
             </button>
             {% endif %}
-            {% if info.capabilities is defined and 'two_way_audio' in info.capabilities %}
+            {% if info.two_way_audio is defined and info.two_way_audio.enabled %}
             <button class="stream-talkback-btn"
                 aria-label="Push to Talk" title="Hold to Talk (Two-Way Audio)"
                 data-camera-id="{{ serial }}"
                 data-camera-type="{{ info.type }}"
-                data-camera-name="{{ info.name }}">
+                data-camera-name="{{ info.name }}"
+                data-talkback-protocol="{{ info.two_way_audio.protocol }}">
                 <i class="fas fa-microphone-alt"></i>
             </button>
             {% endif %}

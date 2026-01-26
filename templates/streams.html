@@ -126,17 +126,20 @@
                 <i class="fas fa-expand"></i>
             </button>
             {% if info.stream_type != 'MJPEG' and info.stream_type != 'mjpeg_proxy' %}
-            <button class="stream-audio-btn" aria-label="Adjust Volume" title="Click to adjust volume">
-                <i class="fas fa-volume-mute"></i>
-            </button>
-            <!-- Volume popup - shown when clicking audio button -->
-            <div class="volume-popup" style="display: none;">
-                <div class="volume-popup-content">
-                    <button class="volume-mute-btn" title="Toggle mute">
-                        <i class="fas fa-volume-up"></i>
-                    </button>
-                    <input type="range" class="volume-slider" min="0" max="100" value="100">
-                    <span class="volume-value">100%</span>
+            <!-- Volume control container - wraps button and popup for positioning -->
+            <div class="volume-control-container">
+                <button class="stream-audio-btn" aria-label="Adjust Volume" title="Click to adjust volume">
+                    <i class="fas fa-volume-mute"></i>
+                </button>
+                <!-- Volume popup - drops down when clicking audio button -->
+                <div class="volume-popup" style="display: none;">
+                    <div class="volume-popup-content">
+                        <button class="volume-mute-btn" title="Toggle mute">
+                            <i class="fas fa-volume-up"></i>
+                        </button>
+                        <input type="range" class="volume-slider" min="0" max="100" value="100">
+                        <span class="volume-value">100%</span>
+                    </div>
                 </div>
             </div>
             {% endif %}

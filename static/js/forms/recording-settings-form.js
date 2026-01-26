@@ -251,16 +251,19 @@ export class RecordingSettingsForm {
                     
                     <div class="recording-form-group">
                         <label for="snapshot-quality">JPEG Quality (0-100)</label>
-                        <input type="number" 
-                               id="snapshot-quality" 
+                        <input type="number"
+                               id="snapshot-quality"
                                name="snapshot_quality"
-                               min="1" 
+                               min="1"
                                max="100"
                                value="${settings.snapshots?.quality || 85}">
                         <span class="form-description">Higher = better quality, larger files</span>
                     </div>
                 </div>
-                
+
+                <!-- Power Management Section -->
+                ${this._generatePowerCycleSection(cameraId)}
+
                 <!-- Form Actions -->
                 <div class="recording-form-actions">
                     <button type="button" class="recording-btn recording-btn-secondary" id="cancel-settings-btn">
@@ -366,6 +369,11 @@ export class RecordingSettingsForm {
         $('#pre-buffer-enabled').on('change', function() {
             $('#pre-buffer').prop('disabled', !$(this).is(':checked'));
         });
+
+        // Load power cycle settings asynchronously
+        if (this._powerCycleCameraId) {
+            this.loadPowerCycleSettings(this._powerCycleCameraId);
+        }
     }
 
     /**
@@ -374,35 +382,65 @@ export class RecordingSettingsForm {
     async handleSubmit() {
         const submitBtn = $('#save-settings-btn');
         const originalHtml = submitBtn.html();
-        
+
         try {
             // Extract and validate data
             const formData = this.extractFormData();
             const validation = this.validateFormData(formData);
-            
+
             if (!validation.valid) {
                 this.showAlert('error', validation.errors.join('<br>'));
                 return;
             }
-            
+
             // Show loading state
             submitBtn.prop('disabled', true).html('<span class="recording-loading"></span> Saving...');
-            
-            // Submit to backend
+
+            // Submit recording settings to backend
             await this.controller.updateSettings(this.currentCameraId, formData);
-            
+
+            // Submit power cycle settings separately (different API endpoint)
+            await this._savePowerCycleSettings(this.currentCameraId);
+
             // Show success
             this.showAlert('success', 'Settings saved successfully');
-            
+
             // Trigger callback
             if (this.onSaveCallback) {
                 setTimeout(() => this.onSaveCallback(this.currentCameraId, formData), 1000);
             }
-            
+
         } catch (error) {
             console.error('Form submission error:', error);
             this.showAlert('error', error.message);
             submitBtn.prop('disabled', false).html(originalHtml);
+        }
+    }
+
+    /**
+     * Save power cycle settings to API
+     * @param {string} cameraId - Camera ID
+     */
+    async _savePowerCycleSettings(cameraId) {
+        // Only save if power cycle section is enabled (not disabled due to non-hubitat power supply)
+        if ($('#power-cycle-enabled').prop('disabled')) {
+            return; // Skip saving if controls are disabled
+        }
+
+        const powerCycleConfig = {
+            enabled: $('#power-cycle-enabled').is(':checked'),
+            cooldown_hours: parseInt($('#power-cycle-cooldown').val(), 10) || 24
+        };
+
+        try {
+            await axios.post(`/api/cameras/${cameraId}/power_supply`, {
+                power_cycle_on_failure: powerCycleConfig
+            });
+            console.log(`Power cycle settings saved for ${cameraId}:`, powerCycleConfig);
+        } catch (error) {
+            console.error('Failed to save power cycle settings:', error);
+            // Don't throw - we don't want to block the main save if this fails
+            // The recording settings are more important
         }
     }
 
@@ -462,6 +500,125 @@ export class RecordingSettingsForm {
                 label: 'Direct RTSP',
                 description: 'Records directly from camera RTSP stream'
             };
+        }
+    }
+
+    /**
+     * Generate Power Cycle section HTML
+     * Fetches power settings from API and displays auto power-cycle configuration
+     * @param {string} cameraId - Camera ID
+     * @returns {string} - HTML for power cycle settings section
+     */
+    _generatePowerCycleSection(cameraId) {
+        // Store camera ID for async loading
+        this._powerCycleCameraId = cameraId;
+
+        return `
+            <div class="recording-form-section" id="power-cycle-section">
+                <h4><i class="fas fa-power-off"></i> Power Management</h4>
+
+                <div class="recording-alert recording-alert-warning" style="margin-bottom: 15px;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span><strong>Warning:</strong> When enabled, this camera will be automatically
+                    power-cycled when it goes OFFLINE (3+ consecutive failures). Use with caution.</span>
+                </div>
+
+                <div id="power-cycle-loading" style="text-align: center; padding: 10px;">
+                    <span class="recording-loading" style="width: 20px; height: 20px; border-width: 2px;"></span>
+                    Loading power settings...
+                </div>
+
+                <div id="power-cycle-content" style="display: none;">
+                    <div class="recording-form-group">
+                        <div class="recording-checkbox-wrapper">
+                            <input type="checkbox"
+                                   id="power-cycle-enabled"
+                                   name="power_cycle_enabled">
+                            <label for="power-cycle-enabled">Enable Auto Power-Cycle on Failure</label>
+                        </div>
+                        <span class="form-description">
+                            Automatically power-cycle camera via smart plug when OFFLINE
+                        </span>
+                    </div>
+
+                    <div class="recording-form-row">
+                        <div class="recording-form-group">
+                            <label for="power-cycle-cooldown">Cooldown Period (hours)</label>
+                            <input type="number"
+                                   id="power-cycle-cooldown"
+                                   name="power_cycle_cooldown_hours"
+                                   min="1"
+                                   max="168"
+                                   value="24">
+                            <span class="form-description">Minimum time between auto power-cycles</span>
+                        </div>
+
+                        <div class="recording-form-group">
+                            <label for="power-supply-type">Power Supply Type</label>
+                            <select id="power-supply-type" name="power_supply_type" disabled>
+                                <option value="">Loading...</option>
+                            </select>
+                            <span class="form-description" id="power-supply-note"></span>
+                        </div>
+                    </div>
+
+                    <div id="power-supply-not-configured" class="recording-alert recording-alert-info" style="display: none;">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Auto power-cycle requires <code>power_supply: hubitat</code> and a device ID configured.</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Load power cycle settings from API
+     * Called after form is rendered to populate power settings asynchronously
+     * @param {string} cameraId - Camera ID
+     */
+    async loadPowerCycleSettings(cameraId) {
+        try {
+            const response = await axios.get(`/api/cameras/${cameraId}/power_supply`);
+            const data = response.data;
+
+            // Hide loading, show content
+            $('#power-cycle-loading').hide();
+            $('#power-cycle-content').show();
+
+            // Populate power_cycle_on_failure settings
+            const powerCycleConfig = data.power_cycle_on_failure || {};
+            $('#power-cycle-enabled').prop('checked', powerCycleConfig.enabled || false);
+            $('#power-cycle-cooldown').val(powerCycleConfig.cooldown_hours || 24);
+
+            // Populate power supply dropdown
+            const powerSupplyTypes = data.power_supply_types || ['hubitat', 'poe', 'none'];
+            const currentPowerSupply = data.power_supply || 'none';
+            const $select = $('#power-supply-type');
+            $select.empty();
+            powerSupplyTypes.forEach(type => {
+                $select.append(`<option value="${type}" ${type === currentPowerSupply ? 'selected' : ''}>${type}</option>`);
+            });
+            $select.prop('disabled', false);
+
+            // Show warning if not hubitat-powered or no device ID
+            if (currentPowerSupply !== 'hubitat' || !data.power_supply_device_id) {
+                $('#power-supply-not-configured').show();
+                $('#power-cycle-enabled').prop('disabled', true);
+                $('#power-cycle-cooldown').prop('disabled', true);
+                if (!data.power_supply_device_id && currentPowerSupply === 'hubitat') {
+                    $('#power-supply-note').text('Device ID not configured - use /api endpoint to set');
+                } else {
+                    $('#power-supply-note').text(`Currently: ${currentPowerSupply}`);
+                }
+            } else {
+                $('#power-supply-note').text(`Device ID: ${data.power_supply_device_id}`);
+            }
+
+        } catch (error) {
+            console.error('Failed to load power cycle settings:', error);
+            $('#power-cycle-loading').html(
+                '<span style="color: #e74c3c;">Failed to load power settings</span>'
+            );
         }
     }
 }

@@ -34,20 +34,44 @@ export class MJPEGStreamManager {
             console.warn(`[MJPEG] WARNING: Got <video> element instead of <img>! MJPEG will not work.`);
         }
 
-        // Build URL based on camera type
-        // Cameras with native MJPEG endpoints use their specific API
-        // All other cameras use mediaserver (taps MediaMTX RTSP output)
+        // Build URL based on mjpeg_source config (if set) or camera type
+        // mjpeg_source: "snap" = direct HTTP snapshots, "mediaserver" = tap MediaMTX
         let mjpegUrl;
         const normalizedType = cameraType ? cameraType.toLowerCase() : '';
         let usesMediaserver = false;
 
-        // Check if this is a NEOLINK camera (Reolink E1 uses Neolink bridge, not native MJPEG)
-        // NEOLINK cameras don't have native MJPEG endpoints - must use mediaserver
+        // Get stream item for data attributes
         const streamItem = document.querySelector(`[data-camera-serial="${cameraId}"]`);
         const originalStreamType = streamItem ? streamItem.dataset.streamType : '';
+        const mjpegSource = streamItem ? streamItem.dataset.mjpegSource : '';
         const isNeolink = originalStreamType === 'NEOLINK' || originalStreamType === 'NEOLINK_LL_HLS';
 
-        if (normalizedType === 'reolink' && !isNeolink) {
+        // Priority 1: Check explicit mjpeg_source config
+        if (mjpegSource === 'snap') {
+            // Use camera-type-specific snap endpoint
+            if (normalizedType === 'reolink') {
+                mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?stream=${stream || 'sub'}&t=${Date.now()}`;
+            } else if (normalizedType === 'sv3c') {
+                mjpegUrl = `/api/sv3c/${cameraId}/stream/mjpeg?stream=${stream || 'sub'}&t=${Date.now()}`;
+            } else if (normalizedType === 'unifi') {
+                mjpegUrl = `/api/unifi/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+            } else if (normalizedType === 'amcrest') {
+                mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+            } else {
+                // Fallback to mediaserver if no snap endpoint exists for this type
+                console.warn(`[MJPEG] ${cameraId}: mjpeg_source=snap but no snap endpoint for ${normalizedType}, using mediaserver`);
+                usesMediaserver = true;
+                mjpegUrl = `/api/mediaserver/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+            }
+            console.log(`[MJPEG] ${cameraId}: Using snap endpoint (mjpeg_source=snap)`);
+        } else if (mjpegSource === 'mediaserver') {
+            // Explicit mediaserver tap
+            usesMediaserver = true;
+            console.log(`[MJPEG] ${cameraId}: Using mediaserver endpoint (mjpeg_source=mediaserver)`);
+            mjpegUrl = `/api/mediaserver/${cameraId}/stream/mjpeg?t=${Date.now()}`;
+        }
+        // Priority 2: Legacy camera-type-based routing (when mjpeg_source not set)
+        else if (normalizedType === 'reolink' && !isNeolink) {
             // Native Reolink cameras with direct RTSP access
             mjpegUrl = `/api/reolink/${cameraId}/stream/mjpeg?stream=${stream || 'sub'}&t=${Date.now()}`;
         } else if (isNeolink) {
@@ -61,12 +85,9 @@ export class MJPEGStreamManager {
             mjpegUrl = `/api/amcrest/${cameraId}/stream/mjpeg?t=${Date.now()}`;
         } else if (normalizedType === 'sv3c') {
             // SV3C cameras use hi3510 chipset with CGI snapshot endpoint
-            // Direct snap-polling bypasses unstable RTSP stream
             mjpegUrl = `/api/sv3c/${cameraId}/stream/mjpeg?stream=${stream || 'sub'}&t=${Date.now()}`;
         } else {
             // All other camera types (eufy, neolink, etc.) use mediaserver
-            // This taps the existing MediaMTX RTSP stream and extracts JPEG frames
-            // CRITICAL: MediaMTX must have the stream published first (via HLS FFmpeg)
             usesMediaserver = true;
             console.log(`[MJPEG] Using mediaserver endpoint for ${cameraType} camera ${cameraId}`);
             mjpegUrl = `/api/mediaserver/${cameraId}/stream/mjpeg?t=${Date.now()}`;

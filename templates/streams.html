@@ -152,7 +152,9 @@
                 <i class="fas fa-plug"></i>
             </button>
             {% endif %}
-            {% if info.two_way_audio is defined and info.two_way_audio.enabled %}
+            {# Only show talkback button for implemented protocols: eufy_p2p, onvif #}
+            {# baichuan protocol is defined but not yet implemented for audio #}
+            {% if info.two_way_audio is defined and info.two_way_audio.enabled and info.two_way_audio.protocol in ['eufy_p2p', 'onvif'] %}
             <button class="stream-talkback-btn"
                 aria-label="Push to Talk" title="Hold to Talk (Two-Way Audio)"
                 data-camera-id="{{ serial }}"

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 11:14 EST*
+*Last updated: January 26, 2026 11:30 EST*
 
 Branch: `power_cycle_safety_fix_JAN_26_2026_a`
 
@@ -25,7 +25,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session Summary (Jan 26, 2026 10:05-11:14 EST)
+## Session Summary (Jan 26, 2026 10:05-11:30 EST)
 
 ### Playback Volume Slider Feature
 
@@ -59,6 +59,29 @@ Implemented volume control popup for stream audio (audio FROM camera TO browser 
    - `applyAudioPreference()` now restores volume + muted state on page load
 
 **Commit:** `67660c2` - Add playback volume slider popup for stream audio control
+
+### Volume Popup Bug Fixes
+
+**Commit:** `3faa454` - Fix volume popup: dropdown position and mute icon sync
+
+1. **Popup position fix:** Popup now drops DOWN from the speaker button (was appearing above)
+   - Wrapped audio button + popup in `volume-control-container` div
+   - Updated CSS positioning to use `top: 100%` instead of `bottom: 50px`
+
+2. **Mute icon sync fix:** Icon now correctly reflects actual video muted state
+   - When opening popup, use `videoEl.muted` (actual state) not `pref.muted` (stored)
+   - Always sync icons during slider movement
+
+### SV3C Snapshot Fix
+
+**Problem:** SV3C cameras were NOT using direct HTTP snapshots in `/api/snap` endpoint.
+They fell through to `mediaserver_mjpeg_service` (MediaMTX tap) instead of using `sv3c_mjpeg_capture_service` (direct HTTP at `/tmpfs/auto.jpg`).
+
+**Fix:** Added `elif camera_type == 'sv3c'` case to `/api/snap/<camera_id>` route.
+
+**Commit:** `ffd0b63` - Fix /api/snap to use SV3C direct HTTP snapshots
+
+**Note:** SV3C `/tmpfs/auto.jpg` endpoint doesn't support resolution parameters - always outputs native resolution. Scaling would require FFmpeg post-processing (future enhancement).
 
 ---
 

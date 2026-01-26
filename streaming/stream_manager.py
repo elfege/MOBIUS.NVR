@@ -322,10 +322,6 @@ class StreamManager:
                             return f"/hls/{path}_main/index.m3u8"
                         return f"/hls/{path}/index.m3u8"
 
-                    # MJPEG uses mediaserver proxy endpoint
-                    if protocol == 'MJPEG':
-                        return f"/api/mediaserver/{camera_serial}/stream/mjpeg"
-
                     if resolution == 'main':
                         return f"/api/streams/{camera_serial}_main/playlist.m3u8"
                     return f"/api/streams/{camera_serial}/playlist.m3u8"
@@ -369,10 +365,6 @@ class StreamManager:
             if resolution == 'main':
                 return f"/hls/{path}_main/index.m3u8"
             return f"/hls/{path}/index.m3u8"
-
-        # MJPEG uses mediaserver proxy endpoint (no MediaMTX, no FFmpeg)
-        if protocol == 'MJPEG':
-            return f"/api/mediaserver/{camera_serial}/stream/mjpeg"
 
         if resolution == 'main':
             return f"/api/streams/{camera_serial}_main/playlist.m3u8"

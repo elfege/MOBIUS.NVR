@@ -31,7 +31,9 @@ ptz_server.py
 tree.md
 
 config/
-!config/cameras.json
+!config/cameras.json.example
+!config/recording_settings.json.example
+!config/go2rtc.yaml.example
 !config/recording_config.json
 !config/cameras_json_notes.json
 !config/recording_config_loader.py
@@ -181,6 +183,7 @@ config/eufy_bridge.json
 # Archives, temporary files/dirs, drafts and copies
 *archive*
 ARCHIVE/
+TESTS
 *temp*
 !templates/
 *draft*

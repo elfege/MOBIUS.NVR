@@ -10,6 +10,82 @@ render_with_liquid: false
 
 # NVR Project
 
+## January 26, 2026 (09:13-10:05 EST): Power Cycle Safety + FFmpeg Params Fix + SV3C Stability
+
+**Branch:** `power_cycle_safety_fix_JAN_26_2026_a`
+
+### Summary
+
+Critical safety fix for auto power-cycling behavior plus FFmpeg parameter handling improvements.
+
+### CRITICAL: Power Cycle Safety Fix
+
+Fixed a dangerous auto power-cycle behavior where cameras could be power-cycled without explicit user consent.
+
+**Problem:**
+
+- `hubitat_power_service.py` automatically power-cycled cameras when OFFLINE
+- Only required `power_supply: hubitat` and `power_supply_device_id` configured
+- NO explicit opt-in setting existed
+- Cooldown was only 5 minutes
+
+**Solution Implemented:**
+
+1. **Schema Addition** (`config/cameras.json`):
+   - Added `power_cycle_on_failure` object to ALL 19 cameras
+   - Default: `enabled: false` (safe)
+   - Configurable: `cooldown_hours: 24` (default)
+
+2. **Backend Safety Check** (`services/power/hubitat_power_service.py`):
+   - Added opt-in check in `_on_camera_state_change()`
+   - Cameras MUST have `power_cycle_on_failure.enabled: true` for auto power-cycle
+   - Cooldown now reads from camera config (default 24 hours)
+   - Manual `power_cycle()` API bypasses opt-in (operators can always trigger)
+
+3. **UI Settings** (`static/js/forms/recording-settings-form.js`, `app.py`):
+   - Added Power Management section to camera settings modal
+   - Warning banner about automatic power cycling
+   - Enable/disable checkbox, cooldown hours input
+
+### FFmpeg Parameter Fixes
+
+**File:** `streaming/ffmpeg_params.py`
+
+1. **Null/None handling fix**: Changed from `if not value` to explicit checks for `None`, `""`, `"N/A"`, `"none"`, `"null"`. This allows valid falsy values like `0` and `False` to pass through correctly.
+
+2. **Underscore key filtering**: Added `if key.startswith('_'): continue` to skip documentation keys (`_note`, `_notes`) when building FFmpeg parameters.
+
+### SV3C RTSP Stability Improvement
+
+**File:** `config/cameras.json` (SV3C camera)
+
+Updated `rtsp_input` parameters for hi3510 chipset:
+
+| Parameter | Old Value | New Value |
+|-----------|-----------|-----------|
+| `timeout` | 5s | 15s |
+| `stimeout` | (none) | 15s |
+| `analyzeduration` | 1s | 2s |
+| `probesize` | 1MB | 2MB |
+| `fflags` | `nobuffer` | `nobuffer+genpts` |
+| `reconnect` | (none) | 1 |
+| `reconnect_streamed` | (none) | 1 |
+| `reconnect_delay_max` | (none) | 5 |
+
+### Commits
+
+| Commit | Description |
+|--------|-------------|
+| `a28d36d` | Add power_cycle_on_failure schema to all 19 cameras |
+| `aede0af` | Add opt-in safety check for auto power-cycle |
+| `09bc54c` | Add power-cycle settings UI to camera settings modal |
+| `4534f15` | Fix ffmpeg_params.py null/none handling |
+| `cf3bc37` | Update SV3C rtsp_input with longer timeouts |
+| `191d3a5` | Update README_handoff.md with session summary |
+| `5a68f8a` | Skip underscore-prefixed keys in ffmpeg_params.py |
+
+---
+
 ## January 7, 2026 (00:00-22:01 EST): Race Condition Fix + Gunicorn Revert + WEBRTC Fullscreen
 
 **Branch:** `main` (direct commits)
@@ -15609,7 +15685,7 @@ UNIFI_CONTROLLER_TYPE=udm
 
 ## TODO List (Cumulative)
 
-**Completed (Jan 22-25, 2026):**
+**Completed (Jan 22-26, 2026):**
 
 - [x] PTZ reversal settings for upside-down cameras
 - [x] PTZ Home button → preset[0]
@@ -15622,16 +15698,25 @@ UNIFI_CONTROLLER_TYPE=udm
 - [x] Device picker modal with smart matching
 - [x] Power button in stream controls
 - [x] WebRTC fullscreen retry logic
+- [x] Power cycle safety: opt-in requirement + 24h configurable cooldown
+- [x] Power cycle settings UI in camera settings modal
+- [x] FFmpeg params: fix null/none handling to allow valid falsy values
+- [x] FFmpeg params: skip underscore-prefixed documentation keys
+- [x] SV3C RTSP stability: longer timeouts + reconnect options
 
 **Testing Needed:**
 
 - [ ] Test fullscreen quality recovery
 - [ ] Test iOS inline download with Share/Open in Tab buttons
 - [ ] Test connection monitor on slower tablets
+- [ ] Test SV3C with new rtsp_input parameters
+- [ ] Test power-cycle UI in settings modal
+- [ ] Verify auto power-cycle is disabled by default
 
 **Future Enhancements:**
 
-- [ ] Two-way audio (major feature - requires WebRTC sendrecv, getUserMedia, ONVIF AudioBackChannel)
+- [ ] Speaker volume control for talkback (individual per-camera volume)
+- [ ] Two-way audio Phase 2: ONVIF backchannel via go2rtc
 - [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline
 - [ ] Re-enable SonicWall camera blocking with Eufy domain whitelist
@@ -15639,7 +15724,6 @@ UNIFI_CONTROLLER_TYPE=udm
 **Deferred:**
 
 - [ ] Database-backed recording settings
-- [ ] Camera settings UI (power settings modal)
 - [ ] Container self-restart mechanism
 
 ---

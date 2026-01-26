@@ -15,13 +15,37 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 23:57 EST*
+*Last updated: January 26, 2026 00:10 EST*
 
 Branch: `two_way_audio_JAN_25_2026_b`
 
-**Context compaction occurred at 23:57 EST** - Second compaction of session.
+**Context compaction occurred at 23:57 EST** - Third compaction of session.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+## Recent Work After Compaction (00:00-00:10 EST)
+
+### Reolink ONVIF Two-Way Audio Configuration
+
+**Pivoted from Baichuan to ONVIF** for Reolink cameras because:
+
+- go2rtc does NOT support Baichuan protocol
+- Reolink cameras ARE ONVIF compatible
+- go2rtc DOES support ONVIF AudioBackChannel
+
+**Files modified:**
+
+| Time (EST) | File | Change |
+|------------|------|--------|
+| 00:08 | `config/cameras.json` | LAUNDRY ROOM: changed protocol from `baichuan` to `onvif`, set `go2rtc_stream: "laundry_room"` |
+| 00:08 | `config/go2rtc.yaml` | Added `laundry_room` ONVIF stream for E1 Zoom at 192.168.10.118:8000 |
+| 00:08 | `docker-compose.yml` | Added REOLINK_API_USERNAME/PASSWORD env vars to go2rtc service |
+
+**Commit**: `ff37c6c` - "Add Reolink E1 Zoom (LAUNDRY ROOM) to ONVIF two-way audio"
+
+**ACTION REQUIRED**: Run `./start.sh` to reload go2rtc with new config and credentials
+
+---
 
 ## Recent Work Before Compaction (19:00-23:57 EST)
 
@@ -346,9 +370,12 @@ Browser                    Flask Backend              Camera
 - [x] Test Eufy talkback end-to-end (Phase 1) - WORKING!
 - [x] Add `two_way_audio` capability to cameras.json
 - [x] Deploy go2rtc container for ONVIF backchannel
-- [x] Configure go2rtc.yaml with ONVIF streams (SV3C, Amcrest)
-- [ ] ONVIF AudioBackChannel Flask integration - PARKED (no test hardware)
-- [ ] Reolink Baichuan audio sending - PARKED (library doesn't expose it)
+- [x] Configure go2rtc.yaml with ONVIF streams (SV3C, Amcrest, LAUNDRY ROOM E1 Zoom)
+- [x] Add LAUNDRY ROOM (E1 Zoom) to go2rtc for ONVIF backchannel
+- [ ] Run `./start.sh` to reload go2rtc with credentials - **USER ACTION REQUIRED**
+- [ ] Test Reolink E1 Zoom ONVIF two-way audio
+- [ ] Create `services/go2rtc_client.py` for Flask integration
+- [ ] Wire up `app.py` talkback handler for `protocol: onvif`
 
 **Testing Needed:**
 

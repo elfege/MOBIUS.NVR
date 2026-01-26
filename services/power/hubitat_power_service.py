@@ -135,6 +135,10 @@ class HubitatPowerService:
     # Time to wait after turning off before turning back on (seconds)
     POWER_OFF_WAIT_SECONDS = 10
 
+    # Time to wait after turning on for camera to boot and become ready (seconds)
+    # Budget cameras like SV3C can take 30-60 seconds to initialize RTSP after power on
+    CAMERA_BOOT_WAIT_SECONDS = 45
+
     # Minimum time between power cycles for the same camera (seconds)
     POWER_CYCLE_COOLDOWN_SECONDS = 300  # 5 minutes
 
@@ -148,7 +152,8 @@ class HubitatPowerService:
         self,
         camera_repo,
         camera_state_tracker: "CameraStateTracker",
-        hub_ip: Optional[str] = None
+        hub_ip: Optional[str] = None,
+        stream_manager: Optional[Any] = None
     ):
         """
         Initialize the Hubitat power service.
@@ -157,9 +162,11 @@ class HubitatPowerService:
             camera_repo: CameraRepository instance for camera configuration
             camera_state_tracker: CameraStateTracker for health monitoring
             hub_ip: Hubitat hub IP address (default: from env or hubitat.local)
+            stream_manager: StreamManager instance for triggering stream restarts after power cycle
         """
         self._camera_repo = camera_repo
         self._state_tracker = camera_state_tracker
+        self._stream_manager = stream_manager
 
         # Load configuration from environment
         self._api_token = os.environ.get('HUBITAT_API_TOKEN', '')
@@ -227,6 +234,19 @@ class HubitatPowerService:
     def is_enabled(self) -> bool:
         """Check if service is enabled (credentials configured)."""
         return self._enabled
+
+    def set_stream_manager(self, stream_manager) -> None:
+        """
+        Set the StreamManager instance for triggering stream restarts.
+
+        Called during app initialization after StreamManager is created.
+        Enables automatic stream restart after power cycle completes.
+
+        Args:
+            stream_manager: StreamManager instance
+        """
+        self._stream_manager = stream_manager
+        logger.info("HubitatPowerService: StreamManager set for post-power-cycle restarts")
 
     def _register_callbacks(self) -> None:
         """
@@ -344,9 +364,10 @@ class HubitatPowerService:
 
     def _do_power_cycle(self, camera_id: str, device_id: str) -> None:
         """
-        Execute power cycle: OFF -> wait -> ON.
+        Execute power cycle: OFF -> wait -> ON -> wait for boot -> restart stream.
 
         Runs in a background thread. Updates power cycle status throughout.
+        After camera boots, automatically triggers stream restart via StreamManager.
 
         Args:
             camera_id: Camera serial number
@@ -383,6 +404,13 @@ class HubitatPowerService:
             if not self._send_command(device_id, 'on'):
                 raise Exception("Failed to send ON command")
 
+            # Wait for camera to boot and become ready
+            # Budget cameras like SV3C need 30-60 seconds to initialize RTSP
+            logger.info(
+                f"[HUBITAT] Camera {camera_id} powered on, waiting {self.CAMERA_BOOT_WAIT_SECONDS}s for boot..."
+            )
+            time.sleep(self.CAMERA_BOOT_WAIT_SECONDS)
+
             # Success
             with self._lock:
                 status.state = PowerCycleState.COMPLETE
@@ -394,6 +422,10 @@ class HubitatPowerService:
                 f"(duration: {duration:.1f}s)"
             )
 
+            # Trigger stream restart after power cycle completes
+            # This ensures stream reconnects immediately rather than waiting for watchdog
+            self._trigger_stream_restart(camera_id)
+
         except Exception as e:
             with self._lock:
                 status.state = PowerCycleState.FAILED
@@ -401,6 +433,38 @@ class HubitatPowerService:
                 status.completed_at = time.time()
 
             logger.error(f"[HUBITAT] Power cycle failed for camera {camera_id}: {e}")
+
+    def _trigger_stream_restart(self, camera_id: str) -> None:
+        """
+        Trigger stream restart after power cycle completes.
+
+        Called automatically after power cycle to ensure stream reconnects
+        immediately rather than waiting for the watchdog to detect the issue.
+
+        Args:
+            camera_id: Camera serial number
+        """
+        if not self._stream_manager:
+            logger.warning(
+                f"[HUBITAT] Cannot restart stream for {camera_id} - StreamManager not set"
+            )
+            return
+
+        try:
+            logger.info(f"[HUBITAT] Triggering stream restart for {camera_id} after power cycle")
+
+            # Use StreamManager's restart_stream method
+            success = self._stream_manager.restart_stream(camera_id)
+
+            if success:
+                logger.info(f"[HUBITAT] Stream restart successful for {camera_id}")
+                # Reset CameraStateTracker's failure count since we just power cycled
+                self._state_tracker.register_success(camera_id)
+            else:
+                logger.warning(f"[HUBITAT] Stream restart returned false for {camera_id}")
+
+        except Exception as e:
+            logger.error(f"[HUBITAT] Stream restart error for {camera_id}: {e}")
 
     def _send_command(self, device_id: str, command: str) -> bool:
         """

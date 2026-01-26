@@ -598,6 +598,8 @@ try:
         camera_repo=camera_repo,
         camera_state_tracker=camera_state_tracker
     )
+    # Set stream_manager for automatic stream restart after power cycle
+    hubitat_power_service.set_stream_manager(stream_manager)
     hubitat_power_service.start()
     if hubitat_power_service.is_enabled():
         hubitat_cameras = hubitat_power_service.get_hubitat_cameras()

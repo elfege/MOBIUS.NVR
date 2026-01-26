@@ -66,6 +66,11 @@ class FFmpegHLSParamBuilder:
 
             # --- iterate other params
             for key, value in cfg.items():
+                # Skip documentation/metadata keys (start with underscore)
+                # These are used for notes/comments in cameras.json, not FFmpeg params
+                if key.startswith('_'):
+                    continue
+
                 # Skip null/empty values, but allow 0 and False as valid values
                 # This handles: None, "", "N/A", "none", "null"
                 # But preserves: 0, False, and other falsy but valid values

@@ -192,3 +192,74 @@
 .stream-item.loaded .loading-indicator {
     display: none;
 }
+
+/* ============================================================================
+   SIGNAL LOST OVERLAY
+   Shows when stream fails and falls back to snapshot polling
+   ============================================================================ */
+
+.signal-lost-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 8; /* Above video, below controls */
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+/* Show overlay when stream-item has signal-lost class */
+.stream-item.signal-lost .signal-lost-overlay {
+    opacity: 1;
+}
+
+.signal-lost-icon {
+    font-size: 2.5rem;
+    color: #ff9800;
+    margin-bottom: 0.5rem;
+    animation: signal-pulse 1.5s ease-in-out infinite;
+}
+
+.signal-lost-text {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.signal-lost-subtext {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 0.25rem;
+}
+
+@keyframes signal-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(0.95);
+    }
+}
+
+/* Fullscreen mode - larger signal lost indicator */
+.stream-item.css-fullscreen .signal-lost-overlay .signal-lost-icon {
+    font-size: 4rem;
+}
+
+.stream-item.css-fullscreen .signal-lost-overlay .signal-lost-text {
+    font-size: 1.5rem;
+}
+
+.stream-item.css-fullscreen .signal-lost-overlay .signal-lost-subtext {
+    font-size: 1rem;
+}

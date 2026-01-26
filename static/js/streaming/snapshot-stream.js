@@ -40,16 +40,32 @@ export class SnapshotStreamManager {
         // Backend checks reolink, unifi, mediaserver frame buffers automatically
         const snapshotUrl = `/api/snap/${cameraId}`;
 
-        // Ensure MJPEG capture is running for this camera so we have frames
-        // This triggers the backend to start capturing if not already
-        try {
-            await fetch(`/api/stream/start/${cameraId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'sub' })
-            });
-        } catch (e) {
-            console.warn(`[Snapshot] ${cameraId}: Stream start failed: ${e.message}`);
+        // Only start HLS/RTSP for cameras that need it (mediaserver-based MJPEG)
+        // Skip for cameras with native MJPEG endpoints (reolink, sv3c, unifi, amcrest)
+        // These cameras have their own snap-polling services that don't require HLS
+        const normalizedType = cameraType ? cameraType.toLowerCase() : '';
+        const hasNativeMJPEG = ['reolink', 'sv3c', 'unifi', 'amcrest'].includes(normalizedType);
+
+        // Also check data attribute for stream_type - if MJPEG, camera has native support
+        const streamItem = document.querySelector(`[data-camera-serial="${cameraId}"]`);
+        const configStreamType = streamItem ? streamItem.dataset.streamType : '';
+        const isConfiguredMJPEG = configStreamType === 'MJPEG';
+
+        if (!hasNativeMJPEG && !isConfiguredMJPEG) {
+            // Only trigger HLS start for cameras that need mediaserver MJPEG
+            // (eufy, neolink, etc. - these tap MediaMTX RTSP output)
+            console.log(`[Snapshot] ${cameraId}: Starting HLS for mediaserver-based snapshots`);
+            try {
+                await fetch(`/api/stream/start/${cameraId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'sub' })
+                });
+            } catch (e) {
+                console.warn(`[Snapshot] ${cameraId}: Stream start failed: ${e.message}`);
+            }
+        } else {
+            console.log(`[Snapshot] ${cameraId}: Native MJPEG camera (${normalizedType}) - skipping HLS start`);
         }
 
         // Create polling timer

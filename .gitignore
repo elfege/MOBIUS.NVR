@@ -180,6 +180,7 @@ config/eufy_bridge.json
 
 # Archives, temporary files/dirs, drafts and copies
 *archive*
+ARCHIVE/
 *temp*
 !templates/
 *draft*

@@ -15683,10 +15683,51 @@ UNIFI_CONTROLLER_TYPE=udm
 
 ---
 
+## January 26, 2026 (09:13-10:40 EST) - Volume Slider, SV3C Snapshot Fix
+
+Branch: `power_cycle_safety_fix_JAN_26_2026_a` (merged to main)
+
+### Playback Volume Slider Feature
+
+Implemented volume control popup for stream audio (audio FROM camera TO browser).
+
+**Implementation:**
+- New CSS: `static/css/components/stream-volume-popup.css`
+- HTML: Added volume popup to `templates/streams.html`
+- JavaScript: Updated `static/js/streaming/stream.js`
+  - localStorage format changed from boolean to `{ volume: number, muted: boolean }`
+  - Backwards compatible with legacy format
+  - Volume restores on page reload
+
+**Bug Fixes:**
+- Popup position: now drops DOWN from speaker button (was appearing above)
+- Mute icon sync: uses actual `videoEl.muted` state, not stored preference
+
+### SV3C Snapshot Fix
+
+**Problem:** `/api/snap` was NOT using `sv3c_mjpeg_capture_service` for SV3C cameras - they fell through to MediaMTX tap.
+
+**Fix:** Added `elif camera_type == 'sv3c'` case in `app.py` to use direct HTTP snapshots at `/tmpfs/auto.jpg`.
+
+**Note:** SV3C endpoint doesn't support resolution parameters - always outputs native resolution.
+
+### Commits
+
+| Commit | Description |
+|--------|-------------|
+| `67660c2` | Add playback volume slider popup for stream audio control |
+| `3faa454` | Fix volume popup: dropdown position and mute icon sync |
+| `ffd0b63` | Fix /api/snap to use SV3C direct HTTP snapshots |
+| `d809552` | Update handoff: volume popup fixes and SV3C snapshot fix |
+
+---
+
 ## TODO List (Cumulative)
 
 **Completed (Jan 22-26, 2026):**
 
+- [x] Playback volume slider popup (volume + mute persist across reload)
+- [x] SV3C /api/snap now uses direct HTTP snapshots
 - [x] PTZ reversal settings for upside-down cameras
 - [x] PTZ Home button → preset[0]
 - [x] PTZ Recalibration button
@@ -15715,7 +15756,7 @@ UNIFI_CONTROLLER_TYPE=udm
 
 **Future Enhancements:**
 
-- [ ] Speaker volume control for talkback (individual per-camera volume)
+- [x] Speaker volume control for talkback (individual per-camera volume)
 - [ ] Two-way audio Phase 2: ONVIF backchannel via go2rtc
 - [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline

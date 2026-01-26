@@ -42,6 +42,9 @@ export class TalkbackManager {
         // Currently active camera (only one talkback session at a time)
         this.activeCameraId = null;
 
+        // Speaker volume per camera (0-100, persisted to server)
+        this.speakerVolumes = {};  // camera_id -> volume (0-100)
+
         // Connection state
         this.isConnected = false;
         this.isTalking = false;
@@ -305,6 +308,9 @@ export class TalkbackManager {
             return false;
         }
 
+        // Store active camera early so modal can use it
+        this.activeCameraId = cameraId;
+
         // Show waiting modal immediately with funny message
         this._showWaitingModal(cameraName || cameraId);
         const modalStartTime = Date.now();
@@ -315,6 +321,7 @@ export class TalkbackManager {
                 const hasPermission = await this.requestMicrophonePermission();
                 if (!hasPermission) {
                     this._hideWaitingModal(false);
+                    this.activeCameraId = null;
                     return false;
                 }
             }
@@ -323,9 +330,6 @@ export class TalkbackManager {
             if (!this.isConnected) {
                 await this.connect();
             }
-
-            // Store active camera
-            this.activeCameraId = cameraId;
 
             // Tell server to start talkback (server handles P2P livestream start)
             // Wait for talkback_started event to confirm P2P is ready
@@ -784,6 +788,19 @@ export class TalkbackManager {
                     </select>
                 </div>
 
+                <!-- Speaker volume slider -->
+                <div class="talkback-volume-container">
+                    <label class="talkback-volume-label">
+                        <i class="fas fa-volume-up"></i>
+                        Speaker Volume:
+                    </label>
+                    <div class="talkback-volume-slider-wrapper">
+                        <input type="range" class="talkback-volume-slider" min="0" max="150" value="100">
+                        <span class="talkback-volume-value">100%</span>
+                    </div>
+                    <div class="talkback-volume-note">Adjusts audio output level to camera speaker</div>
+                </div>
+
                 <div class="talkback-waiting-status">Establishing P2P connection...</div>
                 <button class="talkback-waiting-cancel">Cancel</button>
             </div>
@@ -811,6 +828,25 @@ export class TalkbackManager {
             const deviceId = e.target.value || null;
             console.log(`[TalkbackManager] User selected microphone: ${deviceId || 'default'}`);
             await this.selectMicrophone(deviceId);
+        });
+
+        // Handle volume slider changes
+        const volumeSlider = modal.querySelector('.talkback-volume-slider');
+        const volumeValue = modal.querySelector('.talkback-volume-value');
+        volumeSlider.addEventListener('input', (e) => {
+            const volume = parseInt(e.target.value, 10);
+            volumeValue.textContent = `${volume}%`;
+            // Update local cache immediately for visual feedback
+            if (this.activeCameraId) {
+                this.speakerVolumes[this.activeCameraId] = volume;
+            }
+        });
+        volumeSlider.addEventListener('change', async (e) => {
+            const volume = parseInt(e.target.value, 10);
+            console.log(`[TalkbackManager] Volume changed to ${volume}% for ${this.activeCameraId}`);
+            if (this.activeCameraId) {
+                await this._saveSpeakerVolume(this.activeCameraId, volume);
+            }
         });
 
         // Store reference to canvas for visualization
@@ -846,6 +882,72 @@ export class TalkbackManager {
             }
             selector.appendChild(option);
         }
+    }
+
+    /**
+     * Load speaker volume for a camera from server.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @returns {Promise<number>} Volume (0-150, default 100)
+     * @private
+     */
+    async _loadSpeakerVolume(cameraId) {
+        // Check local cache first
+        if (cameraId in this.speakerVolumes) {
+            return this.speakerVolumes[cameraId];
+        }
+
+        try {
+            const response = await axios.get(`/api/cameras/${cameraId}`);
+            const twa = response.data?.two_way_audio || {};
+            const volume = twa.speaker_volume ?? 100;
+            this.speakerVolumes[cameraId] = volume;
+            console.log(`[TalkbackManager] Loaded speaker volume for ${cameraId}: ${volume}%`);
+            return volume;
+        } catch (error) {
+            console.error(`[TalkbackManager] Failed to load speaker volume for ${cameraId}:`, error);
+            return 100;  // Default
+        }
+    }
+
+    /**
+     * Save speaker volume for a camera to server.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @param {number} volume - Volume (0-150)
+     * @returns {Promise<boolean>} True if saved successfully
+     * @private
+     */
+    async _saveSpeakerVolume(cameraId, volume) {
+        try {
+            await axios.post(`/api/cameras/${cameraId}/speaker_volume`, {
+                speaker_volume: volume
+            });
+            this.speakerVolumes[cameraId] = volume;
+            console.log(`[TalkbackManager] Saved speaker volume for ${cameraId}: ${volume}%`);
+            return true;
+        } catch (error) {
+            console.error(`[TalkbackManager] Failed to save speaker volume for ${cameraId}:`, error);
+            return false;
+        }
+    }
+
+    /**
+     * Update the volume slider UI with current camera's volume.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @private
+     */
+    async _updateVolumeSlider(cameraId) {
+        if (!this._waitingModal) return;
+
+        const slider = this._waitingModal.querySelector('.talkback-volume-slider');
+        const valueEl = this._waitingModal.querySelector('.talkback-volume-value');
+        if (!slider || !valueEl) return;
+
+        const volume = await this._loadSpeakerVolume(cameraId);
+        slider.value = volume;
+        valueEl.textContent = `${volume}%`;
     }
 
     /**
@@ -891,6 +993,12 @@ export class TalkbackManager {
 
         // Populate microphone selector
         this._populateMicrophoneSelector();
+
+        // Update volume slider with camera's saved volume
+        // Note: this.activeCameraId is set before _showWaitingModal is called
+        if (this.activeCameraId) {
+            this._updateVolumeSlider(this.activeCameraId);
+        }
 
         // Show the modal
         this._waitingModal.classList.add('visible');

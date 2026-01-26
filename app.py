@@ -3812,6 +3812,55 @@ def api_camera_power_supply(camera_serial):
     })
 
 
+@app.route('/api/cameras/<camera_serial>/speaker_volume', methods=['GET', 'POST'])
+@csrf.exempt
+def api_camera_speaker_volume(camera_serial):
+    """
+    Get or set speaker volume for a camera's two-way audio.
+
+    GET: Returns current speaker_volume setting (0-150, default 100)
+    POST: Updates speaker_volume from JSON body: {speaker_volume: 80}
+    """
+    camera = camera_repo.get_camera(camera_serial)
+    if not camera:
+        return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+    two_way_audio = camera.get('two_way_audio', {})
+
+    if request.method == 'GET':
+        return jsonify({
+            'camera_serial': camera_serial,
+            'speaker_volume': two_way_audio.get('speaker_volume', 100)
+        })
+
+    # POST - update speaker volume
+    data = request.get_json() or {}
+    volume = data.get('speaker_volume')
+
+    if volume is None:
+        return jsonify({'success': False, 'error': 'speaker_volume is required'}), 400
+
+    # Validate range (0-150, allowing boost up to 150%)
+    try:
+        volume = int(volume)
+        if volume < 0 or volume > 150:
+            return jsonify({'success': False, 'error': 'speaker_volume must be 0-150'}), 400
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'speaker_volume must be an integer'}), 400
+
+    # Update the two_way_audio.speaker_volume setting
+    two_way_audio['speaker_volume'] = volume
+    camera_repo.update_camera_setting(camera_serial, 'two_way_audio', two_way_audio)
+
+    app.logger.info(f"[TalkbackVolume] Updated speaker_volume for {camera_serial[:8]}... to {volume}%")
+
+    return jsonify({
+        'success': True,
+        'camera_serial': camera_serial,
+        'speaker_volume': volume
+    })
+
+
 @app.route('/api/power/<camera_serial>/cycle', methods=['POST'])
 @csrf.exempt
 def api_power_cycle(camera_serial):

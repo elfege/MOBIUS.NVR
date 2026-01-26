@@ -92,12 +92,44 @@ Task: Implement two-way audio for ONVIF-compatible cameras (UniFi, Amcrest).
 - Does NOT have methods for sending/streaming audio data
 - Would need library extension or alternative approach
 
+### two_way_audio Schema Implementation (17:00 EST)
+
+Added `two_way_audio` settings object to all 19 cameras in `config/cameras.json`.
+
+**Schema structure:**
+
+```json
+"two_way_audio": {
+  "enabled": true,
+  "protocol": "eufy_p2p | onvif | baichuan | null",
+  "audio_input": { "sample_rate": 16000, "channels": 1, "format": "s16le" },
+  "audio_output": { "codec": "aac|pcmu|pcma", "container": "adts|null", "bitrate": "20k|null", "sample_rate": 16000, "channels": 1 },
+  "eufy_p2p": { "requires_p2p_livestream": true },
+  "onvif": { "codec": "pcmu", "sample_rate": 8000, "backchannel_url": null },
+  "baichuan": { "enabled": false }
+}
+```
+
+**Camera settings:**
+
+| Type | Protocol | Enabled | Notes |
+|------|----------|---------|-------|
+| Eufy (9) | eufy_p2p | ✅ | All Eufy cameras |
+| Reolink E1 Zoom | baichuan | ✅ | LAUNDRY ROOM only |
+| Other Reolink (5) | baichuan | ❌ | Pending capability confirmation |
+| UniFi | onvif | ✅ | Needs testing |
+| Amcrest | onvif | ✅ | Needs testing |
+| SV3C | onvif | ✅ | Confirmed via admin UI |
+
 ### Files Modified/Created (Branch _b)
 
 | Time (EST) | File | Change |
 |------------|------|--------|
 | 16:20 | `.gitignore` | Fixed `*temp*` pattern that was ignoring `templates/` folder |
 | 16:30 | `docs/README_handoff.md` | Added ONVIF research findings |
+| 17:00 | `config/cameras.json` | Added `two_way_audio` schema to all 19 cameras |
+| 17:15 | `services/talkback_transcoder.py` | Reads audio settings from camera config, supports multiple codecs |
+| 17:20 | `app.py` | Checks `two_way_audio.enabled` and passes camera config to transcoder |
 
 ### Previous branch _a modifications
 

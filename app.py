@@ -2418,6 +2418,9 @@ def api_snap_camera(camera_id):
         elif camera_type == 'unifi':
             # UniFi uses MJPEG capture service
             frame_data = unifi_mjpeg_capture_service.get_latest_frame(camera_id)
+        elif camera_type == 'sv3c':
+            # SV3C uses direct HTTP snapshots (/tmpfs/auto.jpg)
+            frame_data = sv3c_mjpeg_capture_service.get_latest_frame(camera_id)
 
         # Fallback to mediaserver (works for any camera with HLS running)
         if not frame_data:

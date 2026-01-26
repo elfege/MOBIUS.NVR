@@ -1239,12 +1239,17 @@ export class MultiStreamManager {
             const cameraType = ($item.data('camera-type') || '').toLowerCase();
             const streamType = $item.data('stream-type') || '';
 
-            // Skip cameras that have native MJPEG endpoints
-            const hasNativeMJPEG = ['reolink', 'unifi', 'amcrest'].includes(cameraType);
+            // Skip cameras that have native MJPEG endpoints or are configured as MJPEG
+            // These cameras are completely isolated from MediaMTX/RTSP paths
+            const hasNativeMJPEG = ['reolink', 'unifi', 'amcrest', 'sv3c'].includes(cameraType);
+            const isConfiguredMJPEG = streamType === 'MJPEG';
             // NEOLINK cameras don't have native MJPEG even though they're Reolink
             const isNeolink = streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS';
 
-            if (!hasNativeMJPEG || isNeolink) {
+            // Only add to mediaserver list if:
+            // 1. NOT configured as MJPEG (stream_type !== 'MJPEG')
+            // 2. AND (doesn't have native MJPEG OR is NEOLINK)
+            if (!isConfiguredMJPEG && (!hasNativeMJPEG || isNeolink)) {
                 mediaserverCameras.push(cameraId);
             }
         });

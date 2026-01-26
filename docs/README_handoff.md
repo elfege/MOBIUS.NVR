@@ -15,13 +15,46 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 25, 2026 17:45 EST*
+*Last updated: January 25, 2026 23:57 EST*
 
 Branch: `two_way_audio_JAN_25_2026_b`
 
-**Context compaction occurred at 17:45 EST** - see session summary below.
+**Context compaction occurred at 23:57 EST** - Second compaction of session.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+## Recent Work Before Compaction (19:00-23:57 EST)
+
+**SV3C Camera Stability Investigation:**
+
+1. **Power cycle improvements** (hubitat_power_service.py):
+   - Added `CAMERA_BOOT_WAIT_SECONDS = 45` - wait for budget cameras to boot
+   - Added `set_stream_manager()` method for post-power-cycle stream restart
+   - Added `_trigger_stream_restart()` method
+   - Wired stream_manager in app.py
+
+2. **go2rtc configuration fix** (config/go2rtc.yaml):
+   - Removed RTSP sources to prevent duplicate connections
+   - go2rtc should ONLY use ONVIF for backchannel, not video
+   - Keeps one-stream-per-device rule intact
+
+3. **Commits made:**
+   - "Improve power cycle: add 45s camera boot wait and auto stream restart"
+   - "Remove RTSP from go2rtc config - only ONVIF needed for backchannel"
+
+**Finding:** SV3C camera instability was due to:
+- WiFi connected to distant AP (user manually reassigned)
+- go2rtc was configured with RTSP which could create duplicate connections
+
+**Next step:** Continue go2rtc ONVIF backchannel integration for two-way audio
+
+## Decision: SV3C Camera Deprioritized (23:57 EST)
+
+User confirmed SV3C camera is unreliable ("piece of garbage"). With Eufy two-way audio working (Phase 1 complete), focus shifts to:
+
+- Eufy cameras are primary - better quality among budget options
+- ONVIF backchannel via go2rtc remains available for Amcrest/UniFi if needed
+- SV3C two-way audio testing deprioritized
 
 ---
 

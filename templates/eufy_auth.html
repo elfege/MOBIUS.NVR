@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eufy Authentication - ELFEGE'S NVR</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <style>
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .auth-container {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .auth-header h1 {
+            margin: 0 0 10px 0;
+            color: #4ecca3;
+            font-size: 2em;
+        }
+
+        .auth-header .subtitle {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .auth-step {
+            display: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .auth-step.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .captcha-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+
+        .captcha-image {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            display: inline-block;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .captcha-image img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4ecca3;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #2c3e50;
+            border-radius: 6px;
+            background: #0f1419;
+            color: #eee;
+            font-size: 1.1em;
+            text-align: center;
+            letter-spacing: 0.3em;
+            font-weight: bold;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #4ecca3;
+        }
+
+        .form-group input::placeholder {
+            letter-spacing: normal;
+            font-weight: normal;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: #4ecca3;
+            color: #1a1a2e;
+        }
+
+        .btn-primary:hover {
+            background: #3db88a;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(78, 204, 163, 0.3);
+        }
+
+        .btn-primary:disabled {
+            background: #2c3e50;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #2c3e50;
+            color: #eee;
+            border: 1px solid #4ecca3;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #34495e;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(78, 204, 163, 0.2);
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s ease-in;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .alert-success {
+            background: rgba(78, 204, 163, 0.2);
+            border: 1px solid #4ecca3;
+            color: #4ecca3;
+        }
+
+        .alert-error {
+            background: rgba(231, 76, 60, 0.2);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+        }
+
+        .alert-info {
+            background: rgba(52, 152, 219, 0.2);
+            border: 1px solid #3498db;
+            color: #3498db;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(78, 204, 163, 0.3);
+            border-top-color: #4ecca3;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .instructions {
+            background: rgba(52, 152, 219, 0.1);
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin-bottom: 25px;
+            border-radius: 4px;
+        }
+
+        .instructions h3 {
+            margin: 0 0 10px 0;
+            color: #3498db;
+            font-size: 1.1em;
+        }
+
+        .instructions ol {
+            margin: 10px 0 0 20px;
+            padding: 0;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+
+        .success-message {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .success-message i {
+            font-size: 4em;
+            color: #4ecca3;
+            margin-bottom: 20px;
+        }
+
+        .success-message h2 {
+            color: #4ecca3;
+            margin-bottom: 15px;
+        }
+
+        .success-message p {
+            color: #aaa;
+            margin-bottom: 30px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: #4ecca3;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #3db88a;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="auth-container">
+        <div class="auth-header">
+            <h1><i class="fas fa-shield-alt"></i> Eufy Authentication</h1>
+            <p class="subtitle">Two-step verification required</p>
+        </div>
+
+        <!-- Alert Messages -->
+        <div id="alert-container"></div>
+
+        <!-- Step 1: Captcha -->
+        <div id="step-captcha" class="auth-step active">
+            <div class="instructions">
+                <h3><i class="fas fa-info-circle"></i> Step 1 of 2: Captcha Verification</h3>
+                <ol>
+                    <li>Read the 4-character code from the image below (letters or numbers)</li>
+                    <li>Enter the code in the input field</li>
+                    <li>Click "Verify Captcha"</li>
+                    <li>After success, you'll receive a 6-digit code via email</li>
+                </ol>
+            </div>
+
+            <div class="captcha-container">
+                <div class="captcha-image">
+                    <img id="captcha-img" src="/api/eufy-auth/captcha-image" alt="Captcha Image" 
+                         onerror="this.parentElement.innerHTML='<p style=color:#e74c3c;>Captcha image not available</p>'">
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="reloadCaptcha()">
+                    <i class="fas fa-sync-alt"></i> Refresh Captcha
+                </button>
+            </div>
+
+            <form id="captcha-form">
+                <div class="form-group">
+                    <label for="captcha-code">
+                        <i class="fas fa-image"></i> Enter 4-Character Captcha Code
+                    </label>
+                    <input type="text" id="captcha-code" maxlength="4" pattern="[A-Za-z0-9]{4}" 
+                           placeholder="____" required autocomplete="off">
+                </div>
+                <button type="submit" class="btn btn-primary" id="submit-captcha">
+                    Verify Captcha
+                </button>
+            </form>
+        </div>
+
+        <!-- Step 2: 2FA -->
+        <div id="step-2fa" class="auth-step">
+            <div class="instructions">
+                <h3><i class="fas fa-envelope"></i> Step 2 of 2: Email Verification</h3>
+                <ol>
+                    <li>Check your email for the Eufy verification code</li>
+                    <li>Enter the 6-digit code below</li>
+                    <li>Click "Verify Code" to complete authentication</li>
+                    <li>Code expires in 5 minutes</li>
+                </ol>
+            </div>
+
+            <form id="2fa-form">
+                <div class="form-group">
+                    <label for="2fa-code">
+                        <i class="fas fa-key"></i> Enter 6-Digit Email Code
+                    </label>
+                    <input type="text" id="2fa-code" maxlength="6" pattern="[0-9]{6}" 
+                           placeholder="______" required autocomplete="off">
+                </div>
+                <button type="submit" class="btn btn-primary" id="submit-2fa">
+                    Verify Code
+                </button>
+            </form>
+        </div>
+
+        <!-- Step 3: Success -->
+        <div id="step-success" class="auth-step">
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <h2>Authentication Successful!</h2>
+                <p>Your Eufy bridge is now connected and ready to use.</p>
+                <a href="/streams" class="btn btn-primary">
+                    <i class="fas fa-video"></i> Go to Camera Streams
+                </a>
+                <br>
+                <a href="/" class="back-link">
+                    <i class="fas fa-arrow-left"></i> Back to Home
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            // Show alert message
+            function showAlert(message, type) {
+                const alertHtml = `
+                    <div class="alert alert-${type} show">
+                        <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+                        ${message}
+                    </div>
+                `;
+                $('#alert-container').html(alertHtml);
+                
+                // Auto-hide after 5 seconds for success/info
+                if (type !== 'error') {
+                    setTimeout(() => {
+                        $('#alert-container .alert').removeClass('show');
+                    }, 5000);
+                }
+            }
+
+            // Reload captcha image with cache-busting and backend refresh
+            window.reloadCaptcha = function() {
+                console.log('Requesting new captcha from bridge...');
+                
+                // Call backend to request new captcha
+                $.ajax({
+                    url: '/api/eufy-auth/refresh-captcha',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    success: function(response) {
+                        console.log('New captcha requested, reloading image...');
+                        // Wait a moment for bridge to generate new captcha
+                        setTimeout(() => {
+                            const timestamp = new Date().getTime();
+                            $('#captcha-img').attr('src', `/api/eufy-auth/captcha-image?t=${timestamp}`);
+                            console.log('Captcha reloaded with timestamp:', timestamp);
+                        }, 1500);
+                    },
+                    error: function(xhr) {
+                        console.error('Failed to refresh captcha:', xhr);
+                        // Still try to reload image even if refresh failed
+                        const timestamp = new Date().getTime();
+                        $('#captcha-img').attr('src', `/api/eufy-auth/captcha-image?t=${timestamp}`);
+                    }
+                });
+            }
+
+            // Show loading state
+            function setLoading(buttonId, isLoading) {
+                const $btn = $(buttonId);
+                if (isLoading) {
+                    $btn.prop('disabled', true);
+                    $btn.html('<span class="loading-spinner"></span>Processing...');
+                } else {
+                    $btn.prop('disabled', false);
+                    const originalText = buttonId === '#submit-captcha' ? 'Verify Captcha' : 'Verify Code';
+                    $btn.text(originalText);
+                }
+            }
+
+            // Switch to a step
+            function switchStep(stepId) {
+                $('.auth-step').removeClass('active');
+                $(`#${stepId}`).addClass('active');
+                $('#alert-container').empty();
+            }
+
+            // Handle captcha form submission
+            $('#captcha-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                const captchaCode = $('#captcha-code').val().trim();
+                
+                if (captchaCode.length !== 4) {
+                    showAlert('Please enter a 4-character captcha code', 'error');
+                    return;
+                }
+                
+                if (!/^[A-Za-z0-9]{4}$/.test(captchaCode)) {
+                    showAlert('Captcha code must be 4 alphanumeric characters', 'error');
+                    return;
+                }
+                
+                setLoading('#submit-captcha', true);
+                
+                $.ajax({
+                    url: '/api/eufy-auth/captcha',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ captcha_code: captchaCode }),
+                    success: function(response) {
+                        showAlert(response.message, 'success');
+                        setTimeout(() => {
+                            switchStep('step-2fa');
+                            $('#2fa-code').focus();
+                        }, 1500);
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert(response.message || 'Invalid captcha code. Please try again.', 'error');
+                        
+                        // Clear input and reload captcha for retry
+                        $('#captcha-code').val('').focus();
+                        
+                        // Wait 1 second then reload captcha (gives bridge time to generate new one)
+                        setTimeout(() => {
+                            reloadCaptcha();
+                        }, 1000);
+                    },
+                    complete: function() {
+                        setLoading('#submit-captcha', false);
+                    }
+                });
+            });
+
+            // Handle 2FA form submission
+            $('#2fa-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                const verifyCode = $('#2fa-code').val().trim();
+                
+                if (verifyCode.length !== 6) {
+                    showAlert('Please enter a 6-digit verification code', 'error');
+                    return;
+                }
+                
+                setLoading('#submit-2fa', true);
+                
+                $.ajax({
+                    url: '/api/eufy-auth/2fa',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ verify_code: verifyCode }),
+                    success: function(response) {
+                        showAlert(response.message, 'success');
+                        setTimeout(() => {
+                            switchStep('step-success');
+                        }, 1500);
+                    },
+                    error: function(xhr) {
+                        const response = xhr.responseJSON || {};
+                        showAlert(response.message || 'Failed to verify code', 'error');
+                    },
+                    complete: function() {
+                        setLoading('#submit-2fa', false);
+                    }
+                });
+            });
+
+            // Auto-focus first input
+            $('#captcha-code').focus();
+
+            // Load captcha with cache-busting on page load
+            reloadCaptcha();
+
+            // Format input - allow alphanumeric only
+            $('#captcha-code').on('input', function() {
+                this.value = this.value.replace(/[^A-Za-z0-9]/g, '');
+            });
+            
+            // Format 2FA input - only digits
+            $('#2fa-code').on('input', function() {
+                this.value = this.value.replace(/[^0-9]/g, '');
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -474,13 +474,20 @@
                 </button>
             </div>
             <div class="timeline-modal-body">
-                <!-- Current Path Display -->
+                <!-- Current Path Display (editable) -->
                 <div class="file-browser-path">
                     <i class="fas fa-folder"></i>
-                    <span id="current-path">/recordings/ALTERNATE</span>
+                    <input type="text" id="current-path-input" class="path-input" value="/recordings/ALTERNATE/" placeholder="Enter path...">
+                    <button id="path-go-btn" class="timeline-btn timeline-btn-primary" title="Go to path">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
                     <button id="path-up-btn" class="timeline-btn" title="Go Up">
                         <i class="fas fa-level-up-alt"></i>
                     </button>
+                </div>
+                <div id="path-error" class="path-error" style="display: none;">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="path-error-message"></span>
                 </div>
 
                 <!-- Selection Controls -->

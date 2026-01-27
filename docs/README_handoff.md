@@ -15,9 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 27, 2026 12:40 EST*
+*Last updated: January 27, 2026 13:00 EST*
 
-Branch: `main`
+Branch: `timeline_download_files_JAN_27_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
@@ -25,10 +25,11 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 27, 2026 (10:30-12:40 EST)
+## Session: January 27, 2026 (10:30-13:00 EST)
 
 **Context compaction #1 occurred at ~11:00 EST**
 **Context compaction #2 occurred at ~11:25 EST**
+**Context compaction #3 occurred at ~12:42 EST**
 
 ### Work Completed
 
@@ -100,6 +101,24 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
    - Files modified:
      - `static/js/modals/file-browser-modal.js` - Fixed URL encoding in `downloadFile()`
    - Committed: `1305233`
+
+8. **Timeline Download Files Feature** (12:42-13:00)
+   - User request: Add button to download individual recording files from timeline selection
+   - Created new branch: `timeline_download_files_JAN_27_2026_a`
+   - Added "Download Files" button next to "Export Selection" in timeline modal
+   - Created simplified file browser for viewing selected segments
+   - Features:
+     - Multi-select checkboxes for files
+     - Select All functionality
+     - Shows file size, duration, recording type per segment
+     - Sequential download with 300ms delay between files
+   - Backend: Added `/api/recordings/download/<path:filepath>` endpoint
+   - Files modified:
+     - `templates/streams.html` - Button and download files section HTML
+     - `static/js/modals/timeline-playback-modal.js` - Download files functionality (v4)
+     - `static/css/components/timeline-modal.css` - Download files section styles
+     - `app.py` - New recordings download endpoint
+   - Committed: `3a430e1`
 
 ---
 

@@ -15,11 +15,9 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 14:20 EST*
+*Last updated: January 27, 2026 11:15 EST*
 
 Branch: `main`
-
-**Previous session merged:** `power_cycle_safety_fix_JAN_26_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
@@ -27,7 +25,36 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 26, 2026 (13:00-14:08 EST)
+## Session: January 27, 2026 (10:30-11:15 EST)
+
+**Context compaction occurred at ~11:00 EST**
+
+### Work Completed
+
+1. **Timeline Playback Bug - PostgreSQL Schema Missing** (10:30-10:45)
+   - User reported: Timeline showing "No recordings found" despite recordings on disk
+   - Root cause: `recordings` table did not exist in PostgreSQL
+   - Fix: Ran `psql/init-db.sql` to create schema
+   - File executed: `psql/init-db.sql`
+
+2. **Recording Indexer Script Created** (10:45-11:00)
+   - Created `scripts/index_existing_recordings.py` to populate database from existing mp4 files
+   - Indexed 4,873 AMCREST_LOBBY recordings and 14,367 LIVING_REOLINK recordings
+   - Script parses filename format: `SERIAL_YYYYMMDD_HHMMSS.mp4`
+   - File created: `scripts/index_existing_recordings.py`
+
+3. **Timeline API Timezone Fix** (11:00-11:15)
+   - Problem: DB stores UTC, but UI sends local time (EST) without timezone info
+   - Fix: Added pytz conversion in app.py to convert naive local timestamps to UTC before DB query
+   - Modified endpoints:
+     - `/api/timeline/segments/<camera_id>` (line ~4236)
+     - `/api/timeline/summary/<camera_id>` (line ~4316)
+   - Verified working: `09:00-12:00 EST` → `14:00-17:00 UTC` (5-hour offset correct)
+   - Committed: `7243e47`
+
+---
+
+## Session: January 26, 2026 (13:00-14:20 EST)
 
 **Context compaction occurred at 14:00 EST**
 
@@ -75,6 +102,11 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ---
 
 ## TODO List
+
+**HIGH PRIORITY - Recording Database:**
+
+- [x] Timeline timezone fix (completed Jan 27) - local time now converted to UTC for DB queries
+- [ ] **Index remaining cameras** - only AMCREST_LOBBY and LIVING_REOLINK indexed (~80k files remaining)
 
 **HIGH PRIORITY - Security:**
 

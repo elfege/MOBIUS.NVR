@@ -4234,9 +4234,22 @@ def api_timeline_segments(camera_id: str):
             return jsonify({'error': 'start and end parameters required'}), 400
 
         try:
-            from datetime import datetime
+            from datetime import datetime, timezone
+            import pytz
+
+            # Parse timestamps - if no timezone provided, assume local time (EST)
+            local_tz = pytz.timezone('America/New_York')
+
             start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+
+            # If naive (no timezone), assume local time and convert to UTC
+            if start_time.tzinfo is None:
+                start_time = local_tz.localize(start_time).astimezone(timezone.utc)
+            if end_time.tzinfo is None:
+                end_time = local_tz.localize(end_time).astimezone(timezone.utc)
+
+            logger.debug(f"Timeline segments query: {start_str} -> {start_time.isoformat()} (UTC)")
         except ValueError as e:
             return jsonify({'error': f'Invalid timestamp format: {e}'}), 400
 
@@ -4301,9 +4314,22 @@ def api_timeline_summary(camera_id: str):
             return jsonify({'error': 'start and end parameters required'}), 400
 
         try:
-            from datetime import datetime
+            from datetime import datetime, timezone
+            import pytz
+
+            # Parse timestamps - if no timezone provided, assume local time (EST)
+            local_tz = pytz.timezone('America/New_York')
+
             start_time = datetime.fromisoformat(start_str.replace('Z', '+00:00'))
             end_time = datetime.fromisoformat(end_str.replace('Z', '+00:00'))
+
+            # If naive (no timezone), assume local time and convert to UTC
+            if start_time.tzinfo is None:
+                start_time = local_tz.localize(start_time).astimezone(timezone.utc)
+            if end_time.tzinfo is None:
+                end_time = local_tz.localize(end_time).astimezone(timezone.utc)
+
+            logger.debug(f"Timeline summary query: {start_str} -> {start_time.isoformat()} (UTC)")
         except ValueError as e:
             return jsonify({'error': f'Invalid timestamp format: {e}'}), 400
 

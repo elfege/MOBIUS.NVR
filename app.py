@@ -5274,6 +5274,63 @@ def api_stream_file(filepath):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/files/download/<path:filepath>', methods=['GET'])
+def api_download_file(filepath):
+    """
+    Download a video file from the alternate recording storage.
+    Returns file as attachment (triggers browser download).
+
+    Args:
+        filepath: Relative path to the file from ALTERNATE_RECORDING_BASE
+
+    Returns:
+        File download response
+    """
+    try:
+        # Security: Normalize and validate path
+        full_path = os.path.normpath(os.path.join(ALTERNATE_RECORDING_BASE, filepath))
+
+        # Security check: Ensure path is within allowed base
+        if not full_path.startswith(ALTERNATE_RECORDING_BASE):
+            logger.warning(f"[FILE_BROWSER] Download traversal attempt blocked: {filepath}")
+            return jsonify({'error': 'Invalid path'}), 403
+
+        # Check if file exists
+        if not os.path.exists(full_path):
+            return jsonify({'error': 'File not found'}), 404
+
+        if not os.path.isfile(full_path):
+            return jsonify({'error': 'Not a file'}), 400
+
+        # Get filename for download
+        filename = os.path.basename(full_path)
+
+        # Determine mime type
+        ext = os.path.splitext(full_path)[1].lower()
+        mime_types = {
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mkv': 'video/x-matroska',
+            '.mov': 'video/quicktime',
+            '.m4v': 'video/x-m4v',
+            '.webm': 'video/webm'
+        }
+        mime_type = mime_types.get(ext, 'application/octet-stream')
+
+        logger.info(f"[FILE_BROWSER] Download: {filename}")
+
+        return send_file(
+            full_path,
+            mimetype=mime_type,
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.error(f"[FILE_BROWSER] Error downloading file {filepath}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 ########################################################
 #           📦 STORAGE MIGRATION API ROUTES 📦
 ########################################################

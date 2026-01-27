@@ -1251,3 +1251,122 @@
         max-height: 180px;
     }
 }
+
+
+/* =============================================================================
+   FILE BROWSER SELECTION & DOWNLOAD CONTROLS
+   ============================================================================= */
+
+.file-browser-selection-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 14px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.file-select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    color: #ccc;
+    font-size: 13px;
+}
+
+.file-select-all-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #7C4DFF;
+    cursor: pointer;
+}
+
+.file-selection-count {
+    flex: 1;
+    color: #888;
+    font-size: 12px;
+}
+
+.file-selection-count.has-selection {
+    color: #B388FF;
+}
+
+#file-download-btn {
+    padding: 8px 14px;
+    font-size: 13px;
+}
+
+#file-download-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Checkbox in file list items */
+.file-browser-list li .file-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: #7C4DFF;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* Highlight selected rows */
+.file-browser-list li.checked {
+    background: rgba(124, 77, 255, 0.15);
+}
+
+.file-browser-list li.checked:hover {
+    background: rgba(124, 77, 255, 0.25);
+}
+
+/* Download progress indicator */
+.file-download-progress {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 6px;
+    margin-bottom: 8px;
+}
+
+.file-download-progress.active {
+    display: flex;
+}
+
+.file-download-progress i {
+    color: #4CAF50;
+    font-size: 16px;
+}
+
+.file-download-progress .download-status {
+    flex: 1;
+    color: #ccc;
+    font-size: 13px;
+}
+
+.file-download-progress .download-cancel-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* Mobile adjustments for selection controls */
+@media (max-width: 600px) {
+    .file-browser-selection-controls {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .file-selection-count {
+        order: 3;
+        width: 100%;
+        text-align: center;
+    }
+
+    #file-download-btn {
+        flex: 1;
+    }
+}

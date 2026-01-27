@@ -5083,6 +5083,198 @@ def api_timeline_export_stream_by_filename(filename: str):
 
 
 ########################################################
+#           📂 FILE BROWSER API ROUTES 📂
+########################################################
+# Used for browsing alternate recording sources (FTP uploads, etc.)
+
+# Base path for alternate recordings - mounted in docker-compose.yml
+ALTERNATE_RECORDING_BASE = '/recordings/ALTERNATE'
+
+
+@app.route('/api/files/browse', methods=['GET'])
+def api_browse_files():
+    """
+    Browse files in a directory within the allowed paths.
+
+    Query params:
+        path: Relative path from ALTERNATE_RECORDING_BASE (default: /)
+
+    Returns:
+        JSON with directories and files list
+    """
+    try:
+        # Get relative path from query string
+        relative_path = request.args.get('path', '/')
+
+        # Security: Normalize and validate path to prevent directory traversal
+        # Remove leading slash if present
+        if relative_path.startswith('/'):
+            relative_path = relative_path[1:]
+
+        # Construct full path
+        full_path = os.path.normpath(os.path.join(ALTERNATE_RECORDING_BASE, relative_path))
+
+        # Security check: Ensure path is within allowed base
+        if not full_path.startswith(ALTERNATE_RECORDING_BASE):
+            logger.warning(f"[FILE_BROWSER] Directory traversal attempt blocked: {relative_path}")
+            return jsonify({'error': 'Invalid path'}), 403
+
+        # Check if path exists
+        if not os.path.exists(full_path):
+            return jsonify({
+                'success': True,
+                'path': '/' + relative_path if relative_path else '/',
+                'directories': [],
+                'files': [],
+                'message': 'Directory does not exist'
+            })
+
+        # Check if it's a directory
+        if not os.path.isdir(full_path):
+            return jsonify({'error': 'Path is not a directory'}), 400
+
+        directories = []
+        files = []
+
+        try:
+            entries = os.listdir(full_path)
+        except PermissionError:
+            return jsonify({'error': 'Permission denied'}), 403
+
+        for entry in sorted(entries):
+            entry_path = os.path.join(full_path, entry)
+
+            try:
+                stat_info = os.stat(entry_path)
+
+                if os.path.isdir(entry_path):
+                    directories.append({
+                        'name': entry,
+                        'type': 'directory',
+                        'modified': stat_info.st_mtime
+                    })
+                else:
+                    # Only include video files
+                    ext = os.path.splitext(entry)[1].lower()
+                    if ext in ['.mp4', '.avi', '.mkv', '.mov', '.m4v', '.webm']:
+                        files.append({
+                            'name': entry,
+                            'type': 'video',
+                            'size': stat_info.st_size,
+                            'modified': stat_info.st_mtime
+                        })
+            except (OSError, PermissionError):
+                # Skip files we can't access
+                continue
+
+        # Return current path relative to base
+        display_path = '/' + relative_path if relative_path else '/'
+
+        return jsonify({
+            'success': True,
+            'path': display_path,
+            'directories': directories,
+            'files': files,
+            'total_items': len(directories) + len(files)
+        })
+
+    except Exception as e:
+        logger.error(f"[FILE_BROWSER] Error browsing files: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/files/stream/<path:filepath>', methods=['GET'])
+def api_stream_file(filepath):
+    """
+    Stream a video file from the alternate recording storage.
+    Supports HTTP range requests for seeking.
+
+    Args:
+        filepath: Relative path to the file from ALTERNATE_RECORDING_BASE
+
+    Returns:
+        Video stream with proper headers for range requests
+    """
+    try:
+        # Security: Normalize and validate path
+        full_path = os.path.normpath(os.path.join(ALTERNATE_RECORDING_BASE, filepath))
+
+        # Security check: Ensure path is within allowed base
+        if not full_path.startswith(ALTERNATE_RECORDING_BASE):
+            logger.warning(f"[FILE_BROWSER] Stream traversal attempt blocked: {filepath}")
+            return jsonify({'error': 'Invalid path'}), 403
+
+        # Check if file exists
+        if not os.path.exists(full_path):
+            return jsonify({'error': 'File not found'}), 404
+
+        if not os.path.isfile(full_path):
+            return jsonify({'error': 'Not a file'}), 400
+
+        # Get file info
+        file_size = os.path.getsize(full_path)
+
+        # Determine mime type
+        ext = os.path.splitext(full_path)[1].lower()
+        mime_types = {
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mkv': 'video/x-matroska',
+            '.mov': 'video/quicktime',
+            '.m4v': 'video/x-m4v',
+            '.webm': 'video/webm'
+        }
+        mime_type = mime_types.get(ext, 'video/mp4')
+
+        # Handle range request for seeking
+        range_header = request.headers.get('Range')
+        if range_header:
+            match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+            if match:
+                start = int(match.group(1))
+                end = int(match.group(2)) if match.group(2) else file_size - 1
+
+                # Clamp values
+                start = max(0, min(start, file_size - 1))
+                end = max(start, min(end, file_size - 1))
+                length = end - start + 1
+
+                def generate_range():
+                    with open(full_path, 'rb') as f:
+                        f.seek(start)
+                        remaining = length
+                        while remaining > 0:
+                            chunk_size = min(8192, remaining)
+                            data = f.read(chunk_size)
+                            if not data:
+                                break
+                            remaining -= len(data)
+                            yield data
+
+                response = Response(
+                    generate_range(),
+                    status=206,
+                    mimetype=mime_type,
+                    direct_passthrough=True
+                )
+                response.headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
+                response.headers['Accept-Ranges'] = 'bytes'
+                response.headers['Content-Length'] = length
+                return response
+
+        # No range - send full file for inline viewing
+        return send_file(
+            full_path,
+            mimetype=mime_type,
+            as_attachment=False
+        )
+
+    except Exception as e:
+        logger.error(f"[FILE_BROWSER] Error streaming file {filepath}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+########################################################
 #           📦 STORAGE MIGRATION API ROUTES 📦
 ########################################################
 

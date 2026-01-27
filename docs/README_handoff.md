@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 27, 2026 11:15 EST*
+*Last updated: January 27, 2026 11:30 EST*
 
 Branch: `main`
 
@@ -25,7 +25,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 27, 2026 (10:30-11:15 EST)
+## Session: January 27, 2026 (10:30-11:30 EST)
 
 **Context compaction occurred at ~11:00 EST**
 
@@ -51,6 +51,21 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
      - `/api/timeline/summary/<camera_id>` (line ~4316)
    - Verified working: `09:00-12:00 EST` → `14:00-17:00 UTC` (5-hour offset correct)
    - Committed: `7243e47`
+
+4. **File Browser for Alternate Recording Sources** (11:15-11:30)
+   - New "Read from a different source" button in timeline modal
+   - File browser modal to navigate directories and play video files
+   - Backend APIs:
+     - `/api/files/browse` - Directory listing with security validation
+     - `/api/files/stream/<path>` - Video streaming with HTTP range support
+   - Docker volume: `ALTERNATE_RECORDING_STORAGE` mounted at `/recordings/ALTERNATE`
+   - Files created/modified:
+     - `docker-compose.yml` - Added ALTERNATE_RECORDING_STORAGE volume
+     - `templates/streams.html` - Added button and file browser modal HTML
+     - `static/css/components/timeline-modal.css` - Added file browser styles
+     - `static/js/modals/file-browser-modal.js` - Created new JS module
+     - `app.py` - Added file browser API endpoints
+   - Committed: `1d4f052`
 
 ---
 

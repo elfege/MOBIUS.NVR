@@ -1,7 +1,7 @@
 /**
  * File Browser Modal
  * Location: ~/0_NVR/static/js/modals/file-browser-modal.js
- * Version: 2026-01-27-v3 (added editable path with error handling)
+ * Version: 2026-01-27-v4 (fixed download URL encoding for special characters)
  *
  * Provides file browsing for alternate recording sources:
  * - Browse directories within /recordings/ALTERNATE
@@ -12,7 +12,7 @@
  * - Download single or multiple files
  */
 
-console.log('[FileBrowser] JS file loaded - version 2026-01-27-v3');
+console.log('[FileBrowser] JS file loaded - version 2026-01-27-v4');
 
 export class FileBrowserModal {
     constructor() {
@@ -307,7 +307,8 @@ export class FileBrowserModal {
             ? fileName
             : this.currentPath.substring(1) + '/' + fileName;
 
-        const downloadUrl = `/api/files/download/${encodeURIComponent(filePath)}`;
+        // Encode each path segment separately to preserve slashes for Flask routing
+        const downloadUrl = `/api/files/download/${filePath.split('/').map(encodeURIComponent).join('/')}`;
 
         const link = document.createElement('a');
         link.href = downloadUrl;

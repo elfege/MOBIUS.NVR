@@ -436,6 +436,32 @@
                     <button id="timeline-export-btn" class="timeline-btn timeline-btn-success" disabled>
                         <i class="fas fa-download"></i> Export Selection
                     </button>
+                    <button id="timeline-download-files-btn" class="timeline-btn timeline-btn-primary" disabled>
+                        <i class="fas fa-folder-open"></i> Download Files
+                    </button>
+                </div>
+
+                <!-- Download Files List (simplified file browser for selected segments) -->
+                <div class="timeline-download-files" style="display: none;">
+                    <div class="download-files-header">
+                        <h4><i class="fas fa-files-o"></i> Selected Recording Files</h4>
+                        <button class="timeline-download-files-close timeline-btn" title="Close">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="download-files-controls">
+                        <label class="download-files-select-all-label">
+                            <input type="checkbox" id="download-files-select-all">
+                            <span>Select All</span>
+                        </label>
+                        <span id="download-files-selection-count" class="download-files-selection-count"></span>
+                        <button id="download-files-btn" class="timeline-btn timeline-btn-success" disabled>
+                            <i class="fas fa-download"></i> Download Selected
+                        </button>
+                    </div>
+                    <div class="download-files-list-container">
+                        <ul id="download-files-list" class="download-files-list"></ul>
+                    </div>
                 </div>
 
                 <!-- Export Progress -->

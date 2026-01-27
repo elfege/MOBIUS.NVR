@@ -5332,6 +5332,70 @@ def api_download_file(filepath):
 
 
 ########################################################
+#           📥 RECORDINGS DOWNLOAD API ROUTE 📥
+########################################################
+
+RECORDINGS_BASE = '/recordings'
+
+@app.route('/api/recordings/download/<path:filepath>', methods=['GET'])
+def api_download_recording(filepath):
+    """
+    Download a recording file from the main recordings storage.
+    Used by timeline playback modal to download selected segments.
+
+    Args:
+        filepath: Relative path to the file from /recordings/
+                  e.g., motion/SERIAL/filename.mp4
+
+    Returns:
+        File download response
+    """
+    try:
+        # Security: Normalize and validate path
+        full_path = os.path.normpath(os.path.join(RECORDINGS_BASE, filepath))
+
+        # Security check: Ensure path is within allowed base
+        if not full_path.startswith(RECORDINGS_BASE):
+            logger.warning(f"[RECORDINGS] Download traversal attempt blocked: {filepath}")
+            return jsonify({'error': 'Invalid path'}), 403
+
+        # Check if file exists
+        if not os.path.exists(full_path):
+            return jsonify({'error': 'File not found'}), 404
+
+        if not os.path.isfile(full_path):
+            return jsonify({'error': 'Not a file'}), 400
+
+        # Get filename for download
+        filename = os.path.basename(full_path)
+
+        # Determine mime type
+        ext = os.path.splitext(full_path)[1].lower()
+        mime_types = {
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mkv': 'video/x-matroska',
+            '.mov': 'video/quicktime',
+            '.m4v': 'video/x-m4v',
+            '.webm': 'video/webm'
+        }
+        mime_type = mime_types.get(ext, 'application/octet-stream')
+
+        logger.info(f"[RECORDINGS] Download: {filename}")
+
+        return send_file(
+            full_path,
+            mimetype=mime_type,
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.error(f"[RECORDINGS] Error downloading file {filepath}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+########################################################
 #           📦 STORAGE MIGRATION API ROUTES 📦
 ########################################################
 

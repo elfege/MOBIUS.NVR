@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 26, 2026 14:08 EST*
+*Last updated: January 26, 2026 14:20 EST*
 
 Branch: `main`
 
@@ -62,6 +62,14 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
      - Added Level 8: Audio Architecture section
      - Added go2rtc config and talkback transcoder to file structure
      - Updated Architecture Summary
+   - Committed and pushed to main
+
+5. **Architecture Doc Updates** (14:08-14:20)
+   - Fixed Mermaid syntax error in class diagram (removed URL strings in return types)
+   - Added changelog entries for Jan 22-25 and Jan 26, 2026
+   - Added Level 9: Power Management section (Hubitat, UniFi PoE, safety opt-in)
+   - Added power services to file structure reference
+   - Updated Architecture Summary with power management and config sanitization
    - Committed and pushed to main
 
 ---

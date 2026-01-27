@@ -1,15 +1,17 @@
 /**
  * File Browser Modal
  * Location: ~/0_NVR/static/js/modals/file-browser-modal.js
- * Version: 2026-01-27-v1
+ * Version: 2026-01-27-v2 (added multi-select and download)
  *
  * Provides file browsing for alternate recording sources:
  * - Browse directories within /recordings/ALTERNATE
  * - Preview and play video files directly
  * - Navigate folder hierarchy
+ * - Multi-select files with checkboxes
+ * - Download single or multiple files
  */
 
-console.log('[FileBrowser] JS file loaded - version 2026-01-27-v1');
+console.log('[FileBrowser] JS file loaded - version 2026-01-27-v2');
 
 export class FileBrowserModal {
     constructor() {
@@ -19,10 +21,15 @@ export class FileBrowserModal {
         this.$currentPath = null;
         this.$previewSection = null;
         this.$previewVideo = null;
+        this.$selectAll = null;
+        this.$downloadBtn = null;
+        this.$selectionCount = null;
 
         // State
         this.currentPath = '/';
         this.isLoading = false;
+        this.selectedFiles = new Set();  // Track selected file names
+        this.currentFiles = [];  // Current list of files in directory
 
         this.init();
     }
@@ -42,9 +49,12 @@ export class FileBrowserModal {
         this.$currentPath = $('#current-path');
         this.$previewSection = $('#file-preview-section');
         this.$previewVideo = $('#file-preview-video');
+        this.$selectAll = $('#file-select-all');
+        this.$downloadBtn = $('#file-download-btn');
+        this.$selectionCount = $('#file-selection-count');
 
         this.attachEvents();
-        console.log('[FileBrowser] Modal initialized');
+        console.log('[FileBrowser] Modal initialized with download support');
     }
 
     /**
@@ -80,17 +90,67 @@ export class FileBrowserModal {
             this.navigateUp();
         });
 
-        // File/folder click - use delegation
+        // File/folder click - handle differently for checkbox vs row
         this.$fileList.on('click', 'li', (e) => {
             const $item = $(e.currentTarget);
             const type = $item.data('type');
             const name = $item.data('name');
+
+            // If clicked on checkbox, don't navigate/preview
+            if ($(e.target).hasClass('file-checkbox')) {
+                return;  // Checkbox change handler will handle this
+            }
 
             if (type === 'directory') {
                 this.navigateToDirectory(name);
             } else if (type === 'video') {
                 this.playVideo(name);
             }
+        });
+
+        // Checkbox change handler
+        this.$fileList.on('change', '.file-checkbox', (e) => {
+            e.stopPropagation();
+            const $checkbox = $(e.target);
+            const $item = $checkbox.closest('li');
+            const name = $item.data('name');
+
+            if ($checkbox.is(':checked')) {
+                this.selectedFiles.add(name);
+                $item.addClass('checked');
+            } else {
+                this.selectedFiles.delete(name);
+                $item.removeClass('checked');
+            }
+
+            this.updateSelectionUI();
+        });
+
+        // Select all checkbox
+        this.$selectAll.on('change', () => {
+            const isChecked = this.$selectAll.is(':checked');
+
+            this.$fileList.find('li[data-type="video"]').each((_, el) => {
+                const $item = $(el);
+                const name = $item.data('name');
+                const $checkbox = $item.find('.file-checkbox');
+
+                $checkbox.prop('checked', isChecked);
+                if (isChecked) {
+                    this.selectedFiles.add(name);
+                    $item.addClass('checked');
+                } else {
+                    this.selectedFiles.delete(name);
+                    $item.removeClass('checked');
+                }
+            });
+
+            this.updateSelectionUI();
+        });
+
+        // Download button
+        this.$downloadBtn.on('click', () => {
+            this.downloadSelected();
         });
 
         // Close preview button
@@ -100,11 +160,100 @@ export class FileBrowserModal {
     }
 
     /**
+     * Update selection UI (count and button state)
+     */
+    updateSelectionUI() {
+        const count = this.selectedFiles.size;
+
+        if (count === 0) {
+            this.$selectionCount.text('').removeClass('has-selection');
+            this.$downloadBtn.prop('disabled', true);
+        } else {
+            const totalSize = this.calculateSelectedSize();
+            this.$selectionCount
+                .text(`${count} file${count > 1 ? 's' : ''} selected (${this.formatFileSize(totalSize)})`)
+                .addClass('has-selection');
+            this.$downloadBtn.prop('disabled', false);
+        }
+
+        // Update select all checkbox state
+        const videoCount = this.$fileList.find('li[data-type="video"]').length;
+        if (videoCount > 0 && count === videoCount) {
+            this.$selectAll.prop('checked', true);
+            this.$selectAll.prop('indeterminate', false);
+        } else if (count > 0) {
+            this.$selectAll.prop('checked', false);
+            this.$selectAll.prop('indeterminate', true);
+        } else {
+            this.$selectAll.prop('checked', false);
+            this.$selectAll.prop('indeterminate', false);
+        }
+    }
+
+    /**
+     * Calculate total size of selected files
+     * @returns {number} Total size in bytes
+     */
+    calculateSelectedSize() {
+        let total = 0;
+        this.selectedFiles.forEach(name => {
+            const file = this.currentFiles.find(f => f.name === name);
+            if (file) {
+                total += file.size;
+            }
+        });
+        return total;
+    }
+
+    /**
+     * Download selected files
+     */
+    async downloadSelected() {
+        if (this.selectedFiles.size === 0) return;
+
+        const files = Array.from(this.selectedFiles);
+        console.log(`[FileBrowser] Downloading ${files.length} files`);
+
+        // Download files sequentially
+        for (const fileName of files) {
+            await this.downloadFile(fileName);
+            // Small delay between downloads to avoid overwhelming the browser
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    }
+
+    /**
+     * Download a single file
+     * @param {string} fileName - Name of the file to download
+     */
+    async downloadFile(fileName) {
+        const filePath = this.currentPath === '/'
+            ? fileName
+            : this.currentPath.substring(1) + '/' + fileName;
+
+        // Create download URL with download parameter
+        const downloadUrl = `/api/files/download/${encodeURIComponent(filePath)}`;
+
+        // Create invisible link and trigger download
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        console.log(`[FileBrowser] Started download: ${fileName}`);
+    }
+
+    /**
      * Show the modal and load root directory
      */
     show() {
         this.$modal.css('display', 'flex');
         this.currentPath = '/';
+        this.selectedFiles.clear();
+        this.updateSelectionUI();
         this.loadDirectory('/');
     }
 
@@ -124,6 +273,10 @@ export class FileBrowserModal {
         if (this.isLoading) return;
         this.isLoading = true;
 
+        // Clear selection when changing directories
+        this.selectedFiles.clear();
+        this.updateSelectionUI();
+
         // Update current path display
         this.currentPath = path;
         this.$currentPath.text('/recordings/ALTERNATE' + path);
@@ -141,6 +294,7 @@ export class FileBrowserModal {
                 throw new Error(data.error || 'Failed to load directory');
             }
 
+            this.currentFiles = data.files;  // Store for size calculation
             this.renderFileList(data.directories, data.files);
         } catch (error) {
             console.error('[FileBrowser] Error loading directory:', error);
@@ -152,7 +306,7 @@ export class FileBrowserModal {
     }
 
     /**
-     * Render file list
+     * Render file list with checkboxes for files
      * @param {Array} directories - List of directories
      * @param {Array} files - List of files
      */
@@ -164,7 +318,7 @@ export class FileBrowserModal {
             return;
         }
 
-        // Add directories first
+        // Add directories first (no checkbox for directories)
         directories.forEach(dir => {
             const modDate = new Date(dir.modified * 1000).toLocaleDateString();
             const $item = $(`
@@ -179,12 +333,13 @@ export class FileBrowserModal {
             this.$fileList.append($item);
         });
 
-        // Add files
+        // Add files with checkboxes
         files.forEach(file => {
             const modDate = new Date(file.modified * 1000).toLocaleDateString();
             const size = this.formatFileSize(file.size);
             const $item = $(`
                 <li data-type="video" data-name="${this.escapeHtml(file.name)}">
+                    <input type="checkbox" class="file-checkbox" title="Select for download">
                     <i class="fas fa-file-video"></i>
                     <span class="file-name">${this.escapeHtml(file.name)}</span>
                     <div class="file-meta">
@@ -246,7 +401,7 @@ export class FileBrowserModal {
         // Show preview section
         this.$previewSection.show();
 
-        // Highlight selected item
+        // Highlight selected item (visual selection, not checkbox)
         this.$fileList.find('li').removeClass('selected');
         this.$fileList.find(`li[data-name="${this.escapeHtml(fileName)}"]`).addClass('selected');
     }

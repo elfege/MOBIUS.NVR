@@ -334,6 +334,9 @@
                     <button class="timeline-preset-btn" data-hours="6">Last 6 Hours</button>
                     <button class="timeline-preset-btn" data-hours="24">Last 24 Hours</button>
                     <button class="timeline-preset-btn" data-hours="168">Last 7 Days</button>
+                    <button id="timeline-alternate-source-btn" class="timeline-preset-btn timeline-alternate-btn" title="Browse alternate recording sources">
+                        <i class="fas fa-folder-open"></i> Read from a different source
+                    </button>
                 </div>
 
                 <!-- Timeline Visualization -->
@@ -461,6 +464,54 @@
         </div>
     </div>
 
+    <!-- File Browser Modal for Alternate Recording Sources -->
+    <div id="file-browser-modal" class="timeline-modal" style="display: none;">
+        <div class="timeline-modal-content file-browser-content">
+            <div class="timeline-modal-header">
+                <h3><i class="fas fa-folder-open"></i> Browse Recording Files</h3>
+                <button class="file-browser-modal-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="timeline-modal-body">
+                <!-- Current Path Display -->
+                <div class="file-browser-path">
+                    <i class="fas fa-folder"></i>
+                    <span id="current-path">/recordings/ALTERNATE</span>
+                    <button id="path-up-btn" class="timeline-btn" title="Go Up">
+                        <i class="fas fa-level-up-alt"></i>
+                    </button>
+                </div>
+
+                <!-- File List -->
+                <div class="file-browser-list-container">
+                    <div class="file-browser-loading" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i> Loading...
+                    </div>
+                    <div class="file-browser-empty" style="display: none;">
+                        <i class="fas fa-folder-open"></i> No files found
+                    </div>
+                    <ul id="file-browser-list" class="file-browser-list"></ul>
+                </div>
+
+                <!-- Selected File Preview -->
+                <div id="file-preview-section" class="file-preview-section" style="display: none;">
+                    <h4><i class="fas fa-play-circle"></i> Preview: <span id="file-preview-name"></span></h4>
+                    <div class="file-preview-container">
+                        <video id="file-preview-video" controls playsinline>
+                            Your browser does not support video playback.
+                        </video>
+                    </div>
+                    <div class="file-preview-controls">
+                        <button id="file-preview-close-btn" class="timeline-btn">
+                            <i class="fas fa-times"></i> Close Preview
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Load scripts in order -->
     <script type="module">
         // Import and initialize connection monitor
@@ -502,6 +553,7 @@
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controls.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/modals/timeline-playback-modal.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/modals/file-browser-modal.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/modals/hubitat-device-picker.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/power-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>

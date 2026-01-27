@@ -591,34 +591,34 @@
                         +validate_camera_config(camera_config) bool
                         +get_required_config_fields() List
                     }
-                    
+
                     class EufyStreamHandler {
                         -credential_provider: EufyCredentialProvider
                         -bridge_config: Dict
-                        +build_rtsp_url() "rtsp://user:pass@bridge:554/live0"
+                        +build_rtsp_url() str
                     }
-                    
+
                     class ReolinkStreamHandler {
                         -credential_provider: ReolinkCredentialProvider
                         -reolink_config: Dict
-                        +build_rtsp_url() "rtsp://user:pass@cam:554/h264Preview_01_sub"
+                        +build_rtsp_url() str
                     }
-                    
+
                     class UniFiStreamHandler {
                         -credential_provider: UniFiCredentialProvider
                         -protect_config: Dict
-                        +build_rtsp_url() "rtsps://console:7441/proxy_url"
+                        +build_rtsp_url() str
                     }
-                    
+
                     class AmcrestStreamHandler {
                         -credential_provider: AmcrestCredentialProvider
-                        +build_rtsp_url() "rtsp://user:pass@cam:554/cam/realmonitor"
+                        +build_rtsp_url() str
                     }
 
                     class SV3CStreamHandler {
                         -credential_provider: SV3CCredentialProvider
-                        +build_rtsp_url() "rtsp://user:pass@cam:554/12"
-                        +_build_ll_hls_publish() MediaMTX publish
+                        +build_rtsp_url() str
+                        +_build_ll_hls_publish() str
                     }
 
                     StreamHandler <|-- EufyStreamHandler
@@ -626,16 +626,16 @@
                     StreamHandler <|-- UniFiStreamHandler
                     StreamHandler <|-- AmcrestStreamHandler
                     StreamHandler <|-- SV3CStreamHandler
-                    
+
                     class StreamManager {
-                        -handlers: Dict~str,StreamHandler~
+                        -handlers: Dict
                         -active_streams: Dict
                         -camera_repo: CameraRepository
                         +start_stream(camera_serial, stream_type)
                         +stop_stream(camera_serial)
                         +get_stream_url(camera_serial)
                     }
-                    
+
                     StreamManager --> StreamHandler : uses
             </div>
         </div>
@@ -1156,6 +1156,52 @@ sequenceDiagram
             </tr>
         </table>
 
+        <!-- POWER MANAGEMENT -->
+        <h2>Level 9: Power Management (Jan 2026)</h2>
+
+        <div class="architecture-note">
+            <h3>Camera Power Control</h3>
+            <p>Remote power cycle capability for cameras connected to smart outlets or PoE switches:</p>
+            <ul>
+                <li><strong>Hubitat Integration:</strong> Cameras connected to Hubitat-controlled smart outlets (Zigbee/Z-Wave)</li>
+                <li><strong>UniFi PoE Integration:</strong> Cameras powered via UniFi switch PoE ports</li>
+                <li><strong>Manual Trigger:</strong> Power button in stream controls (immediate cycle)</li>
+                <li><strong>Auto Power-Cycle:</strong> Optional feature when camera goes OFFLINE (disabled by default)</li>
+            </ul>
+        </div>
+
+        <div class="critical-note">
+            <h3>Power Cycle Safety (CRITICAL)</h3>
+            <p>Auto power-cycling requires explicit opt-in per camera:</p>
+            <ul>
+                <li><strong>Config:</strong> <code>power_cycle_on_failure.enabled: true</code> (default: false)</li>
+                <li><strong>Cooldown:</strong> <code>power_cycle_on_failure.cooldown_hours: 24</code> (configurable)</li>
+                <li><strong>UI Settings:</strong> Power Management section in camera settings modal</li>
+                <li><strong>Manual Override:</strong> Manual power button always works regardless of opt-in setting</li>
+            </ul>
+        </div>
+
+        <table>
+            <tr>
+                <th>Power Source</th>
+                <th>Service</th>
+                <th>Configuration</th>
+                <th>Notes</th>
+            </tr>
+            <tr>
+                <td>Hubitat Smart Outlet</td>
+                <td><code>services/power/hubitat_power_service.py</code></td>
+                <td><code>power_supply: "hubitat"</code><br/><code>power_supply_device_id: "123"</code></td>
+                <td>Uses Hubitat Maker API</td>
+            </tr>
+            <tr>
+                <td>UniFi PoE Switch</td>
+                <td><code>services/power/unifi_poe_service.py</code></td>
+                <td><code>power_supply: "unifi_poe"</code><br/><code>power_supply_port: 5</code></td>
+                <td>Uses UniFi Network API</td>
+            </tr>
+        </table>
+
         <!-- SUMMARY -->
         <h2>Architecture Summary</h2>
 
@@ -1175,6 +1221,8 @@ sequenceDiagram
                 <li><strong>ONVIF PTZ:</strong> Standardized control with adaptive latency learning stored in PostgreSQL</li>
                 <li><strong>Two-Way Audio:</strong> Eufy talkback via P2P bridge; ONVIF backchannel via go2rtc for SV3C/Amcrest</li>
                 <li><strong>Playback Volume:</strong> Per-camera volume slider with localStorage persistence</li>
+                <li><strong>Power Management:</strong> Hubitat smart outlets and UniFi PoE integration for remote power-cycle with safety opt-in</li>
+                <li><strong>Config Sanitization:</strong> Pre-commit hook auto-generates example configs with fake IPs/serials/credentials</li>
                 <li><strong>Docker-First:</strong> Full containerization with docker-compose; timezone sync for accurate timestamps</li>
             </ul>
         </div>
@@ -1210,6 +1258,8 @@ sequenceDiagram
                 <li><strong>Storage Manager:</strong> <code>services/recording/storage_manager.py</code></li>
                 <li><strong>Motion Detection:</strong> <code>services/motion/ffmpeg_motion_detector.py</code>, <code>services/onvif/onvif_event_listener.py</code></li>
                 <li><strong>ONVIF PTZ:</strong> <code>services/onvif/onvif_ptz_handler.py</code></li>
+                <li><strong>Power Services:</strong> <code>services/power/hubitat_power_service.py</code>, <code>services/power/unifi_poe_service.py</code></li>
+                <li><strong>Power Controller:</strong> <code>static/js/controllers/power-controller.js</code></li>
                 <li><strong>Neolink Config:</strong> <code>config/neolink.toml</code></li>
                 <li><strong>Frontend Streaming:</strong> <code>static/js/streaming/*.js</code> (includes snapshot-stream.js for iOS)</li>
                 <li><strong>Frontend Controllers:</strong> <code>static/js/controllers/*.js</code></li>
@@ -1231,6 +1281,8 @@ sequenceDiagram
                 <li><strong>Jan 3-4, 2026:</strong> CameraStateTracker service (MediaMTX API polling, exponential backoff), StreamWatchdog unified service (replaces per-stream watchdogs), UI recovery detection (auto-refresh on backend recovery), WebRTC streaming via WHEP (~200ms latency)</li>
                 <li><strong>Jan 18, 2026:</strong> iOS snapshot polling (replaces unreliable MJPEG), expanded modal mode (tap-to-expand), Force MJPEG desktop setting, UI health re-enabled with tuned thresholds, PTZ/controls visibility fixes for grid mode, DTLS enabled for iOS WebRTC support (~200ms latency), Force WebRTC Grid experimental setting for iOS</li>
                 <li><strong>Jan 19, 2026:</strong> WebRTC audio restoration - AAC→Opus transcoding for all cameras (WebRTC requires Opus, MediaMTX skips AAC), fixed ffmpeg_params.py main stream hardcoded -c:a copy, user-stopped stream tracking (localStorage prevents watchdog auto-restart), .gitignore fix for config/cameras.json tracking</li>
+                <li><strong>Jan 22-25, 2026:</strong> PTZ reversal settings for upside-down cameras, PTZ double-action bug fix, PTZ Home/Recalibration buttons, Eufy bridge direction mapping fix, timeline playback timestamp fix, Hubitat power service (auto power-cycle), UniFi POE power service, device picker modal, power button in stream controls, WebRTC fullscreen quality recovery</li>
+                <li><strong>Jan 26, 2026:</strong> Power cycle safety (opt-in requirement + 24h configurable cooldown), FFmpeg params null/none handling fix, SV3C RTSP stability (15s timeouts, reconnect options), playback volume slider with localStorage persistence, SV3C direct HTTP snapshots for /api/snap, config sanitization pre-commit hook (auto-generates example files)</li>
             </ul>
         </div>
 

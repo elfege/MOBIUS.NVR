@@ -1,16 +1,17 @@
 /**
  * Timeline Playback Modal
  * Location: ~/0_NVR/static/js/modals/timeline-playback-modal.js
- * Version: 2026-01-20-v3 (mobile scroll fix)
+ * Version: 2026-01-27-v4 (download files feature)
  *
  * Provides timeline visualization of recordings with:
  * - Drag-select time range for export
  * - Zoom in/out for granular selection
  * - Export to MP4 with iOS compatibility option
  * - Progress tracking for long exports
+ * - Download individual recording files (v4)
  */
 
-console.log('[Timeline] JS file loaded - version 2026-01-20-v3');
+console.log('[Timeline] JS file loaded - version 2026-01-27-v4');
 
 export class TimelinePlaybackModal {
     constructor() {
@@ -42,6 +43,10 @@ export class TimelinePlaybackModal {
         this.previewMergePollingInterval = null;
         this.mergedPreviewReady = false;
         this._pendingAutoPlay = false;
+
+        // Download files state
+        this.downloadFilesSelected = new Set();
+        this.isDownloadFilesVisible = false;
 
         // Device detection for iOS/mobile compatibility
         this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -158,6 +163,37 @@ export class TimelinePlaybackModal {
 
         // Cancel preview merge button
         $('.cancel-preview-merge-btn').on('click', () => this.cancelCurrentPreviewMerge());
+
+        // Download files controls
+        $('#timeline-download-files-btn').on('click', () => this.showDownloadFiles());
+        $('.timeline-download-files-close').on('click', () => this.hideDownloadFiles());
+        $('#download-files-select-all').on('change', (e) => this.toggleSelectAllFiles(e.target.checked));
+        $('#download-files-btn').on('click', () => this.downloadSelectedFiles());
+
+        // File checkbox change handler (delegated)
+        $('#download-files-list').on('change', '.file-checkbox', (e) => {
+            e.stopPropagation();
+            const $checkbox = $(e.target);
+            const $item = $checkbox.closest('li');
+            const filePath = $item.data('file-path');
+
+            if ($checkbox.is(':checked')) {
+                this.downloadFilesSelected.add(filePath);
+                $item.addClass('checked');
+            } else {
+                this.downloadFilesSelected.delete(filePath);
+                $item.removeClass('checked');
+            }
+
+            this.updateDownloadFilesUI();
+        });
+
+        // File row click to toggle checkbox
+        $('#download-files-list').on('click', 'li', (e) => {
+            if ($(e.target).hasClass('file-checkbox')) return;
+            const $checkbox = $(e.currentTarget).find('.file-checkbox');
+            $checkbox.prop('checked', !$checkbox.is(':checked')).trigger('change');
+        });
 
         // Video event listeners - attach to handle playback
         this.attachVideoEventListeners();
@@ -314,6 +350,10 @@ export class TimelinePlaybackModal {
             this.previewMergePollingInterval = null;
         }
 
+        // Reset download files state
+        this.downloadFilesSelected.clear();
+        this.isDownloadFilesVisible = false;
+
         // Reset UI
         this.showSection('empty', false);
         this.showSection('loading', false);
@@ -324,7 +364,9 @@ export class TimelinePlaybackModal {
         this.showSection('download', false);
         this.showSection('preview', false);
         this.showSection('previewMerge', false);
+        $('.timeline-download-files').hide();
         $('#timeline-export-btn').prop('disabled', true);
+        $('#timeline-download-files-btn').prop('disabled', true);
 
         // Show modal
         this.$modal.show();
@@ -651,8 +693,15 @@ export class TimelinePlaybackModal {
         // Update export info
         this.updateExportInfo(this.selectedSegments);
 
-        // Enable export button if segments selected
-        $('#timeline-export-btn').prop('disabled', this.selectedSegments.length === 0);
+        // Enable export and download buttons if segments selected
+        const hasSegments = this.selectedSegments.length > 0;
+        $('#timeline-export-btn').prop('disabled', !hasSegments);
+        $('#timeline-download-files-btn').prop('disabled', !hasSegments);
+
+        // Hide download files section if no segments selected
+        if (!hasSegments && this.isDownloadFilesVisible) {
+            this.hideDownloadFiles();
+        }
 
         // Show preview if segments selected
         // Note: showPreview is async - catch errors to prevent silent failures
@@ -1519,6 +1568,210 @@ export class TimelinePlaybackModal {
                 video.pause();
             }
         }
+    }
+
+    // ========================================
+    // Download Files Methods
+    // ========================================
+
+    /**
+     * Show download files section with list of selected segments
+     */
+    showDownloadFiles() {
+        if (this.selectedSegments.length === 0) {
+            console.warn('[Timeline] No segments selected for download');
+            return;
+        }
+
+        this.isDownloadFilesVisible = true;
+        this.downloadFilesSelected.clear();
+
+        // Populate the file list
+        const $list = $('#download-files-list');
+        $list.empty();
+
+        this.selectedSegments.forEach(seg => {
+            // Extract filename from file_path
+            const fileName = seg.file_path.split('/').pop();
+            const fileSize = this.formatFileSize(seg.file_size_bytes);
+            const startTime = new Date(seg.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const duration = this.formatDuration(seg.duration_seconds);
+
+            const $item = $(`
+                <li data-file-path="${this.escapeHtml(seg.file_path)}" data-recording-id="${seg.recording_id}">
+                    <input type="checkbox" class="file-checkbox" title="Select for download">
+                    <i class="fas fa-file-video file-icon"></i>
+                    <div class="file-info">
+                        <span class="file-name">${this.escapeHtml(fileName)}</span>
+                        <div class="file-details">
+                            <span class="file-size">${fileSize}</span>
+                            <span class="file-time">${startTime} (${duration})</span>
+                            <span class="file-type ${seg.recording_type}">${seg.recording_type}</span>
+                        </div>
+                    </div>
+                </li>
+            `);
+            $list.append($item);
+        });
+
+        // Reset UI state
+        $('#download-files-select-all').prop('checked', false).prop('indeterminate', false);
+        this.updateDownloadFilesUI();
+
+        // Show section
+        $('.timeline-download-files').show();
+
+        console.log(`[Timeline] Download files shown with ${this.selectedSegments.length} files`);
+    }
+
+    /**
+     * Hide download files section
+     */
+    hideDownloadFiles() {
+        this.isDownloadFilesVisible = false;
+        this.downloadFilesSelected.clear();
+        $('.timeline-download-files').hide();
+    }
+
+    /**
+     * Toggle select all files
+     * @param {boolean} selectAll - Whether to select or deselect all
+     */
+    toggleSelectAllFiles(selectAll) {
+        const $items = $('#download-files-list li');
+
+        $items.each((_, el) => {
+            const $item = $(el);
+            const filePath = $item.data('file-path');
+            const $checkbox = $item.find('.file-checkbox');
+
+            $checkbox.prop('checked', selectAll);
+            if (selectAll) {
+                this.downloadFilesSelected.add(filePath);
+                $item.addClass('checked');
+            } else {
+                this.downloadFilesSelected.delete(filePath);
+                $item.removeClass('checked');
+            }
+        });
+
+        this.updateDownloadFilesUI();
+    }
+
+    /**
+     * Update download files UI state (button, count, select all checkbox)
+     */
+    updateDownloadFilesUI() {
+        const count = this.downloadFilesSelected.size;
+        const totalCount = this.selectedSegments.length;
+
+        // Update selection count display
+        const $countDisplay = $('#download-files-selection-count');
+        if (count === 0) {
+            $countDisplay.text('').removeClass('has-selection');
+            $('#download-files-btn').prop('disabled', true);
+        } else {
+            // Calculate total size of selected files
+            let totalSize = 0;
+            this.downloadFilesSelected.forEach(filePath => {
+                const seg = this.selectedSegments.find(s => s.file_path === filePath);
+                if (seg) totalSize += seg.file_size_bytes;
+            });
+
+            $countDisplay
+                .text(`${count} file${count > 1 ? 's' : ''} selected (${this.formatFileSize(totalSize)})`)
+                .addClass('has-selection');
+            $('#download-files-btn').prop('disabled', false);
+        }
+
+        // Update select all checkbox state
+        const $selectAll = $('#download-files-select-all');
+        if (count === 0) {
+            $selectAll.prop('checked', false).prop('indeterminate', false);
+        } else if (count === totalCount) {
+            $selectAll.prop('checked', true).prop('indeterminate', false);
+        } else {
+            $selectAll.prop('checked', false).prop('indeterminate', true);
+        }
+    }
+
+    /**
+     * Download selected files
+     */
+    async downloadSelectedFiles() {
+        if (this.downloadFilesSelected.size === 0) return;
+
+        const files = Array.from(this.downloadFilesSelected);
+        console.log(`[Timeline] Downloading ${files.length} files`);
+
+        for (const filePath of files) {
+            await this.downloadFile(filePath);
+            // Small delay between downloads to avoid overwhelming browser
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    }
+
+    /**
+     * Download a single file
+     * @param {string} filePath - Full file path on server
+     */
+    async downloadFile(filePath) {
+        // Remove leading /recordings/ to get relative path for download API
+        // The file_path from segments looks like: /recordings/motion/SERIAL/file.mp4
+        let relativePath = filePath;
+        if (relativePath.startsWith('/recordings/')) {
+            relativePath = relativePath.substring('/recordings/'.length);
+        }
+
+        // Encode each path segment separately to preserve slashes for Flask routing
+        const downloadUrl = `/api/recordings/download/${relativePath.split('/').map(encodeURIComponent).join('/')}`;
+
+        const fileName = filePath.split('/').pop();
+
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        console.log(`[Timeline] Started download: ${fileName}`);
+    }
+
+    /**
+     * Format file size for display
+     * @param {number} bytes - Size in bytes
+     * @returns {string} Formatted size
+     */
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    /**
+     * Format duration for display
+     * @param {number} seconds - Duration in seconds
+     * @returns {string} Formatted duration (e.g., "2:30")
+     */
+    formatDuration(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    /**
+     * Escape HTML for safe insertion
+     * @param {string} text - Text to escape
+     * @returns {string} Escaped text
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 }
 

@@ -1,24 +1,27 @@
 /**
  * File Browser Modal
  * Location: ~/0_NVR/static/js/modals/file-browser-modal.js
- * Version: 2026-01-27-v2 (added multi-select and download)
+ * Version: 2026-01-27-v3 (added editable path with error handling)
  *
  * Provides file browsing for alternate recording sources:
  * - Browse directories within /recordings/ALTERNATE
+ * - Editable path input with error handling
  * - Preview and play video files directly
  * - Navigate folder hierarchy
  * - Multi-select files with checkboxes
  * - Download single or multiple files
  */
 
-console.log('[FileBrowser] JS file loaded - version 2026-01-27-v2');
+console.log('[FileBrowser] JS file loaded - version 2026-01-27-v3');
 
 export class FileBrowserModal {
     constructor() {
         // DOM elements
         this.$modal = null;
         this.$fileList = null;
-        this.$currentPath = null;
+        this.$pathInput = null;
+        this.$pathError = null;
+        this.$pathErrorMsg = null;
         this.$previewSection = null;
         this.$previewVideo = null;
         this.$selectAll = null;
@@ -27,9 +30,10 @@ export class FileBrowserModal {
 
         // State
         this.currentPath = '/';
+        this.basePath = '/recordings/ALTERNATE';
         this.isLoading = false;
-        this.selectedFiles = new Set();  // Track selected file names
-        this.currentFiles = [];  // Current list of files in directory
+        this.selectedFiles = new Set();
+        this.currentFiles = [];
 
         this.init();
     }
@@ -46,7 +50,9 @@ export class FileBrowserModal {
         }
 
         this.$fileList = $('#file-browser-list');
-        this.$currentPath = $('#current-path');
+        this.$pathInput = $('#current-path-input');
+        this.$pathError = $('#path-error');
+        this.$pathErrorMsg = $('#path-error-message');
         this.$previewSection = $('#file-preview-section');
         this.$previewVideo = $('#file-preview-video');
         this.$selectAll = $('#file-select-all');
@@ -54,7 +60,7 @@ export class FileBrowserModal {
         this.$selectionCount = $('#file-selection-count');
 
         this.attachEvents();
-        console.log('[FileBrowser] Modal initialized with download support');
+        console.log('[FileBrowser] Modal initialized with editable path');
     }
 
     /**
@@ -85,20 +91,37 @@ export class FileBrowserModal {
             }
         });
 
+        // Go button - navigate to entered path
+        this.$modal.on('click', '#path-go-btn', () => {
+            this.navigateToInputPath();
+        });
+
+        // Enter key in path input
+        this.$pathInput.on('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                this.navigateToInputPath();
+            }
+        });
+
+        // Clear error on input change
+        this.$pathInput.on('input', () => {
+            this.hidePathError();
+        });
+
         // Navigate up button
         this.$modal.on('click', '#path-up-btn', () => {
             this.navigateUp();
         });
 
-        // File/folder click - handle differently for checkbox vs row
+        // File/folder click
         this.$fileList.on('click', 'li', (e) => {
             const $item = $(e.currentTarget);
             const type = $item.data('type');
             const name = $item.data('name');
 
-            // If clicked on checkbox, don't navigate/preview
             if ($(e.target).hasClass('file-checkbox')) {
-                return;  // Checkbox change handler will handle this
+                return;
             }
 
             if (type === 'directory') {
@@ -160,7 +183,65 @@ export class FileBrowserModal {
     }
 
     /**
-     * Update selection UI (count and button state)
+     * Navigate to the path entered in the input field
+     */
+    navigateToInputPath() {
+        let inputPath = this.$pathInput.val().trim();
+
+        // Handle empty input
+        if (!inputPath) {
+            inputPath = this.basePath + '/';
+        }
+
+        // Convert full path to relative path
+        let relativePath = inputPath;
+        if (inputPath.startsWith(this.basePath)) {
+            relativePath = inputPath.substring(this.basePath.length);
+        }
+
+        // Normalize: ensure starts with /
+        if (!relativePath.startsWith('/')) {
+            relativePath = '/' + relativePath;
+        }
+
+        // Remove trailing slash for consistency (except root)
+        if (relativePath.length > 1 && relativePath.endsWith('/')) {
+            relativePath = relativePath.slice(0, -1);
+        }
+
+        console.log(`[FileBrowser] Navigating to: ${relativePath}`);
+        this.loadDirectory(relativePath);
+    }
+
+    /**
+     * Show path error message
+     * @param {string} message - Error message to display
+     */
+    showPathError(message) {
+        this.$pathInput.addClass('error');
+        this.$pathErrorMsg.text(message);
+        this.$pathError.show();
+    }
+
+    /**
+     * Hide path error message
+     */
+    hidePathError() {
+        this.$pathInput.removeClass('error');
+        this.$pathError.hide();
+    }
+
+    /**
+     * Update the path input field
+     * @param {string} relativePath - Relative path from base
+     */
+    updatePathInput(relativePath) {
+        const fullPath = this.basePath + relativePath;
+        this.$pathInput.val(fullPath + (relativePath === '/' ? '' : '/'));
+    }
+
+    /**
+     * Update selection UI
      */
     updateSelectionUI() {
         const count = this.selectedFiles.size;
@@ -176,7 +257,6 @@ export class FileBrowserModal {
             this.$downloadBtn.prop('disabled', false);
         }
 
-        // Update select all checkbox state
         const videoCount = this.$fileList.find('li[data-type="video"]').length;
         if (videoCount > 0 && count === videoCount) {
             this.$selectAll.prop('checked', true);
@@ -192,7 +272,6 @@ export class FileBrowserModal {
 
     /**
      * Calculate total size of selected files
-     * @returns {number} Total size in bytes
      */
     calculateSelectedSize() {
         let total = 0;
@@ -214,27 +293,22 @@ export class FileBrowserModal {
         const files = Array.from(this.selectedFiles);
         console.log(`[FileBrowser] Downloading ${files.length} files`);
 
-        // Download files sequentially
         for (const fileName of files) {
             await this.downloadFile(fileName);
-            // Small delay between downloads to avoid overwhelming the browser
             await new Promise(resolve => setTimeout(resolve, 300));
         }
     }
 
     /**
      * Download a single file
-     * @param {string} fileName - Name of the file to download
      */
     async downloadFile(fileName) {
         const filePath = this.currentPath === '/'
             ? fileName
             : this.currentPath.substring(1) + '/' + fileName;
 
-        // Create download URL with download parameter
         const downloadUrl = `/api/files/download/${encodeURIComponent(filePath)}`;
 
-        // Create invisible link and trigger download
         const link = document.createElement('a');
         link.href = downloadUrl;
         link.download = fileName;
@@ -247,13 +321,14 @@ export class FileBrowserModal {
     }
 
     /**
-     * Show the modal and load root directory
+     * Show the modal
      */
     show() {
         this.$modal.css('display', 'flex');
         this.currentPath = '/';
         this.selectedFiles.clear();
         this.updateSelectionUI();
+        this.hidePathError();
         this.loadDirectory('/');
     }
 
@@ -267,21 +342,21 @@ export class FileBrowserModal {
 
     /**
      * Load directory contents
-     * @param {string} path - Relative path to load
      */
     async loadDirectory(path) {
         if (this.isLoading) return;
         this.isLoading = true;
 
-        // Clear selection when changing directories
+        // Clear selection and errors
         this.selectedFiles.clear();
         this.updateSelectionUI();
+        this.hidePathError();
 
-        // Update current path display
+        // Update state and UI
         this.currentPath = path;
-        this.$currentPath.text('/recordings/ALTERNATE' + path);
+        this.updatePathInput(path);
 
-        // Show loading state
+        // Show loading
         this.$fileList.hide();
         this.$modal.find('.file-browser-empty').hide();
         this.$modal.find('.file-browser-loading').show();
@@ -294,11 +369,30 @@ export class FileBrowserModal {
                 throw new Error(data.error || 'Failed to load directory');
             }
 
-            this.currentFiles = data.files;  // Store for size calculation
+            // Check for error in response
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Check if directory exists
+            if (data.message && data.message.includes('does not exist')) {
+                this.showPathError('Directory does not exist');
+                this.$modal.find('.file-browser-empty').html(
+                    '<i class="fas fa-folder-open"></i> Directory not found'
+                ).show();
+                this.currentFiles = [];
+                return;
+            }
+
+            this.currentFiles = data.files;
             this.renderFileList(data.directories, data.files);
+
         } catch (error) {
             console.error('[FileBrowser] Error loading directory:', error);
-            this.showError(error.message);
+            this.showPathError(error.message || 'Failed to load directory');
+            this.$modal.find('.file-browser-empty').html(
+                `<i class="fas fa-exclamation-triangle"></i> ${this.escapeHtml(error.message)}`
+            ).show();
         } finally {
             this.isLoading = false;
             this.$modal.find('.file-browser-loading').hide();
@@ -306,19 +400,18 @@ export class FileBrowserModal {
     }
 
     /**
-     * Render file list with checkboxes for files
-     * @param {Array} directories - List of directories
-     * @param {Array} files - List of files
+     * Render file list
      */
     renderFileList(directories, files) {
         this.$fileList.empty();
 
         if (directories.length === 0 && files.length === 0) {
-            this.$modal.find('.file-browser-empty').show();
+            this.$modal.find('.file-browser-empty').html(
+                '<i class="fas fa-folder-open"></i> No files found'
+            ).show();
             return;
         }
 
-        // Add directories first (no checkbox for directories)
         directories.forEach(dir => {
             const modDate = new Date(dir.modified * 1000).toLocaleDateString();
             const $item = $(`
@@ -333,7 +426,6 @@ export class FileBrowserModal {
             this.$fileList.append($item);
         });
 
-        // Add files with checkboxes
         files.forEach(file => {
             const modDate = new Date(file.modified * 1000).toLocaleDateString();
             const size = this.formatFileSize(file.size);
@@ -355,8 +447,7 @@ export class FileBrowserModal {
     }
 
     /**
-     * Navigate to a subdirectory
-     * @param {string} dirName - Directory name to navigate to
+     * Navigate to subdirectory
      */
     navigateToDirectory(dirName) {
         const newPath = this.currentPath === '/'
@@ -366,7 +457,7 @@ export class FileBrowserModal {
     }
 
     /**
-     * Navigate up one directory level
+     * Navigate up one level
      */
     navigateUp() {
         if (this.currentPath === '/') return;
@@ -378,36 +469,30 @@ export class FileBrowserModal {
     }
 
     /**
-     * Play a video file
-     * @param {string} fileName - Name of the file to play
+     * Play video file
      */
     playVideo(fileName) {
-        // Construct the file path
         const filePath = this.currentPath === '/'
             ? fileName
             : this.currentPath.substring(1) + '/' + fileName;
 
-        // Update preview section
         $('#file-preview-name').text(fileName);
 
-        // Set video source
         const videoUrl = `/api/files/stream/${encodeURIComponent(filePath)}`;
         this.$previewVideo.attr('src', videoUrl);
         this.$previewVideo[0].load();
         this.$previewVideo[0].play().catch(e => {
-            console.log('[FileBrowser] Autoplay prevented, user must click play');
+            console.log('[FileBrowser] Autoplay prevented');
         });
 
-        // Show preview section
         this.$previewSection.show();
 
-        // Highlight selected item (visual selection, not checkbox)
         this.$fileList.find('li').removeClass('selected');
         this.$fileList.find(`li[data-name="${this.escapeHtml(fileName)}"]`).addClass('selected');
     }
 
     /**
-     * Close the video preview
+     * Close preview
      */
     closePreview() {
         this.$previewVideo[0].pause();
@@ -417,19 +502,7 @@ export class FileBrowserModal {
     }
 
     /**
-     * Show error message
-     * @param {string} message - Error message to display
-     */
-    showError(message) {
-        const $empty = this.$modal.find('.file-browser-empty');
-        $empty.html(`<i class="fas fa-exclamation-triangle"></i> ${this.escapeHtml(message)}`);
-        $empty.show();
-    }
-
-    /**
-     * Format file size in human-readable format
-     * @param {number} bytes - Size in bytes
-     * @returns {string} Formatted size string
+     * Format file size
      */
     formatFileSize(bytes) {
         if (bytes === 0) return '0 B';
@@ -440,9 +513,7 @@ export class FileBrowserModal {
     }
 
     /**
-     * Escape HTML to prevent XSS
-     * @param {string} text - Text to escape
-     * @returns {string} Escaped text
+     * Escape HTML
      */
     escapeHtml(text) {
         const div = document.createElement('div');
@@ -451,7 +522,7 @@ export class FileBrowserModal {
     }
 }
 
-// Auto-initialize when DOM is ready
+// Auto-initialize
 $(document).ready(() => {
     window.fileBrowserModal = new FileBrowserModal();
 });

@@ -1038,19 +1038,59 @@
     color: #ccc;
 }
 
-.file-browser-path i {
+.file-browser-path > i {
     color: #FF9800;
+    flex-shrink: 0;
 }
 
-.file-browser-path #current-path {
+/* Editable path input */
+.path-input {
     flex: 1;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
     color: #fff;
-    word-break: break-all;
+    padding: 6px 10px;
+    font-family: monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.path-input:focus {
+    border-color: #7C4DFF;
+}
+
+.path-input.error {
+    border-color: #f44336;
+}
+
+#path-go-btn {
+    padding: 6px 12px;
+    min-width: auto;
 }
 
 #path-up-btn {
     padding: 6px 10px;
     min-width: auto;
+}
+
+/* Path error message */
+.path-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    border-radius: 6px;
+    color: #f44336;
+    font-size: 13px;
+    margin-top: 8px;
+}
+
+.path-error i {
+    flex-shrink: 0;
 }
 
 /* File list container */

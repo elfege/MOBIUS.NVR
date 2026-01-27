@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 27, 2026 11:30 EST*
+*Last updated: January 27, 2026 12:40 EST*
 
 Branch: `main`
 
@@ -25,9 +25,10 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 27, 2026 (10:30-11:30 EST)
+## Session: January 27, 2026 (10:30-12:40 EST)
 
-**Context compaction occurred at ~11:00 EST**
+**Context compaction #1 occurred at ~11:00 EST**
+**Context compaction #2 occurred at ~11:25 EST**
 
 ### Work Completed
 
@@ -52,7 +53,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
    - Verified working: `09:00-12:00 EST` → `14:00-17:00 UTC` (5-hour offset correct)
    - Committed: `7243e47`
 
-4. **File Browser for Alternate Recording Sources** (11:15-11:30)
+4. **File Browser for Alternate Recording Sources** (11:15-11:20)
    - New "Read from a different source" button in timeline modal
    - File browser modal to navigate directories and play video files
    - Backend APIs:
@@ -66,6 +67,39 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
      - `static/js/modals/file-browser-modal.js` - Created new JS module
      - `app.py` - Added file browser API endpoints
    - Committed: `1d4f052`
+
+5. **File Browser - Multi-Select Download** (11:20-11:23)
+   - Added checkboxes for file selection
+   - Added Select All checkbox in header
+   - Added Download Selected button with file count display
+   - Added `/api/files/download/<path>` endpoint for file downloads
+   - Sequential download of multiple files via invisible anchor links
+   - Files modified:
+     - `templates/streams.html` - Selection controls HTML
+     - `static/css/components/timeline-modal.css` - Selection/checkbox styles
+     - `static/js/modals/file-browser-modal.js` - Download functionality
+     - `app.py` - Download endpoint
+
+6. **File Browser - Editable Path with Error Handling** (11:23-11:27)
+   - Changed path display from `<span>` to `<input>` field
+   - Added Go button to navigate to entered path
+   - Added path error display (red border + message)
+   - Enter key triggers navigation
+   - Error clears automatically on input change
+   - Files modified:
+     - `templates/streams.html` - Editable path input HTML
+     - `static/css/components/timeline-modal.css` - Input and error styles
+     - `static/js/modals/file-browser-modal.js` - Path editing logic
+   - Committed: `5c6c9bc`
+
+7. **File Browser - Download URL Encoding Fix** (11:27-11:45)
+   - Bug: Download failed with "File wasn't available on site"
+   - Root cause: `encodeURIComponent(filePath)` was encoding slashes as `%2F`, breaking Flask route matching
+   - Fix: Encode each path segment separately: `filePath.split('/').map(encodeURIComponent).join('/')`
+   - Container restart required to reload Flask app with download endpoint
+   - Files modified:
+     - `static/js/modals/file-browser-modal.js` - Fixed URL encoding in `downloadFile()`
+   - Committed: `1305233`
 
 ---
 

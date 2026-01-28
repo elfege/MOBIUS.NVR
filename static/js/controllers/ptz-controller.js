@@ -28,6 +28,7 @@ export class PTZController {
 
         this.setupEventListeners();
         this.setupPresetListeners();
+        this.setupPresetManagementListeners();
         this.setupReversePanListeners();
         this.updateButtonStates();
 
@@ -709,15 +710,27 @@ export class PTZController {
         });
     }
 
-    async loadPresets(cameraSerial, retryCount = 0) {
+    /**
+     * Load presets for a camera
+     * @param {string} cameraSerial - Camera serial number
+     * @param {number} retryCount - Current retry attempt (internal)
+     * @param {boolean} refresh - If true, bypass cache and fetch fresh from camera
+     */
+    async loadPresets(cameraSerial, retryCount = 0, refresh = false) {
         const maxRetries = 3;
         const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
 
         try {
-            console.log('[PTZ] Loading presets for camera:', cameraSerial, retryCount > 0 ? `(retry ${retryCount}/${maxRetries})` : '');
+            console.log('[PTZ] Loading presets for camera:', cameraSerial,
+                retryCount > 0 ? `(retry ${retryCount}/${maxRetries})` : '',
+                refresh ? '(refresh=true)' : '');
+
+            const url = refresh
+                ? `/api/ptz/${cameraSerial}/presets?refresh=true`
+                : `/api/ptz/${cameraSerial}/presets`;
 
             const response = await $.ajax({
-                url: `/api/ptz/${cameraSerial}/presets`,
+                url: url,
                 method: 'GET',
                 timeout: 10000
             });
@@ -829,6 +842,315 @@ export class PTZController {
 
         setTimeout(() => {
             $feedback.fadeOut(500, function () {
+                $(this).remove();
+            });
+        }, 2000);
+    }
+
+    // =========================================================================
+    // Preset Management Methods (create, overwrite, delete)
+    // =========================================================================
+
+    /**
+     * Setup event listeners for preset management (save, delete, form controls)
+     */
+    setupPresetManagementListeners() {
+        // Enable/disable delete button based on dropdown selection
+        $(document).on('change', '.ptz-preset-select', (event) => {
+            const $select = $(event.currentTarget);
+            const $container = $select.closest('.ptz-presets-container');
+            const $deleteBtn = $container.find('.ptz-preset-delete-btn');
+            const selectedToken = $select.val();
+
+            // Enable delete button only when a preset is selected
+            $deleteBtn.prop('disabled', !selectedToken);
+
+            // Show overwrite option if preset is selected and form is visible
+            const $form = $container.find('.ptz-preset-form');
+            const $overwriteLabel = $form.find('.ptz-preset-overwrite-label');
+            if ($form.is(':visible')) {
+                if (selectedToken) {
+                    const selectedName = $select.find('option:selected').text();
+                    $overwriteLabel.find('span').text(`Overwrite "${selectedName}"`);
+                    $overwriteLabel.show();
+                } else {
+                    $overwriteLabel.hide();
+                    $form.find('.ptz-preset-overwrite-checkbox').prop('checked', false);
+                }
+            }
+        });
+
+        // Save button click - show form
+        $(document).on('click', '.ptz-preset-save-btn', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const $btn = $(event.currentTarget);
+            const $streamItem = $btn.closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+            const name = $streamItem.data('camera-name');
+
+            // Set current camera if not already set
+            if (serial && serial !== this.currentCamera?.serial) {
+                this.setCurrentCamera(serial, name);
+                this.setBridgeReady(true);
+            }
+
+            this.showPresetForm($streamItem);
+        });
+
+        // Cancel button - hide form
+        $(document).on('click', '.ptz-preset-cancel-btn', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const $streamItem = $(event.currentTarget).closest('.stream-item');
+            this.hidePresetForm($streamItem);
+        });
+
+        // Confirm save button - save preset
+        $(document).on('click', '.ptz-preset-confirm-btn', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const $btn = $(event.currentTarget);
+            const $streamItem = $btn.closest('.stream-item');
+            const $container = $streamItem.find('.ptz-presets-container');
+            const $form = $container.find('.ptz-preset-form');
+            const $nameInput = $form.find('.ptz-preset-name-input');
+            const $overwriteCheckbox = $form.find('.ptz-preset-overwrite-checkbox');
+            const $select = $container.find('.ptz-preset-select');
+
+            const serial = $streamItem.data('camera-serial');
+            const presetName = $nameInput.val().trim();
+            const overwrite = $overwriteCheckbox.is(':checked');
+            const selectedToken = overwrite ? $select.val() : null;
+
+            if (!presetName) {
+                $nameInput.css('border-color', '#f44336');
+                $nameInput.focus();
+                return;
+            }
+
+            // Disable button during save
+            $btn.prop('disabled', true);
+
+            const success = await this.savePreset(serial, presetName, selectedToken);
+
+            $btn.prop('disabled', false);
+
+            if (success) {
+                this.hidePresetForm($streamItem);
+            }
+        });
+
+        // Delete button click - delete selected preset
+        $(document).on('click', '.ptz-preset-delete-btn', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const $btn = $(event.currentTarget);
+            const $streamItem = $btn.closest('.stream-item');
+            const $container = $streamItem.find('.ptz-presets-container');
+            const $select = $container.find('.ptz-preset-select');
+
+            const serial = $streamItem.data('camera-serial');
+            const name = $streamItem.data('camera-name');
+            const selectedToken = $select.val();
+            const selectedName = $select.find('option:selected').text();
+
+            if (!selectedToken) return;
+
+            // Set current camera if not already set
+            if (serial && serial !== this.currentCamera?.serial) {
+                this.setCurrentCamera(serial, name);
+                this.setBridgeReady(true);
+            }
+
+            // Confirm deletion
+            if (!confirm(`Delete preset "${selectedName}"?`)) {
+                return;
+            }
+
+            // Disable button during delete
+            $btn.prop('disabled', true);
+
+            await this.deletePreset(serial, selectedToken, selectedName);
+
+            // Re-enable will happen via updatePresetUI
+        });
+
+        // Enter key in name input triggers save
+        $(document).on('keydown', '.ptz-preset-name-input', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                const $streamItem = $(event.currentTarget).closest('.stream-item');
+                $streamItem.find('.ptz-preset-confirm-btn').click();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                const $streamItem = $(event.currentTarget).closest('.stream-item');
+                this.hidePresetForm($streamItem);
+            }
+        });
+
+        // Clear error styling on input
+        $(document).on('input', '.ptz-preset-name-input', (event) => {
+            $(event.currentTarget).css('border-color', '');
+        });
+    }
+
+    /**
+     * Show the preset save form for a camera
+     * @param {jQuery} $streamItem - The stream item element
+     */
+    showPresetForm($streamItem) {
+        const $container = $streamItem.find('.ptz-presets-container');
+        const $form = $container.find('.ptz-preset-form');
+        const $nameInput = $form.find('.ptz-preset-name-input');
+        const $overwriteLabel = $form.find('.ptz-preset-overwrite-label');
+        const $overwriteCheckbox = $form.find('.ptz-preset-overwrite-checkbox');
+        const $select = $container.find('.ptz-preset-select');
+
+        // Reset form
+        $nameInput.val('').css('border-color', '');
+        $overwriteCheckbox.prop('checked', false);
+
+        // Show/hide overwrite option based on dropdown selection
+        const selectedToken = $select.val();
+        if (selectedToken) {
+            const selectedName = $select.find('option:selected').text();
+            $overwriteLabel.find('span').text(`Overwrite "${selectedName}"`);
+            $overwriteLabel.show();
+        } else {
+            $overwriteLabel.hide();
+        }
+
+        $form.slideDown(150);
+        $nameInput.focus();
+    }
+
+    /**
+     * Hide the preset save form
+     * @param {jQuery} $streamItem - The stream item element
+     */
+    hidePresetForm($streamItem) {
+        const $container = $streamItem.find('.ptz-presets-container');
+        const $form = $container.find('.ptz-preset-form');
+        $form.slideUp(150);
+    }
+
+    /**
+     * Save current camera position as a preset.
+     * @param {string} serial - Camera serial number
+     * @param {string} presetName - Name for the preset
+     * @param {string|null} overwriteToken - If set, overwrite this existing preset
+     * @returns {Promise<boolean>} Success status
+     */
+    async savePreset(serial, presetName, overwriteToken = null) {
+        try {
+            console.log(`[PTZ] Saving preset "${presetName}" for ${serial}`, overwriteToken ? `(overwriting ${overwriteToken})` : '(new)');
+
+            const payload = { name: presetName };
+            if (overwriteToken) {
+                payload.token = overwriteToken;  // Backend uses token to identify preset to overwrite
+            }
+
+            const response = await $.ajax({
+                url: `/api/ptz/${serial}/preset`,
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(payload),
+                timeout: 15000
+            });
+
+            if (response.success) {
+                console.log(`[PTZ] Preset "${presetName}" saved successfully`);
+                this.showFeedback(`Preset saved: ${presetName}`, 'success');
+
+                // Reload presets for this camera (refresh=true to bypass cache)
+                await this.loadPresets(serial, 0, true);
+
+                return true;
+            } else {
+                console.error('[PTZ] Failed to save preset:', response.error);
+                this.showFeedback(`Failed: ${response.error}`, 'error');
+                return false;
+            }
+        } catch (error) {
+            console.error('[PTZ] Error saving preset:', error);
+            this.showFeedback('Error saving preset', 'error');
+            return false;
+        }
+    }
+
+    /**
+     * Delete a preset.
+     * @param {string} serial - Camera serial number
+     * @param {string} presetToken - Preset token to delete
+     * @param {string} presetName - Preset name (for feedback)
+     * @returns {Promise<boolean>} Success status
+     */
+    async deletePreset(serial, presetToken, presetName) {
+        try {
+            console.log(`[PTZ] Deleting preset "${presetName}" (${presetToken}) for ${serial}`);
+
+            const response = await $.ajax({
+                url: `/api/ptz/${serial}/preset/${presetToken}`,
+                method: 'DELETE',
+                timeout: 15000
+            });
+
+            if (response.success) {
+                console.log(`[PTZ] Preset "${presetName}" deleted successfully`);
+                this.showFeedback(`Preset deleted: ${presetName}`, 'success');
+
+                // Reload presets for this camera (refresh=true to bypass cache)
+                await this.loadPresets(serial, 0, true);
+
+                return true;
+            } else {
+                console.error('[PTZ] Failed to delete preset:', response.error);
+                this.showFeedback(`Failed: ${response.error}`, 'error');
+                return false;
+            }
+        } catch (error) {
+            console.error('[PTZ] Error deleting preset:', error);
+            this.showFeedback('Error deleting preset', 'error');
+            return false;
+        }
+    }
+
+    /**
+     * Show feedback message to user
+     * @param {string} message - Message to display
+     * @param {string} type - 'success', 'error', or 'warning'
+     */
+    showFeedback(message, type = 'info') {
+        const bgColors = {
+            success: 'rgba(76, 175, 80, 0.9)',
+            error: 'rgba(244, 67, 54, 0.9)',
+            warning: 'rgba(255, 152, 0, 0.9)',
+            info: 'rgba(0, 0, 0, 0.85)'
+        };
+
+        const $feedback = $('<div>')
+            .addClass('ptz-preset-feedback')
+            .text(message)
+            .css({
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                padding: '15px 30px',
+                backgroundColor: bgColors[type] || bgColors.info,
+                color: 'white',
+                borderRadius: '8px',
+                zIndex: 10000,
+                fontSize: '16px',
+                fontWeight: 'bold',
+                boxShadow: '0 4px 20px rgba(0, 0, 0, 0.5)'
+            });
+
+        $('body').append($feedback);
+
+        setTimeout(() => {
+            $feedback.fadeOut(400, function () {
                 $(this).remove();
             });
         }, 2000);

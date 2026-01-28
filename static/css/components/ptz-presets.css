@@ -69,10 +69,148 @@
     }
 }
 
+/* Preset row - dropdown with save/delete buttons */
+.ptz-preset-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.ptz-preset-row .ptz-preset-select {
+    flex: 1;
+    min-width: 0; /* Allow shrinking */
+}
+
+/* Preset action buttons (save, delete) */
+.ptz-preset-save-btn,
+.ptz-preset-delete-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ptz-preset-save-btn:hover {
+    background-color: rgba(33, 150, 243, 0.5);
+    border-color: #2196F3;
+}
+
+.ptz-preset-delete-btn:hover:not(:disabled) {
+    background-color: rgba(244, 67, 54, 0.5);
+    border-color: #f44336;
+}
+
+.ptz-preset-delete-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* Preset form (name input, overwrite checkbox, buttons) */
+.ptz-preset-form {
+    margin-top: 6px;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+}
+
+.ptz-preset-name-input {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.ptz-preset-name-input:focus {
+    outline: none;
+    border-color: #2196F3;
+}
+
+.ptz-preset-name-input::placeholder {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.ptz-preset-overwrite-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 6px;
+    cursor: pointer;
+}
+
+.ptz-preset-overwrite-label input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.ptz-preset-form-buttons {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.ptz-preset-confirm-btn,
+.ptz-preset-cancel-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.ptz-preset-confirm-btn {
+    background-color: rgba(76, 175, 80, 0.5);
+    color: white;
+}
+
+.ptz-preset-confirm-btn:hover {
+    background-color: rgba(76, 175, 80, 0.8);
+    border-color: #4CAF50;
+}
+
+.ptz-preset-cancel-btn {
+    background-color: rgba(0, 0, 0, 0.6);
+    color: white;
+}
+
+.ptz-preset-cancel-btn:hover {
+    background-color: rgba(244, 67, 54, 0.5);
+    border-color: #f44336;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .ptz-preset-select {
         font-size: 14px;
         padding: 8px;
+    }
+
+    .ptz-preset-save-btn,
+    .ptz-preset-delete-btn {
+        width: 32px;
+        height: 32px;
     }
 }

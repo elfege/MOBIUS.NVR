@@ -1016,21 +1016,26 @@ export class PTZController {
         const $select = $container.find('.ptz-preset-select');
 
         // Reset form
-        $nameInput.val('').css('border-color', '');
+        $nameInput.css('border-color', '');
         $overwriteCheckbox.prop('checked', false);
 
         // Show/hide overwrite option based on dropdown selection
+        // Pre-populate name field with selected preset name if one is selected
         const selectedToken = $select.val();
         if (selectedToken) {
             const selectedName = $select.find('option:selected').text();
+            $nameInput.val(selectedName);  // Pre-populate with selected preset name
             $overwriteLabel.find('span').text(`Overwrite "${selectedName}"`);
             $overwriteLabel.show();
+            $overwriteCheckbox.prop('checked', true);  // Default to overwrite when preset selected
         } else {
+            $nameInput.val('');  // Clear if no preset selected
             $overwriteLabel.hide();
         }
 
         $form.slideDown(150);
         $nameInput.focus();
+        $nameInput.select();  // Select all text for easy replacement
     }
 
     /**
@@ -1082,7 +1087,10 @@ export class PTZController {
             }
         } catch (error) {
             console.error('[PTZ] Error saving preset:', error);
-            this.showFeedback('Error saving preset', 'error');
+            // Show more detailed error message
+            const errorMsg = error.responseJSON?.error || error.statusText || error.message || 'Unknown error';
+            console.error('[PTZ] Error details:', errorMsg, 'Status:', error.status);
+            this.showFeedback(`Error saving preset: ${errorMsg}`, 'error');
             return false;
         }
     }

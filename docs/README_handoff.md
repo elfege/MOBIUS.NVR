@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 27, 2026 13:00 EST*
+*Last updated: January 27, 2026 22:48 EST*
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
@@ -25,11 +25,13 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 27, 2026 (10:30-13:00 EST)
+## Session: January 27, 2026 (10:30-21:23 EST)
 
 **Context compaction #1 occurred at ~11:00 EST**
 **Context compaction #2 occurred at ~11:25 EST**
 **Context compaction #3 occurred at ~12:42 EST**
+**Context compaction #4 occurred at ~21:22 EST**
+**Context compaction #5 occurred at ~22:47 EST**
 
 ### Work Completed
 
@@ -120,6 +122,42 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
      - `app.py` - New recordings download endpoint
    - Committed: `3a430e1`
 
+9. **Timeline Preset Buttons Fix** (after 13:00)
+   - Bug: "Last Hour", "Last 6 Hours", etc. buttons no longer loading timeline
+   - Root cause: `$(e.target).data('hours')` wasn't finding data attribute reliably
+   - Fix: Changed to `$(e.target).closest('.timeline-preset-btn').data('hours')` with `isNaN` check
+   - File modified: `static/js/modals/timeline-playback-modal.js`
+   - Committed: `e8a19b3`
+
+10. **HLS Fullscreen Quality Degradation Fix** (after 13:00)
+    - Bug: Fullscreen mode quickly degrades to low resolution, "Refresh HLS" restores HD immediately
+    - Root cause: HLS.js ABR (Adaptive Bitrate) enabled by default, incorrectly downgrading quality
+    - Fix: Added `abrEnabled: false` and `startLevel: -1` to HLS config
+    - File modified: `static/js/streaming/hls-stream.js`
+    - Committed: `635e58e`
+
+11. **PTZ Preset Management UI** (21:22-21:45)
+    - User request: "Now we need to be able to create new setpoint: select an existing one, overwrite."
+    - Added save/delete buttons next to preset dropdown
+    - Added inline form for preset name with "Overwrite selected" checkbox option
+    - Implemented preset management JS: `setupPresetManagementListeners()`, `savePreset()`, `deletePreset()`
+    - Updated API endpoint to accept `token` parameter for overwriting existing presets
+    - Added refresh parameter to `loadPresets()` to bypass cache after save/delete
+    - Files modified:
+      - `templates/streams.html` - Preset row with buttons, inline form
+      - `static/css/components/ptz-presets.css` - Styling for new UI
+      - `static/js/controllers/ptz-controller.js` - Preset management logic
+      - `app.py` - Pass preset_token to ONVIFPTZHandler.set_preset()
+    - Committed: `40d0a02`
+
+12. **PTZ Preset - Dropdown Selection Persistence Fix** (22:47)
+    - Bug: "Error saving preset" displayed when trying to save
+    - Root cause: When selecting a preset from dropdown, the `change` event handler called `gotoPreset()` which reset the dropdown to empty (`$select.val('')`)
+    - When save button clicked with "Overwrite selected" checked, `$select.val()` returned empty string
+    - Fix: Added check in preset dropdown `change` handler - if save form is visible, don't navigate and don't reset the dropdown
+    - File modified: `static/js/controllers/ptz-controller.js`
+    - Committed: `1bc926e`
+
 ---
 
 ## Session: January 26, 2026 (13:00-14:20 EST)
@@ -188,6 +226,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Testing Needed:**
 
+- [ ] Test PTZ preset save/delete/overwrite functionality on PTZ cameras
 - [ ] Test SV3C with new rtsp_input parameters (15s timeout, reconnect options)
 - [ ] Test power-cycle UI in settings modal
 - [ ] Verify auto power-cycle is disabled by default

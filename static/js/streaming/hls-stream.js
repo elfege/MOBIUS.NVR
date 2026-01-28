@@ -445,14 +445,20 @@ export class HLSStreamManager {
             liveSyncDurationCount: 1,
             liveMaxLatencyDurationCount: 2,
             maxLiveSyncPlaybackRate: 1.5,
-            backBufferLength: 5
+            backBufferLength: 5,
+            // Disable ABR - stay at highest quality (fixes fullscreen degradation)
+            abrEnabled: false,
+            startLevel: -1  // -1 = auto-select highest available
         } : {
             enableWorker: true,
             lowLatencyMode: false,
             liveSyncDurationCount: 3,
             liveMaxLatencyDurationCount: 5,
             maxLiveSyncPlaybackRate: 1.5,
-            backBufferLength: 10
+            backBufferLength: 10,
+            // Disable ABR - stay at highest quality (fixes fullscreen degradation)
+            abrEnabled: false,
+            startLevel: -1  // -1 = auto-select highest available
         };
 
         // Merge with camera-specific overrides

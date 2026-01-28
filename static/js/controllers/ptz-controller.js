@@ -927,11 +927,14 @@ export class PTZController {
             const $select = $container.find('.ptz-preset-select');
 
             const serial = $streamItem.data('camera-serial');
+            const cameraType = $streamItem.data('camera-type');  // Get camera type for Eufy vs ONVIF handling
             const presetName = $nameInput.val().trim();
             const overwrite = $overwriteCheckbox.is(':checked');
             const selectedToken = overwrite ? $select.val() : null;
 
-            if (!presetName) {
+            // For ONVIF cameras, preset name is required
+            // For Eufy cameras, name is ignored (uses index only)
+            if (cameraType !== 'eufy' && !presetName) {
                 $nameInput.css('border-color', '#f44336');
                 $nameInput.focus();
                 return;
@@ -940,7 +943,7 @@ export class PTZController {
             // Disable button during save
             $btn.prop('disabled', true);
 
-            const success = await this.savePreset(serial, presetName, selectedToken);
+            const success = await this.savePreset(serial, presetName, selectedToken, cameraType);
 
             $btn.prop('disabled', false);
 
@@ -1053,15 +1056,40 @@ export class PTZController {
      * @param {string} serial - Camera serial number
      * @param {string} presetName - Name for the preset
      * @param {string|null} overwriteToken - If set, overwrite this existing preset
+     * @param {string} cameraType - Camera type (eufy, amcrest, reolink, etc.)
      * @returns {Promise<boolean>} Success status
      */
-    async savePreset(serial, presetName, overwriteToken = null) {
+    async savePreset(serial, presetName, overwriteToken = null, cameraType = null) {
         try {
-            console.log(`[PTZ] Saving preset "${presetName}" for ${serial}`, overwriteToken ? `(overwriting ${overwriteToken})` : '(new)');
+            console.log(`[PTZ] Saving preset "${presetName}" for ${serial} (type: ${cameraType})`, overwriteToken ? `(overwriting ${overwriteToken})` : '(new)');
 
-            const payload = { name: presetName };
-            if (overwriteToken) {
-                payload.token = overwriteToken;  // Backend uses token to identify preset to overwrite
+            let payload;
+
+            // Eufy cameras use numeric index (0-3), not name/token like ONVIF
+            if (cameraType === 'eufy') {
+                // For Eufy: overwriteToken IS the index (0, 1, 2, 3)
+                // If overwriting, use that index. Otherwise, use next available.
+                let presetIndex;
+                if (overwriteToken !== null && overwriteToken !== '') {
+                    presetIndex = parseInt(overwriteToken, 10);
+                } else {
+                    // Find next available index (0-3)
+                    const existingPresets = this.presets[serial] || [];
+                    const usedIndices = existingPresets.map(p => parseInt(p.token, 10)).filter(i => !isNaN(i));
+                    presetIndex = [0, 1, 2, 3].find(i => !usedIndices.includes(i));
+                    if (presetIndex === undefined) {
+                        this.showFeedback('All 4 Eufy preset slots are used. Select one to overwrite.', 'warning');
+                        return false;
+                    }
+                }
+                payload = { index: presetIndex };
+                console.log(`[PTZ] Eufy preset: using index ${presetIndex}`);
+            } else {
+                // ONVIF cameras (Amcrest, Reolink, etc.) use name and optional token
+                payload = { name: presetName };
+                if (overwriteToken) {
+                    payload.token = overwriteToken;  // Backend uses token to identify preset to overwrite
+                }
             }
 
             const response = await $.ajax({

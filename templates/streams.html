@@ -244,9 +244,32 @@
                     </button>
                 </div>
                 <div class="ptz-presets-container" style="display: none; margin-top: 8px;">
-                    <select class="ptz-preset-select">
-                        <option value="">-- Select Preset --</option>
-                    </select>
+                    <div class="ptz-preset-row">
+                        <select class="ptz-preset-select">
+                            <option value="">-- Select Preset --</option>
+                        </select>
+                        <button class="ptz-preset-save-btn" title="Save current position as preset">
+                            <i class="fas fa-save"></i>
+                        </button>
+                        <button class="ptz-preset-delete-btn" title="Delete selected preset" disabled>
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                    <div class="ptz-preset-form" style="display: none;">
+                        <input type="text" class="ptz-preset-name-input" placeholder="Preset name..." maxlength="32">
+                        <label class="ptz-preset-overwrite-label" style="display: none;">
+                            <input type="checkbox" class="ptz-preset-overwrite-checkbox">
+                            <span>Overwrite selected</span>
+                        </label>
+                        <div class="ptz-preset-form-buttons">
+                            <button class="ptz-preset-confirm-btn" title="Save preset">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="ptz-preset-cancel-btn" title="Cancel">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="ptz-options-container">
                     <label class="ptz-option-label">

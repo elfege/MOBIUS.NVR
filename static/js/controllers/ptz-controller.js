@@ -671,6 +671,14 @@ export class PTZController {
                 const serial = $streamItem.data('camera-serial');
                 const name = $streamItem.data('camera-name');
 
+                // Check if save form is visible - if so, don't navigate, just update overwrite target
+                const $form = $streamItem.find('.ptz-preset-form');
+                if ($form.is(':visible')) {
+                    // Form is visible - user is selecting preset to overwrite, don't navigate
+                    console.log('[PTZ] Save form visible - not navigating to preset, keeping selection for overwrite');
+                    return;
+                }
+
                 // Set current camera if not already set
                 if (serial && serial !== this.currentCamera?.serial) {
                     this.setCurrentCamera(serial, name);

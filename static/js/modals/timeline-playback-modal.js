@@ -131,8 +131,11 @@ export class TimelinePlaybackModal {
 
         // Date presets
         $('.timeline-preset-btn').on('click', (e) => {
-            const hours = parseInt($(e.target).data('hours'));
-            this.setPresetRange(hours);
+            const $btn = $(e.target).closest('.timeline-preset-btn');
+            const hours = parseInt($btn.data('hours'));
+            if (!isNaN(hours)) {
+                this.setPresetRange(hours);
+            }
         });
 
         // Zoom controls

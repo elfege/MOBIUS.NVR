@@ -3301,12 +3301,19 @@ def api_ptz_goto_preset(camera_serial, preset_token):
 @app.route('/api/ptz/<camera_serial>/preset', methods=['POST'])
 @csrf.exempt
 def api_ptz_set_preset(camera_serial):
-    """Save current position as preset"""
+    """Save current position as preset
+
+    Request body:
+        name: Preset name (required for ONVIF)
+        index: Preset index 0-3 (required for Eufy)
+        token: Preset token to overwrite (optional, ONVIF only)
+    """
     try:
         # Get preset info from request
         data = request.get_json()
         preset_name = data.get('name')
         preset_index = data.get('index')  # For Eufy: slot index 0-3
+        preset_token = data.get('token')  # For ONVIF: token to overwrite existing preset
 
         # Validate camera
         camera = camera_repo.get_camera(camera_serial)
@@ -3345,13 +3352,16 @@ def api_ptz_set_preset(camera_serial):
         if camera_type not in ['amcrest', 'reolink']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
 
-        # Set preset
-        success, message = ONVIFPTZHandler.set_preset(camera_serial, preset_name, camera)
+        # Set preset (preset_token allows overwriting an existing preset)
+        success, message = ONVIFPTZHandler.set_preset(
+            camera_serial, preset_name, camera, preset_token=preset_token
+        )
 
         return jsonify({
             'success': success,
             'camera': camera_serial,
             'preset_name': preset_name,
+            'preset_token': preset_token,
             'message': message
         })
 

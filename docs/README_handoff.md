@@ -15,13 +15,50 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 27, 2026 23:28 EST*
+*Last updated: January 28, 2026 20:12 EST*
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Session: January 28, 2026 (20:00-20:12 EST)
+
+**Context compaction occurred at session start (continued from Jan 27 session)**
+
+### Work Completed
+
+1. **Presence Sensors Feature** (20:00-20:12)
+   - User request: Add presence indicators to top navbar with toggle functionality
+   - People to track: Elfege, Jessica
+   - Features implemented:
+     - PostgreSQL `presence` table with person_name, is_present, hubitat_device_id, timestamps
+     - PresenceService with Hubitat presence sensor integration and PostgREST persistence
+     - Flask API endpoints:
+       - `GET /api/presence` - Get all presence statuses
+       - `GET /api/presence/<name>` - Get specific person's status
+       - `POST /api/presence/<name>/toggle` - Toggle presence
+       - `POST /api/presence/<name>/set` - Set presence explicitly
+       - `GET /api/presence/devices` - Get Hubitat presence sensors
+       - `POST /api/presence/<name>/device` - Associate Hubitat device
+     - Navbar UI with clickable buttons showing present (green) / away (red) status
+     - Auto-refresh every 30 seconds
+   - Files created:
+     - `psql/migrations/003_add_presence_table.sql` - Database migration
+     - `services/presence/presence_service.py` - Presence service
+     - `services/presence/__init__.py` - Package init
+     - `static/css/components/presence-indicators.css` - Styling
+     - `static/js/controllers/presence-controller.js` - Frontend controller
+   - Files modified:
+     - `psql/init-db.sql` - Added presence table schema
+     - `app.py` - Added PresenceService import, initialization, and API routes
+     - `templates/streams.html` - Added presence container and CSS/JS includes
+   - Database migration executed: Created presence table with Elfege and Jessica
+   - Committed: `1d490e4`
+   - **NOTE**: Container restart (`./start.sh`) required to load new Python service
 
 ---
 
@@ -232,6 +269,10 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## TODO List
 
+**IMMEDIATE - Container Restart Needed:**
+
+- [ ] Run `./start.sh` to reload Flask with new presence service - **USER ACTION REQUIRED**
+
 **HIGH PRIORITY - Recording Database:**
 
 - [x] Timeline timezone fix (completed Jan 27) - local time now converted to UTC for DB queries
@@ -240,6 +281,15 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 **HIGH PRIORITY - Security:**
 
 - [ ] **Eufy bridge credentials**: Stop writing `username`/`password` to `eufy_bridge.json`
+
+**Presence Feature (Jan 28):**
+
+- [x] PostgreSQL presence table created
+- [x] Presence service with Hubitat integration
+- [x] Flask API endpoints
+- [x] Navbar UI with toggle buttons
+- [x] Database migration executed (Elfege, Jessica added)
+- [ ] **Optional**: Associate Hubitat presence sensor devices with people
 
 **Two-Way Audio - Phase 2:**
 

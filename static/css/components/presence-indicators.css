@@ -1,0 +1,117 @@
+/* Presence Indicators - Navbar buttons for household presence status */
+
+.presence-container {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-right: 12px;
+}
+
+.presence-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 2px solid transparent;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.presence-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Away state - grayed out with red indicator */
+.presence-btn.away {
+    opacity: 0.7;
+    border-color: rgba(244, 67, 54, 0.5);
+}
+
+.presence-btn.away .presence-status-dot {
+    background-color: #f44336;
+    box-shadow: 0 0 6px rgba(244, 67, 54, 0.6);
+}
+
+/* Present state - full opacity with green indicator */
+.presence-btn.present {
+    opacity: 1;
+    border-color: rgba(76, 175, 80, 0.5);
+}
+
+.presence-btn.present .presence-status-dot {
+    background-color: #4CAF50;
+    box-shadow: 0 0 8px rgba(76, 175, 80, 0.8);
+}
+
+/* Status dot indicator */
+.presence-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+/* Person name */
+.presence-name {
+    font-size: 13px;
+    letter-spacing: 0.3px;
+}
+
+/* Clicking animation */
+.presence-btn:active {
+    transform: scale(0.95);
+}
+
+/* Loading state */
+.presence-btn.loading {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.presence-btn.loading .presence-status-dot {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* Responsive - smaller on mobile */
+@media (max-width: 768px) {
+    .presence-btn {
+        padding: 5px 8px;
+        font-size: 12px;
+    }
+
+    .presence-status-dot {
+        width: 8px;
+        height: 8px;
+    }
+
+    .presence-container {
+        gap: 4px;
+        margin-right: 8px;
+    }
+}
+
+/* Very small screens - icons only */
+@media (max-width: 480px) {
+    .presence-name {
+        display: none;
+    }
+
+    .presence-btn {
+        padding: 6px 8px;
+    }
+}

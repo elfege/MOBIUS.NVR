@@ -310,5 +310,51 @@ USING (true)
 WITH CHECK (true);
 
 -- =============================================================================
+-- PRESENCE SENSORS TABLE
+-- =============================================================================
+-- Tracks presence status for household members
+-- Integrates with Hubitat presence sensors and supports manual toggle
+
+CREATE TABLE presence (
+    -- Primary key
+    id BIGSERIAL PRIMARY KEY,
+
+    -- Person identification
+    person_name VARCHAR(100) NOT NULL UNIQUE,
+
+    -- Presence status
+    is_present BOOLEAN DEFAULT false,
+
+    -- Hubitat device integration (optional)
+    hubitat_device_id VARCHAR(50),
+
+    -- Timestamps
+    last_changed_at TIMESTAMPTZ DEFAULT NOW(),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Source of last change
+    last_changed_by VARCHAR(50) DEFAULT 'manual'
+        CHECK (last_changed_by IN ('manual', 'hubitat', 'api'))
+);
+
+-- Index for fast lookups
+CREATE INDEX idx_presence_person_name
+    ON presence(person_name);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON presence TO nvr_anon;
+GRANT USAGE, SELECT ON SEQUENCE presence_id_seq TO nvr_anon;
+
+-- RLS policy
+ALTER TABLE presence ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow all for presence"
+ON presence
+FOR ALL
+TO nvr_anon
+USING (true)
+WITH CHECK (true);
+
+-- =============================================================================
 -- INITIALIZATION COMPLETE
 -- =============================================================================

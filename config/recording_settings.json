@@ -376,7 +376,7 @@
         "detection_method": "ffmpeg",
         "recording_source": "rtsp",
         "segment_duration_sec": 30,
-        "pre_buffer_enabled": false,
+        "pre_buffer_enabled": true,
         "pre_buffer_sec": 5,
         "post_buffer_sec": 10,
         "max_age_days": 7,

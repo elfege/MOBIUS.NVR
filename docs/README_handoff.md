@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 27, 2026 22:48 EST*
+*Last updated: January 27, 2026 23:28 EST*
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
@@ -157,6 +157,29 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
     - Fix: Added check in preset dropdown `change` handler - if save form is visible, don't navigate and don't reset the dropdown
     - File modified: `static/js/controllers/ptz-controller.js`
     - Committed: `1bc926e`
+
+13. **PTZ Preset Form UX Improvements** (23:15)
+    - User request: Pre-populate preset name field with currently selected preset name
+    - Changes in `showPresetForm()`:
+      - Pre-populate name input with selected preset name when one is selected
+      - Auto-check "Overwrite" checkbox when preset is selected (smart default)
+      - Select all text in name input for easy replacement
+    - Added detailed error message display when preset save fails (shows actual error instead of generic message)
+    - File modified: `static/js/controllers/ptz-controller.js`
+    - Committed: `3c889bd`
+    - **NOTE**: Preset token is passed as a string (ONVIF PresetToken), not an array index
+
+14. **PTZ Preset Save Fix for Eufy Cameras** (23:25)
+    - Bug: "Preset index required for Eufy (0-3)" error when saving preset on Eufy camera
+    - Root cause: Frontend was sending `{ name, token }` for ALL camera types, but Eufy needs `{ index: 0-3 }`
+    - **Eufy vs ONVIF preset systems**:
+      - **Eufy**: Uses numeric index (0-3) - only 4 preset slots, no names
+      - **ONVIF** (Amcrest, Reolink): Uses string `name` and `token` parameters
+    - Fix: Updated `savePreset()` to detect camera type via `data-camera-type` attribute and send appropriate payload
+    - For Eufy: Sends `{ index: parseInt(token) }` - finds next available slot (0-3) if creating new
+    - For ONVIF: Sends `{ name: presetName, token: overwriteToken }` as before
+    - File modified: `static/js/controllers/ptz-controller.js`
+    - Committed: `d9935e2`
 
 ---
 

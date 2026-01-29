@@ -59,6 +59,7 @@ from services.camera_state_tracker import camera_state_tracker
 from services.stream_watchdog import StreamWatchdog
 from services.power.hubitat_power_service import HubitatPowerService
 from services.power.unifi_poe_service import UnifiPoePowerService
+from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
@@ -627,6 +628,17 @@ try:
         print("⚠️  UniFi POE Power Service disabled (credentials not configured)")
 except Exception as e:
     print(f"⚠️  UniFi POE Power Service startup warning: {e}")
+
+# ===== Start Presence Service =====
+# Provides household presence tracking with Hubitat integration
+presence_service = None
+try:
+    print("\n👥 Initializing Presence Service...")
+    presence_service = PresenceService()
+    presence_service.start()
+    print("✅ Presence Service started")
+except Exception as e:
+    print(f"⚠️  Presence Service startup warning: {e}")
 
 # ===== Auto-start Reolink Motion Detection =====
 if reolink_motion_service:
@@ -3933,6 +3945,191 @@ def api_hubitat_cameras():
 
     cameras = hubitat_power_service.get_hubitat_cameras()
     return jsonify(cameras)
+
+
+########################################################
+#           👥 PRESENCE API ROUTES 👥
+########################################################
+
+@app.route('/api/presence', methods=['GET'])
+@csrf.exempt
+def api_get_all_presence():
+    """
+    Get presence status for all tracked people.
+
+    Returns:
+        JSON array of presence objects with person_name, is_present,
+        hubitat_device_id, last_changed_at, last_changed_by
+    """
+    if not presence_service:
+        return jsonify({
+            'success': False,
+            'error': 'Presence Service not available'
+        }), 503
+
+    statuses = presence_service.get_all_presence()
+    return jsonify([s.to_dict() for s in statuses])
+
+
+@app.route('/api/presence/<person_name>', methods=['GET'])
+@csrf.exempt
+def api_get_presence(person_name):
+    """
+    Get presence status for a specific person.
+
+    Args:
+        person_name: Name of the person
+
+    Returns:
+        JSON object with presence status or 404 if not found
+    """
+    if not presence_service:
+        return jsonify({
+            'success': False,
+            'error': 'Presence Service not available'
+        }), 503
+
+    status = presence_service.get_presence(person_name)
+    if status is None:
+        return jsonify({
+            'success': False,
+            'error': f'Person not found: {person_name}'
+        }), 404
+
+    return jsonify(status.to_dict())
+
+
+@app.route('/api/presence/<person_name>/toggle', methods=['POST'])
+@csrf.exempt
+def api_toggle_presence(person_name):
+    """
+    Toggle presence status for a person.
+
+    Args:
+        person_name: Name of the person
+
+    Returns:
+        JSON object with new status or error
+    """
+    if not presence_service:
+        return jsonify({
+            'success': False,
+            'error': 'Presence Service not available'
+        }), 503
+
+    new_status = presence_service.toggle_presence(person_name)
+    if new_status is None:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to toggle presence for {person_name}'
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'person_name': person_name,
+        'is_present': new_status
+    })
+
+
+@app.route('/api/presence/<person_name>/set', methods=['POST'])
+@csrf.exempt
+def api_set_presence(person_name):
+    """
+    Set presence status for a person.
+
+    Args:
+        person_name: Name of the person
+
+    JSON Body:
+        is_present: boolean - New presence status
+
+    Returns:
+        JSON object with result
+    """
+    if not presence_service:
+        return jsonify({
+            'success': False,
+            'error': 'Presence Service not available'
+        }), 503
+
+    data = request.get_json() or {}
+    is_present = data.get('is_present')
+
+    if is_present is None:
+        return jsonify({
+            'success': False,
+            'error': 'is_present field required'
+        }), 400
+
+    success = presence_service.set_presence(person_name, bool(is_present), source='api')
+    if not success:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to set presence for {person_name}'
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'person_name': person_name,
+        'is_present': is_present
+    })
+
+
+@app.route('/api/presence/devices', methods=['GET'])
+@csrf.exempt
+def api_get_presence_devices():
+    """
+    Get all Hubitat devices with PresenceSensor capability.
+
+    Returns:
+        JSON array of device objects with id, label, capabilities
+    """
+    if not presence_service:
+        return jsonify({
+            'success': False,
+            'error': 'Presence Service not available'
+        }), 503
+
+    devices = presence_service.get_presence_devices()
+    return jsonify(devices)
+
+
+@app.route('/api/presence/<person_name>/device', methods=['POST'])
+@csrf.exempt
+def api_set_presence_device(person_name):
+    """
+    Associate a Hubitat presence sensor with a person.
+
+    Args:
+        person_name: Name of the person
+
+    JSON Body:
+        device_id: string|null - Hubitat device ID (or null to remove)
+
+    Returns:
+        JSON object with result
+    """
+    if not presence_service:
+        return jsonify({
+            'success': False,
+            'error': 'Presence Service not available'
+        }), 503
+
+    data = request.get_json() or {}
+    device_id = data.get('device_id')
+
+    success = presence_service.set_hubitat_device(person_name, device_id)
+    if not success:
+        return jsonify({
+            'success': False,
+            'error': f'Failed to set device for {person_name}'
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'person_name': person_name,
+        'device_id': device_id
+    })
 
 
 ########################################################

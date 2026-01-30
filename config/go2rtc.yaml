@@ -46,11 +46,7 @@ streams:
   laundry_room:
     - "onvif://${REOLINK_API_USERNAME}:${REOLINK_API_PASSWORD}@192.168.10.118:8000"
 
-  # Note: UniFi camera (68d49398005cf203e400043f) is NOT included here
-  # because it's accessed via UniFi Protect controller (192.168.10.3), not direct RTSP/ONVIF.
-  # UniFi Protect has its own two-way audio mechanism that would need
-  # separate implementation via the Protect API.
-
-  # NOTE: Eufy Doorbell (T821451024233587) requires eufy-security-ws bridge
-  # Standard go2rtc image doesn't support eufy:// scheme
-  # See: https://github.com/bropat/eufy-security-ws for P2P streaming solution
+# Note: UniFi camera (68d49398005cf203e400043f) is NOT included here
+# because it's accessed via UniFi Protect controller (192.168.10.3), not direct RTSP/ONVIF.
+# UniFi Protect has its own two-way audio mechanism that would need
+# separate implementation via the Protect API.

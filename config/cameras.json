@@ -1679,9 +1679,7 @@
         "buffer_size": 20,
         "stream": "mainStream"
       },
-      "rtsp": {
-        "_note": "Eufy doorbell requires eufy-security-ws bridge for P2P streaming - not yet configured"
-      },
+      "rtsp": null,
       "hidden": true,
       "ui_health_monitor": true,
       "reversed_pan": false,

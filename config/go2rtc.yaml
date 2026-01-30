@@ -51,8 +51,6 @@ streams:
   # UniFi Protect has its own two-way audio mechanism that would need
   # separate implementation via the Protect API.
 
-  # Eufy Doorbell (T821451024233587) - "Entrance door"
-  # Uses go2rtc native Eufy P2P support - no HomeBase required
-  # This provides RTSP output at rtsp://go2rtc:8555/entrance_door
-  entrance_door:
-    - "eufy://${EUFY_BRIDGE_USERNAME}:${EUFY_BRIDGE_PASSWORD}@T821451024233587"
+  # NOTE: Eufy Doorbell (T821451024233587) requires eufy-security-ws bridge
+  # Standard go2rtc image doesn't support eufy:// scheme
+  # See: https://github.com/bropat/eufy-security-ws for P2P streaming solution

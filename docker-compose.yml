@@ -239,6 +239,9 @@ services:
       # Reolink credentials (for LAUNDRY ROOM E1 Zoom ONVIF backchannel)
       - REOLINK_API_USER=${REOLINK_API_USER}
       - REOLINK_API_PASSWORD=${REOLINK_API_PASSWORD}
+      # Eufy credentials (for P2P streaming via native go2rtc eufy support)
+      - EUFY_BRIDGE_USERNAME=${EUFY_BRIDGE_USERNAME}
+      - EUFY_BRIDGE_PASSWORD=${EUFY_BRIDGE_PASSWORD}
     networks:
       - nvr-net
 

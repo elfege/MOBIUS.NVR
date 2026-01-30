@@ -15,13 +15,54 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 28, 2026 20:12 EST*
+*Last updated: January 29, 2026 21:56 EST*
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Session: January 29, 2026 (21:00-21:56 EST)
+
+### Work Completed
+
+1. **Eufy Doorbell P2P Streaming via go2rtc** (21:00-21:30)
+   - User request: Add Eufy doorbell T821451024233587 without HomeBase 3
+   - Investigation: Doorbell was `hidden: true` in cameras.json, credentials were `null`
+   - Solution: Use go2rtc native Eufy P2P support instead of RTSP
+   - Files modified:
+     - `config/go2rtc.yaml` - Added `entrance_door` stream with `eufy://` protocol
+     - `docker-compose.yml` - Added `EUFY_BRIDGE_USERNAME/PASSWORD` to go2rtc container
+     - `config/cameras.json` - Set `hidden: false`, `stream_type: "LL_HLS"`, RTSP pointing to go2rtc
+   - **STATUS**: Config done, testing blocked by disk full issue
+
+2. **Disk Full Issue - Root Cause** (21:30-21:45)
+   - `/mnt/sdc` at 100% capacity (1.1TB)
+   - `VIDEOSURVEILLANCE_FTP`: 622GB (old FTP camera data)
+   - `NVR_Recent/motion`: 380GB
+   - Root cause: Auto-migration scheduler was NEVER IMPLEMENTED (still a TODO)
+   - PostgreSQL crashing: "No space left on device"
+
+3. **Auto-Migration Background Thread** (21:45-21:55)
+   - User request: Implement thread-based monitoring, not scheduler
+   - Added to `services/recording/storage_migration.py`:
+     - `start_auto_migration_monitor(check_interval_seconds=300)` - monitors every 5 min
+     - `stop_auto_migration_monitor()` - graceful shutdown
+     - Triggers migration when `free_percent < min_free_space_percent` (20%)
+   - Added to `app.py`: Service initialization at startup
+   - Committed: `ed10ae7`
+
+4. **FTP Cleanup Script and vsftpd Config** (21:50-21:56)
+   - Updated `/etc/vsftpd.conf`: `local_root` changed to `/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP`
+   - Created `~/0_SCRIPTS/cleanup_video_surveillance.sh`:
+     - Deletes files older than `MAX_PERSISTENCE` days (default: 30)
+     - Logs to `/var/log/cleanup_video_surveillance.log`
+     - Silent when nothing to clean
+   - Updated `~/0_CRON/mycrontab_dellserver` - runs every 10 minutes
+   - User moving FTP data manually via rsync
 
 ---
 
@@ -269,40 +310,39 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ## TODO List
 
-**IMMEDIATE - Container Restart Needed:**
+**IMMEDIATE - Disk Space & Container Restart:**
 
-- [ ] Run `./start.sh` to reload Flask with new presence service - **USER ACTION REQUIRED**
+- [ ] Complete FTP data move to `/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP` - **USER IN PROGRESS**
+- [ ] Run `./start.sh` after disk space freed - **USER ACTION REQUIRED**
+- [ ] Run `updatecrontab` to enable FTP cleanup cron
+
+**Eufy Doorbell (Jan 29):**
+
+- [x] go2rtc config with Eufy P2P support
+- [x] docker-compose.yml updated with Eufy credentials for go2rtc
+- [x] cameras.json updated (hidden=false, rtsp pointing to go2rtc)
+- [ ] **Test doorbell stream** after container restart
+
+**Storage Auto-Migration (Jan 29):**
+
+- [x] Background thread monitors disk every 5 minutes
+- [x] Auto-triggers migration when capacity < 20% free
+- [x] Service starts at app boot
 
 **HIGH PRIORITY - Recording Database:**
 
-- [x] Timeline timezone fix (completed Jan 27) - local time now converted to UTC for DB queries
-- [ ] **Index remaining cameras** - only AMCREST_LOBBY and LIVING_REOLINK indexed (~80k files remaining)
+- [x] Timeline timezone fix (completed Jan 27)
+- [ ] **Index remaining cameras** - only AMCREST_LOBBY and LIVING_REOLINK indexed
 
 **HIGH PRIORITY - Security:**
 
 - [ ] **Eufy bridge credentials**: Stop writing `username`/`password` to `eufy_bridge.json`
 
-**Presence Feature (Jan 28):**
-
-- [x] PostgreSQL presence table created
-- [x] Presence service with Hubitat integration
-- [x] Flask API endpoints
-- [x] Navbar UI with toggle buttons
-- [x] Database migration executed (Elfege, Jessica added)
-- [ ] **Optional**: Associate Hubitat presence sensor devices with people
-
-**Two-Way Audio - Phase 2:**
-
-- [ ] Run `./start.sh` to reload go2rtc with credentials - **USER ACTION REQUIRED**
-- [ ] Test Reolink E1 Zoom ONVIF two-way audio
-- [ ] Create Flask handler for `protocol: onvif` routing
-
 **Testing Needed:**
 
-- [ ] Test PTZ preset save/delete/overwrite functionality on PTZ cameras
-- [ ] Test SV3C with new rtsp_input parameters (15s timeout, reconnect options)
-- [ ] Test power-cycle UI in settings modal
-- [ ] Verify auto power-cycle is disabled by default
+- [ ] Test Eufy doorbell go2rtc P2P stream
+- [ ] Test auto-migration triggers correctly
+- [ ] Test PTZ preset save/delete/overwrite on PTZ cameras
 
 **Future Enhancements:**
 

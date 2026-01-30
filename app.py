@@ -5613,11 +5613,15 @@ def get_storage_migration_service():
     """
     Get or create the StorageMigrationService singleton.
     Lazy initialization to avoid import issues at startup.
+    Starts auto-migration monitor on first initialization.
     """
     global _storage_migration_service
     if _storage_migration_service is None:
         from services.recording.storage_migration import StorageMigrationService
         _storage_migration_service = StorageMigrationService()
+        # Start auto-migration background monitor (checks every 5 minutes)
+        _storage_migration_service.start_auto_migration_monitor(check_interval_seconds=300)
+        logger.info("[STORAGE] Auto-migration monitor started (5 minute interval)")
     return _storage_migration_service
 
 
@@ -6171,6 +6175,15 @@ if __name__ == '__main__':
     print(f"🚀 Starting Unified NVR API...")
     print(f"📱 Web interface: http://{server_ip}:5000")
     print(f"🔧 API endpoints: http://{server_ip}:5000/api/")
+
+    # Initialize storage migration service with auto-migration monitor
+    # This starts a background thread that checks disk capacity every 5 minutes
+    # and automatically migrates old recordings when space is low
+    try:
+        get_storage_migration_service()
+        print(f"📦 Storage auto-migration monitor started (5 min interval)")
+    except Exception as e:
+        print(f"⚠️ Storage migration service failed to start: {e}")
 
     # NOTE: debug=False and use_reloader=False prevent Flask from spawning 2 processes
     # which caused duplicate auto-start attempts and MediaMTX "closing existing publisher" errors

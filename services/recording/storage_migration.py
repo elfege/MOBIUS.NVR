@@ -809,3 +809,79 @@ class StorageMigrationService:
             pass
 
         return stats
+
+    # =========================================================================
+    # AUTOMATIC MIGRATION BACKGROUND THREAD
+    # =========================================================================
+
+    def start_auto_migration_monitor(self, check_interval_seconds: int = 300):
+        """
+        Start a background thread that monitors disk usage and triggers
+        migration when capacity thresholds are exceeded.
+
+        This runs continuously, checking disk state every check_interval_seconds.
+        Migration is triggered when:
+        - Recent storage free space < min_free_space_percent
+
+        Args:
+            check_interval_seconds: How often to check disk state (default: 5 minutes)
+        """
+        import threading
+        import time
+
+        def monitor_loop():
+            logger.info(f"[AUTO-MIGRATE] Background monitor started (interval: {check_interval_seconds}s)")
+
+            while self._monitor_running:
+                try:
+                    # Check if migration is enabled
+                    if not self.config.is_migration_enabled():
+                        logger.debug("[AUTO-MIGRATE] Migration disabled in config, skipping check")
+                        time.sleep(check_interval_seconds)
+                        continue
+
+                    # Check recent storage capacity
+                    capacity_triggered, free_percent = self.check_capacity_trigger('recent')
+
+                    if capacity_triggered:
+                        logger.warning(f"[AUTO-MIGRATE] Capacity threshold triggered! "
+                                      f"Free: {free_percent:.1f}%, running migration...")
+
+                        # Run migration for all recording types
+                        for rec_type in self.RECORDING_TYPES:
+                            try:
+                                result = self.migrate_recent_to_archive(rec_type)
+                                if result.success_count > 0:
+                                    logger.info(f"[AUTO-MIGRATE] {rec_type}: migrated {result.success_count} files, "
+                                              f"freed {result.bytes_processed / (1024**3):.2f} GB")
+                            except Exception as e:
+                                logger.error(f"[AUTO-MIGRATE] Error migrating {rec_type}: {e}")
+
+                        # Re-check capacity after migration
+                        _, new_free_percent = self.check_capacity_trigger('recent')
+                        logger.info(f"[AUTO-MIGRATE] Migration complete. Free space: {new_free_percent:.1f}%")
+                    else:
+                        logger.debug(f"[AUTO-MIGRATE] Storage OK - free: {free_percent:.1f}%")
+
+                except Exception as e:
+                    logger.error(f"[AUTO-MIGRATE] Monitor error: {e}")
+
+                # Sleep until next check
+                time.sleep(check_interval_seconds)
+
+            logger.info("[AUTO-MIGRATE] Background monitor stopped")
+
+        # Initialize monitor state
+        self._monitor_running = True
+        self._monitor_thread = threading.Thread(target=monitor_loop, daemon=True, name="storage-migration-monitor")
+        self._monitor_thread.start()
+        logger.info("[AUTO-MIGRATE] Monitor thread started")
+
+    def stop_auto_migration_monitor(self):
+        """Stop the background migration monitor."""
+        if hasattr(self, '_monitor_running'):
+            self._monitor_running = False
+            logger.info("[AUTO-MIGRATE] Stopping monitor thread...")
+            if hasattr(self, '_monitor_thread') and self._monitor_thread.is_alive():
+                self._monitor_thread.join(timeout=10)
+                logger.info("[AUTO-MIGRATE] Monitor thread stopped")

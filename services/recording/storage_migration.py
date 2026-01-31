@@ -271,7 +271,9 @@ class StorageMigrationService:
 
     def _rsync_file(self, source: Path, dest: Path) -> Tuple[bool, str]:
         """
-        Move a file using rsync with remove-source-files.
+        Move a file from source to dest, preserving metadata.
+
+        Uses shutil.move (Python built-in) instead of rsync for container compatibility.
 
         Args:
             source: Source file path
@@ -280,22 +282,25 @@ class StorageMigrationService:
         Returns:
             Tuple of (success, error_message)
         """
+        import shutil
+
         try:
             # Ensure destination directory exists
             dest.parent.mkdir(parents=True, exist_ok=True)
 
-            # rsync -auz --remove-source-files preserves timestamps, compresses,
-            # only transfers newer files, and removes source after success
-            cmd = ['rsync', '-auz', '--remove-source-files', str(source), str(dest)]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            # shutil.move handles cross-filesystem moves (copy + delete)
+            shutil.move(str(source), str(dest))
 
-            if result.returncode == 0:
+            # Verify move succeeded
+            if dest.exists() and not source.exists():
+                return True, ""
+            elif dest.exists() and source.exists():
+                # Copy succeeded but source not deleted - try to remove
+                source.unlink()
                 return True, ""
             else:
-                return False, result.stderr.strip()
+                return False, "Move failed - destination not created"
 
-        except subprocess.TimeoutExpired:
-            return False, "rsync timed out after 5 minutes"
         except Exception as e:
             return False, str(e)
 

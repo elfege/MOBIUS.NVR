@@ -15,15 +15,46 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 31, 2026 01:25 EST*
+*Last updated: January 31, 2026 02:00 EST*
 
-**Context compaction occurred at 00:13 EST (Jan 31)**
+**Context compaction #2 occurred at 02:00 EST (Jan 31)**
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Session: January 31, 2026 (01:25-02:10 EST) - Progress Callbacks
+
+### Work Completed
+
+1. **Storage Migration Progress Indicator Fix** (01:25-01:55)
+   - Bug: Progress indicator showed "0 files processed" during operations
+   - Root cause: `update_migration_status()` only called at END of operations
+   - Fix: Implemented progress callback pattern for real-time updates
+   - Files modified:
+     - [storage_migration.py](services/recording/storage_migration.py) - Added `progress_callback` parameter to `reconcile_db_with_filesystem()` and `migrate_recent_to_archive()`
+     - [app.py](app.py) - Updated reconcile/migrate endpoints to pass callbacks
+   - Commit: `9b03184`
+
+2. **Hubitat Window Control Demonstration** (01:55-02:00)
+   - Successfully controlled Window Office South (Device ID 134) via Hubitat Maker API
+   - Sent open/close/stop commands to demonstrate smart home access
+   - Hub: 192.168.10.72, App: 268, Token in config
+
+3. **Storage Bars Real-Time Update** (02:00-02:10)
+   - Bug: Storage bars (Recent/Archive) not updating during migration
+   - Root cause: Auto-refresh was explicitly disabled during operations
+   - Fix: Added `updateStorageBars()` method, called every 5 seconds during progress polling
+   - File modified: [storage-status.js](static/js/settings/storage-status.js)
+   - Commit: `a5b1810`
+
+### Pending
+
+- Test real-time progress updates in Storage Status UI (browser refresh needed)
 
 ---
 

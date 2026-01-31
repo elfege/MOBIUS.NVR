@@ -400,6 +400,32 @@
     white-space: nowrap;
 }
 
+/* Cancel button in progress indicator */
+.storage-cancel-btn {
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 6px;
+    color: white;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.2s ease;
+}
+
+.storage-cancel-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.6);
+}
+
+.storage-cancel-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 /* ============================================================================
    SETTINGS SECTION
    ============================================================================ */

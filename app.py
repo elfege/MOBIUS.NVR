@@ -5681,8 +5681,9 @@ def api_storage_migrate():
         update_migration_status(in_progress=True, operation='migrate', reset=True)
         update_migration_status(in_progress=True, operation='migrate')
 
-        # Progress callback for real-time updates
+        # Progress callback for real-time updates (also checks for cancellation)
         def progress_callback(files_processed=None, files_total=None, current_file=None, bytes_processed=None, **kwargs):
+            check_migration_cancelled()  # Raises MigrationCancelled if cancel requested
             update_migration_status(
                 files_processed=files_processed,
                 files_total=files_total,
@@ -5712,6 +5713,17 @@ def api_storage_migrate():
             'skipped': result.skipped_count,
             'bytes_processed': result.bytes_processed,
             'errors': result.errors[:10] if result.errors else []
+        })
+
+    except MigrationCancelled:
+        logger.info("Migration cancelled by user")
+        update_migration_status(in_progress=False)
+        return jsonify({
+            'success': True,
+            'cancelled': True,
+            'operation': 'migrate',
+            'message': 'Migration cancelled by user',
+            'files_processed': _migration_status.get('files_processed', 0)
         })
 
     except Exception as e:
@@ -5806,8 +5818,9 @@ def api_storage_reconcile():
         update_migration_status(in_progress=True, operation='reconcile', reset=True)
         update_migration_status(in_progress=True, operation='reconcile')
 
-        # Progress callback for real-time updates
+        # Progress callback for real-time updates (also checks for cancellation)
         def progress_callback(files_processed=None, files_total=None, current_file=None, **kwargs):
+            check_migration_cancelled()  # Raises MigrationCancelled if cancel requested
             update_migration_status(
                 files_processed=files_processed,
                 files_total=files_total,
@@ -5829,6 +5842,17 @@ def api_storage_reconcile():
             'orphaned_removed': result.success_count,
             'failed': result.failed_count,
             'errors': result.errors[:10] if result.errors else []
+        })
+
+    except MigrationCancelled:
+        logger.info("Reconcile cancelled by user")
+        update_migration_status(in_progress=False)
+        return jsonify({
+            'success': True,
+            'cancelled': True,
+            'operation': 'reconcile',
+            'message': 'Reconcile cancelled by user',
+            'files_processed': _migration_status.get('files_processed', 0)
         })
 
     except Exception as e:
@@ -6033,13 +6057,19 @@ _migration_status = {
     'files_total': 0,
     'bytes_processed': 0,
     'current_file': None,
-    'errors': []
+    'errors': [],
+    'cancel_requested': False
 }
+
+
+class MigrationCancelled(Exception):
+    """Raised when migration is cancelled by user."""
+    pass
 
 
 def update_migration_status(in_progress=None, operation=None, files_processed=None,
                            files_total=None, bytes_processed=None, current_file=None,
-                           error=None, reset=False):
+                           error=None, reset=False, cancel_requested=None):
     """Update global migration status for real-time UI updates."""
     global _migration_status
     if reset:
@@ -6051,7 +6081,8 @@ def update_migration_status(in_progress=None, operation=None, files_processed=No
             'files_total': 0,
             'bytes_processed': 0,
             'current_file': None,
-            'errors': []
+            'errors': [],
+            'cancel_requested': False
         }
         return
 
@@ -6071,6 +6102,38 @@ def update_migration_status(in_progress=None, operation=None, files_processed=No
         _migration_status['current_file'] = current_file
     if error:
         _migration_status['errors'].append(error)
+    if cancel_requested is not None:
+        _migration_status['cancel_requested'] = cancel_requested
+
+
+def check_migration_cancelled():
+    """Check if migration cancellation was requested. Raises MigrationCancelled if so."""
+    if _migration_status.get('cancel_requested'):
+        raise MigrationCancelled("Migration cancelled by user")
+
+
+@app.route('/api/storage/cancel', methods=['POST'])
+@csrf.exempt
+def api_storage_cancel():
+    """
+    Cancel the current storage operation.
+    Sets a flag that the operation loop checks and stops gracefully.
+    """
+    if not _migration_status.get('in_progress'):
+        return jsonify({
+            'success': False,
+            'error': 'No operation in progress to cancel'
+        }), 400
+
+    operation = _migration_status.get('operation')
+    update_migration_status(cancel_requested=True)
+    logger.info(f"Storage operation '{operation}' cancellation requested")
+
+    return jsonify({
+        'success': True,
+        'message': f'Cancellation requested for {operation}',
+        'operation': operation
+    })
 
 
 @app.route('/api/storage/migration-status', methods=['GET'])

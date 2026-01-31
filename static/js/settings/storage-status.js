@@ -127,6 +127,36 @@ export class StorageStatus {
     }
 
     /**
+     * Cancel the current operation
+     */
+    async cancelOperation() {
+        if (!this.isOperationInProgress) {
+            console.log('[StorageStatus] No operation to cancel');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/storage/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                console.log('[StorageStatus] Cancel requested:', data.message);
+                // Update UI to show cancelling
+                $('#storage-progress-indicator .progress-operation').text('Cancelling...');
+                $('.storage-cancel-btn').prop('disabled', true).text('Cancelling...');
+            } else {
+                console.error('[StorageStatus] Cancel failed:', data.error);
+            }
+        } catch (error) {
+            console.error('[StorageStatus] Cancel request failed:', error);
+        }
+    }
+
+    /**
      * Trigger a storage operation (migrate, cleanup, reconcile)
      * @param {string} operation - Operation type
      * @param {string} recordingType - Recording type (optional)
@@ -457,6 +487,9 @@ export class StorageStatus {
                     <div class="progress-text">
                         <span class="progress-operation">Processing...</span>
                         <span class="progress-files">0 files</span>
+                        <button class="storage-cancel-btn" title="Cancel operation">
+                            <i class="fas fa-stop"></i> Cancel
+                        </button>
                         <span class="progress-bytes"></span>
                         <span class="progress-current"></span>
                     </div>
@@ -622,6 +655,11 @@ export class StorageStatus {
         $container.on('click', '.storage-action-btn', async (e) => {
             const operation = $(e.currentTarget).data('operation');
             await this.triggerOperation(operation);
+        });
+
+        // Setup event handler for cancel button
+        $container.on('click', '.storage-cancel-btn', async () => {
+            await this.cancelOperation();
         });
 
         // Setup event handlers for settings edit

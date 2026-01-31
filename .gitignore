@@ -143,6 +143,9 @@ coverage.xml
 **/backup/
 **/backups/
 **/archive/
+!docs/archive/
+!docs/archive/handoffs/
+!docs/archive/handoffs/**
 *archive*
 ARCHIVE/
 *~.bak

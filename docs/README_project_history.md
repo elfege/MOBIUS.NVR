@@ -15722,6 +15722,184 @@ Implemented volume control popup for stream audio (audio FROM camera TO browser)
 
 ---
 
+## January 26, 2026 (13:00-14:20 EST) - Config Sanitizer, Git Cleanup, Documentation
+
+Branch: `power_cycle_safety_fix_JAN_26_2026_a` (merged to main)
+
+### Work Completed
+
+1. **Config Sanitizer Pre-Commit Hook**
+   - Fixed `scripts/generate-cameras-example.py` to output to `config/` instead of project root
+   - Updated `.git/hooks/pre-commit` paths to stage files from `config/`
+
+2. **Gitignore Updates**
+   - Added exceptions for example files in `config/`: `cameras.json.example`, `recording_settings.json.example`, `go2rtc.yaml.example`
+   - Removed stale entry `!config/recording_config.json`
+
+3. **Git History Cleanup**
+   - Force pushed cleaned history to main (removed `cameras.json` from history)
+   - Deleted all remote branches except main
+
+4. **Documentation Updates**
+   - Updated `README.md` with: Two-Way Audio, Playback Volume Control, Power Cycle Safety, Config Sanitization, go2rtc in Docker services
+   - Updated `docs/nvr_engineering_architecture.html`: Level 8 Audio Architecture, Level 9 Power Management, changelog entries
+
+---
+
+## January 27, 2026 (10:30-23:25 EST) - Timeline, File Browser, PTZ Preset Management
+
+Branch: `timeline_download_files_JAN_27_2026_a`
+
+**Multiple context compactions throughout session**
+
+### Work Completed
+
+1. **Timeline Playback Bug Fix**
+   - Root cause: `recordings` table did not exist in PostgreSQL
+   - Fix: Ran `psql/init-db.sql` to create schema
+
+2. **Recording Indexer Script**
+   - Created `scripts/index_existing_recordings.py` to populate database from existing mp4 files
+   - Indexed 4,873 AMCREST_LOBBY and 14,367 LIVING_REOLINK recordings
+
+3. **Timeline API Timezone Fix**
+   - Problem: DB stores UTC, UI sends local time (EST) without timezone info
+   - Fix: Added pytz conversion in `app.py` for UTC before DB query
+   - Commit: `7243e47`
+
+4. **File Browser for Alternate Recording Sources**
+   - New "Read from a different source" button in timeline modal
+   - Backend APIs: `/api/files/browse`, `/api/files/stream/<path>`, `/api/files/download/<path>`
+   - Docker volume: `ALTERNATE_RECORDING_STORAGE` mounted at `/recordings/ALTERNATE`
+   - Features: Multi-select download, editable path input, error handling
+   - Files: `file-browser-modal.js`, `timeline-modal.css`, `app.py`
+   - Commits: `1d4f052`, `5c6c9bc`, `1305233`
+
+5. **Timeline Download Files Feature**
+   - Added "Download Files" button to timeline modal
+   - Multi-select checkboxes, Select All, sequential download with 300ms delay
+   - Backend: `/api/recordings/download/<path:filepath>` endpoint
+   - Commit: `3a430e1`
+
+6. **Timeline Preset Buttons Fix**
+   - Bug: "Last Hour", "Last 6 Hours" buttons not loading timeline
+   - Fix: Changed to `$(e.target).closest('.timeline-preset-btn').data('hours')` with `isNaN` check
+   - Commit: `e8a19b3`
+
+7. **HLS Fullscreen Quality Degradation Fix**
+   - Bug: Fullscreen degrades to low resolution
+   - Root cause: HLS.js ABR incorrectly downgrading quality
+   - Fix: Added `abrEnabled: false` and `startLevel: -1` to HLS config
+   - Commit: `635e58e`
+
+8. **PTZ Preset Management UI**
+   - Save/delete buttons next to preset dropdown
+   - Inline form for preset name with "Overwrite selected" checkbox
+   - Pre-populate name field, auto-check overwrite when preset selected
+   - Eufy vs ONVIF preset system handling (index 0-3 vs name/token)
+   - Commits: `40d0a02`, `1bc926e`, `3c889bd`, `d9935e2`
+
+---
+
+## January 28, 2026 (20:00-20:12 EST) - Presence Sensors Feature
+
+Branch: `timeline_download_files_JAN_27_2026_a`
+
+### Work Completed
+
+1. **Presence Sensors Feature**
+   - PostgreSQL `presence` table with person_name, is_present, hubitat_device_id, timestamps
+   - PresenceService with Hubitat presence sensor integration and PostgREST persistence
+   - Flask API endpoints:
+     - `GET /api/presence` - Get all presence statuses
+     - `GET /api/presence/<name>` - Get specific person's status
+     - `POST /api/presence/<name>/toggle` - Toggle presence
+     - `POST /api/presence/<name>/set` - Set presence explicitly
+     - `GET /api/presence/devices` - Get Hubitat presence sensors
+     - `POST /api/presence/<name>/device` - Associate Hubitat device
+   - Navbar UI with clickable buttons showing present (green) / away (red) status
+   - Auto-refresh every 30 seconds
+   - Files created: `psql/migrations/003_add_presence_table.sql`, `services/presence/presence_service.py`, `presence-indicators.css`, `presence-controller.js`
+   - Commit: `1d490e4`
+
+---
+
+## January 29, 2026 (21:00-21:56 EST) - Eufy Doorbell, Disk Full, Auto-Migration
+
+Branch: `timeline_download_files_JAN_27_2026_a`
+
+### Work Completed
+
+1. **Eufy Doorbell P2P Streaming via go2rtc**
+   - Doorbell T821451024233587 configured for go2rtc native Eufy P2P support
+   - Files: `config/go2rtc.yaml`, `docker-compose.yml`, `config/cameras.json`
+   - Status: Config done, testing blocked by disk full issue
+
+2. **Disk Full Issue - Root Cause**
+   - `/mnt/sdc` at 100% capacity (1.1TB)
+   - `VIDEOSURVEILLANCE_FTP`: 622GB, `NVR_Recent/motion`: 380GB
+   - Root cause: Auto-migration scheduler was never implemented
+
+3. **Auto-Migration Background Thread**
+   - `start_auto_migration_monitor(check_interval_seconds=300)` - monitors every 5 min
+   - `stop_auto_migration_monitor()` - graceful shutdown
+   - Triggers migration when `free_percent < min_free_space_percent` (20%)
+   - Commit: `ed10ae7`
+
+4. **FTP Cleanup Script**
+   - Updated `/etc/vsftpd.conf`: `local_root` to `/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP`
+   - Created `~/0_SCRIPTS/cleanup_video_surveillance.sh` with 30-day max persistence
+   - Added to crontab - runs every 10 minutes
+
+---
+
+## January 31, 2026 (00:13-14:07 EST) - Storage Migration, Digital Zoom
+
+Branch: `timeline_download_files_JAN_27_2026_a` (merged to main)
+
+### Work Completed
+
+1. **Storage Migration Working**
+   - Verified shutil.move fix in container
+   - Migration confirmed: 251 files (2.8GB) migrated to archive
+
+2. **Storage Settings UI**
+   - API Endpoints: `GET/POST /api/storage/settings`, `GET /api/storage/migration-status`
+   - Editable settings: migrate_after_days, delete_after_days, min_free_space_percent, max storage limits
+   - Real-time progress indicator with modal lock during operations
+   - Commit: `3e313d2`
+
+3. **Storage Migration Progress Callbacks**
+   - Fix: Progress indicator showed "0 files processed" during operations
+   - Implemented progress callback pattern for real-time updates
+   - Commit: `9b03184`
+
+4. **Storage Bars Real-Time Update**
+   - Added `updateStorageBars()` method, called every 5 seconds during progress polling
+   - Commit: `a5b1810`
+
+5. **Parallel Migration Implementation**
+   - ThreadPoolExecutor with semaphore for bounded parallelism
+   - Added `parallel_workers: 8` setting to recording_settings.json
+   - Commit: `87c2e0c`
+
+6. **Digital Zoom Feature**
+   - Client-side CSS `transform: scale()` for GPU-accelerated zoom (max 8x)
+   - Pan support (mouse drag / touch) when zoomed in
+   - Timeout-based detection (500ms) for optical zoom limit → switch to digital
+   - Mouse wheel zoom (scroll up/down), pinch-to-zoom gestures
+   - Zoom toward cursor/pinch center point
+   - Files: `static/js/utils/digital-zoom.js`, `stream-item.css`, `ptz-controller.js`
+   - Commits: `7fbdd97`, `893722e`, `58a1a58`
+
+7. **Git Cleanup - Untrack Credential Files**
+   - Removed from tracking: `config/cameras.json`, `config/go2rtc.yaml`, `config/recording_settings.json`
+   - Cleaned up `.gitignore` with clear sections
+   - Only `.example` files and `recording_config_loader.py` tracked in config/
+   - Commit: `cfd1362`
+
+---
+
 ## TODO List (Cumulative)
 
 **Completed (Jan 22-26, 2026):**
@@ -15745,8 +15923,35 @@ Implemented volume control popup for stream audio (audio FROM camera TO browser)
 - [x] FFmpeg params: skip underscore-prefixed documentation keys
 - [x] SV3C RTSP stability: longer timeouts + reconnect options
 
+**Completed (Jan 27-31, 2026):**
+
+- [x] Timeline playback bug fix (PostgreSQL schema)
+- [x] Recording indexer script for existing mp4 files
+- [x] Timeline API timezone fix (UTC conversion)
+- [x] File browser for alternate recording sources
+- [x] Timeline download files feature
+- [x] HLS fullscreen quality fix (disable ABR)
+- [x] PTZ preset management UI (save/delete/overwrite)
+- [x] Presence sensors feature with Hubitat integration
+- [x] Eufy doorbell P2P config via go2rtc
+- [x] Auto-migration background thread (monitors every 5 min)
+- [x] Storage settings UI with real-time progress
+- [x] Parallel migration with ThreadPoolExecutor
+- [x] Digital zoom feature (8x max, mouse wheel, pinch gestures)
+- [x] Git cleanup - untrack credential files from config/
+
+**IMMEDIATE - User Action Required:**
+
+- [ ] Complete FTP data move to `/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP`
+- [ ] Run `./start.sh` after disk space freed
+- [ ] Run `updatecrontab` to enable FTP cleanup cron
+
 **Testing Needed:**
 
+- [ ] Test digital zoom: zoom buttons, pan, reset (page refresh required)
+- [ ] Test Eufy doorbell go2rtc P2P stream
+- [ ] Test auto-migration triggers correctly
+- [ ] Test PTZ preset save/delete/overwrite on PTZ cameras
 - [ ] Test fullscreen quality recovery
 - [ ] Test iOS inline download with Share/Open in Tab buttons
 - [ ] Test connection monitor on slower tablets
@@ -15754,11 +15959,17 @@ Implemented volume control popup for stream audio (audio FROM camera TO browser)
 - [ ] Test power-cycle UI in settings modal
 - [ ] Verify auto power-cycle is disabled by default
 
+**HIGH PRIORITY:**
+
+- [ ] Index remaining cameras - only AMCREST_LOBBY and LIVING_REOLINK indexed
+- [ ] Eufy bridge credentials: Stop writing `username`/`password` to `eufy_bridge.json`
+
 **Future Enhancements:**
 
-- [x] Speaker volume control for talkback (individual per-camera volume)
+- [ ] **Multi-stream HD selection** - Select multiple streams to display in HD (main stream) with option to keep in sub mode
+- [ ] MJPEG resolution scaling for SV3C (FFmpeg post-processing)
+- [ ] MJPEG audio hybrid approach (audio via WebRTC alongside MJPEG video)
 - [ ] Two-way audio Phase 2: ONVIF backchannel via go2rtc
-- [ ] Scheduler integration (APScheduler) for automated migrations
 - [ ] Add pan/scroll for zoomed timeline
 - [ ] Re-enable SonicWall camera blocking with Eufy domain whitelist
 

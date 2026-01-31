@@ -9,6 +9,8 @@
  * - Parent container (.stream-item) already has overflow: hidden
  * - Tracks zoom level and pan offset per camera
  * - Supports mouse drag and touch pan when zoomed
+ * - Mouse wheel zoom support
+ * - Pinch-to-zoom gesture support for touch devices
  *
  * Integration:
  * - Called by PTZ controller when optical zoom reaches limit (timeout-based detection)
@@ -38,11 +40,24 @@ export class DigitalZoomManager {
             startPanY: 0
         };
 
+        // Track pinch-to-zoom state
+        this.pinchState = {
+            active: false,
+            cameraId: null,
+            initialDistance: 0,
+            initialZoom: 1.0,
+            centerX: 0,
+            centerY: 0
+        };
+
         // Bind event handlers for pan (need to reference for removal)
         this._onMouseMove = this._handleMouseMove.bind(this);
         this._onMouseUp = this._handleMouseUp.bind(this);
         this._onTouchMove = this._handleTouchMove.bind(this);
         this._onTouchEnd = this._handleTouchEnd.bind(this);
+
+        // Bind wheel handler
+        this._onWheel = this._handleWheel.bind(this);
 
         console.log('[DigitalZoom] Manager initialized', this.config);
     }
@@ -243,13 +258,17 @@ export class DigitalZoomManager {
 
     /**
      * Setup pan event listeners for mouse/touch drag.
+     * Also sets up wheel zoom and pinch-to-zoom.
      * @private
      */
     _setupPanListeners(cameraId, element) {
-        // Mouse events
+        // Mouse events for pan
         element.addEventListener('mousedown', (e) => this._handleMouseDown(e, cameraId));
 
-        // Touch events
+        // Mouse wheel for zoom
+        element.addEventListener('wheel', (e) => this._handleWheel(e, cameraId), { passive: false });
+
+        // Touch events for pan and pinch-to-zoom
         element.addEventListener('touchstart', (e) => this._handleTouchStart(e, cameraId), { passive: false });
 
         // Prevent default drag behavior on images
@@ -319,48 +338,238 @@ export class DigitalZoomManager {
         document.removeEventListener('mouseup', this._onMouseUp);
     }
 
+    // =========================================================================
+    // Mouse Wheel Zoom
+    // =========================================================================
+
+    /**
+     * Handle mouse wheel for zoom in/out.
+     * Wheel up = zoom in, wheel down = zoom out.
+     * @private
+     */
+    _handleWheel(e, cameraId) {
+        const state = this.zoomState.get(cameraId);
+        if (!state) return;
+
+        // Prevent page scroll
+        e.preventDefault();
+
+        // Determine zoom direction from wheel delta
+        // deltaY < 0 = wheel up = zoom in
+        // deltaY > 0 = wheel down = zoom out
+        const zoomIn = e.deltaY < 0;
+
+        // Get zoom point relative to element for zoom-toward-cursor
+        const rect = state.element.getBoundingClientRect();
+        const cursorX = e.clientX - rect.left;
+        const cursorY = e.clientY - rect.top;
+
+        // Calculate zoom step (smaller steps for smoother wheel zoom)
+        const wheelZoomStep = this.config.zoomStep * 0.5;
+        const oldLevel = state.level;
+
+        if (zoomIn) {
+            state.level = Math.min(state.level + wheelZoomStep, this.config.maxZoom);
+        } else {
+            state.level = Math.max(state.level - wheelZoomStep, this.config.minZoom);
+        }
+
+        // Reset pan when returning to 1.0x
+        if (state.level === this.config.minZoom) {
+            state.panX = 0;
+            state.panY = 0;
+        } else if (oldLevel !== state.level) {
+            // Adjust pan to zoom toward cursor position
+            this._adjustPanForZoom(cameraId, cursorX, cursorY, oldLevel, state.level);
+        }
+
+        this._applyTransform(cameraId);
+
+        // Dispatch custom event for UI updates
+        this._dispatchZoomEvent(cameraId, state.level);
+    }
+
+    /**
+     * Adjust pan position to zoom toward a specific point.
+     * This makes the zoom feel more natural - zooming toward where the cursor is.
+     * @private
+     */
+    _adjustPanForZoom(cameraId, cursorX, cursorY, oldLevel, newLevel) {
+        const state = this.zoomState.get(cameraId);
+        if (!state || !state.element) return;
+
+        const container = state.element.parentElement;
+        if (!container) return;
+
+        const containerWidth = container.clientWidth;
+        const containerHeight = container.clientHeight;
+
+        // Calculate cursor position relative to center
+        const centerX = containerWidth / 2;
+        const centerY = containerHeight / 2;
+        const offsetX = cursorX - centerX;
+        const offsetY = cursorY - centerY;
+
+        // Scale factor change
+        const scaleFactor = newLevel / oldLevel;
+
+        // Adjust pan to keep cursor point stationary
+        // The new pan should offset the scaling effect at the cursor position
+        const newPanX = state.panX * scaleFactor + offsetX * (1 - scaleFactor);
+        const newPanY = state.panY * scaleFactor + offsetY * (1 - scaleFactor);
+
+        // Calculate bounds for new zoom level
+        const scaledWidth = containerWidth * newLevel;
+        const scaledHeight = containerHeight * newLevel;
+        const maxPanX = (scaledWidth - containerWidth) / 2;
+        const maxPanY = (scaledHeight - containerHeight) / 2;
+
+        // Clamp to bounds
+        state.panX = Math.max(-maxPanX, Math.min(maxPanX, newPanX));
+        state.panY = Math.max(-maxPanY, Math.min(maxPanY, newPanY));
+    }
+
+    /**
+     * Dispatch custom event when zoom level changes.
+     * PTZ controller listens for this to update UI.
+     * @private
+     */
+    _dispatchZoomEvent(cameraId, level) {
+        const event = new CustomEvent('digitalzoomchange', {
+            detail: { cameraId, level },
+            bubbles: true
+        });
+        document.dispatchEvent(event);
+    }
+
+    // =========================================================================
+    // Touch Pan and Pinch-to-Zoom
+    // =========================================================================
+
     _handleTouchStart(e, cameraId) {
         const state = this.zoomState.get(cameraId);
-        if (!state || state.level <= this.config.minZoom) return;
-
-        // Only single touch for pan
-        if (e.touches.length !== 1) return;
+        if (!state) return;
 
         e.preventDefault();
 
-        const touch = e.touches[0];
+        // Two-finger touch = pinch-to-zoom
+        if (e.touches.length === 2) {
+            const distance = this._getTouchDistance(e.touches[0], e.touches[1]);
+            const center = this._getTouchCenter(e.touches[0], e.touches[1]);
 
-        this.dragState = {
-            active: true,
-            cameraId: cameraId,
-            startX: touch.clientX,
-            startY: touch.clientY,
-            startPanX: state.panX,
-            startPanY: state.panY
-        };
+            this.pinchState = {
+                active: true,
+                cameraId: cameraId,
+                initialDistance: distance,
+                initialZoom: state.level,
+                centerX: center.x,
+                centerY: center.y
+            };
 
-        document.addEventListener('touchmove', this._onTouchMove, { passive: false });
-        document.addEventListener('touchend', this._onTouchEnd);
+            // Cancel any pan operation
+            this.dragState.active = false;
+
+            document.addEventListener('touchmove', this._onTouchMove, { passive: false });
+            document.addEventListener('touchend', this._onTouchEnd);
+            return;
+        }
+
+        // Single touch = pan (only if zoomed)
+        if (e.touches.length === 1 && state.level > this.config.minZoom) {
+            const touch = e.touches[0];
+
+            this.dragState = {
+                active: true,
+                cameraId: cameraId,
+                startX: touch.clientX,
+                startY: touch.clientY,
+                startPanX: state.panX,
+                startPanY: state.panY
+            };
+
+            document.addEventListener('touchmove', this._onTouchMove, { passive: false });
+            document.addEventListener('touchend', this._onTouchEnd);
+        }
     }
 
     _handleTouchMove(e) {
-        if (!this.dragState.active) return;
-        if (e.touches.length !== 1) return;
-
         e.preventDefault();
 
-        const touch = e.touches[0];
-        const deltaX = touch.clientX - this.dragState.startX;
-        const deltaY = touch.clientY - this.dragState.startY;
+        // Handle pinch-to-zoom (two fingers)
+        if (this.pinchState.active && e.touches.length === 2) {
+            const state = this.zoomState.get(this.pinchState.cameraId);
+            if (!state) return;
 
-        this._updatePan(this.dragState.cameraId, deltaX, deltaY);
+            const newDistance = this._getTouchDistance(e.touches[0], e.touches[1]);
+            const scale = newDistance / this.pinchState.initialDistance;
+
+            // Calculate new zoom level
+            const oldLevel = state.level;
+            state.level = Math.max(
+                this.config.minZoom,
+                Math.min(this.config.maxZoom, this.pinchState.initialZoom * scale)
+            );
+
+            // Reset pan when returning to 1.0x
+            if (state.level === this.config.minZoom) {
+                state.panX = 0;
+                state.panY = 0;
+            } else {
+                // Adjust pan toward pinch center
+                const rect = state.element.getBoundingClientRect();
+                const cursorX = this.pinchState.centerX - rect.left;
+                const cursorY = this.pinchState.centerY - rect.top;
+                this._adjustPanForZoom(this.pinchState.cameraId, cursorX, cursorY, oldLevel, state.level);
+            }
+
+            this._applyTransform(this.pinchState.cameraId, true);
+            this._dispatchZoomEvent(this.pinchState.cameraId, state.level);
+            return;
+        }
+
+        // Handle pan (single finger)
+        if (this.dragState.active && e.touches.length === 1) {
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - this.dragState.startX;
+            const deltaY = touch.clientY - this.dragState.startY;
+
+            this._updatePan(this.dragState.cameraId, deltaX, deltaY);
+        }
     }
 
-    _handleTouchEnd() {
+    _handleTouchEnd(e) {
+        // End pinch-to-zoom
+        if (this.pinchState.active) {
+            this.pinchState.active = false;
+            this._dispatchZoomEvent(this.pinchState.cameraId, this.zoomState.get(this.pinchState.cameraId)?.level || 1.0);
+        }
+
+        // End pan
         this.dragState.active = false;
 
         document.removeEventListener('touchmove', this._onTouchMove);
         document.removeEventListener('touchend', this._onTouchEnd);
+    }
+
+    /**
+     * Calculate distance between two touch points.
+     * @private
+     */
+    _getTouchDistance(touch1, touch2) {
+        const dx = touch2.clientX - touch1.clientX;
+        const dy = touch2.clientY - touch1.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    /**
+     * Calculate center point between two touch points.
+     * @private
+     */
+    _getTouchCenter(touch1, touch2) {
+        return {
+            x: (touch1.clientX + touch2.clientX) / 2,
+            y: (touch1.clientY + touch2.clientY) / 2
+        };
     }
 
     /**

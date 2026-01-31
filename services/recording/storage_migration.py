@@ -19,7 +19,7 @@ import subprocess
 import requests
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Callable
 from dataclasses import dataclass, field
 
 import sys
@@ -360,7 +360,8 @@ class StorageMigrationService:
     # =========================================================================
 
     def migrate_recent_to_archive(self, recording_type: str = "motion",
-                                   force: bool = False) -> MigrationResult:
+                                   force: bool = False,
+                                   progress_callback: Optional[Callable] = None) -> MigrationResult:
         """
         Migrate recordings from recent to archive tier.
 
@@ -371,6 +372,8 @@ class StorageMigrationService:
         Args:
             recording_type: Type of recordings to migrate
             force: If True, migrate all eligible files regardless of thresholds
+            progress_callback: Optional callback(files_processed, files_total, current_file, bytes_processed)
+                              for real-time progress updates
 
         Returns:
             MigrationResult with operation details
@@ -412,10 +415,15 @@ class StorageMigrationService:
             logger.info(f"No eligible recordings found for migration ({recording_type})")
             return result
 
-        logger.info(f"Found {len(recordings)} recordings to migrate")
+        total_recordings = len(recordings)
+        logger.info(f"Found {total_recordings} recordings to migrate")
+
+        # Update progress with total count
+        if progress_callback:
+            progress_callback(files_processed=0, files_total=total_recordings, current_file=None)
 
         # Process each recording
-        for rec in recordings:
+        for idx, rec in enumerate(recordings):
             source_path = Path(rec.get('file_path', ''))
             recording_id = rec.get('id')
             camera_id = rec.get('camera_id')
@@ -510,6 +518,15 @@ class StorageMigrationService:
                     trigger_type=trigger_type,
                     success=False,
                     error_message=error
+                )
+
+            # Update progress after each file
+            if progress_callback:
+                progress_callback(
+                    files_processed=idx + 1,
+                    files_total=total_recordings,
+                    current_file=str(source_path),
+                    bytes_processed=result.bytes_processed
                 )
 
         # Cleanup empty directories
@@ -650,7 +667,7 @@ class StorageMigrationService:
     # DATABASE RECONCILIATION
     # =========================================================================
 
-    def reconcile_db_with_filesystem(self) -> MigrationResult:
+    def reconcile_db_with_filesystem(self, progress_callback: Optional[Callable] = None) -> MigrationResult:
         """
         Remove orphaned database entries where files no longer exist.
 
@@ -658,6 +675,10 @@ class StorageMigrationService:
         - Files manually deleted from disk
         - Disk failures
         - Inconsistent state after crashes
+
+        Args:
+            progress_callback: Optional callback(files_processed, files_total, current_file)
+                              for real-time progress updates
 
         Returns:
             MigrationResult with reconciliation details
@@ -674,20 +695,33 @@ class StorageMigrationService:
             logger.info("No recordings found in database")
             return result
 
-        logger.info(f"Checking {len(all_recordings)} recordings against filesystem")
+        total_records = len(all_recordings)
+        logger.info(f"Checking {total_records} recordings against filesystem")
 
         orphaned = []
+        checked = 0
 
+        # Phase 1: Find orphaned records (with progress updates)
         for rec in all_recordings:
             file_path = Path(rec.get('file_path', ''))
+            checked += 1
 
             if not file_path.exists():
                 orphaned.append(rec)
 
+            # Update progress every 100 records during scan phase
+            if progress_callback and checked % 100 == 0:
+                progress_callback(
+                    files_processed=0,
+                    files_total=total_records,
+                    current_file=f"Scanning... {checked}/{total_records} checked, {len(orphaned)} orphans found"
+                )
+
         logger.info(f"Found {len(orphaned)} orphaned database entries")
 
-        # Remove orphaned entries
-        for rec in orphaned:
+        # Phase 2: Remove orphaned entries (with progress updates)
+        total_orphans = len(orphaned)
+        for idx, rec in enumerate(orphaned):
             recording_id = rec.get('id')
             file_path = rec.get('file_path', '')
             camera_id = rec.get('camera_id')
@@ -717,6 +751,14 @@ class StorageMigrationService:
             else:
                 result.failed_count += 1
                 result.errors.append(f"Failed to delete orphaned entry {recording_id}")
+
+            # Update progress after each deletion
+            if progress_callback:
+                progress_callback(
+                    files_processed=idx + 1,
+                    files_total=total_orphans,
+                    current_file=file_path
+                )
 
         logger.info(f"Reconciliation complete: {result.success_count} orphaned entries removed")
 

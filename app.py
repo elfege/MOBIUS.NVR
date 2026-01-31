@@ -5670,8 +5670,19 @@ def api_storage_migrate():
         update_migration_status(in_progress=True, operation='migrate', reset=True)
         update_migration_status(in_progress=True, operation='migrate')
 
+        # Progress callback for real-time updates
+        def progress_callback(files_processed=None, files_total=None, current_file=None, bytes_processed=None, **kwargs):
+            update_migration_status(
+                files_processed=files_processed,
+                files_total=files_total,
+                current_file=current_file,
+                bytes_processed=bytes_processed
+            )
+
         migration_service = get_storage_migration_service()
-        result = migration_service.migrate_recent_to_archive(recording_type, force)
+        result = migration_service.migrate_recent_to_archive(
+            recording_type, force, progress_callback=progress_callback
+        )
 
         # Update migration status - complete
         update_migration_status(
@@ -5762,8 +5773,16 @@ def api_storage_reconcile():
         update_migration_status(in_progress=True, operation='reconcile', reset=True)
         update_migration_status(in_progress=True, operation='reconcile')
 
+        # Progress callback for real-time updates
+        def progress_callback(files_processed=None, files_total=None, current_file=None, **kwargs):
+            update_migration_status(
+                files_processed=files_processed,
+                files_total=files_total,
+                current_file=current_file
+            )
+
         migration_service = get_storage_migration_service()
-        result = migration_service.reconcile_db_with_filesystem()
+        result = migration_service.reconcile_db_with_filesystem(progress_callback=progress_callback)
 
         # Update migration status - complete
         update_migration_status(

@@ -547,6 +547,21 @@ export class PTZController {
                 this.showFeedback('Digital zoom reset', 'info');
             }
         });
+
+        // Listen for zoom changes from wheel/pinch gestures to update UI
+        $(document).on('digitalzoomchange', (event) => {
+            const { cameraId, level } = event.detail;
+            if (cameraId) {
+                this.updateDigitalZoomUI(cameraId);
+
+                // Update digital zoom mode tracking
+                if (level > 1.0) {
+                    this.digitalZoomMode.set(cameraId, true);
+                } else {
+                    this.digitalZoomMode.set(cameraId, false);
+                }
+            }
+        });
     }
 
     setupEventListeners() {

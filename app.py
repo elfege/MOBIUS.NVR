@@ -5665,8 +5665,19 @@ def api_storage_migrate():
         recording_type = data.get('recording_type', 'motion')
         force = data.get('force', False)
 
+        # Update migration status - in progress
+        update_migration_status(in_progress=True, operation='migrate', reset=True)
+        update_migration_status(in_progress=True, operation='migrate')
+
         migration_service = get_storage_migration_service()
         result = migration_service.migrate_recent_to_archive(recording_type, force)
+
+        # Update migration status - complete
+        update_migration_status(
+            in_progress=False,
+            files_processed=result.success_count,
+            bytes_processed=result.bytes_processed
+        )
 
         return jsonify({
             'success': True,
@@ -5682,6 +5693,7 @@ def api_storage_migrate():
 
     except Exception as e:
         logger.error(f"Storage migrate API error: {e}")
+        update_migration_status(in_progress=False, error=str(e))
         return jsonify({'error': str(e)}), 500
 
 
@@ -5703,8 +5715,19 @@ def api_storage_cleanup():
         recording_type = data.get('recording_type', 'motion')
         force = data.get('force', False)
 
+        # Update migration status - in progress
+        update_migration_status(in_progress=True, operation='cleanup', reset=True)
+        update_migration_status(in_progress=True, operation='cleanup')
+
         migration_service = get_storage_migration_service()
         result = migration_service.cleanup_archive(recording_type, force)
+
+        # Update migration status - complete
+        update_migration_status(
+            in_progress=False,
+            files_processed=result.success_count,
+            bytes_processed=result.bytes_processed
+        )
 
         return jsonify({
             'success': True,
@@ -5719,6 +5742,7 @@ def api_storage_cleanup():
 
     except Exception as e:
         logger.error(f"Storage cleanup API error: {e}")
+        update_migration_status(in_progress=False, error=str(e))
         return jsonify({'error': str(e)}), 500
 
 
@@ -5733,8 +5757,18 @@ def api_storage_reconcile():
         Reconciliation result with removed entry count
     """
     try:
+        # Update migration status - in progress
+        update_migration_status(in_progress=True, operation='reconcile', reset=True)
+        update_migration_status(in_progress=True, operation='reconcile')
+
         migration_service = get_storage_migration_service()
         result = migration_service.reconcile_db_with_filesystem()
+
+        # Update migration status - complete
+        update_migration_status(
+            in_progress=False,
+            files_processed=result.success_count
+        )
 
         return jsonify({
             'success': True,
@@ -5746,6 +5780,7 @@ def api_storage_reconcile():
 
     except Exception as e:
         logger.error(f"Storage reconcile API error: {e}")
+        update_migration_status(in_progress=False, error=str(e))
         return jsonify({'error': str(e)}), 500
 
 
@@ -5845,6 +5880,164 @@ def api_storage_operations():
     except Exception as e:
         logger.error(f"Storage operations API error: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/storage/settings', methods=['GET', 'POST'])
+@csrf.exempt
+def api_storage_settings():
+    """
+    Get or update storage migration settings.
+
+    GET: Returns current migration settings from recording_settings.json
+    POST: Updates migration settings (persisted to recording_settings.json)
+
+    Settings:
+        - age_threshold_days: Days before migrating to archive
+        - archive_retention_days: Days to keep files in archive before deletion
+        - min_free_space_percent: Migrate when free space drops below this %
+        - max_recent_storage_mb: Max size for recent storage (0 = unlimited)
+        - max_archive_storage_mb: Max size for archive storage (0 = unlimited)
+    """
+    import json
+
+    config_path = '/app/config/recording_settings.json'
+
+    try:
+        if request.method == 'GET':
+            # Read current settings
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+
+            migration = config.get('migration', {})
+            storage_limits = config.get('storage_limits', {})
+
+            return jsonify({
+                'success': True,
+                'settings': {
+                    'age_threshold_days': migration.get('age_threshold_days', 3),
+                    'archive_retention_days': migration.get('archive_retention_days', 90),
+                    'min_free_space_percent': migration.get('min_free_space_percent', 20),
+                    'max_recent_storage_mb': migration.get('max_recent_storage_mb', 0),
+                    'max_archive_storage_mb': migration.get('max_archive_storage_mb', 0),
+                    'enabled': migration.get('enabled', True)
+                }
+            })
+
+        else:  # POST - update settings
+            data = request.get_json() or {}
+
+            # Read current config
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+
+            # Ensure migration section exists
+            if 'migration' not in config:
+                config['migration'] = {}
+
+            # Update only provided fields
+            migration = config['migration']
+            if 'age_threshold_days' in data:
+                migration['age_threshold_days'] = int(data['age_threshold_days'])
+            if 'archive_retention_days' in data:
+                migration['archive_retention_days'] = int(data['archive_retention_days'])
+            if 'min_free_space_percent' in data:
+                migration['min_free_space_percent'] = int(data['min_free_space_percent'])
+            if 'max_recent_storage_mb' in data:
+                migration['max_recent_storage_mb'] = int(data['max_recent_storage_mb'])
+            if 'max_archive_storage_mb' in data:
+                migration['max_archive_storage_mb'] = int(data['max_archive_storage_mb'])
+            if 'enabled' in data:
+                migration['enabled'] = bool(data['enabled'])
+
+            # Write updated config
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+
+            # Reload config in migration service if available
+            migration_service = get_storage_migration_service()
+            if migration_service:
+                migration_service.config.reload()
+
+            logger.info(f"Storage settings updated: {migration}")
+
+            return jsonify({
+                'success': True,
+                'message': 'Settings updated successfully',
+                'settings': migration
+            })
+
+    except Exception as e:
+        logger.error(f"Storage settings API error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# Global migration status tracking
+_migration_status = {
+    'in_progress': False,
+    'operation': None,
+    'started_at': None,
+    'files_processed': 0,
+    'files_total': 0,
+    'bytes_processed': 0,
+    'current_file': None,
+    'errors': []
+}
+
+
+def update_migration_status(in_progress=None, operation=None, files_processed=None,
+                           files_total=None, bytes_processed=None, current_file=None,
+                           error=None, reset=False):
+    """Update global migration status for real-time UI updates."""
+    global _migration_status
+    if reset:
+        _migration_status = {
+            'in_progress': False,
+            'operation': None,
+            'started_at': None,
+            'files_processed': 0,
+            'files_total': 0,
+            'bytes_processed': 0,
+            'current_file': None,
+            'errors': []
+        }
+        return
+
+    if in_progress is not None:
+        _migration_status['in_progress'] = in_progress
+        if in_progress:
+            _migration_status['started_at'] = datetime.now().isoformat()
+    if operation is not None:
+        _migration_status['operation'] = operation
+    if files_processed is not None:
+        _migration_status['files_processed'] = files_processed
+    if files_total is not None:
+        _migration_status['files_total'] = files_total
+    if bytes_processed is not None:
+        _migration_status['bytes_processed'] = bytes_processed
+    if current_file is not None:
+        _migration_status['current_file'] = current_file
+    if error:
+        _migration_status['errors'].append(error)
+
+
+@app.route('/api/storage/migration-status', methods=['GET'])
+def api_migration_status():
+    """
+    Get current migration operation status for real-time UI updates.
+
+    Returns:
+        - in_progress: Whether migration is currently running
+        - operation: Current operation type (migrate, cleanup, reconcile)
+        - files_processed: Number of files processed so far
+        - files_total: Total files to process (if known)
+        - bytes_processed: Bytes processed so far
+        - current_file: Currently processing file path
+        - errors: List of errors encountered
+    """
+    return jsonify({
+        'success': True,
+        **_migration_status
+    })
 
 
 ########################################################

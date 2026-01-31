@@ -331,6 +331,237 @@
 }
 
 /* ============================================================================
+   PROGRESS INDICATOR (during operations)
+   ============================================================================ */
+
+.storage-progress-indicator {
+    display: none;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    color: white;
+}
+
+.storage-progress-indicator.show {
+    display: flex;
+    animation: pulse-glow 1.5s infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 20px 5px rgba(102, 126, 234, 0.6);
+    }
+}
+
+.progress-spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.progress-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.progress-operation {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.progress-files,
+.progress-bytes,
+.progress-current {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+.progress-current {
+    font-family: monospace;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ============================================================================
+   SETTINGS SECTION
+   ============================================================================ */
+
+.storage-settings-section {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+}
+
+.storage-settings-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.storage-settings-header span {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.storage-settings-header i {
+    color: #667eea;
+}
+
+.storage-edit-settings-btn,
+.storage-save-settings-btn,
+.storage-cancel-settings-btn {
+    padding: 0.4rem 0.75rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    transition: all 0.2s ease;
+}
+
+.storage-edit-settings-btn {
+    background: #e9ecef;
+    color: #495057;
+}
+
+.storage-edit-settings-btn:hover {
+    background: #dee2e6;
+}
+
+.storage-save-settings-btn {
+    background: #28a745;
+    color: white;
+}
+
+.storage-save-settings-btn:hover {
+    background: #218838;
+}
+
+.storage-cancel-settings-btn {
+    background: #6c757d;
+    color: white;
+}
+
+.storage-cancel-settings-btn:hover {
+    background: #5a6268;
+}
+
+.storage-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.storage-settings-form .settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.storage-settings-form label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: #555;
+    cursor: help;
+}
+
+.storage-settings-form label i {
+    color: #667eea;
+    width: 16px;
+}
+
+.storage-settings-form input {
+    width: 70px;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    text-align: right;
+    background: #fff;
+}
+
+.storage-settings-form input:disabled {
+    background: #e9ecef;
+    cursor: not-allowed;
+}
+
+.storage-settings-form.editing input {
+    background: #fff;
+    border-color: #667eea;
+    cursor: text;
+}
+
+.storage-settings-form.editing input:focus {
+    outline: none;
+    border-color: #764ba2;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.settings-size-limits input {
+    width: 90px;
+}
+
+.settings-hint {
+    font-size: 0.75rem;
+    color: #888;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.settings-hint i {
+    color: #667eea;
+}
+
+/* ============================================================================
+   MODAL LOCK (during operations)
+   ============================================================================ */
+
+.modal-locked {
+    pointer-events: none;
+}
+
+.modal-locked .storage-status-container {
+    pointer-events: auto;
+}
+
+.modal-locked .close-btn,
+.modal-locked .modal-close,
+.modal-locked [data-dismiss="modal"] {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* ============================================================================
    ANIMATION ENHANCEMENTS
    ============================================================================ */
 
@@ -367,4 +598,24 @@
     );
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite linear;
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN (Settings)
+   ============================================================================ */
+
+@media (max-width: 768px) {
+    .storage-settings-form .settings-row {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .storage-settings-form label {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .storage-settings-header {
+        flex-wrap: wrap;
+    }
 }

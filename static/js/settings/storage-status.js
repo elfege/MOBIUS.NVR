@@ -190,12 +190,54 @@ export class StorageStatus {
             clearInterval(this.progressInterval);
         }
 
+        this.statsRefreshCounter = 0;
+
         this.progressInterval = setInterval(async () => {
             const status = await this.fetchMigrationStatus();
             if (status) {
                 this.updateProgressDisplay(status);
             }
+
+            // Also refresh storage bars every 5 seconds during operations
+            this.statsRefreshCounter++;
+            if (this.statsRefreshCounter >= 5) {
+                this.statsRefreshCounter = 0;
+                const stats = await this.fetchStats();
+                if (stats) {
+                    this.updateStorageBars(stats);
+                }
+            }
         }, 1000); // Poll every second
+    }
+
+    /**
+     * Update storage progress bars without re-rendering entire component
+     * @param {object} stats - Storage statistics from API
+     */
+    updateStorageBars(stats) {
+        const recent = stats.recent || {};
+        const archive = stats.archive || {};
+
+        const recentUsed = recent.used_percent || 0;
+        const archiveUsed = archive.used_percent || 0;
+
+        // Update Recent bar
+        const $recentBar = $('.storage-tier').eq(0).find('.storage-progress-bar');
+        $recentBar.css('width', recentUsed + '%')
+            .removeClass('storage-ok storage-warning storage-critical')
+            .addClass(this.getColorClass(recentUsed));
+        $('.storage-tier').eq(0).find('.storage-tier-stats span').eq(0).text(`${recentUsed.toFixed(1)}% used`);
+        $('.storage-tier').eq(0).find('.storage-tier-stats span').eq(1).text(`${recent.used_gb || 0} GB / ${recent.total_gb || 0} GB`);
+        $('.storage-tier').eq(0).find('.storage-tier-stats span').eq(2).text(`${recent.recording_count || 0} recordings`);
+
+        // Update Archive bar
+        const $archiveBar = $('.storage-tier').eq(1).find('.storage-progress-bar');
+        $archiveBar.css('width', archiveUsed + '%')
+            .removeClass('storage-ok storage-warning storage-critical')
+            .addClass(this.getColorClass(archiveUsed));
+        $('.storage-tier').eq(1).find('.storage-tier-stats span').eq(0).text(`${archiveUsed.toFixed(1)}% used`);
+        $('.storage-tier').eq(1).find('.storage-tier-stats span').eq(1).text(`${archive.used_gb || 0} GB / ${archive.total_gb || 0} GB`);
+        $('.storage-tier').eq(1).find('.storage-tier-stats span').eq(2).text(`${archive.recording_count || 0} recordings`);
     }
 
     /**

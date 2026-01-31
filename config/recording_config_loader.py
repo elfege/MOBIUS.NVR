@@ -255,8 +255,12 @@ class RecordingConfig:
     def get_min_free_space_percent(self) -> int:
         """Get minimum free space percentage before capacity-triggered migration."""
         return self.get_migration_config().get('min_free_space_percent', 20)
-    
-    
+
+    def get_parallel_workers(self) -> int:
+        """Get number of parallel workers for migration operations."""
+        return self.get_migration_config().get('parallel_workers', 8)
+
+
     def is_recording_enabled(self, camera_id: str, recording_type: str = 'motion') -> bool:
         """
         Check if recording is enabled for camera.

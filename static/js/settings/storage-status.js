@@ -111,6 +111,22 @@ export class StorageStatus {
     }
 
     /**
+     * Check if an operation is already running on the server and resume UI if so
+     */
+    async checkAndResumeOperation() {
+        const status = await this.fetchMigrationStatus();
+        if (status && status.in_progress) {
+            console.log('[StorageStatus] Resuming in-progress operation:', status.operation);
+            this.isOperationInProgress = true;
+            this.updateButtonStates();
+            this.showProgressIndicator(status.operation);
+            this.updateProgressDisplay(status);
+            this.startProgressPolling();
+            this.lockModal(true);
+        }
+    }
+
+    /**
      * Trigger a storage operation (migrate, cleanup, reconcile)
      * @param {string} operation - Operation type
      * @param {string} recordingType - Recording type (optional)
@@ -159,6 +175,19 @@ export class StorageStatus {
 
             const data = await response.json();
 
+            // Handle 409 Conflict - operation already in progress
+            if (response.status === 409) {
+                console.log('[StorageStatus] Operation already in progress:', data.current_operation);
+                // Resume showing the existing operation
+                this.showProgressIndicator(data.current_operation);
+                this.updateProgressDisplay({
+                    files_processed: data.files_processed,
+                    files_total: data.files_total
+                });
+                // Keep polling to show progress of existing operation
+                return data;
+            }
+
             if (data.success) {
                 // Show success message
                 this.showOperationResult(operation, data);
@@ -175,10 +204,14 @@ export class StorageStatus {
             alert(`Operation failed: ${error.message}`);
             return null;
         } finally {
-            this.isOperationInProgress = false;
-            this.stopProgressPolling();
-            this.hideProgressIndicator();
-            this.updateButtonStates();
+            // Only clean up if operation actually completed (not 409)
+            const status = await this.fetchMigrationStatus();
+            if (!status || !status.in_progress) {
+                this.isOperationInProgress = false;
+                this.stopProgressPolling();
+                this.hideProgressIndicator();
+                this.updateButtonStates();
+            }
         }
     }
 
@@ -581,6 +614,9 @@ export class StorageStatus {
         // Fetch and render
         const stats = await this.fetchStats();
         $container.html(this.render(stats));
+
+        // Check if an operation is already in progress (resume from server state)
+        await this.checkAndResumeOperation();
 
         // Setup event handlers for action buttons
         $container.on('click', '.storage-action-btn', async (e) => {

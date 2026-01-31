@@ -5662,6 +5662,17 @@ def api_storage_migrate():
         Migration result with counts and details
     """
     try:
+        # Prevent concurrent operations
+        if _migration_status.get('in_progress'):
+            return jsonify({
+                'success': False,
+                'error': f"Operation '{_migration_status.get('operation')}' already in progress",
+                'in_progress': True,
+                'current_operation': _migration_status.get('operation'),
+                'files_processed': _migration_status.get('files_processed', 0),
+                'files_total': _migration_status.get('files_total', 0)
+            }), 409  # HTTP 409 Conflict
+
         data = request.get_json() or {}
         recording_type = data.get('recording_type', 'motion')
         force = data.get('force', False)
@@ -5723,6 +5734,17 @@ def api_storage_cleanup():
         Cleanup result with counts and details
     """
     try:
+        # Prevent concurrent operations
+        if _migration_status.get('in_progress'):
+            return jsonify({
+                'success': False,
+                'error': f"Operation '{_migration_status.get('operation')}' already in progress",
+                'in_progress': True,
+                'current_operation': _migration_status.get('operation'),
+                'files_processed': _migration_status.get('files_processed', 0),
+                'files_total': _migration_status.get('files_total', 0)
+            }), 409
+
         data = request.get_json() or {}
         recording_type = data.get('recording_type', 'motion')
         force = data.get('force', False)
@@ -5769,6 +5791,17 @@ def api_storage_reconcile():
         Reconciliation result with removed entry count
     """
     try:
+        # Prevent concurrent operations
+        if _migration_status.get('in_progress'):
+            return jsonify({
+                'success': False,
+                'error': f"Operation '{_migration_status.get('operation')}' already in progress",
+                'in_progress': True,
+                'current_operation': _migration_status.get('operation'),
+                'files_processed': _migration_status.get('files_processed', 0),
+                'files_total': _migration_status.get('files_total', 0)
+            }), 409
+
         # Update migration status - in progress
         update_migration_status(in_progress=True, operation='reconcile', reset=True)
         update_migration_status(in_progress=True, operation='reconcile')

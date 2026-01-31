@@ -30,6 +30,8 @@ export class PTZController {
         this.opticalZoomTimeout = null;           // Timer to detect optical zoom limit
         this.opticalZoomLimitMs = 500;            // Time to wait before assuming optical limit
         this.digitalZoomMode = new Map();         // Track which cameras are in digital zoom mode
+        this.digitalZoomInterval = null;          // Interval for continuous digital zoom
+        this.digitalZoomIntervalMs = 150;         // How often to zoom when holding button
 
         // PTZ uses ONVIF ContinuousMove - one command starts movement,
         // camera keeps moving until a Stop command is sent.
@@ -333,18 +335,18 @@ export class PTZController {
     /**
      * Handle zoom-in action with optical→digital handoff.
      * Tries optical zoom first, switches to digital after timeout.
+     * Supports continuous digital zoom while button is held.
      * @param {string} serial - Camera serial number
      */
     async handleZoomIn(serial) {
+        // Clear any existing digital zoom interval
+        this.clearDigitalZoomInterval();
+
         // Check if already in digital zoom mode
         if (this.digitalZoomMode.get(serial)) {
-            // Already using digital zoom - continue with digital
-            const zoomed = digitalZoomManager.zoomIn(serial);
-            if (zoomed) {
-                this.updateDigitalZoomUI(serial);
-            } else {
-                this.showFeedback('Max digital zoom reached', 'warning');
-            }
+            // Already using digital zoom - start continuous digital zoom
+            console.log(`[PTZ] ${serial}: Starting continuous digital zoom`);
+            this.startContinuousDigitalZoom(serial, 'in');
             return;
         }
 
@@ -358,35 +360,85 @@ export class PTZController {
             console.log(`[PTZ] ${serial}: Optical zoom timeout - switching to digital`);
             this.digitalZoomMode.set(serial, true);
 
-            // Stop optical zoom
-            this.stopMovement();
+            // Stop optical zoom (don't clear the timeout from inside the timeout callback)
+            this.ptzTouchActive = false;
+            this.activeDirection = null;
+            this.isExecuting = false;
+            $('.ptz-btn').removeClass('active');
 
             // Apply first digital zoom step
             digitalZoomManager.zoomIn(serial);
             this.updateDigitalZoomUI(serial);
+
+            // Start continuous digital zoom interval
+            this.startContinuousDigitalZoom(serial, 'in');
 
             this.showFeedback('Optical max - using digital zoom', 'info');
         }, this.opticalZoomLimitMs);
     }
 
     /**
+     * Start continuous digital zoom (repeating interval while button held).
+     * @param {string} serial - Camera serial number
+     * @param {string} direction - 'in' or 'out'
+     */
+    startContinuousDigitalZoom(serial, direction) {
+        this.clearDigitalZoomInterval();
+
+        // Apply first zoom step immediately
+        const zoomed = direction === 'in'
+            ? digitalZoomManager.zoomIn(serial)
+            : digitalZoomManager.zoomOut(serial);
+
+        if (zoomed) {
+            this.updateDigitalZoomUI(serial);
+        }
+
+        // Set up repeating interval for continuous zoom
+        this.digitalZoomInterval = setInterval(() => {
+            const success = direction === 'in'
+                ? digitalZoomManager.zoomIn(serial)
+                : digitalZoomManager.zoomOut(serial);
+
+            if (success) {
+                this.updateDigitalZoomUI(serial);
+            } else {
+                // Hit min/max, stop the interval
+                this.clearDigitalZoomInterval();
+                const msg = direction === 'in' ? 'Max digital zoom' : 'Min zoom reached';
+                this.showFeedback(msg, 'info');
+            }
+
+            // Exit digital mode if back to 1.0x
+            if (!digitalZoomManager.isZoomed(serial)) {
+                this.digitalZoomMode.set(serial, false);
+            }
+        }, this.digitalZoomIntervalMs);
+    }
+
+    /**
+     * Clear digital zoom interval.
+     */
+    clearDigitalZoomInterval() {
+        if (this.digitalZoomInterval) {
+            clearInterval(this.digitalZoomInterval);
+            this.digitalZoomInterval = null;
+        }
+    }
+
+    /**
      * Handle zoom-out action with digital→optical handoff.
-     * If digitally zoomed, zoom out digitally first.
+     * If digitally zoomed, zoom out digitally first (continuous while held).
      * @param {string} serial - Camera serial number
      */
     async handleZoomOut(serial) {
-        // If digitally zoomed, zoom out digitally first
-        if (digitalZoomManager.isZoomed(serial)) {
-            const zoomed = digitalZoomManager.zoomOut(serial);
-            if (zoomed) {
-                this.updateDigitalZoomUI(serial);
-            }
+        // Clear any existing digital zoom interval
+        this.clearDigitalZoomInterval();
 
-            // If we're back to 1.0x, exit digital zoom mode
-            if (!digitalZoomManager.isZoomed(serial)) {
-                this.digitalZoomMode.set(serial, false);
-                console.log(`[PTZ] ${serial}: Digital zoom complete - can use optical again`);
-            }
+        // If digitally zoomed, zoom out digitally first (with continuous support)
+        if (digitalZoomManager.isZoomed(serial)) {
+            console.log(`[PTZ] ${serial}: Starting continuous digital zoom out`);
+            this.startContinuousDigitalZoom(serial, 'out');
             return;
         }
 
@@ -607,7 +659,7 @@ export class PTZController {
                 // Zoom in with digital zoom handoff support
                 this.ptzTouchActive = true;
                 this.activeDirection = direction;
-                const serial = this.currentCamera?.serial;
+                // Use serial from stream-item (already declared above), not currentCamera
                 if (serial) {
                     this.handleZoomIn(serial);
                 }
@@ -615,7 +667,7 @@ export class PTZController {
                 // Zoom out with digital zoom handoff support
                 this.ptzTouchActive = true;
                 this.activeDirection = direction;
-                const serial = this.currentCamera?.serial;
+                // Use serial from stream-item (already declared above), not currentCamera
                 if (serial) {
                     this.handleZoomOut(serial);
                 }
@@ -721,6 +773,9 @@ export class PTZController {
 
         // Clear optical zoom timeout (user released button before timeout)
         this.clearOpticalZoomTimeout();
+
+        // Clear digital zoom interval (user released button)
+        this.clearDigitalZoomInterval();
 
         // Clear any interval (legacy, but keep for safety)
         if (this.repeatInterval) {

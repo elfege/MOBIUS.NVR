@@ -359,8 +359,10 @@ export class DigitalZoomManager {
         // deltaY > 0 = wheel down = zoom out
         const zoomIn = e.deltaY < 0;
 
-        // Get zoom point relative to element for zoom-toward-cursor
-        const rect = state.element.getBoundingClientRect();
+        // Get zoom point relative to container (not element, which may be transformed)
+        const container = state.element.parentElement;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
         const cursorX = e.clientX - rect.left;
         const cursorY = e.clientY - rect.top;
 
@@ -401,22 +403,33 @@ export class DigitalZoomManager {
         const container = state.element.parentElement;
         if (!container) return;
 
+        // Use container dimensions (not element, which may be transformed)
         const containerWidth = container.clientWidth;
         const containerHeight = container.clientHeight;
 
-        // Calculate cursor position relative to center
+        // Container center
         const centerX = containerWidth / 2;
         const centerY = containerHeight / 2;
+
+        // Cursor offset from center (in container coordinates)
+        // cursorX/Y are already relative to container from getBoundingClientRect
         const offsetX = cursorX - centerX;
         const offsetY = cursorY - centerY;
 
-        // Scale factor change
-        const scaleFactor = newLevel / oldLevel;
+        // Convert cursor position to "content space" accounting for current pan and zoom
+        // The point under cursor in content coordinates:
+        // contentX = (cursorX - centerX - panX) / oldLevel + centerX
+        // We want this point to stay under cursor after zoom change
 
-        // Adjust pan to keep cursor point stationary
-        // The new pan should offset the scaling effect at the cursor position
-        const newPanX = state.panX * scaleFactor + offsetX * (1 - scaleFactor);
-        const newPanY = state.panY * scaleFactor + offsetY * (1 - scaleFactor);
+        // Calculate where the cursor points to in the original (unzoomed) content
+        const contentX = (offsetX - state.panX) / oldLevel;
+        const contentY = (offsetY - state.panY) / oldLevel;
+
+        // After zooming to newLevel, this content point should still be under cursor
+        // newOffsetX = contentX * newLevel + newPanX = offsetX (we want cursor to stay put)
+        // Solving: newPanX = offsetX - contentX * newLevel
+        const newPanX = offsetX - contentX * newLevel;
+        const newPanY = offsetY - contentY * newLevel;
 
         // Calculate bounds for new zoom level
         const scaledWidth = containerWidth * newLevel;
@@ -515,11 +528,14 @@ export class DigitalZoomManager {
                 state.panX = 0;
                 state.panY = 0;
             } else {
-                // Adjust pan toward pinch center
-                const rect = state.element.getBoundingClientRect();
-                const cursorX = this.pinchState.centerX - rect.left;
-                const cursorY = this.pinchState.centerY - rect.top;
-                this._adjustPanForZoom(this.pinchState.cameraId, cursorX, cursorY, oldLevel, state.level);
+                // Adjust pan toward pinch center (use container rect, not element)
+                const container = state.element.parentElement;
+                if (container) {
+                    const rect = container.getBoundingClientRect();
+                    const cursorX = this.pinchState.centerX - rect.left;
+                    const cursorY = this.pinchState.centerY - rect.top;
+                    this._adjustPanForZoom(this.pinchState.cameraId, cursorX, cursorY, oldLevel, state.level);
+                }
             }
 
             this._applyTransform(this.pinchState.cameraId, true);

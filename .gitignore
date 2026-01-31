@@ -1,32 +1,10 @@
-**/0_*
+# =============================================================================
+# NVR Project .gitignore
+# =============================================================================
 
-.git
-
-# Ignore files containing the word "copy"
-*copy*
-!**/copy_installation_files.sh
-
-persistent.json
-persistent.json.backup_2
-**/backup*
-*backup*
-
-test_*
-TESTS/
-
-*.jpg
-
-*.log
-
-eufy_bridge.sh
-eufy_bridge.py
-eufy_bridge_client_verbose.py
-eufy_bridge_watchdog.py
-ptz_pan_right.py
-ptz_server.py
-
-tree.md
-# files containing creds - exceptions for example and notes files
+# -----------------------------------------------------------------------------
+# Config files (contain credentials) - track only .example and code files
+# -----------------------------------------------------------------------------
 config/
 !config/cameras.json.example
 !config/recording_settings.json.example
@@ -34,103 +12,75 @@ config/
 !config/cameras_json_notes.json
 !config/recording_config_loader.py
 
-*.pem
-*.cert
-*.rsa
-
-# Exceptions for tracked documentation
+# -----------------------------------------------------------------------------
+# Documentation - track only specific files
+# -----------------------------------------------------------------------------
 docs/*.md
 !docs/README_project_history.md
 !docs/README_handoff.md
-
-
-
 DOCS/
 
+# -----------------------------------------------------------------------------
+# Project-specific ignores
+# -----------------------------------------------------------------------------
+**/0_*
+persistent.json
+persistent.json.backup_2
 bootstrap.json
+tree.md
+neolink
 
+# Deprecated/unused scripts
+eufy_bridge.sh
+eufy_bridge.py
+eufy_bridge_client_verbose.py
+eufy_bridge_watchdog.py
+ptz_pan_right.py
+ptz_server.py
 PTZ_Discovery.py
-
-# package*.json
-
 stop_nvr_standalone.sh
+**/DAMS_flat_copy.sh
 
-venv
+# Claude/chat files
+claude_rules.md
+CLAUDE.md
+*claude*
+chat.md
 
-# Ignore all .txt files
-*.txt
-# txt exceptions
-!requirements.txt
+# -----------------------------------------------------------------------------
+# Security - certificates and environment
+# -----------------------------------------------------------------------------
+*.pem
+*.cert
+*.rsa
+.env
+.env.*
 
-# Byte-compiled / optimized / DLL files
+# -----------------------------------------------------------------------------
+# Python
+# -----------------------------------------------------------------------------
 __pycache__/
 **/__pycache__/
-__pycache__
-
 *.py[cod]
 *.pyo
 *.pyd
 *.so
-
-# HLS streaming segments
-**/streams/
-*stream/
-
-# backup files
-*~.bak
-*.backup
-*.bak~ 
-
-# backup directories
-**/backup/
-**/backups/
-**/archive/
-
-# config files (contain creds) - exceptions defined above at lines 33-37
-# NOTE: The specific config/ rules with exceptions are on lines 33-37
-# Do NOT add another blanket **/config/ rule here as it overrides exceptions
-
-# environment files
-.env
-.env.*
-
-# Ignore node_modules directory
-node_modules/
-
-# Ignore npm debug log
-npm-debug.log
-
-# Ignore yarn debug log
-yarn-debug.log
-
-# Ignore files matching app.log.[NUMBER] pattern
-**/app.log.*
-
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# IDEs and editors
-.vscode/
-.idea/
-*.swp
-*.swo
-*.swn
-*.bak
-
-# Virtual environment
 venv/
 env/
 ENV/
-
-# Distribution / packaging
 *.egg-info/
+*.egg
+
+# -----------------------------------------------------------------------------
+# Node.js
+# -----------------------------------------------------------------------------
+node_modules/
+npm-debug.log
+yarn-debug.log
+
+# -----------------------------------------------------------------------------
+# Build/Distribution
+# -----------------------------------------------------------------------------
 dist/
 build/
 develop-eggs/
@@ -141,7 +91,10 @@ parts/
 sdist/
 var/
 wheels/
-*.egg
+
+# -----------------------------------------------------------------------------
+# Archives and compressed files
+# -----------------------------------------------------------------------------
 *.tar.gz
 *.tar.bz2
 *.tar
@@ -156,7 +109,14 @@ wheels/
 *.rar
 *.7z
 
-# Unit test / coverage reports
+# -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+test_*
+_test*
+*_test*
+TESTS/
+TESTS
 htmlcov/
 .tox/
 .coverage
@@ -167,34 +127,76 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
-*_test*
-_test*
 
-
-
-# Jupyter Notebook
-.ipynb_checkpoints/
-
-# Archives, temporary files/dirs, drafts and copies
-*archive*
-ARCHIVE/
-TESTS
+# -----------------------------------------------------------------------------
+# Logs and temp files
+# -----------------------------------------------------------------------------
+*.log
+**/app.log.*
 *temp*
 !templates/
-*draft*
+
+# -----------------------------------------------------------------------------
+# Backups, archives, copies, drafts
+# -----------------------------------------------------------------------------
+*backup*
+**/backup/
+**/backups/
+**/archive/
+*archive*
+ARCHIVE/
+*~.bak
+*.backup
+*.bak~
+*.bak
 *copy*
+!**/copy_installation_files.sh
+*draft*
 
-# Anything vpn related
+# -----------------------------------------------------------------------------
+# Media files
+# -----------------------------------------------------------------------------
+*.jpg
+
+# -----------------------------------------------------------------------------
+# Text files (track only requirements.txt)
+# -----------------------------------------------------------------------------
+*.txt
+!requirements.txt
+
+# -----------------------------------------------------------------------------
+# HLS streaming segments
+# -----------------------------------------------------------------------------
+**/streams/
+*stream/
+
+# -----------------------------------------------------------------------------
+# OS generated files
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# -----------------------------------------------------------------------------
+# IDEs and editors
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+.git
+
+# -----------------------------------------------------------------------------
+# Jupyter Notebook
+# -----------------------------------------------------------------------------
+.ipynb_checkpoints/
+
+# -----------------------------------------------------------------------------
+# VPN related
+# -----------------------------------------------------------------------------
 *vpn*
-
-# scripts
-**/DAMS_flat_copy.sh
-
-
-claude_rules.md
-CLAUDE.md
-*claude*
-chat.md
-
-
-neolink

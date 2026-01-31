@@ -845,25 +845,30 @@ class StorageMigrationService:
                     # Check recent storage capacity
                     capacity_triggered, free_percent = self.check_capacity_trigger('recent')
 
+                    # Always run age-based migration (files older than age_threshold_days)
+                    age_threshold = self.config.get_migration_age_threshold()
+                    migration_needed = capacity_triggered  # Track if any migration happened
+
+                    for rec_type in self.RECORDING_TYPES:
+                        try:
+                            result = self.migrate_recent_to_archive(rec_type)
+                            if result.success_count > 0:
+                                migration_needed = True
+                                logger.info(f"[AUTO-MIGRATE] {rec_type}: migrated {result.success_count} files, "
+                                          f"freed {result.bytes_processed / (1024**3):.2f} GB")
+                        except Exception as e:
+                            logger.error(f"[AUTO-MIGRATE] Error migrating {rec_type}: {e}")
+
                     if capacity_triggered:
                         logger.warning(f"[AUTO-MIGRATE] Capacity threshold triggered! "
-                                      f"Free: {free_percent:.1f}%, running migration...")
+                                      f"Free: {free_percent:.1f}%")
 
-                        # Run migration for all recording types
-                        for rec_type in self.RECORDING_TYPES:
-                            try:
-                                result = self.migrate_recent_to_archive(rec_type)
-                                if result.success_count > 0:
-                                    logger.info(f"[AUTO-MIGRATE] {rec_type}: migrated {result.success_count} files, "
-                                              f"freed {result.bytes_processed / (1024**3):.2f} GB")
-                            except Exception as e:
-                                logger.error(f"[AUTO-MIGRATE] Error migrating {rec_type}: {e}")
-
+                    if migration_needed:
                         # Re-check capacity after migration
                         _, new_free_percent = self.check_capacity_trigger('recent')
                         logger.info(f"[AUTO-MIGRATE] Migration complete. Free space: {new_free_percent:.1f}%")
                     else:
-                        logger.debug(f"[AUTO-MIGRATE] Storage OK - free: {free_percent:.1f}%")
+                        logger.debug(f"[AUTO-MIGRATE] No files to migrate (age>{age_threshold}d). Free: {free_percent:.1f}%")
 
                 except Exception as e:
                     logger.error(f"[AUTO-MIGRATE] Monitor error: {e}")

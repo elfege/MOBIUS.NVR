@@ -58,16 +58,18 @@ class StorageMigrationService:
     RECORDING_TYPES = ['motion', 'continuous', 'manual', 'snapshots']
 
     def __init__(self, config_path: Optional[str] = None,
-                 postgrest_url: str = "http://localhost:3000"):
+                 postgrest_url: Optional[str] = None):
         """
         Initialize storage migration service.
 
         Args:
             config_path: Path to recording_settings.json
             postgrest_url: PostgREST API URL for database operations
+                          Defaults to POSTGREST_URL env var or http://nvr-postgrest:3001
         """
         self.config = RecordingConfig(config_path)
-        self.postgrest_url = postgrest_url
+        # Use env var, then passed value, then Docker default
+        self.postgrest_url = postgrest_url or os.environ.get('POSTGREST_URL', 'http://nvr-postgrest:3001')
 
         # Get storage paths from config
         storage_paths = self.config.get_storage_paths()

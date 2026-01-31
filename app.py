@@ -5673,11 +5673,14 @@ def api_storage_migrate():
                 'files_total': _migration_status.get('files_total', 0)
             }), 409  # HTTP 409 Conflict
 
+        global _migration_cancel_event
+
         data = request.get_json() or {}
         recording_type = data.get('recording_type', 'motion')
         force = data.get('force', False)
 
-        # Update migration status - in progress
+        # Reset cancel event and status before starting
+        _migration_cancel_event.clear()
         update_migration_status(in_progress=True, operation='migrate', reset=True)
         update_migration_status(in_progress=True, operation='migrate')
 
@@ -5693,7 +5696,9 @@ def api_storage_migrate():
 
         migration_service = get_storage_migration_service()
         result = migration_service.migrate_recent_to_archive(
-            recording_type, force, progress_callback=progress_callback
+            recording_type, force,
+            progress_callback=progress_callback,
+            cancel_event=_migration_cancel_event
         )
 
         # Update migration status - complete
@@ -6061,6 +6066,10 @@ _migration_status = {
     'cancel_requested': False
 }
 
+# Thread-safe cancellation event for parallel workers
+import threading
+_migration_cancel_event = threading.Event()
+
 
 class MigrationCancelled(Exception):
     """Raised when migration is cancelled by user."""
@@ -6117,8 +6126,10 @@ def check_migration_cancelled():
 def api_storage_cancel():
     """
     Cancel the current storage operation.
-    Sets a flag that the operation loop checks and stops gracefully.
+    Sets both the status flag and the threading.Event for parallel workers.
     """
+    global _migration_cancel_event
+
     if not _migration_status.get('in_progress'):
         return jsonify({
             'success': False,
@@ -6127,6 +6138,7 @@ def api_storage_cancel():
 
     operation = _migration_status.get('operation')
     update_migration_status(cancel_requested=True)
+    _migration_cancel_event.set()  # Signal parallel workers to stop
     logger.info(f"Storage operation '{operation}' cancellation requested")
 
     return jsonify({

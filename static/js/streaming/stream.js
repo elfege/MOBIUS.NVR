@@ -1092,6 +1092,9 @@ export class MultiStreamManager {
                 });
             }
         });
+
+        // Setup camera selector event handlers for show/hide and HD/SD quality changes
+        this.setupCameraSelectorHandlers();
     }
 
     /**
@@ -1645,21 +1648,41 @@ export class MultiStreamManager {
         const $streamItems = this.$container.find('.stream-item');
         console.log(`[StartAll] Found ${$streamItems.length} stream items, delay=${delayMs}ms`);
 
+        // Get hidden cameras from localStorage (set by camera selector)
+        const hiddenCameras = this._getHiddenCameras();
+        const hdCameras = this._getHDCameras();
+        console.log(`[StartAll] Hidden cameras: ${hiddenCameras.length}, HD cameras: ${hdCameras.length}`);
+
         // Sequential loading with delays to prevent resource exhaustion
         // This applies to all UIs (desktop, mobile, iOS) for consistent behavior
+        let startedCount = 0;
         for (let index = 0; index < $streamItems.length; index++) {
             const $item = $($streamItems[index]);
             const cameraId = $item.data('camera-serial');
             const cameraType = $item.data('camera-type');
             const streamType = $item.data('stream-type');
 
-            console.log(`[StartAll] Starting stream ${index + 1}/${$streamItems.length}: ${cameraId}`);
+            // Skip hidden cameras (filtered by camera selector)
+            if (hiddenCameras.includes(cameraId)) {
+                console.log(`[StartAll] Skipping hidden camera: ${cameraId}`);
+                $item.hide();
+                continue;
+            }
+
+            // Check if this camera should be in HD mode
+            const isHD = hdCameras.includes(cameraId);
+            if (isHD) {
+                $item.addClass('hd-mode');
+            }
+
+            console.log(`[StartAll] Starting stream ${startedCount + 1}: ${cameraId}${isHD ? ' (HD)' : ''}`);
 
             try {
-                await this.startStream(cameraId, $item, cameraType, streamType);
-                console.log(`[StartAll] ✓ Stream ${index + 1} started: ${cameraId}`);
+                await this.startStream(cameraId, $item, cameraType, streamType, isHD ? 'main' : 'sub');
+                console.log(`[StartAll] ✓ Stream started: ${cameraId}`);
+                startedCount++;
             } catch (error) {
-                console.error(`[StartAll] ✗ Stream ${index + 1} failed: ${cameraId}`, error);
+                console.error(`[StartAll] ✗ Stream failed: ${cameraId}`, error);
                 this.setStreamStatus($item, 'error', 'Failed to load');
             }
 
@@ -1670,11 +1693,62 @@ export class MultiStreamManager {
             }
         }
 
-        console.log('[StartAll] ✓✓✓ ALL STREAMS COMPLETE ✓✓✓');
+        // Update grid layout based on visible cameras
+        this._updateGridLayoutForVisibleCameras();
+
+        console.log(`[StartAll] ✓✓✓ ${startedCount} STREAMS COMPLETE ✓✓✓`);
     }
 
-    async startStream(cameraId, $streamItem, cameraType, streamType) {
+    /**
+     * Get hidden cameras from localStorage (set by camera selector)
+     * @returns {string[]} Array of hidden camera serial numbers
+     */
+    _getHiddenCameras() {
+        try {
+            const stored = localStorage.getItem('hiddenCameras');
+            return stored ? JSON.parse(stored) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get HD-enabled cameras from localStorage (set by camera selector)
+     * @returns {string[]} Array of HD camera serial numbers
+     */
+    _getHDCameras() {
+        try {
+            const stored = localStorage.getItem('hdCameras');
+            return stored ? JSON.parse(stored) : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Update grid layout based on currently visible cameras
+     */
+    _updateGridLayoutForVisibleCameras() {
+        const visibleCount = this.$container.find('.stream-item:visible').length;
+        let cols;
+        if (visibleCount === 0) cols = 1;
+        else if (visibleCount === 1) cols = 1;
+        else if (visibleCount <= 4) cols = 2;
+        else if (visibleCount <= 9) cols = 3;
+        else if (visibleCount <= 16) cols = 4;
+        else cols = 5;
+
+        this.$container
+            .removeClass('grid-1 grid-2 grid-3 grid-4 grid-5')
+            .addClass(`grid-${cols}`);
+
+        console.log(`[Layout] Grid updated: ${cols} columns for ${visibleCount} visible cameras`);
+    }
+
+    async startStream(cameraId, $streamItem, cameraType, streamType, quality = 'sub') {
         let streamElement = $streamItem.find('.stream-video')[0];
+        // Store the quality setting for this stream
+        $streamItem.data('grid-quality', quality);
         const $loadingIndicator = $streamItem.find('.loading-indicator');
 
         // Portable device MJPEG override for grid view
@@ -1799,10 +1873,13 @@ export class MultiStreamManager {
                 // Polls /api/snap/<camera_id> every 1 second for single JPEGs
                 success = await this.snapshotManager.startStream(cameraId, streamElement, cameraType, 1000);
             } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
-                // Pass 'sub' as stream parameter for grid view (Reolink requires this for MJPEG endpoint)
+                // Pass quality parameter for grid view (MJPEG only supports sub for now)
+                // MJPEG typically only has one quality level
                 success = await this.mjpegManager.startStream(cameraId, streamElement, cameraType, 'sub');
             } else if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
-                success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
+                // Use quality parameter (main or sub) - supports HD grid selection
+                success = await this.hlsManager.startStream(cameraId, streamElement, quality);
+                console.log(`[Stream] HLS started for ${cameraId} with quality: ${quality}`);
             } else if (streamType === 'RTMP') {
                 success = await this.flvManager.startStream(cameraId, streamElement);
             } else if (streamType === 'WEBRTC') {
@@ -1814,17 +1891,18 @@ export class MultiStreamManager {
                     if (dtlsEnabled) {
                         // DTLS enabled - iOS can use WebRTC for low latency
                         console.log(`[Stream] iOS + DTLS enabled - using WebRTC for ${cameraId} (~200ms latency)`);
-                        success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
+                        success = await this.webrtcManager.startStream(cameraId, streamElement, quality);
                     } else {
                         // No DTLS - fall back to HLS (iOS requires encryption)
                         console.log(`[Stream] iOS without DTLS - falling back to HLS for ${cameraId} (~2-4s latency)`);
-                        success = await this.hlsManager.startStream(cameraId, streamElement, 'sub');
+                        success = await this.hlsManager.startStream(cameraId, streamElement, quality);
                         // Update the stream type on the element so fullscreen/recovery works correctly
                         $streamItem.data('stream-type', 'LL_HLS');
                     }
                 } else {
                     // Non-iOS: WebRTC works without DTLS on LAN
-                    success = await this.webrtcManager.startStream(cameraId, streamElement, 'sub');
+                    success = await this.webrtcManager.startStream(cameraId, streamElement, quality);
+                    console.log(`[Stream] WebRTC started for ${cameraId} with quality: ${quality}`);
                 }
             } else {
                 throw new Error(`Unknown stream type: ${streamType}`);
@@ -3546,6 +3624,69 @@ export class MultiStreamManager {
                 reject(new Error('Failed to load Socket.IO client'));
             };
             document.head.appendChild(script);
+        });
+    }
+
+    // =========================================================================
+    // Camera Selector Event Handlers
+    // =========================================================================
+    // These handlers respond to events from the camera-selector-controller
+    // when user shows/hides cameras or changes HD/SD quality settings.
+    // =========================================================================
+
+    /**
+     * Setup event handlers for camera selector integration
+     * Called from setupEventListeners()
+     */
+    setupCameraSelectorHandlers() {
+        // Handle camera being shown (re-enable stream)
+        this.$container.on('camera-selector:show', '.stream-item', async (e) => {
+            const $streamItem = $(e.currentTarget);
+            const cameraId = $streamItem.data('camera-serial');
+            const cameraType = $streamItem.data('camera-type');
+            const streamType = $streamItem.data('stream-type');
+
+            // Check if this camera should be in HD mode
+            const hdCameras = this._getHDCameras();
+            const quality = hdCameras.includes(cameraId) ? 'main' : 'sub';
+
+            if (quality === 'main') {
+                $streamItem.addClass('hd-mode');
+            }
+
+            console.log(`[CameraSelector] Restarting stream for ${cameraId} (quality: ${quality})`);
+            await this.startStream(cameraId, $streamItem, cameraType, streamType, quality);
+        });
+
+        // Handle quality change (HD/SD toggle)
+        this.$container.on('camera-selector:quality-change', '.stream-item', async (e, data) => {
+            const $streamItem = $(e.currentTarget);
+            const cameraId = $streamItem.data('camera-serial');
+            const streamType = $streamItem.data('stream-type');
+            const videoEl = $streamItem.find('.stream-video')[0];
+            const quality = data?.quality || 'sub';
+
+            console.log(`[CameraSelector] Switching ${cameraId} to ${quality} quality`);
+
+            // Update HD mode class
+            if (quality === 'main') {
+                $streamItem.addClass('hd-mode');
+            } else {
+                $streamItem.removeClass('hd-mode');
+            }
+
+            // Stop current stream
+            this.hlsManager.stopStream(cameraId);
+            this.webrtcManager.stopStream(cameraId);
+
+            // Start with new quality
+            if (videoEl && (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS')) {
+                await this.hlsManager.startStream(cameraId, videoEl, quality);
+            } else if (videoEl && streamType === 'WEBRTC') {
+                await this.webrtcManager.startStream(cameraId, videoEl, quality);
+            }
+
+            this.setStreamStatus($streamItem, 'live', quality === 'main' ? 'HD' : 'Live');
         });
     }
 

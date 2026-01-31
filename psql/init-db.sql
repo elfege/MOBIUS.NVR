@@ -192,8 +192,8 @@ CREATE POLICY "Allow read for nvr_anon" ON motion_events
 -- RecordingService uses PostgREST unauthenticated (nvr_anon role)
 -- Grant write permissions for recordings table
 
--- Grant table permissions
-GRANT INSERT, UPDATE ON recordings TO nvr_anon;
+-- Grant table permissions (DELETE needed for storage migration reconciliation)
+GRANT INSERT, UPDATE, DELETE ON recordings TO nvr_anon;
 
 -- Grant sequence permissions (for auto-increment ID)
 GRANT USAGE, SELECT ON SEQUENCE recordings_id_seq TO nvr_anon;

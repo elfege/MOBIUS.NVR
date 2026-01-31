@@ -15,15 +15,89 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 31, 2026 02:00 EST*
+*Last updated: January 31, 2026 12:55 EST*
 
-**Context compaction #2 occurred at 02:00 EST (Jan 31)**
+**Context compaction #3 occurred at 12:29 EST (Jan 31)**
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Session: January 31, 2026 (12:29-12:55 EST) - Digital Zoom Implementation
+
+### Work Completed
+
+1. **Digital Zoom Feature** (12:29-12:55)
+   - User request: Add digital zoom capability with optical→digital handoff detection
+   - User preferences: All cameras, 8x max zoom, timeout-based detection
+   - Implementation:
+     - Client-side CSS `transform: scale()` for GPU-accelerated zoom
+     - Pan support (mouse drag / touch) when zoomed in
+     - Timeout-based detection (500ms) for optical zoom limit → switch to digital
+     - When zooming out: digital first, then optical
+   - Files created:
+     - [digital-zoom.js](static/js/utils/digital-zoom.js) - Core zoom manager module:
+       - `DigitalZoomManager` class with per-camera state tracking
+       - `zoomIn()`, `zoomOut()`, `resetZoom()` methods
+       - Pan bounds calculation based on zoom level
+       - Mouse drag and touch pan support
+       - Singleton export `digitalZoomManager`
+   - Files modified:
+     - [stream-item.css](static/css/components/stream-item.css) - Added:
+       - `.digital-zoom-badge` - Shows zoom level (1.5x, 2.0x, etc.)
+       - `.digitally-zoomed` class for stream items
+       - `.stream-digital-zoom-reset-btn` - Reset button (hidden until zoomed)
+       - Cursor states for pan (grab/grabbing)
+     - [ptz-controller.js](static/js/controllers/ptz-controller.js) - Integrated:
+       - Import `digitalZoomManager`
+       - `handleZoomIn()` / `handleZoomOut()` with optical→digital handoff
+       - `initializeDigitalZoomForAllCameras()` on page load
+       - `updateDigitalZoomUI()` for badge and class management
+       - `setupDigitalZoomListeners()` for reset button and double-click reset
+       - Timeout-based optical zoom limit detection (500ms)
+
+### Design Decisions
+
+- **No backend changes**: Digital zoom is 100% client-side (CSS transforms)
+- **Timeout-based detection**: If optical zoom doesn't change within 500ms, assume limit reached
+- **Universal availability**: Digital zoom works for ALL cameras (even non-PTZ ones)
+- **Double-click reset**: Double-click on zoomed stream resets to 1.0x
+
+### Testing Notes
+
+- Requires page refresh to load new JS module
+- PTZ zoom buttons (zoom-in/zoom-out) now route through digital zoom handlers
+- Pan only enabled when zoom > 1.0x
+- Badge color changes: blue (1.5-2.5x) → orange (3-5x) → red (5.5-8x)
+
+---
+
+## Session: January 31, 2026 (02:15-02:40 EST) - Parallel Migration
+
+### Work Completed
+
+1. **Parallel Migration Implementation** (02:15-02:40)
+   - User noted serial migration was slow, requested parallel workers like DSMS project
+   - Implemented ThreadPoolExecutor with semaphore for bounded parallelism
+   - Files modified:
+     - [recording_settings.json](config/recording_settings.json) - Added `parallel_workers: 8` setting
+     - [recording_config_loader.py](config/recording_config_loader.py) - Added `get_parallel_workers()` getter
+     - [storage_migration.py](services/recording/storage_migration.py) - Refactored `migrate_recent_to_archive()`:
+       - New `_migrate_single_file()` worker function
+       - ThreadPoolExecutor with configurable workers
+       - threading.Semaphore to bound concurrent I/O
+       - threading.Event for thread-safe cancellation
+     - [app.py](app.py) - Added global `_migration_cancel_event`, updated cancel endpoint to set it
+   - Commit: `87c2e0c`
+
+### Pending
+
+- Container restart needed to test parallel migration performance
+- Cancel button functionality requires restart to test
 
 ---
 
@@ -412,6 +486,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Testing Needed:**
 
+- [ ] Test digital zoom: zoom buttons, pan, reset (page refresh required)
 - [ ] Test Eufy doorbell go2rtc P2P stream
 - [ ] Test auto-migration triggers correctly
 - [ ] Test PTZ preset save/delete/overwrite on PTZ cameras

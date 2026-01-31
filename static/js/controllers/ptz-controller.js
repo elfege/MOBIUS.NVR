@@ -1,7 +1,14 @@
 /**
  * PTZ Controller Module - ES6 + jQuery
  * Handles PTZ camera movement controls
+ *
+ * Includes digital zoom integration:
+ * - Optical zoom via ONVIF/Baichuan (primary)
+ * - Digital zoom via CSS transforms when optical reaches limit
+ * - Timeout-based detection for optical zoom limit
  */
+
+import { digitalZoomManager } from '../utils/digital-zoom.js';
 
 export class PTZController {
     constructor() {
@@ -18,6 +25,12 @@ export class PTZController {
         this.moveStartTime = null; // Track when move command was sent
         this.latencyCache = {}; // In-memory cache of learned latencies per camera
         this.reversePanCache = {}; // Per-camera reverse pan preference
+
+        // Digital zoom state tracking (for optical→digital handoff)
+        this.opticalZoomTimeout = null;           // Timer to detect optical zoom limit
+        this.opticalZoomLimitMs = 500;            // Time to wait before assuming optical limit
+        this.digitalZoomMode = new Map();         // Track which cameras are in digital zoom mode
+
         // PTZ uses ONVIF ContinuousMove - one command starts movement,
         // camera keeps moving until a Stop command is sent.
         // Latency is learned per-camera and stored in PostgreSQL via API.
@@ -30,6 +43,7 @@ export class PTZController {
         this.setupPresetListeners();
         this.setupPresetManagementListeners();
         this.setupReversePanListeners();
+        this.setupDigitalZoomListeners();
         this.updateButtonStates();
 
         // Show preset dropdowns immediately (for debugging)
@@ -40,6 +54,9 @@ export class PTZController {
 
         // Load reverse pan settings for all PTZ cameras
         this.loadReversePanSettingsForAllCameras();
+
+        // Initialize digital zoom for all cameras (works for any camera, not just PTZ)
+        this.initializeDigitalZoomForAllCameras();
 
 
         console.log("#######################################")
@@ -269,6 +286,173 @@ export class PTZController {
         return direction;
     }
 
+    // =========================================================================
+    // Digital Zoom Methods
+    // Provides client-side zoom when optical zoom reaches limit
+    // =========================================================================
+
+    /**
+     * Initialize digital zoom for a camera's stream element.
+     * Called when stream is started or camera is selected.
+     * @param {string} serial - Camera serial number
+     */
+    initializeDigitalZoom(serial) {
+        // Find the video/img element for this camera
+        const $streamItem = $(`.stream-item[data-camera-serial="${serial}"]`);
+        const $streamVideo = $streamItem.find('.stream-video');
+
+        if ($streamVideo.length) {
+            digitalZoomManager.initializeForCamera(serial, $streamVideo[0]);
+            this.digitalZoomMode.set(serial, false); // Not in digital zoom mode yet
+            console.log(`[PTZ] Digital zoom initialized for ${serial}`);
+        }
+    }
+
+    /**
+     * Initialize digital zoom for all cameras on page load.
+     * Digital zoom works for ALL cameras (even non-PTZ ones).
+     */
+    initializeDigitalZoomForAllCameras() {
+        // Delay slightly to allow streams to initialize first
+        setTimeout(() => {
+            $('.stream-item').each((index, streamItem) => {
+                const $streamItem = $(streamItem);
+                const serial = $streamItem.data('camera-serial');
+                const $streamVideo = $streamItem.find('.stream-video');
+
+                if (serial && $streamVideo.length) {
+                    // Initialize digital zoom (idempotent - safe to call multiple times)
+                    digitalZoomManager.initializeForCamera(serial, $streamVideo[0]);
+                    this.digitalZoomMode.set(serial, false);
+                }
+            });
+            console.log('[PTZ] Digital zoom initialized for all cameras');
+        }, 1000);
+    }
+
+    /**
+     * Handle zoom-in action with optical→digital handoff.
+     * Tries optical zoom first, switches to digital after timeout.
+     * @param {string} serial - Camera serial number
+     */
+    async handleZoomIn(serial) {
+        // Check if already in digital zoom mode
+        if (this.digitalZoomMode.get(serial)) {
+            // Already using digital zoom - continue with digital
+            const zoomed = digitalZoomManager.zoomIn(serial);
+            if (zoomed) {
+                this.updateDigitalZoomUI(serial);
+            } else {
+                this.showFeedback('Max digital zoom reached', 'warning');
+            }
+            return;
+        }
+
+        // Start optical zoom
+        this.startMovement('zoom-in');
+
+        // Set timeout to detect optical zoom limit
+        // If no change detected within timeout, assume optical limit and switch to digital
+        this.clearOpticalZoomTimeout();
+        this.opticalZoomTimeout = setTimeout(() => {
+            console.log(`[PTZ] ${serial}: Optical zoom timeout - switching to digital`);
+            this.digitalZoomMode.set(serial, true);
+
+            // Stop optical zoom
+            this.stopMovement();
+
+            // Apply first digital zoom step
+            digitalZoomManager.zoomIn(serial);
+            this.updateDigitalZoomUI(serial);
+
+            this.showFeedback('Optical max - using digital zoom', 'info');
+        }, this.opticalZoomLimitMs);
+    }
+
+    /**
+     * Handle zoom-out action with digital→optical handoff.
+     * If digitally zoomed, zoom out digitally first.
+     * @param {string} serial - Camera serial number
+     */
+    async handleZoomOut(serial) {
+        // If digitally zoomed, zoom out digitally first
+        if (digitalZoomManager.isZoomed(serial)) {
+            const zoomed = digitalZoomManager.zoomOut(serial);
+            if (zoomed) {
+                this.updateDigitalZoomUI(serial);
+            }
+
+            // If we're back to 1.0x, exit digital zoom mode
+            if (!digitalZoomManager.isZoomed(serial)) {
+                this.digitalZoomMode.set(serial, false);
+                console.log(`[PTZ] ${serial}: Digital zoom complete - can use optical again`);
+            }
+            return;
+        }
+
+        // Not digitally zoomed - use optical zoom
+        this.startMovement('zoom-out');
+
+        // No timeout needed for zoom-out (no limit detection)
+    }
+
+    /**
+     * Clear optical zoom timeout timer.
+     */
+    clearOpticalZoomTimeout() {
+        if (this.opticalZoomTimeout) {
+            clearTimeout(this.opticalZoomTimeout);
+            this.opticalZoomTimeout = null;
+        }
+    }
+
+    /**
+     * Reset digital zoom for a camera.
+     * Called from UI reset button or when switching cameras.
+     * @param {string} serial - Camera serial number
+     */
+    resetDigitalZoom(serial) {
+        digitalZoomManager.resetZoom(serial);
+        this.digitalZoomMode.set(serial, false);
+        this.updateDigitalZoomUI(serial);
+        console.log(`[PTZ] ${serial}: Digital zoom reset`);
+    }
+
+    /**
+     * Update UI elements for digital zoom state (badge, class).
+     * @param {string} serial - Camera serial number
+     */
+    updateDigitalZoomUI(serial) {
+        const $streamItem = $(`.stream-item[data-camera-serial="${serial}"]`);
+        const level = digitalZoomManager.getZoomLevel(serial);
+        const isZoomed = level > 1.0;
+
+        // Toggle class for CSS styling
+        $streamItem.toggleClass('digitally-zoomed', isZoomed);
+
+        // Update or create zoom badge
+        let $badge = $streamItem.find('.digital-zoom-badge');
+        if (isZoomed) {
+            if (!$badge.length) {
+                $badge = $('<div class="digital-zoom-badge"></div>');
+                $streamItem.append($badge);
+            }
+            $badge.text(`${level.toFixed(1)}x`);
+
+            // Update badge color based on zoom level
+            $badge.removeClass('zoom-low zoom-medium zoom-high');
+            if (level <= 2.5) {
+                $badge.addClass('zoom-low');
+            } else if (level <= 5.0) {
+                $badge.addClass('zoom-medium');
+            } else {
+                $badge.addClass('zoom-high');
+            }
+        } else {
+            $badge.remove();
+        }
+    }
+
     /**
      * Load PTZ reversal settings for all PTZ cameras on page load.
      * Fetches from API and updates checkbox states.
@@ -333,6 +517,38 @@ export class PTZController {
         });
     }
 
+    /**
+     * Setup event listeners for digital zoom UI elements.
+     */
+    setupDigitalZoomListeners() {
+        // Digital zoom reset button
+        $(document).on('click', '.stream-digital-zoom-reset-btn', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const $streamItem = $(event.currentTarget).closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+
+            if (serial) {
+                this.resetDigitalZoom(serial);
+                this.showFeedback('Digital zoom reset', 'info');
+            }
+        });
+
+        // Double-click on stream to reset digital zoom (convenience)
+        $(document).on('dblclick', '.stream-video', (event) => {
+            const $streamItem = $(event.currentTarget).closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+
+            // Only reset if digitally zoomed
+            if (serial && digitalZoomManager.isZoomed(serial)) {
+                event.preventDefault();
+                this.resetDigitalZoom(serial);
+                this.showFeedback('Digital zoom reset', 'info');
+            }
+        });
+    }
+
     setupEventListeners() {
         // Track input type to avoid mouse emulation conflicts on touch
         this.lastInputType = null;
@@ -372,8 +588,24 @@ export class PTZController {
             } else if (direction === '360' || direction === 'recalibrate') {
                 // Discrete commands (360 rotation, recalibration) - single execution
                 this.executeMovement(direction);
+            } else if (direction === 'zoom-in') {
+                // Zoom in with digital zoom handoff support
+                this.ptzTouchActive = true;
+                this.activeDirection = direction;
+                const serial = this.currentCamera?.serial;
+                if (serial) {
+                    this.handleZoomIn(serial);
+                }
+            } else if (direction === 'zoom-out') {
+                // Zoom out with digital zoom handoff support
+                this.ptzTouchActive = true;
+                this.activeDirection = direction;
+                const serial = this.currentCamera?.serial;
+                if (serial) {
+                    this.handleZoomOut(serial);
+                }
             } else if (direction) {
-                // Continuous movement directions (left, right, up, down, zoom)
+                // Continuous movement directions (left, right, up, down)
                 this.ptzTouchActive = true;
                 this.activeDirection = direction;
                 this.startMovement(direction);
@@ -471,6 +703,9 @@ export class PTZController {
     async stopMovement() {
         const stopStartTime = performance.now();
         console.log(`[PTZ ${new Date().toISOString()}] stopMovement() entered. currentCamera:`, this.currentCamera?.serial);
+
+        // Clear optical zoom timeout (user released button before timeout)
+        this.clearOpticalZoomTimeout();
 
         // Clear any interval (legacy, but keep for safety)
         if (this.repeatInterval) {
@@ -580,6 +815,9 @@ export class PTZController {
 
         // Load learned latency from database for this camera
         this.loadCameraLatency(serial);
+
+        // Initialize digital zoom for this camera's stream element
+        this.initializeDigitalZoom(serial);
     }
 
     setBridgeReady(ready) {

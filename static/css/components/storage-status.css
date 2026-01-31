@@ -570,21 +570,15 @@
 
 /* ============================================================================
    MODAL LOCK (during operations)
+   - Only disable close buttons, not entire modal (allows scrolling)
    ============================================================================ */
-
-.modal-locked {
-    pointer-events: none;
-}
-
-.modal-locked .storage-status-container {
-    pointer-events: auto;
-}
 
 .modal-locked .close-btn,
 .modal-locked .modal-close,
 .modal-locked [data-dismiss="modal"] {
     opacity: 0.3;
     pointer-events: none;
+    cursor: not-allowed;
 }
 
 /* ============================================================================

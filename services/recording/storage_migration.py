@@ -17,6 +17,8 @@ import os
 import logging
 import subprocess
 import requests
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any, Callable
@@ -359,11 +361,132 @@ class StorageMigrationService:
     # RECENT → ARCHIVE MIGRATION
     # =========================================================================
 
+    def _migrate_single_file(self, rec: Dict, recording_type: str, trigger_type: str,
+                              age_threshold: int, semaphore: threading.Semaphore,
+                              cancel_event: threading.Event) -> Dict:
+        """
+        Migrate a single file from recent to archive tier.
+        Thread-safe worker function for parallel migration.
+
+        Args:
+            rec: Recording dict from database
+            recording_type: Type of recordings being migrated
+            trigger_type: What triggered the migration (age/capacity)
+            age_threshold: Age threshold in days
+            semaphore: Semaphore to limit concurrent operations
+            cancel_event: Event to signal cancellation
+
+        Returns:
+            Dict with 'status' (success/failed/skipped/cancelled), 'bytes', 'error', 'detail'
+        """
+        # Check for cancellation before acquiring semaphore
+        if cancel_event.is_set():
+            return {'status': 'cancelled', 'bytes': 0, 'error': None, 'detail': None}
+
+        with semaphore:
+            # Check again after acquiring semaphore
+            if cancel_event.is_set():
+                return {'status': 'cancelled', 'bytes': 0, 'error': None, 'detail': None}
+            source_path = Path(rec.get('file_path', ''))
+            recording_id = rec.get('id')
+            camera_id = rec.get('camera_id')
+
+            # Detect actual recording type from path
+            actual_type = recording_type
+            for rtype in self.RECORDING_TYPES:
+                if f'/{rtype}/' in str(source_path) or str(source_path).startswith(f'/recordings/{rtype}'):
+                    actual_type = rtype
+                    break
+
+            # Skip if file doesn't exist
+            if not source_path.exists():
+                logger.warning(f"Source file missing: {source_path}")
+                self._log_operation(
+                    operation='error',
+                    source_path=str(source_path),
+                    recording_id=recording_id,
+                    camera_id=camera_id,
+                    reason='source file missing',
+                    trigger_type=trigger_type,
+                    success=False,
+                    error_message='File not found on disk'
+                )
+                return {'status': 'skipped', 'bytes': 0, 'error': None, 'detail': None}
+
+            # Get destination path
+            try:
+                dest_path = self._get_archive_path(source_path, actual_type)
+            except ValueError as e:
+                logger.error(f"Failed to compute archive path for {source_path}: {e}")
+                return {'status': 'failed', 'bytes': 0, 'error': str(e), 'detail': None}
+
+            # Get file size before migration
+            try:
+                file_size = source_path.stat().st_size
+            except:
+                file_size = 0
+
+            # Execute file move
+            success, error = self._rsync_file(source_path, dest_path)
+
+            if success:
+                # Update database
+                db_updated = self._update_recording(recording_id, {
+                    'storage_tier': 'archive',
+                    'file_path': str(dest_path),
+                    'archived_at': datetime.now(timezone.utc).isoformat()
+                })
+
+                if db_updated:
+                    self._log_operation(
+                        operation='migrate',
+                        source_path=str(source_path),
+                        destination_path=str(dest_path),
+                        file_size_bytes=file_size,
+                        recording_id=recording_id,
+                        camera_id=camera_id,
+                        reason=f"file older than {age_threshold} days",
+                        trigger_type=trigger_type,
+                        success=True
+                    )
+                    logger.debug(f"Migrated: {source_path.name} → {dest_path}")
+                    return {
+                        'status': 'success',
+                        'bytes': file_size,
+                        'error': None,
+                        'detail': {
+                            'recording_id': recording_id,
+                            'camera_id': camera_id,
+                            'source': str(source_path),
+                            'dest': str(dest_path),
+                            'size_bytes': file_size
+                        }
+                    }
+                else:
+                    return {'status': 'failed', 'bytes': 0, 'error': f"DB update failed for {recording_id}", 'detail': None}
+            else:
+                self._log_operation(
+                    operation='error',
+                    source_path=str(source_path),
+                    destination_path=str(dest_path),
+                    recording_id=recording_id,
+                    camera_id=camera_id,
+                    reason='move failed',
+                    trigger_type=trigger_type,
+                    success=False,
+                    error_message=error
+                )
+                return {'status': 'failed', 'bytes': 0, 'error': f"move failed for {source_path}: {error}", 'detail': None}
+
     def migrate_recent_to_archive(self, recording_type: str = "motion",
                                    force: bool = False,
-                                   progress_callback: Optional[Callable] = None) -> MigrationResult:
+                                   progress_callback: Optional[Callable] = None,
+                                   cancel_event: Optional[threading.Event] = None) -> MigrationResult:
         """
-        Migrate recordings from recent to archive tier.
+        Migrate recordings from recent to archive tier using parallel workers.
+
+        Uses ThreadPoolExecutor with semaphore to bound concurrent file operations.
+        Number of workers configurable via migration.parallel_workers setting.
 
         Triggers:
         - file.age > age_threshold_days
@@ -374,10 +497,14 @@ class StorageMigrationService:
             force: If True, migrate all eligible files regardless of thresholds
             progress_callback: Optional callback(files_processed, files_total, current_file, bytes_processed)
                               for real-time progress updates
+            cancel_event: Optional threading.Event for cancellation signal
 
         Returns:
             MigrationResult with operation details
         """
+        # Create cancel_event if not provided
+        if cancel_event is None:
+            cancel_event = threading.Event()
         result = MigrationResult()
 
         # Check migration enabled
@@ -416,124 +543,82 @@ class StorageMigrationService:
             return result
 
         total_recordings = len(recordings)
-        logger.info(f"Found {total_recordings} recordings to migrate")
+        max_workers = self.config.get_parallel_workers()
+        logger.info(f"Found {total_recordings} recordings to migrate (using {max_workers} parallel workers)")
 
         # Update progress with total count
         if progress_callback:
             progress_callback(files_processed=0, files_total=total_recordings, current_file=None)
 
-        # Process each recording
-        for idx, rec in enumerate(recordings):
-            source_path = Path(rec.get('file_path', ''))
-            recording_id = rec.get('id')
-            camera_id = rec.get('camera_id')
+        # Semaphore to limit concurrent I/O operations
+        semaphore = threading.Semaphore(max_workers)
 
-            # Detect actual recording type from path (may differ from parameter)
-            actual_type = recording_type
-            for rtype in self.RECORDING_TYPES:
-                if f'/{rtype}/' in str(source_path) or str(source_path).startswith(f'/recordings/{rtype}'):
-                    actual_type = rtype
-                    break
+        # Thread-safe counters
+        files_processed = [0]  # Use list for mutable reference in closure
+        counter_lock = threading.Lock()
 
-            # Skip if file doesn't exist
-            if not source_path.exists():
-                logger.warning(f"Source file missing: {source_path}")
-                result.skipped_count += 1
-                self._log_operation(
-                    operation='error',
-                    source_path=str(source_path),
-                    recording_id=recording_id,
-                    camera_id=camera_id,
-                    reason='source file missing',
-                    trigger_type=trigger_type,
-                    success=False,
-                    error_message='File not found on disk'
-                )
-                continue
+        # Track cancelled count
+        cancelled_count = [0]
 
-            # Get destination path
-            try:
-                dest_path = self._get_archive_path(source_path, actual_type)
-            except ValueError as e:
-                logger.error(f"Failed to compute archive path for {source_path}: {e}")
-                result.failed_count += 1
-                result.errors.append(str(e))
-                continue
+        # Process recordings in parallel using ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all migration tasks
+            futures = {
+                executor.submit(
+                    self._migrate_single_file,
+                    rec, recording_type, trigger_type, age_threshold, semaphore, cancel_event
+                ): rec for rec in recordings
+            }
 
-            # Get file size before migration
-            try:
-                file_size = source_path.stat().st_size
-            except:
-                file_size = 0
+            # Collect results as they complete
+            for future in as_completed(futures):
+                rec = futures[future]
+                try:
+                    worker_result = future.result()
 
-            # Execute rsync
-            success, error = self._rsync_file(source_path, dest_path)
+                    # Update counters thread-safely
+                    with counter_lock:
+                        if worker_result['status'] == 'success':
+                            result.success_count += 1
+                            result.bytes_processed += worker_result['bytes']
+                            if worker_result['detail']:
+                                result.details.append(worker_result['detail'])
+                        elif worker_result['status'] == 'failed':
+                            result.failed_count += 1
+                            if worker_result['error']:
+                                result.errors.append(worker_result['error'])
+                        elif worker_result['status'] == 'cancelled':
+                            cancelled_count[0] += 1
+                        else:  # skipped
+                            result.skipped_count += 1
 
-            if success:
-                # Update database
-                db_updated = self._update_recording(recording_id, {
-                    'storage_tier': 'archive',
-                    'file_path': str(dest_path),
-                    'archived_at': datetime.now(timezone.utc).isoformat()
-                })
+                        files_processed[0] += 1
 
-                if db_updated:
-                    result.success_count += 1
-                    result.bytes_processed += file_size
-                    result.details.append({
-                        'recording_id': recording_id,
-                        'camera_id': camera_id,
-                        'source': str(source_path),
-                        'dest': str(dest_path),
-                        'size_bytes': file_size
-                    })
+                        # Update progress
+                        if progress_callback:
+                            progress_callback(
+                                files_processed=files_processed[0],
+                                files_total=total_recordings,
+                                current_file=rec.get('file_path', ''),
+                                bytes_processed=result.bytes_processed
+                            )
 
-                    self._log_operation(
-                        operation='migrate',
-                        source_path=str(source_path),
-                        destination_path=str(dest_path),
-                        file_size_bytes=file_size,
-                        recording_id=recording_id,
-                        camera_id=camera_id,
-                        reason=f"file older than {age_threshold} days",
-                        trigger_type=trigger_type,
-                        success=True
-                    )
-
-                    logger.debug(f"Migrated: {source_path.name} → {dest_path}")
-                else:
-                    result.failed_count += 1
-                    result.errors.append(f"DB update failed for {recording_id}")
-            else:
-                result.failed_count += 1
-                result.errors.append(f"rsync failed for {source_path}: {error}")
-
-                self._log_operation(
-                    operation='error',
-                    source_path=str(source_path),
-                    destination_path=str(dest_path),
-                    recording_id=recording_id,
-                    camera_id=camera_id,
-                    reason='rsync failed',
-                    trigger_type=trigger_type,
-                    success=False,
-                    error_message=error
-                )
-
-            # Update progress after each file
-            if progress_callback:
-                progress_callback(
-                    files_processed=idx + 1,
-                    files_total=total_recordings,
-                    current_file=str(source_path),
-                    bytes_processed=result.bytes_processed
-                )
+                except Exception as e:
+                    logger.error(f"Migration worker exception for {rec.get('file_path')}: {e}")
+                    with counter_lock:
+                        result.failed_count += 1
+                        result.errors.append(str(e))
+                        files_processed[0] += 1
 
         # Cleanup empty directories
         self._cleanup_empty_dirs(self.recent_base / recording_type)
 
-        logger.info(f"Migration complete: {result.success_count} migrated, "
-                   f"{result.failed_count} failed, {result.skipped_count} skipped")
+        if cancelled_count[0] > 0:
+            logger.info(f"Migration cancelled: {result.success_count} migrated, "
+                       f"{cancelled_count[0]} cancelled, {result.failed_count} failed")
+        else:
+            logger.info(f"Migration complete: {result.success_count} migrated, "
+                       f"{result.failed_count} failed, {result.skipped_count} skipped")
 
         return result
 

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 31, 2026 12:55 EST*
+*Last updated: January 31, 2026 13:05 EST*
 
 **Context compaction #3 occurred at 12:29 EST (Jan 31)**
 
@@ -27,7 +27,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 31, 2026 (12:29-12:55 EST) - Digital Zoom Implementation
+## Session: January 31, 2026 (12:29-13:05 EST) - Digital Zoom Implementation
 
 ### Work Completed
 
@@ -60,12 +60,25 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
        - `setupDigitalZoomListeners()` for reset button and double-click reset
        - Timeout-based optical zoom limit detection (500ms)
 
+2. **Mouse Wheel & Pinch-to-Zoom Gestures** (13:00-13:05)
+   - User request: Add wheel and finger gestures for zoom
+   - Added to [digital-zoom.js](static/js/utils/digital-zoom.js):
+     - `_handleWheel()` - Mouse wheel zoom (scroll up = zoom in, scroll down = zoom out)
+     - `_adjustPanForZoom()` - Zoom toward cursor/pinch center point
+     - `_getTouchDistance()` / `_getTouchCenter()` - Pinch gesture helpers
+     - `_dispatchZoomEvent()` - Custom event for UI sync
+     - Modified `_handleTouchStart/Move/End()` for two-finger pinch detection
+   - Added to [ptz-controller.js](static/js/controllers/ptz-controller.js):
+     - Event listener for `digitalzoomchange` to update UI badge on wheel/pinch
+
 ### Design Decisions
 
 - **No backend changes**: Digital zoom is 100% client-side (CSS transforms)
 - **Timeout-based detection**: If optical zoom doesn't change within 500ms, assume limit reached
 - **Universal availability**: Digital zoom works for ALL cameras (even non-PTZ ones)
 - **Double-click reset**: Double-click on zoomed stream resets to 1.0x
+- **Zoom toward cursor**: Mouse wheel zooms toward cursor position, pinch zooms toward finger center
+- **Smaller wheel steps**: Wheel zoom uses 0.25x increments (half of button step) for finer control
 
 ### Testing Notes
 
@@ -73,6 +86,8 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - PTZ zoom buttons (zoom-in/zoom-out) now route through digital zoom handlers
 - Pan only enabled when zoom > 1.0x
 - Badge color changes: blue (1.5-2.5x) → orange (3-5x) → red (5.5-8x)
+- Mouse wheel: scroll up to zoom in, scroll down to zoom out
+- Touch: two-finger pinch to zoom, single-finger drag to pan (when zoomed)
 
 ---
 

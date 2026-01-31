@@ -356,3 +356,99 @@
         opacity: 0.8 !important;
     }
 }
+
+/* ============================================================================
+   DIGITAL ZOOM INDICATOR
+   Shows current digital zoom level in corner when zoomed in
+   ============================================================================ */
+
+/* Digital zoom level badge - shows "2.0x" etc. when digitally zoomed */
+.digital-zoom-badge {
+    position: absolute;
+    bottom: 0.5rem;
+    right: 0.5rem;
+    background: rgba(74, 144, 226, 0.85);
+    backdrop-filter: blur(8px);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: system-ui, -apple-system, sans-serif;
+    z-index: 20;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Show badge when stream is digitally zoomed */
+.stream-item.digitally-zoomed .digital-zoom-badge {
+    opacity: 1;
+}
+
+/* Badge color variations based on zoom level */
+.digital-zoom-badge.zoom-low {
+    background: rgba(74, 144, 226, 0.85);  /* Blue for 1.5x-2.5x */
+}
+
+.digital-zoom-badge.zoom-medium {
+    background: rgba(255, 152, 0, 0.85);   /* Orange for 3x-5x */
+}
+
+.digital-zoom-badge.zoom-high {
+    background: rgba(244, 67, 54, 0.85);   /* Red for 5.5x-8x */
+}
+
+/* ============================================================================
+   DIGITAL ZOOM PAN CURSOR STATES
+   Cursor feedback when dragging to pan within zoomed view
+   ============================================================================ */
+
+/* When digitally zoomed, show grab cursor to indicate pannable */
+.stream-item.digitally-zoomed .stream-video {
+    cursor: grab;
+}
+
+/* When actively panning (dragging) */
+.stream-item.digitally-zoomed .stream-video:active {
+    cursor: grabbing;
+}
+
+/* ============================================================================
+   DIGITAL ZOOM TOGGLE BUTTON
+   Optional button to reset digital zoom (next to other stream controls)
+   ============================================================================ */
+
+.stream-digital-zoom-reset-btn {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    background: rgba(244, 67, 54, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    width: 44px;
+    height: 44px;
+    display: none;  /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 25;
+    transition: opacity 0.3s ease, background 0.2s ease;
+}
+
+/* Show reset button when digitally zoomed */
+.stream-item.digitally-zoomed .stream-digital-zoom-reset-btn {
+    display: flex;
+}
+
+/* Hover effect */
+.stream-digital-zoom-reset-btn:hover {
+    background: rgba(244, 67, 54, 0.9);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.stream-digital-zoom-reset-btn i {
+    font-size: 1rem;
+}

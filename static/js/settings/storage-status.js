@@ -122,7 +122,7 @@ export class StorageStatus {
             this.showProgressIndicator(status.operation);
             this.updateProgressDisplay(status);
             this.startProgressPolling();
-            this.lockModal(true);
+            // showProgressIndicator already adds migrating class and locks modal
         }
     }
 
@@ -331,6 +331,9 @@ export class StorageStatus {
         $indicator.find('.progress-bytes').text('');
         $indicator.addClass('show');
 
+        // Add wave animation to progress bars
+        $('.storage-progress-bar').addClass('migrating');
+
         // Lock modal if applicable
         this.lockModal(true);
     }
@@ -365,6 +368,8 @@ export class StorageStatus {
      */
     hideProgressIndicator() {
         $('#storage-progress-indicator').removeClass('show');
+        // Remove wave animation from progress bars
+        $('.storage-progress-bar').removeClass('migrating');
         this.lockModal(false);
     }
 

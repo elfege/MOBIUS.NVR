@@ -47,7 +47,10 @@
     "archive_retention_days": 90,
     "min_free_space_percent": 20,
     "schedule_cron": "0 3 * * *",
-    "run_on_startup": false
+    "run_on_startup": false,
+    "max_recent_storage_mb": 200,
+    "max_archive_storage_mb": 8000,
+    "parallel_workers": 8
   },
   "encoding": {
     "video_codec": "libx264",

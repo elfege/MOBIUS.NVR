@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 31, 2026 14:15 EST*
+*Last updated: January 31, 2026 14:45 EST*
 
 Branch: `multi_stream_hd_selection_JAN_31_2026_a`
 
@@ -39,29 +39,59 @@ See `docs/README_project_history.md` for full details.
 
 ---
 
-## Current Session: January 31, 2026 (14:15 EST)
+## Current Session: January 31, 2026 (14:15-14:45 EST)
 
-### Active Issue: REOLINK_OFFICE Green Screen
+**Note:** Context compaction occurred at 14:45 EST.
 
-**Problem:** Camera shows green screen then falls back to sub stream
-- Camera reset to defaults in Reolink native app: 3072x1728, 15fps, 8192 Kbps
-- User hypothesis: WebRTC not leaving enough time for large stream to load
+### Completed: Camera Selector Dropdown Feature
 
-**Investigation in progress...**
+**Feature:** Multi-stream selection with show/hide cameras via header dropdown.
+
+**Files Created:**
+
+- [camera-selector.css](static/css/components/camera-selector.css) - Dropdown styling (dark theme, mobile-responsive)
+- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js) - Controller class with show/hide and HD/SD toggle
+
+**Files Modified:**
+
+- [streams.html](templates/streams.html) - Added dropdown HTML in header, HD badge on stream items, JS/CSS includes
+- [stream.js](static/js/streaming/stream.js) - Added localStorage helpers, skip hidden cameras, quality parameter support
+
+**Key Features:**
+
+- Camera filter dropdown in header with Select All checkbox
+- Individual camera show/hide via checkboxes
+- HD/SD quality toggle per camera
+- Grid dynamically rearranges (1-5 columns based on visible count)
+- Persistence via localStorage (`hiddenCameras`, `hdCameras`)
+- Custom events for stream restart and quality change
+
+**Commit:** `2cf54c8` - "Add camera selector dropdown for grid view filtering"
+
+### Resolved: REOLINK_OFFICE Green Screen
+
+**Root Cause:** Camera at 3072x1728 @ 8192 Kbps producing massive keyframes that overwhelmed WebRTC decoder buffer.
+
+**Solution:** User lowered resolution in native Reolink app.
 
 ---
 
 ## TODO List
 
-**IMMEDIATE - Current Issue:**
+**Testing Needed (New Feature):**
 
-- [ ] Diagnose and fix REOLINK_OFFICE green screen / fallback issue
+- [ ] Test camera selector dropdown opens/closes on button click
+- [ ] Test all cameras listed with correct names
+- [ ] Test unchecking camera hides it from grid
+- [ ] Test grid rearranges correctly (column count)
+- [ ] Test selections persist after page reload
+- [ ] Test hidden cameras don't consume bandwidth (streams stopped)
+- [ ] Test re-checking camera shows and restarts stream
+- [ ] Test "Select All" checkbox works correctly
+- [ ] Test HD toggle switches stream quality
+- [ ] Test mobile touch-friendly (if applicable)
 
-**Feature to Implement:**
-
-- [ ] Multi-stream HD selection - Select multiple streams to display in HD (main stream) with option to keep in sub mode
-
-**Testing Needed:**
+**Other Testing:**
 
 - [ ] Test digital zoom: zoom buttons, pan, reset
 - [ ] Test Eufy doorbell go2rtc P2P stream

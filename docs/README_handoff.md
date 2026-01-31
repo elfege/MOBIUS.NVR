@@ -15,15 +15,47 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 29, 2026 22:07 EST*
+*Last updated: January 31, 2026 00:14 EST*
 
-**Context compaction occurred at 22:07 EST**
+**Context compaction occurred at 00:13 EST (Jan 31)**
 
 Branch: `timeline_download_files_JAN_27_2026_a`
 
 For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
+
+---
+
+## Session: January 30, 2026 (22:00-00:14+ EST)
+
+### Work Completed
+
+1. **Storage Migration Fixes** (22:00-00:00)
+   - **PostgREST URL fix**: Changed default from localhost:3000 to `http://nvr-postgrest:3001`
+   - **Archive disk stats fix**: Check mounted subdir (`/recordings/STORAGE/motion`) not parent
+   - **Recording type detection fix**: Detect actual type from file path, not hardcoded 'motion'
+   - **rsync → shutil.move**: rsync not in container, replaced with Python's shutil.move for cross-filesystem moves
+   - **DB permission fix**: Granted DELETE on recordings table to nvr_anon role
+   - Commits: `d502d2b`, `0fc9413`, `685a8b7`
+
+2. **Eufy Doorbell Reverted** (per user request)
+   - Reverted go2rtc.yaml - removed doorbell entry
+   - Reverted cameras.json - doorbell back to hidden:true with rtsp: null
+   - Commit: `503f0d2`
+
+3. **FTP Data Migration** (manual by user)
+   - Moved 622GB from `/mnt/sdc/VIDEOSURVEILLANCE_FTP` to `/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP`
+   - Freed space on /mnt/sdc for NVR operations
+
+4. **Database Reconciliation**
+   - Removed 17,080 orphaned records from recordings table (files no longer exist)
+
+### Pending
+
+- **User must run `./start.sh`** to apply shutil.move fix (migration won't work until restarted)
+- After restart: Test "Migrate Now" button and verify files move from NVR_Recent to THE_BIG_DRIVE
+- Settings UI for migration parameters (age threshold, retention days, max size option) - future enhancement
 
 ---
 

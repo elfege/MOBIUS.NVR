@@ -370,6 +370,7 @@ export class StorageStatus {
 
     /**
      * Lock/unlock the modal during operations
+     * Prevents closing via close button, backdrop click, or Escape key
      * @param {boolean} lock - Whether to lock the modal
      */
     lockModal(lock) {
@@ -379,9 +380,38 @@ export class StorageStatus {
                 $modal.addClass('modal-locked');
                 // Disable close buttons
                 $modal.find('.close-btn, .modal-close, [data-dismiss="modal"]').prop('disabled', true);
+
+                // Prevent modal from closing via backdrop or escape key
+                // Store handler reference for removal later
+                this._preventCloseHandler = (e) => {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return false;
+                };
+                $modal.on('hide.bs.modal', this._preventCloseHandler);
+
+                // Also prevent escape key at document level
+                this._preventEscapeHandler = (e) => {
+                    if (e.key === 'Escape' && this.isOperationInProgress) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                };
+                $(document).on('keydown', this._preventEscapeHandler);
+
             } else {
                 $modal.removeClass('modal-locked');
                 $modal.find('.close-btn, .modal-close, [data-dismiss="modal"]').prop('disabled', false);
+
+                // Remove event handlers
+                if (this._preventCloseHandler) {
+                    $modal.off('hide.bs.modal', this._preventCloseHandler);
+                    this._preventCloseHandler = null;
+                }
+                if (this._preventEscapeHandler) {
+                    $(document).off('keydown', this._preventEscapeHandler);
+                    this._preventEscapeHandler = null;
+                }
             }
         }
     }

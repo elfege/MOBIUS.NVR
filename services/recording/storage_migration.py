@@ -415,6 +415,13 @@ class StorageMigrationService:
             recording_id = rec.get('id')
             camera_id = rec.get('camera_id')
 
+            # Detect actual recording type from path (may differ from parameter)
+            actual_type = recording_type
+            for rtype in self.RECORDING_TYPES:
+                if f'/{rtype}/' in str(source_path) or str(source_path).startswith(f'/recordings/{rtype}'):
+                    actual_type = rtype
+                    break
+
             # Skip if file doesn't exist
             if not source_path.exists():
                 logger.warning(f"Source file missing: {source_path}")
@@ -433,7 +440,7 @@ class StorageMigrationService:
 
             # Get destination path
             try:
-                dest_path = self._get_archive_path(source_path, recording_type)
+                dest_path = self._get_archive_path(source_path, actual_type)
             except ValueError as e:
                 logger.error(f"Failed to compute archive path for {source_path}: {e}")
                 result.failed_count += 1

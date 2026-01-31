@@ -129,7 +129,13 @@ class StorageMigrationService:
         Returns:
             Tuple of (needs_action, current_free_percent)
         """
-        path = self.recent_base if tier == 'recent' else self.archive_base
+        if tier == 'recent':
+            path = self.recent_base
+        else:
+            # For archive, use mounted subdir (archive_base may not be a mount point)
+            path = self.archive_base / 'motion'
+            if not path.exists():
+                path = self.archive_base
         min_free = self.config.get_min_free_space_percent()
 
         usage = self.get_disk_usage(path)
@@ -763,9 +769,15 @@ class StorageMigrationService:
         Returns:
             Dict with disk usage, file counts, warnings
         """
+        # For archive, use a mounted subdir (archive_base itself may not be a mount point)
+        # In Docker, subdirs like /recordings/STORAGE/motion are mounted, not /recordings/STORAGE
+        archive_check_path = self.archive_base / 'motion'
+        if not archive_check_path.exists():
+            archive_check_path = self.archive_base  # fallback
+
         stats = {
             'recent': self.get_disk_usage(self.recent_base),
-            'archive': self.get_disk_usage(self.archive_base),
+            'archive': self.get_disk_usage(archive_check_path),
             'config': {
                 'age_threshold_days': self.config.get_migration_age_threshold(),
                 'archive_retention_days': self.config.get_archive_retention_days(),

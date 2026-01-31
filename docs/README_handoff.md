@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 31, 2026 00:14 EST*
+*Last updated: January 31, 2026 01:25 EST*
 
 **Context compaction occurred at 00:13 EST (Jan 31)**
 
@@ -27,35 +27,42 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Session: January 30, 2026 (22:00-00:14+ EST)
+## Session: January 31, 2026 (00:13-01:25 EST)
 
 ### Work Completed
 
-1. **Storage Migration Fixes** (22:00-00:00)
-   - **PostgREST URL fix**: Changed default from localhost:3000 to `http://nvr-postgrest:3001`
-   - **Archive disk stats fix**: Check mounted subdir (`/recordings/STORAGE/motion`) not parent
-   - **Recording type detection fix**: Detect actual type from file path, not hardcoded 'motion'
-   - **rsync → shutil.move**: rsync not in container, replaced with Python's shutil.move for cross-filesystem moves
-   - **DB permission fix**: Granted DELETE on recordings table to nvr_anon role
-   - Commits: `d502d2b`, `0fc9413`, `685a8b7`
+1. **Storage Migration Working** (00:13-01:00)
+   - Verified shutil.move fix is in container and working
+   - Migration confirmed: 251 files (2.8GB) migrated to archive
+   - NVR_Recent decreasing: 458GB → 456GB (observed via `du -s`)
 
-2. **Eufy Doorbell Reverted** (per user request)
-   - Reverted go2rtc.yaml - removed doorbell entry
-   - Reverted cameras.json - doorbell back to hidden:true with rtsp: null
-   - Commit: `503f0d2`
-
-3. **FTP Data Migration** (manual by user)
-   - Moved 622GB from `/mnt/sdc/VIDEOSURVEILLANCE_FTP` to `/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP`
-   - Freed space on /mnt/sdc for NVR operations
-
-4. **Database Reconciliation**
-   - Removed 17,080 orphaned records from recordings table (files no longer exist)
+2. **Storage Settings UI** (01:00-01:25)
+   - **API Endpoints**:
+     - `GET/POST /api/storage/settings` - persistent migration settings
+     - `GET /api/storage/migration-status` - real-time progress tracking
+   - **Editable Settings** (persistent to recording_settings.json):
+     - Migrate after X days
+     - Delete after X days
+     - Min free space %
+     - Max Recent storage MB (0 = unlimited)
+     - Max Archive storage MB (0 = unlimited)
+   - **Real-time Progress Indicator**:
+     - Blinking purple indicator during operations
+     - Shows files processed, bytes moved
+     - Polls `/api/storage/migration-status` every second
+   - **Modal Lock**:
+     - Modal inescapable during migration
+     - Close buttons disabled while operation runs
+   - Files modified:
+     - [app.py](app.py) - New settings/status APIs
+     - [storage-status.js](static/js/settings/storage-status.js) - Edit/save settings, progress polling
+     - [storage-status.css](static/css/components/storage-status.css) - Progress indicator, settings form
+   - Commit: `3e313d2`
 
 ### Pending
 
-- **User must run `./start.sh`** to apply shutil.move fix (migration won't work until restarted)
-- After restart: Test "Migrate Now" button and verify files move from NVR_Recent to THE_BIG_DRIVE
-- Settings UI for migration parameters (age threshold, retention days, max size option) - future enhancement
+- **Restart required**: Run `./start.sh` to load new API endpoints for settings UI
+- Test settings persistence after editing values
 
 ---
 

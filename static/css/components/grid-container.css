@@ -9,25 +9,16 @@
    - padding: 1rem adds breathing room inside
    - overflow: auto allows scrolling if content exceeds height
 */
-.streams-container {
+/* NOTE: This block is overridden by the more specific block below.
+   Keeping for documentation purposes. */
+/* .streams-container {
     margin-top: 80px;
-    /* Space for fixed header */
     height: calc(100vh - 80px);
-    /* Full remaining height after header */
     padding: 1rem;
     overflow: auto;
-    /* Allows scrolling if needed */
-
-    /* CSS Grid - modern layout system for 2D layouts
-       - display: grid makes this a grid container
-       - gap: space between grid items (like gutters)
-    */
     display: grid;
     gap: 1rem;
-
-    /* Grid columns are set by JavaScript dynamically
-       based on number of cameras (grid-1, grid-2, etc. classes below) */
-}
+} */
 
 /* Adjust streams container margin based on header state
    When header is visible, we need top margin
@@ -41,6 +32,11 @@
     overflow: auto;
     display: grid;
     gap: 1rem;
+
+    /* Default 3-column grid as fallback if JavaScript doesn't set grid-N class.
+       JavaScript will override this via grid-1 through grid-5 classes. */
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
 
     transition: margin-top 0.4s cubic-bezier(0.4, 0, 0.2, 1),
         height 0.4s cubic-bezier(0.4, 0, 0.2, 1);

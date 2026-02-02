@@ -243,3 +243,94 @@
     opacity: 1 !important;
     pointer-events: auto !important;
 }
+
+/* ============================================================================
+   FULLSCREEN CONTROL BUTTON POSITIONING
+   Prevent overlap by explicitly positioning each button with proper spacing.
+   Close button is 60px, other buttons are 50px in fullscreen, with 12px gaps.
+   ============================================================================ */
+
+/* Close button (X) - rightmost position */
+/* Already defined above at right: 20px */
+
+/* Audio button - left of close button */
+.stream-item.css-fullscreen .stream-audio-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 92px !important;  /* 20px + 60px close btn + 12px gap */
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+}
+
+/* PTZ toggle button - left of audio button */
+.stream-item.css-fullscreen .stream-ptz-toggle-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 154px !important;  /* 92px + 50px audio btn + 12px gap */
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+}
+
+/* Controls toggle button - left of PTZ button */
+.stream-item.css-fullscreen .stream-controls-toggle-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 216px !important;  /* 154px + 50px ptz btn + 12px gap */
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+}
+
+/* Settings button - left of controls toggle */
+.stream-item.css-fullscreen .camera-settings-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 278px !important;  /* 216px + 50px controls btn + 12px gap */
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+}
+
+/* Record button - left of settings */
+.stream-item.css-fullscreen .camera-record-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 340px !important;  /* 278px + 50px settings btn + 12px gap */
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+}
+
+/* Consistent background styling for all fullscreen control buttons */
+.stream-item.css-fullscreen .stream-audio-btn,
+.stream-item.css-fullscreen .stream-ptz-toggle-btn,
+.stream-item.css-fullscreen .stream-controls-toggle-btn,
+.stream-item.css-fullscreen .camera-settings-btn,
+.stream-item.css-fullscreen .camera-record-btn {
+    background: rgba(0, 0, 0, 0.7) !important;
+    border: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Icon size in fullscreen control buttons */
+.stream-item.css-fullscreen .stream-audio-btn i,
+.stream-item.css-fullscreen .stream-ptz-toggle-btn i,
+.stream-item.css-fullscreen .stream-controls-toggle-btn i,
+.stream-item.css-fullscreen .camera-settings-btn i,
+.stream-item.css-fullscreen .camera-record-btn i {
+    font-size: 1.4rem !important;
+}
+
+/* Hover effect for fullscreen control buttons */
+.stream-item.css-fullscreen .stream-audio-btn:hover,
+.stream-item.css-fullscreen .stream-ptz-toggle-btn:hover,
+.stream-item.css-fullscreen .stream-controls-toggle-btn:hover,
+.stream-item.css-fullscreen .camera-settings-btn:hover,
+.stream-item.css-fullscreen .camera-record-btn:hover {
+    background: rgba(0, 0, 0, 0.9) !important;
+    transform: scale(1.1) !important;
+}

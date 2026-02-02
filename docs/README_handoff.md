@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: January 31, 2026 14:45 EST*
+*Last updated: February 2, 2026 08:15 EST*
 
 Branch: `multi_stream_hd_selection_JAN_31_2026_a`
 
@@ -28,6 +28,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 ## Previous Session Summary (Jan 27-31, 2026)
 
 Key work completed:
+
 - Digital zoom feature (8x max, mouse wheel, pinch gestures)
 - Storage migration with parallel workers and progress callbacks
 - Presence sensors feature
@@ -73,6 +74,32 @@ See `docs/README_project_history.md` for full details.
 **Root Cause:** Camera at 3072x1728 @ 8192 Kbps producing massive keyframes that overwhelmed WebRTC decoder buffer.
 
 **Solution:** User lowered resolution in native Reolink app.
+
+---
+
+## Session: February 2, 2026 (08:00-08:15 EST)
+
+### Fixed: Fullscreen Control Button Overlap
+
+**Problem:** Close button (X) overlapping with other control buttons in fullscreen mode.
+
+**Fix:** Added explicit positioning for all control buttons in fullscreen mode with proper 12px gaps.
+
+**File Modified:** [fullscreen.css](static/css/components/fullscreen.css)
+
+**Commit:** `dc0868d` - "Fix fullscreen control button overlap with proper spacing"
+
+### Fixed: Grid Layout (Single Column Bug)
+
+**Problem:** Cameras displaying in single column instead of grid.
+
+**Root Cause:** `.streams-container` had `display: grid` but no default `grid-template-columns`. CSS Grid defaults to 1 column without this.
+
+**Fix:** Added default `grid-template-columns: repeat(3, 1fr)` as fallback when JavaScript doesn't apply grid-N class.
+
+**File Modified:** [grid-container.css](static/css/components/grid-container.css)
+
+**Commit:** `48a56ec` - "Fix grid layout default: add fallback 3-column grid template"
 
 ---
 

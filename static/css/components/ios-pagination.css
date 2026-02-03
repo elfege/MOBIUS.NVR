@@ -67,20 +67,55 @@
     display: none !important;
 }
 
-/* Adjust grid for iOS pagination - 2x3 grid for 6 cameras */
+/* Adjust grid for iOS pagination - default 2 columns for portrait */
 @supports (-webkit-touch-callout: none) {
-    /* iOS-specific styles */
+    /* iOS-specific styles - default grid, but allow grid-N classes to override */
     .streams-container {
-        /* Override default grid for cleaner 2x3 layout on iOS */
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    /* Allow JavaScript-set grid classes to work on iOS */
+    .streams-container.grid-1 {
+        grid-template-columns: repeat(1, 1fr) !important;
+    }
+
+    .streams-container.grid-2 {
         grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    .streams-container.grid-3 {
+        grid-template-columns: repeat(3, 1fr) !important;
+    }
+
+    /* Limit to 3 columns on iOS in portrait for readability */
+    .streams-container.grid-4,
+    .streams-container.grid-5 {
+        grid-template-columns: repeat(3, 1fr) !important;
     }
 }
 
-/* Landscape orientation on iOS - 3x2 grid */
+/* Landscape orientation on iOS - allow up to 4 columns */
 @media screen and (orientation: landscape) and (max-width: 1024px) {
     @supports (-webkit-touch-callout: none) {
         .streams-container {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .streams-container.grid-1 {
+            grid-template-columns: repeat(1, 1fr) !important;
+        }
+
+        .streams-container.grid-2 {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+
+        .streams-container.grid-3 {
             grid-template-columns: repeat(3, 1fr) !important;
+        }
+
+        .streams-container.grid-4,
+        .streams-container.grid-5 {
+            grid-template-columns: repeat(4, 1fr) !important;
         }
     }
 }

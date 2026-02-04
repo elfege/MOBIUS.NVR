@@ -91,8 +91,12 @@ class CameraSelectorController {
         );
 
         sortedCameras.forEach(camera => {
+            // Check if camera supports HD toggle (has main/sub quality options)
+            // MJPEG and SNAPSHOT streams don't have quality levels
+            const supportsHD = this._supportsHDToggle(camera.streamType);
+
             const $item = $(`
-                <div class="camera-item" data-serial="${camera.serial}">
+                <div class="camera-item" data-serial="${camera.serial}" data-stream-type="${camera.streamType}">
                     <div class="camera-item-left">
                         <input type="checkbox"
                                id="camera-check-${camera.serial}"
@@ -101,15 +105,32 @@ class CameraSelectorController {
                                checked>
                         <span class="camera-name" title="${camera.name}">${camera.name}</span>
                     </div>
+                    ${supportsHD ? `
                     <button class="hd-toggle-btn"
                             data-serial="${camera.serial}"
-                            title="Toggle HD quality">
+                            title="Toggle HD quality (main stream)">
                         <span class="hd-label">SD</span>
                     </button>
+                    ` : `
+                    <span class="stream-type-badge" title="This camera uses ${camera.streamType} - no HD option">
+                        ${camera.streamType}
+                    </span>
+                    `}
                 </div>
             `);
             this.$list.append($item);
         });
+    }
+
+    /**
+     * Check if a stream type supports HD toggle (main/sub quality switching)
+     * @param {string} streamType - The stream type
+     * @returns {boolean} True if HD toggle is supported
+     */
+    _supportsHDToggle(streamType) {
+        // Stream types that support main/sub quality switching
+        const hdSupportedTypes = ['HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'];
+        return hdSupportedTypes.includes(streamType?.toUpperCase());
     }
 
     /**

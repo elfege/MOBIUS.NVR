@@ -1768,15 +1768,20 @@ export class MultiStreamManager {
         const debugForceSnapshot = urlParams.get('forceSnapshot') === 'true';
         const isGridView = !$streamItem.hasClass('css-fullscreen');
 
-        // iOS in grid view: use snapshots (not MJPEG) unless user forces WebRTC
-        // forceWebRTCGrid is experimental - may cause issues with many cameras
-        const useIOSSnapshot = isIOSDevice() && isGridView && !debugForceMJPEG && !isForceWebRTCGridEnabled();
-        // Desktop users can opt-in to snapshot mode via Settings
-        const useDesktopSnapshot = !isPortableDevice() && isGridSnapshotsEnabled() && isGridView;
-        // Android/other portable in grid: use MJPEG
-        const forcePortableMJPEG = (isPortableDevice() && !isIOSDevice() || debugForceMJPEG) && isGridView;
-        // Use snapshots for: iOS, desktop opt-in, or debug mode
-        const useSnapshot = useIOSSnapshot || useDesktopSnapshot || (debugForceSnapshot && isGridView);
+        // Check if this camera is marked for HD mode in the camera selector
+        // HD cameras should use native streams, not snapshots/MJPEG
+        const isHDMode = quality === 'main' || this._getHDCameras().includes(cameraId);
+
+        // iOS in grid view: use snapshots (not MJPEG) unless:
+        // - user forces WebRTC via settings
+        // - camera is selected for HD mode (use native stream for HD)
+        const useIOSSnapshot = isIOSDevice() && isGridView && !debugForceMJPEG && !isForceWebRTCGridEnabled() && !isHDMode;
+        // Desktop users can opt-in to snapshot mode via Settings (but HD cameras use native)
+        const useDesktopSnapshot = !isPortableDevice() && isGridSnapshotsEnabled() && isGridView && !isHDMode;
+        // Android/other portable in grid: use MJPEG (but HD cameras use native)
+        const forcePortableMJPEG = (isPortableDevice() && !isIOSDevice() || debugForceMJPEG) && isGridView && !isHDMode;
+        // Use snapshots for: iOS, desktop opt-in, or debug mode (but never for HD cameras)
+        const useSnapshot = useIOSSnapshot || useDesktopSnapshot || (debugForceSnapshot && isGridView && !isHDMode);
 
         if (useSnapshot && streamType !== 'SNAPSHOT') {
             const snapshotReason = isIOSDevice() ? 'iOS' : (useDesktopSnapshot ? 'Desktop setting' : 'Debug');

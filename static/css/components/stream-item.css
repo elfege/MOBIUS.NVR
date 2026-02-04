@@ -21,9 +21,9 @@
     /* Fallback aspect ratio if JavaScript doesn't set it */
     aspect-ratio: 16 / 9;
 
-    /* Fill grid cell width, but let aspect-ratio control height */
+    /* Make sure the item fills its grid cell */
     width: 100%;
-    /* REMOVED: height: 100% - conflicts with aspect-ratio on tablets/mobile */
+    height: 100%;
     min-height: 0;
     /* Allows grid item to shrink below content size */
 }

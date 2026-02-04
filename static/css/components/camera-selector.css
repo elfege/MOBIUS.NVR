@@ -288,6 +288,23 @@
    ============================================================================= */
 
 @media (max-width: 480px) {
+    /* Hide the header button on mobile - use floating button instead */
+    .camera-selector-container {
+        /* Keep in header but make more accessible */
+        position: static;
+    }
+
+    #camera-selector-btn {
+        /* Smaller, simpler button on mobile */
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+    }
+
+    #camera-selector-btn #camera-count-label {
+        /* Hide the count text on very small screens */
+        display: none;
+    }
+
     .camera-selector-dropdown {
         position: fixed;
         top: auto;
@@ -297,6 +314,8 @@
         max-width: none;
         border-radius: 16px 16px 0 0;
         max-height: 70vh;
+        /* Add safe area padding for notched iPhones */
+        padding-bottom: env(safe-area-inset-bottom, 0);
     }
 
     .camera-selector-list {
@@ -305,6 +324,34 @@
 
     .camera-item {
         padding: 0.8rem 1rem;
+        /* Larger touch targets on mobile */
+        min-height: 48px;
+    }
+
+    .camera-item-left input[type="checkbox"] {
+        /* Larger checkbox on mobile */
+        width: 22px;
+        height: 22px;
+    }
+
+    .hd-toggle-btn {
+        /* Larger touch target */
+        width: 44px;
+        height: 32px;
+        font-size: 0.75rem;
+    }
+}
+
+/* iOS-specific: Add safe area padding */
+@supports (-webkit-touch-callout: none) {
+    @media (max-width: 480px) {
+        .camera-selector-dropdown {
+            padding-bottom: max(env(safe-area-inset-bottom, 0), 20px);
+        }
+
+        .camera-selector-footer {
+            padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0));
+        }
     }
 }
 

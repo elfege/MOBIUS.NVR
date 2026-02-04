@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 2, 2026 08:15 EST*
+*Last updated: February 3, 2026 21:09 EST*
 
 Branch: `multi_stream_hd_selection_JAN_31_2026_a`
 
@@ -100,6 +100,34 @@ See `docs/README_project_history.md` for full details.
 **File Modified:** [grid-container.css](static/css/components/grid-container.css)
 
 **Commit:** `48a56ec` - "Fix grid layout default: add fallback 3-column grid template"
+
+---
+
+## Session: February 3, 2026 (21:08 EST)
+
+**Note:** Context compaction occurred. Continuing from previous session.
+
+### Reverted: Failed Tablet Snapshot CSS Fix
+
+**Problem:** Previous commit `ab333d8` attempted to fix iPad black screens for non-HD cameras in snapshot mode by removing `height: 100%` and adding explicit snapshot img positioning.
+
+**Result:** Fix didn't help and added unwanted margins between stream rows.
+
+**Action:** Reverted commit `ab333d8`.
+
+**Commit:** `c69c440` - "Revert 'Fix tablet snapshot display: remove height:100% conflict with aspect-ratio'"
+
+### Still Investigating: iPad Black Screens
+
+**Issue:** Non-HD cameras showing black screens in grid view on iPad (snapshot mode issue).
+
+**Working scenarios:**
+
+- iPhone 2x2 grid with same cameras works fine
+- iPad fullscreen HD mode works fine
+- All HD-selected cameras work on iPad
+
+**Hypothesis:** Snapshot polling may have timing or size issues specific to iPad viewport/rendering.
 
 ---
 

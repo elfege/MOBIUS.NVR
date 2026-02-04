@@ -51,18 +51,6 @@
 
     .stream-item {
         min-height: 0;
-        /* Don't override height - let aspect-ratio work */
-        /* height: 100%; - REMOVED: conflicts with aspect-ratio */
-    }
-
-    /* Ensure snapshot images display correctly on tablets */
-    .stream-snapshot-img,
-    .stream-mjpeg-img {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
         height: 100%;
-        object-fit: cover;
     }
 }

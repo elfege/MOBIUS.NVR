@@ -253,7 +253,7 @@ class CameraSelectorController {
      * Open the dropdown
      */
     _openDropdown() {
-        this.$dropdown.show();
+        this.$dropdown.addClass('visible');
         this.$btn.addClass('dropdown-open');
         this.isOpen = true;
     }
@@ -262,7 +262,7 @@ class CameraSelectorController {
      * Close the dropdown
      */
     _closeDropdown() {
-        this.$dropdown.hide();
+        this.$dropdown.removeClass('visible');
         this.$btn.removeClass('dropdown-open');
         this.isOpen = false;
     }

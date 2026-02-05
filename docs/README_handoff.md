@@ -268,6 +268,29 @@ Exporting HUBITAT_API_TOKEN_1-4
 
 **Next Steps:** User needs to run `./start.sh` to reload container with correct environment variables.
 
+### Fixed: Camera Selector Initialization Timing
+
+**Problem:** Camera selector dropdown showing only "Apply" button with no camera list on mobile.
+
+**Root Cause:** JavaScript controller initializing before stream items were fully rendered in DOM. The 100ms delay was insufficient, resulting in `_collectCameras()` finding zero stream items and creating an empty dropdown.
+
+**Solution:**
+
+Implemented retry mechanism with exponential backoff:
+
+- Check for stream items before initialization
+- Retry up to 10 times with increasing delays (200ms, 400ms, 600ms...)
+- Console logging for debugging
+- Only initialize once stream items are detected in DOM
+
+**File Modified:**
+
+- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js):552-575 - Added retry logic with exponential backoff
+
+**Commit:** `f86f91e` - "Fix camera selector initialization timing issue"
+
+**Testing:** Hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R) to clear cached JavaScript.
+
 ---
 
 ## TODO List

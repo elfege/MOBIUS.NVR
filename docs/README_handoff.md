@@ -233,6 +233,43 @@ See `docs/README_project_history.md` for full details.
 
 ---
 
+## Session: February 4, 2026 (22:31-22:45 EST)
+
+**Note:** Context compaction occurred at 22:31 EST. Created new branch `multi_stream_hd_selection_JAN_31_2026_b`.
+
+### Fixed: Hubitat Environment Variable Names
+
+**Problem:** Python code was looking for `HUBITAT_API_TOKEN` but AWS exports `HUBITAT_API_TOKEN_4` (NVR uses Hub 4).
+
+**Root Cause:** Variable name mismatch between AWS secret field names and Python environment variable lookups.
+
+**Solution:**
+
+Updated Python services to use Hub 4 suffix:
+
+- `HUBITAT_API_TOKEN_4` (was `HUBITAT_API_TOKEN`)
+- `HUBITAT_API_NUMBER_4` (was `HUBITAT_API_APP_NUMBER`)
+- `HUBITAT_HUB_IP_4` (was `HUBITAT_HUB_IP`)
+
+**Files Modified:**
+
+- [presence_service.py](services/presence/presence_service.py):124-126 - Updated environment variable names
+- [hubitat_power_service.py](services/power/hubitat_power_service.py):177-179 - Updated environment variable names
+
+**AWS Secret Export (verified):**
+
+```bash
+Exporting HUBITAT_HUB_IP_1-4
+Exporting HUBITAT_API_NUMBER_1-4
+Exporting HUBITAT_API_TOKEN_1-4
+```
+
+**Commit:** `335ee6c` - "Fix Hubitat environment variable names to use Hub 4 suffix"
+
+**Next Steps:** User needs to run `./start.sh` to reload container with correct environment variables.
+
+---
+
 ## TODO List
 
 **Testing Needed (New Feature):**

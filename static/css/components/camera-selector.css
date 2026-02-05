@@ -1,7 +1,7 @@
 /**
- * Camera Selector Dropdown
+ * Camera Selector Modal
  *
- * Header dropdown for selecting which cameras to show in the grid view.
+ * Modal overlay for selecting which cameras to show in the grid view.
  * Supports show/hide per camera and optional HD/SD quality toggle.
  */
 
@@ -10,7 +10,6 @@
    ============================================================================= */
 
 .camera-selector-container {
-    position: relative;
     display: inline-block;
 }
 
@@ -44,7 +43,7 @@
     transition: transform 0.2s ease;
 }
 
-#camera-selector-btn.dropdown-open .fa-chevron-down {
+#camera-selector-btn.modal-open .fa-chevron-down {
     transform: rotate(180deg);
 }
 
@@ -53,40 +52,105 @@
 }
 
 /* =============================================================================
-   DROPDOWN PANEL
+   MODAL BACKDROP AND CONTAINER
    ============================================================================= */
 
-.camera-selector-dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
+.camera-selector-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
     right: 0;
-    min-width: 280px;
-    max-width: 350px;
-    background: rgba(20, 20, 20, 0.95);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-    z-index: 1050;
-    overflow: hidden;
-    /* Hidden by default - controlled by JavaScript */
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 9998;
     display: none;
+    animation: fadeIn 0.2s ease;
 }
 
-/* Visible state - controlled by JavaScript */
-.camera-selector-dropdown.visible {
+.camera-selector-backdrop.visible {
     display: block;
 }
 
-/* Header with Select All */
+.camera-selector-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 500px;
+    max-height: 80vh;
+    background: rgba(20, 20, 20, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+    z-index: 9999;
+    display: none;
+    flex-direction: column;
+    animation: modalSlideIn 0.3s ease;
+}
+
+.camera-selector-modal.visible {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes modalSlideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -45%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* =============================================================================
+   MODAL HEADER
+   ============================================================================= */
+
 .camera-selector-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.75rem 1rem;
+    padding: 1rem 1.25rem;
     background: rgba(255, 255, 255, 0.05);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px 12px 0 0;
+    flex-shrink: 0;
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0.25rem;
+    line-height: 1;
+    transition: all 0.2s ease;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
 }
 
 .select-all-label {
@@ -106,11 +170,18 @@
     accent-color: #2196F3;
 }
 
-/* Camera List */
+/* =============================================================================
+   MODAL BODY (Camera List)
+   ============================================================================= */
+
 .camera-selector-list {
-    max-height: 400px;
+    flex: 1 1 auto;
     overflow-y: auto;
     padding: 0.5rem 0;
+    min-height: 200px;
+    /* iOS smooth scrolling */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 
 /* Scrollbar styling */
@@ -294,61 +365,20 @@
    RESPONSIVE / MOBILE
    ============================================================================= */
 
-/* Tablet and mobile devices - use bottom sheet dropdown */
+/* Mobile adjustments for modal */
 @media (max-width: 768px) {
-    .camera-selector-container {
-        position: static;
+    .camera-selector-modal {
+        width: 95%;
+        max-height: 90vh;
     }
 
-    /* Ensure dropdown is hidden on mobile by default */
-    .camera-selector-dropdown {
-        display: none;
-    }
-
-    /* Mobile: Bottom sheet positioning when visible */
-    .camera-selector-dropdown.visible {
-        /* Fixed bottom sheet for mobile */
-        position: fixed;
-        top: auto;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        max-width: none;
-        width: 100%;
-        border-radius: 16px 16px 0 0;
-        max-height: 85vh;
-        /* Flexbox layout for proper header/list/footer ordering */
-        display: flex;
-        flex-direction: column;
-        z-index: 9999;
-        transform: translateY(0);
-    }
-
-    /* Header stays at top of bottom sheet */
     .camera-selector-header {
-        flex-shrink: 0;
-        order: 1;
+        padding: 1rem;
     }
 
-    /* Scrollable list in middle */
-    .camera-selector-list {
-        flex: 1 1 auto;
-        order: 2;
-        max-height: none;
-        min-height: 200px;
-        /* Critical for iOS scrolling */
-        overflow-y: scroll !important;
-        -webkit-overflow-scrolling: touch;
-        /* Prevent scroll chaining to body */
-        overscroll-behavior: contain;
-    }
-
-    /* Footer (Apply button) stays at bottom */
-    .camera-selector-footer {
-        flex-shrink: 0;
-        order: 3;
-        /* iOS safe area padding */
-        padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0));
+    .modal-close-btn {
+        top: 0.75rem;
+        right: 0.75rem;
     }
 
     .camera-item {
@@ -391,15 +421,9 @@
     #camera-selector-btn #camera-count-label {
         display: none;
     }
-}
 
-/* iOS-specific: Additional safe area handling if needed */
-@supports (-webkit-touch-callout: none) {
-    @media (max-width: 768px) {
-        .camera-selector-dropdown {
-            /* Ensure extra padding on devices with home indicator */
-            padding-bottom: env(safe-area-inset-bottom, 0);
-        }
+    .camera-selector-modal {
+        width: 98%;
     }
 }
 

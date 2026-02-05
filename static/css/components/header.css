@@ -88,28 +88,19 @@
     pointer-events: none;
 }
 
-/* The toggle button - always visible at the top
-   - position: fixed keeps it on screen even when header collapses
-   - z-index: 1001 puts it above the header (which is z-index: 1000)
-   - Centered horizontally with left: 50% + transform: translateX(-50%)
-*/
-/* The toggle button - make it much smaller and barely visible */
+/* The toggle button - Desktop: hidden until hover, Mobile: styled differently */
 .header-toggle-btn {
     position: fixed;
-    top: 5px;
+    top: 0px;
     left: 50%;
     transform: translateX(-50%);
 
     background: rgba(0, 0, 0, 0.15);
-    /* Even more transparent */
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    /* More subtle border */
     border-radius: 0 0 8px 8px;
-    /* Smaller radius */
 
     padding: 0.25rem 0.75rem;
-    /* Much smaller padding */
     cursor: pointer;
 
     transition: all 0.3s ease;
@@ -121,21 +112,59 @@
     justify-content: center;
 
     color: rgba(255, 255, 255, 0.3);
-    /* Very weak opacity - barely visible */
+
+    /* Desktop: Hidden by default, show on hover */
+    opacity: 0;
+    pointer-events: auto;
 }
 
-/* Hover effect - becomes visible but still subtle */
-.header-toggle-btn:hover {
-    background: rgba(0, 0, 0, 0.4);
-    color: rgba(255, 255, 255, 0.8);
-    /* Not fully opaque even on hover */
-    transform: translateX(-50%) scale(1.1);
+/* Desktop: Create larger hover zone at top of screen */
+@media (hover: hover) and (pointer: fine) {
+    .header-toggle-btn::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 100px;
+        /* Large hover zone */
+        z-index: -1;
+        pointer-events: auto;
+    }
+
+    .header-toggle-btn:hover {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.4);
+        color: rgba(255, 255, 255, 0.8);
+        transform: translateX(-50%) scale(1.1);
+    }
 }
 
-/* Icon inside the toggle button - much smaller */
+/* iOS/Touch devices: Always visible, larger and highly transparent */
+@supports (-webkit-touch-callout: none) {
+    .header-toggle-btn {
+        opacity: 0.15;
+        pointer-events: auto;
+        padding: 0.6rem 1.5rem;
+        background: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .header-toggle-btn i {
+        font-size: 1.4rem;
+        color: rgba(255, 255, 255, 0.2);
+    }
+
+    .header-toggle-btn:active {
+        opacity: 0.4;
+        background: rgba(0, 0, 0, 0.15);
+        transform: translateX(-50%) scale(1.05);
+    }
+}
+
+/* Icon inside the toggle button */
 .header-toggle-btn i {
-    font-size: 0.7rem;
-    /* Much smaller - was 1.2rem */
+    font-size: 1rem;
     transition: transform 0.3s ease;
 }
 
@@ -170,28 +199,30 @@
    ============================================================================ */
 
 @media (max-width: 768px) {
-    /* Hide the toggle button on mobile - gestures will control header */
-    .header-toggle-btn {
-        display: none !important;
-    }
-
     /* Smaller header padding on mobile */
     .header {
         padding: 0.75rem 1rem;
     }
 
-    /* Add a subtle pull-down indicator at top of screen when header is hidden */
-    .header-toggle-input:not(:checked)~.header::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 60px;
-        height: 4px;
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 0 0 4px 4px;
-        z-index: 1002;
-        pointer-events: none;
+    /* Non-iOS mobile: Hide toggle button, use gestures only */
+    @supports not (-webkit-touch-callout: none) {
+        .header-toggle-btn {
+            display: none !important;
+        }
+
+        /* Add a subtle pull-down indicator at top when header is hidden */
+        .header-toggle-input:not(:checked)~.header::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 900px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 0 0 4px 4px;
+            z-index: 1002;
+            pointer-events: none;
+        }
     }
 }

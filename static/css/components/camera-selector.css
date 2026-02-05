@@ -70,6 +70,13 @@
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     z-index: 1050;
     overflow: hidden;
+    /* Hidden by default - controlled by JavaScript */
+    display: none;
+}
+
+/* Visible state - controlled by JavaScript */
+.camera-selector-dropdown.visible {
+    display: block;
 }
 
 /* Header with Select All */
@@ -293,22 +300,23 @@
         position: static;
     }
 
-    .camera-selector-dropdown {
+    /* Mobile: Bottom sheet positioning */
+    .camera-selector-dropdown.visible {
         /* Fixed bottom sheet for mobile */
-        position: fixed !important;
-        top: auto !important;
-        bottom: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        max-width: none !important;
-        width: 100% !important;
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-width: none;
+        width: 100%;
         border-radius: 16px 16px 0 0;
         max-height: 85vh;
-        /* Ensure proper stacking and display */
-        display: flex !important;
-        flex-direction: column !important;
-        z-index: 9999 !important;
-        transform: translateY(0) !important;
+        /* Flexbox layout for proper header/list/footer ordering */
+        display: flex;
+        flex-direction: column;
+        z-index: 9999;
+        transform: translateY(0);
     }
 
     /* Header stays at top of bottom sheet */

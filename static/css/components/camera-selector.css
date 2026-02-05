@@ -301,20 +301,41 @@
         left: 0 !important;
         right: 0 !important;
         max-width: none !important;
+        width: 100% !important;
         border-radius: 16px 16px 0 0;
-        max-height: 80vh;
-        /* iOS safe area padding */
-        padding-bottom: env(safe-area-inset-bottom, 0);
-        transform: translateY(0);
+        max-height: 85vh;
+        /* Ensure proper stacking and display */
+        display: flex !important;
+        flex-direction: column !important;
+        z-index: 9999 !important;
+        transform: translateY(0) !important;
     }
 
+    /* Header stays at top of bottom sheet */
+    .camera-selector-header {
+        flex-shrink: 0;
+        order: 1;
+    }
+
+    /* Scrollable list in middle */
     .camera-selector-list {
-        max-height: calc(80vh - 140px);
+        flex: 1 1 auto;
+        order: 2;
+        max-height: none;
+        min-height: 200px;
         /* Critical for iOS scrolling */
         overflow-y: scroll !important;
         -webkit-overflow-scrolling: touch;
         /* Prevent scroll chaining to body */
         overscroll-behavior: contain;
+    }
+
+    /* Footer (Apply button) stays at bottom */
+    .camera-selector-footer {
+        flex-shrink: 0;
+        order: 3;
+        /* iOS safe area padding */
+        padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0));
     }
 
     .camera-item {
@@ -359,15 +380,12 @@
     }
 }
 
-/* iOS-specific: Add safe area padding */
+/* iOS-specific: Additional safe area handling if needed */
 @supports (-webkit-touch-callout: none) {
-    @media (max-width: 480px) {
+    @media (max-width: 768px) {
         .camera-selector-dropdown {
-            padding-bottom: max(env(safe-area-inset-bottom, 0), 20px);
-        }
-
-        .camera-selector-footer {
-            padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0));
+            /* Ensure extra padding on devices with home indicator */
+            padding-bottom: env(safe-area-inset-bottom, 0);
         }
     }
 }

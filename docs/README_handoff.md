@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 3, 2026 21:09 EST*
+*Last updated: February 3, 2026 22:15 EST*
 
 Branch: `multi_stream_hd_selection_JAN_31_2026_a`
 
@@ -128,6 +128,63 @@ See `docs/README_project_history.md` for full details.
 - All HD-selected cameras work on iPad
 
 **Hypothesis:** Snapshot polling may have timing or size issues specific to iPad viewport/rendering.
+
+---
+
+## Session: February 3, 2026 (21:30-22:15 EST)
+
+### Implemented: Mobile Header Gesture Control
+
+**Feature:** Mobile-specific header show/hide with touch gestures.
+
+**Files Created:**
+
+- [mobile-header-controller.js](static/js/controllers/mobile-header-controller.js) - Touch gesture handler for mobile header control
+
+**Files Modified:**
+
+- [streams.html](templates/streams.html) - Added mobile-header-controller script, moved presence indicators to left side of header
+- [header.css](static/css/components/header.css) - Added mobile gesture support, desktop hover-to-show, iOS transparent styling
+- [presence-indicators.css](static/css/components/presence-indicators.css) - Updated positioning for left-side placement
+
+**Behaviors:**
+
+- **Desktop:** Header toggle hidden by default, appears on hover near top (100px zone)
+- **iOS:** Header toggle visible, large and highly transparent (opacity 0.15), larger touch target
+- **Android/non-iOS mobile:** Gesture-based only (swipe down from top, tap to show temporarily)
+
+**Commit:** `20ee09f` - "Mobile header: hide toggle button, add gesture support; Move presence indicators to left side"
+
+### Fixed: Mobile UX Issues
+
+**Issues Addressed:**
+
+1. **Camera selector dropdown on iPhone:**
+   - Portrait mode: Dropdown not appearing properly
+   - Landscape mode: Scrolling barely functional
+
+2. **Desktop header toggle:** Should hide until mouse hovers at top
+
+3. **iOS header toggle:** Should be bigger and highly transparent
+
+**Fixes Applied:**
+
+**Camera Selector ([camera-selector.css](static/css/components/camera-selector.css)):**
+
+- Changed mobile breakpoint from 480px to 768px to catch all mobile devices
+- Added `position: fixed !important` with `bottom: 0` for reliable bottom sheet positioning
+- Increased `max-height` to 80vh for better content visibility
+- Added iOS-specific scrolling: `-webkit-overflow-scrolling: touch`, `overflow-y: scroll !important`
+- Added `overscroll-behavior: contain` to prevent scroll chaining
+- Larger touch targets: 52px min-height, 24px checkboxes, 48x36px HD toggles
+
+**Header Toggle ([header.css](static/css/components/header.css)):**
+
+- Desktop: Hidden by default (`opacity: 0`), shows on hover with 100px hover zone via `::before` pseudo-element
+- iOS: Always visible at `opacity: 0.15`, larger padding (0.6rem 1.5rem), bigger icon (1.4rem)
+- Non-iOS mobile: Completely hidden, gesture control only
+
+**Commit:** `44390ce` - "Fix mobile UX: camera dropdown scrolling, desktop/iOS header toggle visibility"
 
 ---
 

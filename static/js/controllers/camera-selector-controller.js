@@ -16,7 +16,9 @@ class CameraSelectorController {
     constructor() {
         // DOM elements
         this.$btn = $('#camera-selector-btn');
-        this.$dropdown = $('#camera-selector-dropdown');
+        this.$backdrop = $('#camera-selector-backdrop');
+        this.$modal = $('#camera-selector-modal');
+        this.$closeBtn = $('#camera-selector-close');
         this.$list = $('#camera-selector-list');
         this.$selectAll = $('#select-all-cameras');
         this.$applyBtn = $('#apply-camera-filter');
@@ -179,23 +181,26 @@ class CameraSelectorController {
      * Setup event listeners
      */
     _setupEventListeners() {
-        // Toggle dropdown
+        // Toggle modal
         this.$btn.on('click', (e) => {
             e.stopPropagation();
-            this._toggleDropdown();
+            this._toggleModal();
         });
 
-        // Close dropdown when clicking outside
-        $(document).on('click', (e) => {
-            if (this.isOpen && !$(e.target).closest('.camera-selector-container').length) {
-                this._closeDropdown();
-            }
+        // Close modal on backdrop click
+        this.$backdrop.on('click', () => {
+            this._closeModal();
+        });
+
+        // Close modal on close button click
+        this.$closeBtn.on('click', () => {
+            this._closeModal();
         });
 
         // Close on Escape key
         $(document).on('keydown', (e) => {
             if (e.key === 'Escape' && this.isOpen) {
-                this._closeDropdown();
+                this._closeModal();
             }
         });
 
@@ -234,37 +239,43 @@ class CameraSelectorController {
         // Apply button
         this.$applyBtn.on('click', () => {
             this._applyFilter();
-            this._closeDropdown();
+            this._closeModal();
         });
     }
 
     /**
-     * Toggle dropdown open/close
+     * Toggle modal open/close
      */
-    _toggleDropdown() {
+    _toggleModal() {
         if (this.isOpen) {
-            this._closeDropdown();
+            this._closeModal();
         } else {
-            this._openDropdown();
+            this._openModal();
         }
     }
 
     /**
-     * Open the dropdown
+     * Open the modal
      */
-    _openDropdown() {
-        this.$dropdown.addClass('visible');
-        this.$btn.addClass('dropdown-open');
+    _openModal() {
+        this.$backdrop.addClass('visible');
+        this.$modal.addClass('visible');
+        this.$btn.addClass('modal-open');
         this.isOpen = true;
+        // Prevent body scroll when modal is open
+        $('body').css('overflow', 'hidden');
     }
 
     /**
-     * Close the dropdown
+     * Close the modal
      */
-    _closeDropdown() {
-        this.$dropdown.removeClass('visible');
-        this.$btn.removeClass('dropdown-open');
+    _closeModal() {
+        this.$backdrop.removeClass('visible');
+        this.$modal.removeClass('visible');
+        this.$btn.removeClass('modal-open');
         this.isOpen = false;
+        // Restore body scroll
+        $('body').css('overflow', '');
     }
 
     /**

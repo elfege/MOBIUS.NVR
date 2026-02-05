@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 3, 2026 22:30 EST*
+*Last updated: February 3, 2026 22:45 EST*
 
 Branch: `multi_stream_hd_selection_JAN_31_2026_a`
 
@@ -203,6 +203,31 @@ See `docs/README_project_history.md` for full details.
 **File Modified:** [camera-selector.css](static/css/components/camera-selector.css)
 
 **Commit:** `19e3a8f` - "Fix camera selector bottom sheet: ensure Apply button stays at bottom"
+
+### Fixed: Camera Selector Visibility Control
+
+**Issues:**
+
+1. Dropdown showing unwrapped on page load
+2. Apply button not closing dropdown
+3. JavaScript `.hide()` not working due to CSS `!important` override
+
+**Root Cause:** CSS used `display: flex !important` which prevented JavaScript from hiding the dropdown with `.show()` / `.hide()`.
+
+**Solution:** Class-based visibility approach
+
+- CSS: Dropdown hidden by default (`display: none`), shown with `.visible` class
+- JavaScript: Use `addClass('visible')` / `removeClass('visible')` instead of `.show()` / `.hide()`
+- Mobile: `.visible` class triggers `display: flex` for bottom sheet layout
+- Removed inline `style="display:none;"` from HTML template
+
+**Files Modified:**
+
+- [camera-selector.css](static/css/components/camera-selector.css) - Class-based visibility
+- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js) - Updated `_openDropdown()` and `_closeDropdown()`
+- [streams.html](templates/streams.html) - Removed inline style
+
+**Commit:** `1c6f3e0` - "Fix camera selector visibility: use class-based toggle instead of inline styles"
 
 ---
 

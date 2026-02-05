@@ -550,10 +550,30 @@ class CameraSelectorController {
 
 // Initialize when DOM is ready
 $(document).ready(() => {
-    // Wait a short moment for stream items to be fully rendered
-    setTimeout(() => {
-        window.cameraSelectorController = new CameraSelectorController();
-    }, 100);
+    // Wait for stream items to be fully rendered
+    // Try multiple times with increasing delays if needed
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    const tryInit = () => {
+        attempts++;
+        const streamItemCount = $('.stream-item').length;
+
+        if (streamItemCount > 0) {
+            // Stream items found - initialize controller
+            console.log(`[CameraSelector] Found ${streamItemCount} stream items, initializing...`);
+            window.cameraSelectorController = new CameraSelectorController();
+        } else if (attempts < maxAttempts) {
+            // No stream items yet - retry with longer delay
+            console.log(`[CameraSelector] No stream items found (attempt ${attempts}/${maxAttempts}), retrying...`);
+            setTimeout(tryInit, 200 * attempts); // Exponential backoff
+        } else {
+            console.error('[CameraSelector] Failed to find stream items after', maxAttempts, 'attempts');
+        }
+    };
+
+    // Start first attempt after 200ms
+    setTimeout(tryInit, 200);
 });
 
 export default CameraSelectorController;

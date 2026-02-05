@@ -173,10 +173,10 @@ class HubitatPowerService:
         self._state_tracker = camera_state_tracker
         self._stream_manager = stream_manager
 
-        # Load configuration from environment
-        self._api_token = os.environ.get('HUBITAT_API_TOKEN', '')
-        self._app_number = os.environ.get('HUBITAT_API_APP_NUMBER', '')
-        self._hub_ip = hub_ip or os.environ.get('HUBITAT_HUB_IP', 'hubitat.local')
+        # Load configuration from environment (Hub 4)
+        self._api_token = os.environ.get('HUBITAT_API_TOKEN_4', '')
+        self._app_number = os.environ.get('HUBITAT_API_NUMBER_4', '')
+        self._hub_ip = hub_ip or os.environ.get('HUBITAT_HUB_IP_4', 'hubitat.local')
 
         # Track power cycle state per camera
         self._power_cycle_status: Dict[str, PowerCycleStatus] = {}

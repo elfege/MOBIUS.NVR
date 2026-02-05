@@ -291,6 +291,49 @@ Implemented retry mechanism with exponential backoff:
 
 **Testing:** Hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R) to clear cached JavaScript.
 
+### Converted: Camera Selector to Modal Overlay
+
+**Reason:** Dropdown approach had persistent positioning and visibility issues on mobile. Modal is simpler and more reliable.
+
+**Changes:**
+
+**CSS ([camera-selector.css](static/css/components/camera-selector.css)):**
+
+- Full-screen backdrop with blur effect (`camera-selector-backdrop`)
+- Centered modal dialog (`camera-selector-modal`)
+- Close button (X) in top-right corner
+- Smooth animations (fadeIn for backdrop, modalSlideIn for modal)
+- Prevents body scroll when modal is open
+- Responsive sizing (90% width desktop, 95% mobile, 98% very small phones)
+
+**HTML ([streams.html](templates/streams.html)):**
+
+- Moved modal outside header container
+- Added backdrop element
+- Added close button with icon
+- Simplified structure (no nested positioning)
+
+**JavaScript ([camera-selector-controller.js](static/js/controllers/camera-selector-controller.js)):**
+
+- Renamed methods: `_toggleModal()`, `_openModal()`, `_closeModal()`
+- Added backdrop and close button references
+- Backdrop click closes modal
+- Escape key closes modal
+- Apply button closes modal
+- Prevents body scroll when modal open
+
+**Benefits:**
+
+- Consistent positioning across all devices
+- No more mobile bottom-sheet positioning issues
+- Backdrop makes modal obvious and prevents accidental clicks
+- Close button provides clear exit option
+- Simpler CSS (no complex responsive breakpoints)
+
+**Commit:** `12517ff` - "Convert camera selector from dropdown to modal overlay"
+
+**Testing:** Hard refresh browser to load new modal implementation.
+
 ---
 
 ## TODO List

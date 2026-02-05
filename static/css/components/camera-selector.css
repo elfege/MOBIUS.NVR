@@ -300,7 +300,12 @@
         position: static;
     }
 
-    /* Mobile: Bottom sheet positioning */
+    /* Ensure dropdown is hidden on mobile by default */
+    .camera-selector-dropdown {
+        display: none;
+    }
+
+    /* Mobile: Bottom sheet positioning when visible */
     .camera-selector-dropdown.visible {
         /* Fixed bottom sheet for mobile */
         position: fixed;

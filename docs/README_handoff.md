@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 3, 2026 22:15 EST*
+*Last updated: February 3, 2026 22:30 EST*
 
 Branch: `multi_stream_hd_selection_JAN_31_2026_a`
 
@@ -185,6 +185,24 @@ See `docs/README_project_history.md` for full details.
 - Non-iOS mobile: Completely hidden, gesture control only
 
 **Commit:** `44390ce` - "Fix mobile UX: camera dropdown scrolling, desktop/iOS header toggle visibility"
+
+### Fixed: Camera Selector Apply Button Position
+
+**Issue:** Apply button appearing at top of screen in portrait mode instead of at bottom of dropdown.
+
+**Root Cause:** Bottom sheet wasn't using flexbox layout, causing footer to render incorrectly.
+
+**Fix:**
+
+- Changed dropdown to `display: flex` with `flex-direction: column`
+- Explicitly ordered elements: Header (order: 1), List (order: 2), Footer (order: 3)
+- Made list `flex: 1 1 auto` to fill space
+- Made header and footer `flex-shrink: 0` to stay fixed
+- Footer gets safe-area padding for iOS home indicator
+
+**File Modified:** [camera-selector.css](static/css/components/camera-selector.css)
+
+**Commit:** `19e3a8f` - "Fix camera selector bottom sheet: ensure Apply button stays at bottom"
 
 ---
 

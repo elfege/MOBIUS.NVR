@@ -66,11 +66,13 @@
     -webkit-backdrop-filter: blur(4px);
     z-index: 9998;
     display: none;
+    pointer-events: none;
     animation: fadeIn 0.2s ease;
 }
 
 .camera-selector-backdrop.visible {
     display: block;
+    pointer-events: auto;
 }
 
 .camera-selector-modal {
@@ -90,11 +92,13 @@
     z-index: 9999;
     display: none;
     flex-direction: column;
+    pointer-events: none;
     animation: modalSlideIn 0.3s ease;
 }
 
 .camera-selector-modal.visible {
     display: flex;
+    pointer-events: auto;
 }
 
 @keyframes fadeIn {

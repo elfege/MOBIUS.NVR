@@ -334,6 +334,41 @@ Implemented retry mechanism with exponential backoff:
 
 **Testing:** Hard refresh browser to load new modal implementation.
 
+### Fixed: Pointer Events Blocking Touch/Click
+
+**Problem:** After adding camera selector modal, two issues appeared:
+
+1. PTZ controls not working on EUFY and ONVIF cameras
+2. Can't tap stream items to open fullscreen/expanded view on mobile
+
+**Root Cause:** The backdrop and modal elements were in the DOM with `display: none` but no `pointer-events: none`. On some browsers/devices, fixed-position elements with `display: none` can still block touch/click events even when invisible.
+
+**Solution:**
+
+Added `pointer-events: none` to both backdrop and modal when hidden:
+
+```css
+.camera-selector-backdrop {
+    display: none;
+    pointer-events: none;  /* Don't block events when hidden */
+}
+
+.camera-selector-backdrop.visible {
+    display: block;
+    pointer-events: auto;  /* Allow clicks when visible */
+}
+```
+
+Same for `.camera-selector-modal`.
+
+**File Modified:**
+
+- [camera-selector.css](static/css/components/camera-selector.css):58-95 - Added pointer-events control
+
+**Commit:** `3a83ecb` - "Fix pointer events on hidden backdrop/modal"
+
+**Testing:** Hard refresh browser. PTZ controls and stream tap-to-expand should now work.
+
 ---
 
 ## TODO List

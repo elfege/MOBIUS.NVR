@@ -6,7 +6,7 @@
  * - Show/hide individual cameras
  * - Select All / Deselect All
  * - HD/SD quality toggle per camera
- * - Persistence via localStorage
+ * - Persistence via per-user database (with localStorage cache for fast load)
  * - Dynamic grid layout adjustment
  *
  * @module controllers/camera-selector-controller
@@ -28,7 +28,12 @@ class CameraSelectorController {
         this.cameras = [];
         this.isOpen = false;
 
-        // localStorage keys
+        // In-memory cache (loaded from server, cached in localStorage for fast page load)
+        this._hiddenCameras = [];
+        this._hdCameras = [];
+        this._prefsLoaded = false;
+
+        // localStorage keys (cache only - server is source of truth)
         this.HIDDEN_CAMERAS_KEY = 'hiddenCameras';
         this.HD_CAMERAS_KEY = 'hdCameras';
 
@@ -37,7 +42,9 @@ class CameraSelectorController {
     }
 
     /**
-     * Initialize the controller
+     * Initialize the controller.
+     * Loads preferences from localStorage cache first (instant), then
+     * fetches from server to get authoritative per-user preferences.
      */
     _init() {
         console.log('[CameraSelector] Initializing...');
@@ -45,10 +52,13 @@ class CameraSelectorController {
         // Collect camera info from stream items
         this._collectCameras();
 
+        // Load from localStorage cache for instant rendering
+        this._loadFromCache();
+
         // Populate the dropdown list
         this._populateList();
 
-        // Restore saved selections
+        // Restore saved selections (from cache)
         this._restoreSelections();
 
         // Setup event listeners
@@ -56,6 +66,9 @@ class CameraSelectorController {
 
         // Apply initial filter (hide cameras that were hidden in previous session)
         this._applyInitialFilter();
+
+        // Then fetch from server (source of truth) and re-apply if different
+        this._loadFromServer();
 
         console.log(`[CameraSelector] Initialized with ${this.cameras.length} cameras`);
     }
@@ -482,80 +495,144 @@ class CameraSelectorController {
     }
 
     // =========================================================================
-    // localStorage Helpers
+    // Preference Persistence (server = source of truth, localStorage = cache)
     // =========================================================================
 
     /**
-     * Get hidden cameras from localStorage
+     * Load preferences from localStorage cache (fast, for initial render)
+     */
+    _loadFromCache() {
+        try {
+            const hidden = localStorage.getItem(this.HIDDEN_CAMERAS_KEY);
+            this._hiddenCameras = hidden ? JSON.parse(hidden) : [];
+        } catch (e) {
+            this._hiddenCameras = [];
+        }
+        try {
+            const hd = localStorage.getItem(this.HD_CAMERAS_KEY);
+            this._hdCameras = hd ? JSON.parse(hd) : [];
+        } catch (e) {
+            this._hdCameras = [];
+        }
+    }
+
+    /**
+     * Load preferences from server (authoritative per-user data).
+     * If server data differs from cache, re-apply filter.
+     */
+    async _loadFromServer() {
+        try {
+            const response = await fetch('/api/my-preferences');
+            if (!response.ok) {
+                console.warn('[CameraSelector] Failed to load preferences from server');
+                return;
+            }
+
+            const prefs = await response.json();
+            const serverHidden = prefs.hidden_cameras || [];
+            const serverHD = prefs.hd_cameras || [];
+
+            // Check if server data differs from cache
+            const hiddenChanged = JSON.stringify(serverHidden.sort()) !== JSON.stringify(this._hiddenCameras.sort());
+            const hdChanged = JSON.stringify(serverHD.sort()) !== JSON.stringify(this._hdCameras.sort());
+
+            if (hiddenChanged || hdChanged) {
+                console.log('[CameraSelector] Server preferences differ from cache, re-applying...');
+                this._hiddenCameras = serverHidden;
+                this._hdCameras = serverHD;
+
+                // Update cache
+                this._updateCache();
+
+                // Re-apply UI
+                this._restoreSelections();
+                this._applyInitialFilter();
+            }
+
+            this._prefsLoaded = true;
+        } catch (e) {
+            console.warn('[CameraSelector] Error loading preferences from server:', e);
+        }
+    }
+
+    /**
+     * Save preferences to server and update localStorage cache.
+     * Called after applying filter or toggling HD.
+     */
+    async _saveToServer() {
+        // Update cache immediately for responsiveness
+        this._updateCache();
+
+        try {
+            await fetch('/api/my-preferences', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    hidden_cameras: this._hiddenCameras,
+                    hd_cameras: this._hdCameras
+                })
+            });
+        } catch (e) {
+            console.warn('[CameraSelector] Error saving preferences to server:', e);
+        }
+    }
+
+    /**
+     * Update localStorage cache from in-memory state
+     */
+    _updateCache() {
+        try {
+            localStorage.setItem(this.HIDDEN_CAMERAS_KEY, JSON.stringify(this._hiddenCameras));
+            localStorage.setItem(this.HD_CAMERAS_KEY, JSON.stringify(this._hdCameras));
+        } catch (e) {
+            // localStorage might be full or unavailable - non-critical
+        }
+    }
+
+    /**
+     * Get hidden cameras from in-memory state
      * @returns {string[]} Array of hidden camera serials
      */
     _getHiddenCameras() {
-        try {
-            const stored = localStorage.getItem(this.HIDDEN_CAMERAS_KEY);
-            return stored ? JSON.parse(stored) : [];
-        } catch (e) {
-            console.error('[CameraSelector] Error reading hidden cameras:', e);
-            return [];
-        }
+        return this._hiddenCameras;
     }
 
     /**
-     * Save hidden cameras to localStorage
+     * Save hidden cameras to in-memory state (server save deferred to _applyFilter)
      * @param {string[]} serials - Array of camera serials to hide
      */
     _saveHiddenCameras(serials) {
-        try {
-            localStorage.setItem(this.HIDDEN_CAMERAS_KEY, JSON.stringify(serials));
-        } catch (e) {
-            console.error('[CameraSelector] Error saving hidden cameras:', e);
-        }
+        this._hiddenCameras = serials;
+        // Server save happens in _applyFilter after all changes are collected
+        this._saveToServer();
     }
 
     /**
-     * Get HD-enabled cameras from localStorage
+     * Get HD-enabled cameras from in-memory state
      * @returns {string[]} Array of HD camera serials
      */
     _getHDCameras() {
-        try {
-            const stored = localStorage.getItem(this.HD_CAMERAS_KEY);
-            return stored ? JSON.parse(stored) : [];
-        } catch (e) {
-            console.error('[CameraSelector] Error reading HD cameras:', e);
-            return [];
-        }
+        return this._hdCameras;
     }
 
     /**
-     * Add a camera to HD list
+     * Add a camera to HD list and persist
      * @param {string} serial - Camera serial number
      */
     _addHDCamera(serial) {
-        const hdCameras = this._getHDCameras();
-        if (!hdCameras.includes(serial)) {
-            hdCameras.push(serial);
-            this._saveHDCameras(hdCameras);
+        if (!this._hdCameras.includes(serial)) {
+            this._hdCameras.push(serial);
+            this._saveToServer();
         }
     }
 
     /**
-     * Remove a camera from HD list
+     * Remove a camera from HD list and persist
      * @param {string} serial - Camera serial number
      */
     _removeHDCamera(serial) {
-        const hdCameras = this._getHDCameras().filter(s => s !== serial);
-        this._saveHDCameras(hdCameras);
-    }
-
-    /**
-     * Save HD cameras to localStorage
-     * @param {string[]} serials - Array of HD camera serials
-     */
-    _saveHDCameras(serials) {
-        try {
-            localStorage.setItem(this.HD_CAMERAS_KEY, JSON.stringify(serials));
-        } catch (e) {
-            console.error('[CameraSelector] Error saving HD cameras:', e);
-        }
+        this._hdCameras = this._hdCameras.filter(s => s !== serial);
+        this._saveToServer();
     }
 }
 

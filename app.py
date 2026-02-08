@@ -1378,6 +1378,79 @@ def api_get_my_camera_access():
         return jsonify({'all_access': True, 'cameras': []})
 
 
+@app.route('/api/my-preferences', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_get_my_preferences():
+    """
+    Get current user's display preferences (hidden cameras, HD cameras).
+    Returns defaults if no preferences saved yet.
+    """
+    try:
+        response = requests.get(
+            f"{POSTGREST_URL}/user_preferences",
+            params={
+                'user_id': f'eq.{current_user.id}',
+                'select': 'hidden_cameras,hd_cameras'
+            },
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            rows = response.json()
+            if rows:
+                return jsonify(rows[0])
+
+        # No preferences saved yet - return defaults
+        return jsonify({'hidden_cameras': [], 'hd_cameras': []})
+    except requests.RequestException as e:
+        logger.error(f"Error fetching user preferences: {e}")
+        return jsonify({'hidden_cameras': [], 'hd_cameras': []})
+
+
+@app.route('/api/my-preferences', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_put_my_preferences():
+    """
+    Save current user's display preferences (hidden cameras, HD cameras).
+    Uses upsert: creates row if none exists, updates if it does.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'No data provided'}), 400
+
+    payload = {'user_id': current_user.id}
+    if 'hidden_cameras' in data:
+        payload['hidden_cameras'] = data['hidden_cameras']
+    if 'hd_cameras' in data:
+        payload['hd_cameras'] = data['hd_cameras']
+
+    try:
+        # Upsert: use Prefer: resolution=merge-duplicates with the unique constraint on user_id
+        response = requests.post(
+            f"{POSTGREST_URL}/user_preferences",
+            json=payload,
+            headers={
+                'Prefer': 'resolution=merge-duplicates,return=representation',
+                'Content-Type': 'application/json'
+            },
+            timeout=5
+        )
+
+        if response.status_code in (200, 201):
+            rows = response.json()
+            if rows:
+                return jsonify(rows[0])
+            return jsonify({'status': 'saved'})
+        else:
+            logger.error(f"Failed to save preferences: {response.status_code} {response.text}")
+            return jsonify({'error': 'Failed to save preferences'}), 500
+    except requests.RequestException as e:
+        logger.error(f"Error saving user preferences: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 def _get_allowed_camera_serials(user):
     """
     Get set of allowed camera serials for a user.

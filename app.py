@@ -1377,6 +1377,45 @@ def api_get_my_camera_access():
         return jsonify({'all_access': True, 'cameras': []})
 
 
+def _get_allowed_camera_serials(user):
+    """
+    Get set of allowed camera serials for a user.
+    Returns None if user has unrestricted access (admin or no rules set).
+    Returns a set of serial strings if restricted.
+    """
+    if user.role == 'admin':
+        return None  # No restriction
+
+    try:
+        response = requests.get(
+            f"{POSTGREST_URL}/user_camera_access",
+            params={'user_id': f'eq.{user.id}', 'select': 'camera_serial,allowed'},
+            timeout=5
+        )
+        if response.status_code == 200:
+            access_list = response.json()
+            if not access_list:
+                return None  # No restrictions
+            return set(a['camera_serial'] for a in access_list if a.get('allowed', False))
+    except requests.RequestException:
+        pass
+
+    return None  # Default: no restriction on error
+
+
+def _filter_cameras(cameras, allowed_serials):
+    """
+    Filter camera dict by allowed serials.
+    If allowed_serials is None, returns all cameras (no restriction).
+    """
+    if allowed_serials is None:
+        return cameras
+    return {
+        serial: info for serial, info in cameras.items()
+        if serial in allowed_serials
+    }
+
+
 # ===== Main UI Routes =====
 @app.route('/')
 @login_required
@@ -1391,6 +1430,10 @@ def streams_page():
     try:
         cameras = camera_repo.get_streaming_cameras()
         ui_health = _ui_health_from_env()
+
+        # Filter cameras based on user's access permissions
+        allowed = _get_allowed_camera_serials(current_user)
+        cameras = _filter_cameras(cameras, allowed)
 
         # Pass full camera configs (includes ui_health_monitor per camera)
         return render_template('streams.html', cameras=cameras, ui_health=ui_health)
@@ -1455,11 +1498,12 @@ def api_status():
 @app.route('/api/cameras')
 @login_required
 def api_cameras():
-    """Get list of available cameras"""
+    """Get list of available cameras, filtered by user access permissions"""
+    allowed = _get_allowed_camera_serials(current_user)
     return jsonify({
-        'all': camera_repo.get_all_cameras(),
-        'ptz': camera_repo.get_ptz_cameras(),
-        'streaming': camera_repo.get_streaming_cameras()
+        'all': _filter_cameras(camera_repo.get_all_cameras(), allowed),
+        'ptz': _filter_cameras(camera_repo.get_ptz_cameras(), allowed),
+        'streaming': _filter_cameras(camera_repo.get_streaming_cameras(), allowed)
     })
 
 @app.route('/api/cameras/<camera_id>')

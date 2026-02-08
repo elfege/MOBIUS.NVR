@@ -218,16 +218,31 @@ class StorageMigrationService:
             logger.error(f"Failed to delete recording {recording_id}: {e}")
             return False
 
-    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 50) -> int:
+    def _get_db_connection(self):
         """
-        Delete multiple recordings from the database in batches.
-        Uses PostgREST's id=in.(...) syntax to delete many records per request.
-        Includes delays between batches to avoid overwhelming PostgREST.
+        Create a direct psycopg2 connection to PostgreSQL.
+        Uses the same env vars as docker-compose provides to the container.
+        """
+        import psycopg2
+        return psycopg2.connect(
+            host=os.environ.get('POSTGRES_HOST', 'postgres'),
+            port=int(os.environ.get('POSTGRES_PORT', '5432')),
+            dbname=os.environ.get('POSTGRES_DB', 'nvr'),
+            user=os.environ.get('POSTGRES_USER', 'nvr_api'),
+            password=os.environ.get('POSTGRES_PASSWORD', ''),
+            connect_timeout=10
+        )
+
+    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 500) -> int:
+        """
+        Delete multiple recordings from the database using direct SQL.
+        Bypasses PostgREST entirely to avoid 504 Gateway Timeout issues.
+        Uses parameterized queries with psycopg2 for safe bulk deletes.
 
         Args:
             recording_ids: List of recording IDs to delete
-            batch_size: Number of IDs per DELETE request (default 50,
-                        kept small to avoid 504 Gateway Timeouts from PostgREST)
+            batch_size: Number of IDs per DELETE statement (default 500,
+                        safe with direct SQL since there's no HTTP overhead)
 
         Returns:
             Number of successfully deleted records
@@ -240,32 +255,55 @@ class StorageMigrationService:
         deleted_count = 0
         total_batches = (len(recording_ids) + batch_size - 1) // batch_size
 
-        for batch_num in range(total_batches):
-            start = batch_num * batch_size
-            end = start + batch_size
-            batch_ids = recording_ids[start:end]
+        try:
+            conn = self._get_db_connection()
+            conn.autocommit = False
+            cursor = conn.cursor()
 
-            # PostgREST supports: id=in.(1,2,3,...)
-            ids_param = ','.join(str(rid) for rid in batch_ids)
+            for batch_num in range(total_batches):
+                start = batch_num * batch_size
+                end = start + batch_size
+                batch_ids = recording_ids[start:end]
 
-            try:
-                url = f"{self.postgrest_url}/recordings"
-                response = requests.delete(
-                    url,
-                    params={'id': f'in.({ids_param})'},
-                    headers={'Prefer': 'return=minimal'},
-                    timeout=60
-                )
-                response.raise_for_status()
-                deleted_count += len(batch_ids)
-                logger.info(f"Batch-deleted {len(batch_ids)} orphaned recordings "
-                           f"(batch {batch_num + 1}/{total_batches})")
-            except Exception as e:
-                logger.error(f"Batch delete failed for batch {batch_num + 1}: {e}")
+                try:
+                    # Use ANY() with array parameter for safe batch delete
+                    cursor.execute(
+                        "DELETE FROM recordings WHERE id = ANY(%s)",
+                        (batch_ids,)
+                    )
+                    rows_deleted = cursor.rowcount
+                    conn.commit()
+                    deleted_count += rows_deleted
+                    logger.info(f"Batch-deleted {rows_deleted} orphaned recordings "
+                               f"(batch {batch_num + 1}/{total_batches})")
+                except Exception as e:
+                    conn.rollback()
+                    logger.error(f"Batch delete failed for batch {batch_num + 1}: {e}")
 
-            # Delay between batches to let PostgREST and Postgres breathe
-            if batch_num < total_batches - 1:
-                time.sleep(1.5)
+                # Brief pause between batches to avoid locking contention
+                if batch_num < total_batches - 1:
+                    time.sleep(0.5)
+
+            cursor.close()
+            conn.close()
+
+        except Exception as e:
+            logger.error(f"Database connection error during batch delete: {e}")
+            # Fall back to PostgREST single deletes if psycopg2 fails
+            logger.info("Falling back to PostgREST single-record deletes")
+            for rid in recording_ids:
+                try:
+                    resp = requests.delete(
+                        f"{self.postgrest_url}/recordings",
+                        params={'id': f'eq.{rid}'},
+                        headers={'Prefer': 'return=minimal'},
+                        timeout=30
+                    )
+                    resp.raise_for_status()
+                    deleted_count += 1
+                except Exception:
+                    pass
+                time.sleep(0.1)
 
         return deleted_count
 

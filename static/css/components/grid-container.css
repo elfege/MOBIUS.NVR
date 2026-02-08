@@ -2,32 +2,13 @@
    MAIN STREAMS CONTAINER
    ============================================================================ */
 
-/* This is the KEY container for dynamic sizing
-   - margin-top: 80px leaves space for the fixed header
-   - height: calc() does math to get remaining viewport height
-     (100vh - 80px header = available space for streams)
-   - padding: 1rem adds breathing room inside
-   - overflow: auto allows scrolling if content exceeds height
-*/
-/* NOTE: This block is overridden by the more specific block below.
-   Keeping for documentation purposes. */
-/* .streams-container {
-    margin-top: 80px;
-    height: calc(100vh - 80px);
-    padding: 1rem;
-    overflow: auto;
-    display: grid;
-    gap: 1rem;
-} */
-
-/* Adjust streams container margin based on header state
-   When header is visible, we need top margin
-   When collapsed, we need less margin
+/* Streams container sits below the fixed navbar.
+   Navbar height: 55px desktop, 48px mobile, 44px very small phones.
+   We use 56px (55px + 1px gap) as the default margin-top.
 */
 .streams-container {
-    margin-top: 85px;
-    /* Actual header height + 1px gap (header is ~84px tall) */
-    height: calc(100vh - 85px);
+    margin-top: 56px;
+    height: calc(100vh - 56px);
     padding: 1rem;
     overflow: auto;
     display: grid;
@@ -37,14 +18,20 @@
        JavaScript will override this via grid-1 through grid-5 classes. */
     grid-template-columns: repeat(3, 1fr);
     grid-auto-rows: minmax(0, 1fr);
-
-    transition: margin-top 0.4s cubic-bezier(0.4, 0, 0.2, 1),
-        height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* When header is collapsed, streams take full viewport */
-.header-toggle-input:not(:checked)~.streams-container {
-    margin-top: 2px;
-    /* Minimal space - was 5px */
-    height: calc(100vh - 2px);
+/* Phone: navbar is 48px */
+@media (max-width: 768px) {
+    .streams-container {
+        margin-top: 49px;
+        height: calc(100vh - 49px);
+    }
+}
+
+/* Very small phones: navbar is 44px */
+@media (max-width: 480px) {
+    .streams-container {
+        margin-top: 45px;
+        height: calc(100vh - 45px);
+    }
 }

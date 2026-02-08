@@ -511,8 +511,11 @@ $(document).ready(function() {
     // Attach to global window object for access from other scripts
     window.userManagementModal = userManagementModal;
 
-    // Handle Manage Users button click
-    $('#manage-users-btn').on('click', function() {
+    // Handle Manage Users button click (both old header button and new nav menu button)
+    $('#manage-users-btn, #menu-manage-users').on('click', function() {
+        /* Close the nav menu if open */
+        $('#nav-menu').removeClass('open');
+        $('#nav-menu-overlay').removeClass('show');
         userManagementModal.show();
     });
 });

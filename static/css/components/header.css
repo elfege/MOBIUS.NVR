@@ -1,235 +1,402 @@
 /* ============================================================================
-   HEADER SECTION
+   NAVBAR - Dark Glassmorphism Design
+   Matches the 0_TILES design language: dark translucent background, backdrop
+   blur, slim fixed bar with slide-in navigation drawer.
+
+   Always visible (no collapsible mechanism needed) - slim enough to not
+   obstruct camera views while keeping essential controls accessible.
    ============================================================================ */
 
-/* Fixed header at the top - won't scroll away
-   - position: fixed removes element from normal document flow
-   - top: 0 pins it to the top edge
-   - z-index: 1000 ensures it stays above other content (higher = more on top)
-*/
-.header {
+/* Main navbar container - fixed at top */
+.navbar-redesign {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 1rem 2rem;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    height: 55px;
+    background: rgba(20, 20, 28, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
     z-index: 1000;
-    display: flex;
-    justify-content: space-between;
-    /* Pushes content to edges with space between */
-    align-items: center;
-    /* Vertically centers items */
-    flex-wrap: wrap;
-    /* Allows wrapping on small screens */
-    gap: 1rem;
-    /* Space between wrapped items */
-
-    /* Add smooth transition for collapse animation */
-    transform: translateY(0);
-    /* Normal position */
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    /* Smooth easing */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
 }
 
-.header h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
+/* ============================================================================
+   HAMBURGER MENU BUTTON
+   ============================================================================ */
+
+.navbar-hamburger {
+    width: 44px;
+    height: 44px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 20px;
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin: 0;
+    justify-content: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
-/* MOBIUS.NVR logo in header */
-.header-logo {
-    height: 32px;
+.navbar-hamburger:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.navbar-hamburger:active {
+    transform: scale(0.95);
+}
+
+/* ============================================================================
+   LOGO SECTION
+   ============================================================================ */
+
+.navbar-logo-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.navbar-logo {
+    height: 28px;
     width: auto;
+    object-fit: contain;
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
 }
 
-/* Navigation controls - groups buttons together */
-.nav-controls {
+/* ============================================================================
+   RIGHT-SIDE ACTIONS
+   ============================================================================ */
+
+.navbar-actions {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: auto;
 }
 
-.global-controls {
+/* Navbar action buttons (filter, settings) */
+.navbar-action-btn {
     display: flex;
-    gap: 0.5rem;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
-#stream-count {
-    background: rgba(255, 255, 255, 0.2);
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
+.navbar-action-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #fff;
+}
+
+.navbar-action-btn:active {
+    transform: scale(0.95);
+}
+
+.navbar-action-btn i {
+    font-size: 14px;
+}
+
+.navbar-action-btn span {
+    font-size: 13px;
     font-weight: 500;
 }
 
 /* ============================================================================
-   COLLAPSIBLE HEADER MECHANISM
-
-   HOW THIS WORKS (Pure CSS trick):
-   - Hidden checkbox controls the state (checked = expanded, unchecked = collapsed)
-   - CSS :checked selector changes styles based on checkbox state
-   - Label element acts as the toggle button (clicking label toggles checkbox)
-   - No JavaScript needed for the collapse/expand functionality!
-
-   LEARNING NOTE: This is called the "CSS checkbox hack" - a clever way to
-   create interactive elements without JavaScript by using the natural behavior
-   of form inputs.
+   SLIDE-IN NAVIGATION MENU
    ============================================================================ */
 
-/* Hide the actual checkbox but keep it functional
-   - position: absolute removes it from layout
-   - opacity: 0 makes it invisible
-   - pointer-events: none prevents accidental clicks
-   We need to keep it in the DOM so the :checked selector works
-*/
+/* Overlay behind menu */
+.nav-menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease;
+    z-index: 1100;
+}
+
+.nav-menu-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* The slide-in drawer */
+.nav-menu {
+    position: fixed;
+    top: 0;
+    left: -300px;
+    width: 280px;
+    height: 100vh;
+    background: rgba(22, 22, 30, 0.98);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    transition: left 0.3s ease;
+    z-index: 1101;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.nav-menu.open {
+    left: 0;
+}
+
+/* Scrollbar styling */
+.nav-menu::-webkit-scrollbar {
+    width: 6px;
+}
+
+.nav-menu::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.nav-menu::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.nav-menu {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) rgba(0, 0, 0, 0.2);
+}
+
+/* Menu header */
+.nav-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.nav-menu-header span {
+    font-size: 16px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+    letter-spacing: 0.5px;
+}
+
+.nav-menu-close {
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.nav-menu-close:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+}
+
+/* Menu sections */
+.nav-menu-section {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.nav-menu-section:last-of-type {
+    border-bottom: none;
+}
+
+.nav-menu-title {
+    padding: 8px 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* Menu items */
+.nav-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 12px 20px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.nav-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+}
+
+.nav-menu-item:active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.nav-menu-item i {
+    font-size: 18px;
+    width: 24px;
+    text-align: center;
+    opacity: 0.9;
+}
+
+.nav-menu-item span {
+    flex: 1;
+}
+
+/* Badge in menu items (e.g., camera count) */
+.menu-badge {
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Menu footer */
+.nav-menu-footer {
+    margin-top: auto;
+    padding: 16px 0;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.nav-menu-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 20px;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 13px;
+}
+
+.nav-menu-user i {
+    font-size: 16px;
+}
+
+/* Logout button styling */
+.nav-menu-logout {
+    color: rgba(244, 67, 54, 0.85) !important;
+}
+
+.nav-menu-logout:hover {
+    background: rgba(244, 67, 54, 0.15) !important;
+    color: #f44336 !important;
+}
+
+/* ============================================================================
+   LEGACY SUPPORT
+   Keep old header-toggle-input from breaking if still in DOM.
+   The checkbox hack mechanism is no longer used.
+   ============================================================================ */
+
 .header-toggle-input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
 }
 
-/* The toggle button - Desktop: hidden until hover, Mobile: styled differently */
 .header-toggle-btn {
-    position: fixed;
-    top: 0px;
-    left: 50%;
-    transform: translateX(-50%);
-
-    background: rgba(0, 0, 0, 0.15);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0 0 8px 8px;
-
-    padding: 0.25rem 0.75rem;
-    cursor: pointer;
-
-    transition: all 0.3s ease;
-
-    z-index: 1001;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    color: rgba(255, 255, 255, 0.3);
-
-    /* Desktop: Hidden by default, show on hover */
-    opacity: 0;
-    pointer-events: auto;
+    display: none !important;
 }
 
-/* Desktop: Create larger hover zone at top of screen */
-@media (hover: hover) and (pointer: fine) {
-    .header-toggle-btn::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 100px;
-        /* Large hover zone */
-        z-index: -1;
-        pointer-events: auto;
-    }
-
-    .header-toggle-btn:hover {
-        opacity: 1;
-        background: rgba(0, 0, 0, 0.4);
-        color: rgba(255, 255, 255, 0.8);
-        transform: translateX(-50%) scale(1.1);
-    }
-}
-
-/* iOS/Touch devices: Always visible, larger and highly transparent */
-@supports (-webkit-touch-callout: none) {
-    .header-toggle-btn {
-        opacity: 0.15;
-        pointer-events: auto;
-        padding: 0.6rem 1.5rem;
-        background: rgba(0, 0, 0, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    .header-toggle-btn i {
-        font-size: 1.4rem;
-        color: rgba(255, 255, 255, 0.2);
-    }
-
-    .header-toggle-btn:active {
-        opacity: 0.4;
-        background: rgba(0, 0, 0, 0.15);
-        transform: translateX(-50%) scale(1.05);
-    }
-}
-
-/* Icon inside the toggle button */
-.header-toggle-btn i {
-    font-size: 1rem;
-    transition: transform 0.3s ease;
-}
-
-/* Rotate icon when header is collapsed (checkbox unchecked)
-   ~ is the "general sibling selector" - selects .header-toggle-btn
-   that comes AFTER the unchecked input
-*/
-/* When header is collapsed, streams take full viewport */
-.header-toggle-input:not(:checked)~.streams-container {
-    margin-top: 15px;
-    /* Much smaller - was 30px */
-    height: calc(100vh - 5px);
-    /* Almost full viewport height */
-}
-
-/* Collapsed state - when checkbox is unchecked
-   The ~ selector means "select .header that comes after unchecked input"
-*/
-.header-toggle-input:not(:checked)~.header {
-    /* Move header up by its own height to hide it
-       We use translateY instead of display:none to keep smooth animation */
-    transform: translateY(-100%);
+/* Legacy .header class (old navbar) - hide if still present */
+.header {
+    display: none !important;
 }
 
 /* ============================================================================
-   MOBILE HEADER BEHAVIOR
-
-   On mobile devices:
-   - Hide the toggle button (gestures control the header instead)
-   - Header shows on swipe-down from top or any touch event
-   - JavaScript handles the gesture detection
+   RESPONSIVE - MOBILE ADAPTATIONS
    ============================================================================ */
 
-@media (max-width: 768px) {
-    /* Smaller header padding on mobile */
-    .header {
-        padding: 0.75rem 1rem;
+/* Tablet */
+@media (max-width: 992px) {
+    .navbar-redesign {
+        padding: 0 10px;
+        gap: 8px;
     }
 
-    /* Non-iOS mobile: Hide toggle button, use gestures only */
-    @supports not (-webkit-touch-callout: none) {
-        .header-toggle-btn {
-            display: none !important;
-        }
+    .navbar-action-btn span {
+        display: none;
+    }
+}
 
-        /* Add a subtle pull-down indicator at top when header is hidden */
-        .header-toggle-input:not(:checked)~.header::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 900px;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 0 0 4px 4px;
-            z-index: 1002;
-            pointer-events: none;
-        }
+/* Phone */
+@media (max-width: 768px) {
+    .navbar-redesign {
+        height: 48px;
+        padding: 0 8px;
+        gap: 8px;
+    }
+
+    .navbar-hamburger {
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+    }
+
+    .navbar-logo {
+        height: 24px;
+    }
+
+    .navbar-action-btn {
+        padding: 5px 10px;
+        font-size: 13px;
+    }
+
+    .navbar-action-btn span {
+        display: none;
+    }
+}
+
+/* Very small phones */
+@media (max-width: 480px) {
+    .navbar-redesign {
+        height: 44px;
+        padding: 0 6px;
+        gap: 6px;
+    }
+
+    .navbar-hamburger {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+
+    .navbar-logo {
+        height: 20px;
+    }
+
+    .navbar-action-btn {
+        padding: 4px 8px;
     }
 }

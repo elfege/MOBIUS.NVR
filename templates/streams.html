@@ -81,6 +81,21 @@
                 <i class="fas fa-cog"></i> Settings
             </button>
 
+            <!-- User menu -->
+            <div class="user-menu">
+                <span class="username"><i class="fas fa-user"></i> {{ current_user.username }}</span>
+                {% if current_user.role == 'admin' %}
+                <button id="manage-users-btn" class="btn btn-secondary" title="Manage users">
+                    <i class="fas fa-users"></i>
+                </button>
+                {% endif %}
+                <form method="POST" action="/logout" style="display: inline; margin: 0;">
+                    <button type="submit" class="btn btn-secondary" title="Logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </form>
+            </div>
+
         </div>
     </div>
 
@@ -101,6 +116,66 @@
         </div>
         <div class="camera-selector-footer">
             <button id="apply-camera-filter" class="btn btn-primary btn-sm">Apply</button>
+        </div>
+    </div>
+
+    <!-- User Management Modal (Admin Only) -->
+    <div id="user-management-backdrop" class="modal-backdrop" style="display: none;"></div>
+    <div id="user-management-modal" class="modal user-management-modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-users"></i> User Management</h3>
+                <button class="modal-close-btn" id="user-management-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="user-management-controls">
+                    <button id="add-user-btn" class="btn btn-primary">
+                        <i class="fas fa-user-plus"></i> Add User
+                    </button>
+                </div>
+                <div class="user-list" id="user-list">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit User Modal -->
+    <div id="user-form-modal" class="modal user-form-modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="user-form-title"><i class="fas fa-user-plus"></i> Add User</h3>
+                <button class="modal-close-btn" id="user-form-close" aria-label="Close">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="user-form">
+                    <input type="hidden" id="user-form-id">
+                    <div class="form-group">
+                        <label for="user-form-username">Username</label>
+                        <input type="text" id="user-form-username" required minlength="3">
+                    </div>
+                    <div class="form-group">
+                        <label for="user-form-password">Password</label>
+                        <input type="password" id="user-form-password" minlength="8">
+                        <small>Leave blank to keep existing password</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-form-role">Role</label>
+                        <select id="user-form-role" required>
+                            <option value="user">User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" class="btn btn-secondary" id="user-form-cancel">Cancel</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 

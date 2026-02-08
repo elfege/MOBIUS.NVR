@@ -927,16 +927,16 @@ def login():
     if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
         return render_template('login.html', error='Invalid username or password')
 
-    # Check if password change required
-    if user.must_change_password:
-        session['pending_password_change_user_id'] = user.id
-        return redirect('/change-password')
-
-    # Log user in
+    # Log user in (even if password change required - they authenticated successfully)
     login_user(user, remember=True)
 
     # Create session record in database
     _create_user_session(user.id, request.remote_addr, request.user_agent.string)
+
+    # Check if password change required AFTER login
+    # This allows change-password route to use current_user with proper auth context
+    if user.must_change_password:
+        return redirect('/change-password')
 
     return redirect('/streams')
 
@@ -957,15 +957,17 @@ def logout():
     return redirect('/login')
 
 @app.route('/change-password', methods=['GET', 'POST'])
+@login_required
 def change_password():
     """
     Password change page for forced password updates.
 
     Used when must_change_password flag is set (e.g., default admin account).
+    User must be logged in to access this page.
     """
-    user_id = session.get('pending_password_change_user_id')
-    if not user_id:
-        return redirect('/login')
+    # Security check: only allow if password change is actually required
+    if not current_user.must_change_password:
+        return redirect('/streams')
 
     if request.method == 'GET':
         return render_template('change_password.html')
@@ -983,21 +985,26 @@ def change_password():
     # Hash new password with bcrypt
     password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-    # Update database
+    # Update database using authenticated user context
     try:
         response = requests.patch(
             f"{POSTGREST_URL}/users",
-            params={'id': f'eq.{user_id}'},
+            params={'id': f'eq.{current_user.id}'},
             json={
                 'password_hash': password_hash,
                 'must_change_password': False
             },
-            headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+            headers={
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+                # TODO: Set RLS context headers here when implementing stricter policies
+            },
             timeout=5
         )
 
         if response.status_code == 204:
-            session.pop('pending_password_change_user_id', None)
+            # Log user out so they can verify new password works
+            logout_user()
             return redirect('/login')
 
         return render_template('change_password.html', error='Failed to update password')

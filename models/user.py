@@ -1,11 +1,13 @@
 """
 User Model for Flask-Login Authentication
 
-This module provides the User model that integrates Flask-Login with PostgREST.
-Users are stored in the PostgreSQL database and accessed via PostgREST REST API.
+This module provides the User model that integrates Flask-Login with PostgREST,
+with direct psycopg2 fallback for resilience. When PostgREST is overloaded or
+unavailable, auth lookups fall back to direct PostgreSQL queries so that user
+sessions remain valid even under heavy system load.
 
 Classes:
-    User: Flask-Login user model with PostgREST integration
+    User: Flask-Login user model with PostgREST + psycopg2 fallback
 """
 
 from flask_login import UserMixin
@@ -14,6 +16,47 @@ import os
 
 # PostgREST connection URL (containerized service)
 POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+
+# Direct PostgreSQL connection parameters (used as fallback when PostgREST is unavailable)
+_PG_HOST = os.environ.get('POSTGRES_HOST', 'postgres')
+_PG_PORT = int(os.environ.get('POSTGRES_PORT', '5432'))
+_PG_DB = os.environ.get('POSTGRES_DB', 'nvr')
+_PG_USER = os.environ.get('POSTGRES_USER', 'nvr_api')
+_PG_PASS = os.environ.get('POSTGRES_PASSWORD', '')
+
+
+def _direct_query(sql, params=None, fetch_one=False):
+    """
+    Execute a direct SQL query against PostgreSQL using psycopg2.
+    Used as fallback when PostgREST is unavailable.
+
+    Args:
+        sql (str): SQL query to execute
+        params (tuple, optional): Query parameters
+        fetch_one (bool): If True, return single row dict; if False, return list of dicts
+
+    Returns:
+        dict or list: Query results as dict(s) with column names as keys, or None on error
+    """
+    try:
+        import psycopg2
+        import psycopg2.extras
+        conn = psycopg2.connect(
+            host=_PG_HOST, port=_PG_PORT, dbname=_PG_DB,
+            user=_PG_USER, password=_PG_PASS, connect_timeout=5
+        )
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                if fetch_one:
+                    row = cur.fetchone()
+                    return dict(row) if row else None
+                return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"[User model] Direct SQL fallback failed: {e}")
+        return None
 
 
 class User(UserMixin):
@@ -48,10 +91,14 @@ class User(UserMixin):
     @staticmethod
     def get_by_id(user_id):
         """
-        Load user by ID from database via PostgREST.
+        Load user by ID from database.
 
-        Used by Flask-Login's @login_manager.user_loader decorator to reload
-        the user object from the user ID stored in the session.
+        Primary path: PostgREST REST API (lightweight, uses connection pooling).
+        Fallback: Direct psycopg2 query (resilient to PostgREST saturation).
+
+        This is called on EVERY authenticated request by Flask-Login's
+        @login_manager.user_loader. If this returns None, the session is
+        invalidated - so resilience here is critical.
 
         Args:
             user_id (int): User ID to look up
@@ -59,11 +106,12 @@ class User(UserMixin):
         Returns:
             User: User instance if found, None otherwise
         """
+        # Primary path: PostgREST
         try:
             response = requests.get(
                 f"{POSTGREST_URL}/users",
                 params={'id': f'eq.{user_id}'},
-                timeout=5
+                timeout=3
             )
 
             if response.status_code == 200:
@@ -77,7 +125,20 @@ class User(UserMixin):
                         must_change_password=data['must_change_password']
                     )
         except requests.RequestException as e:
-            print(f"Error loading user by ID {user_id}: {e}")
+            print(f"[User.get_by_id] PostgREST failed for user {user_id}: {e}, trying direct SQL...")
+
+            # Fallback: direct psycopg2 query
+            data = _direct_query(
+                "SELECT id, username, role, must_change_password FROM users WHERE id = %s",
+                (user_id,), fetch_one=True
+            )
+            if data:
+                return User(
+                    id=data['id'],
+                    username=data['username'],
+                    role=data['role'],
+                    must_change_password=data['must_change_password']
+                )
 
         return None
 
@@ -86,8 +147,8 @@ class User(UserMixin):
         """
         Load user and password hash by username from database.
 
+        Primary path: PostgREST. Fallback: direct psycopg2.
         Used during login to authenticate user credentials.
-        Returns both the User object and the password hash for bcrypt verification.
 
         Args:
             username (str): Username to look up
@@ -95,11 +156,12 @@ class User(UserMixin):
         Returns:
             tuple: (User instance, password_hash) if found, (None, None) otherwise
         """
+        # Primary path: PostgREST
         try:
             response = requests.get(
                 f"{POSTGREST_URL}/users",
                 params={'username': f'eq.{username}'},
-                timeout=5
+                timeout=3
             )
 
             if response.status_code == 200:
@@ -114,7 +176,21 @@ class User(UserMixin):
                     )
                     return user, data['password_hash']
         except requests.RequestException as e:
-            print(f"Error loading user by username {username}: {e}")
+            print(f"[User.get_by_username] PostgREST failed for '{username}': {e}, trying direct SQL...")
+
+            # Fallback: direct psycopg2 query
+            data = _direct_query(
+                "SELECT id, username, role, must_change_password, password_hash FROM users WHERE username = %s",
+                (username,), fetch_one=True
+            )
+            if data:
+                user = User(
+                    id=data['id'],
+                    username=data['username'],
+                    role=data['role'],
+                    must_change_password=data['must_change_password']
+                )
+                return user, data['password_hash']
 
         return None, None
 

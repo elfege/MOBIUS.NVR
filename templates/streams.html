@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-volume-popup.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/presence-indicators.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/camera-selector.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/user-management.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -745,6 +746,8 @@
     <script type="module" src="{{ url_for('static', filename='js/utils/eufy-auth-notifier.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/connection-monitor.js') }}"></script>
 
+    <!-- User Management (jQuery-based, not ES6 module) -->
+    <script src="{{ url_for('static', filename='js/modals/user-management-modal.js') }}"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script id="ui-health" type="application/json">

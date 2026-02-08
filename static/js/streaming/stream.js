@@ -478,19 +478,25 @@ export class MultiStreamManager {
             console.log('[Fullscreen] Lock acquired');
 
             try {
+                const $streamItem = $(e.target).closest('.stream-item');
+                if (!$streamItem.length) return;
+
                 // Check current state
-                const isCurrentlyFullscreen = $('.stream-item.css-fullscreen').length > 0;
-                console.log(`[Fullscreen] Button clicked - state: ${isCurrentlyFullscreen ? 'FULLSCREEN' : 'GRID'}`);
+                const isCurrentlyFullscreen = $streamItem.hasClass('css-fullscreen');
+                const isCurrentlyExpanded = $streamItem.hasClass('expanded');
+                console.log(`[Fullscreen] Button clicked - state: ${isCurrentlyFullscreen ? 'FULLSCREEN' : isCurrentlyExpanded ? 'EXPANDED' : 'GRID'}`);
 
                 if (isCurrentlyFullscreen) {
-                    // Exit
+                    // Exit fullscreen
                     await this.closeFullscreen();
                     console.log('[Fullscreen] Exit complete');
+                } else if (isCurrentlyExpanded) {
+                    // In expanded modal: close the modal back to grid
+                    // (on mobile, this button acts as the close/back button)
+                    this.collapseExpandedCamera();
+                    console.log('[Expanded] Collapsed via fullscreen button');
                 } else {
-                    // Enter
-                    const $streamItem = $(e.target).closest('.stream-item');
-                    if (!$streamItem.length) return;
-
+                    // Enter fullscreen from grid
                     const cameraId = $streamItem.data('camera-serial');
                     const name = $streamItem.data('camera-name');
                     const cameraType = $streamItem.data('camera-type');
@@ -836,9 +842,17 @@ export class MultiStreamManager {
                 case 'talkback':
                     $streamItem.find('.stream-talkback-btn').trigger('click');
                     break;
-                case 'fullscreen':
-                    $streamItem.find('.stream-fullscreen-btn').trigger('click');
+                case 'fullscreen': {
+                    // Enter fullscreen directly (don't trigger the btn which now
+                    // closes the expanded modal). Close menu first.
+                    $streamItem.find('.stream-more-menu').removeClass('menu-visible');
+                    const cameraId = $streamItem.data('camera-serial');
+                    const name = $streamItem.data('camera-name');
+                    const cameraType = $streamItem.data('camera-type');
+                    const streamType = $streamItem.data('stream-type');
+                    this.openFullscreen(cameraId, name, cameraType, streamType);
                     break;
+                }
             }
 
             // Close the menu after action (except for toggles that stay open)

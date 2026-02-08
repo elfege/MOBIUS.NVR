@@ -15,382 +15,75 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 4, 2026 22:31 EST*
+*Last updated: February 7, 2026 23:10 EST*
 
-Branch: `multi_stream_hd_selection_JAN_31_2026_b`
+Branch: `user_auth_and_settings_FEB_07_2026_c`
 
-**Note:** Context compaction occurred at 22:31 EST. Created new branch with _b suffix.
+**Previous Session Completed (Feb 2-7):**
 
-For context on recent work, read the last ~200 lines of `docs/README_project_history.md`.
+- Camera selector modal feature (show/hide cameras, HD/SD toggle)
+- Fixed Hubitat environment variables (Hub 4 suffix)
+- Fixed pointer-events blocking PTZ and mobile touch
+- Mobile UX improvements (gestures, header control)
+
+See last ~100 lines of `docs/README_project_history.md` for full details.
 
 Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Previous Session Summary (Jan 27-31, 2026)
+## Current Session: February 7, 2026 (23:10+ EST)
 
-Key work completed:
+**New Feature:** User Authentication & Per-User Settings
 
-- Digital zoom feature (8x max, mouse wheel, pinch gestures)
-- Storage migration with parallel workers and progress callbacks
-- Presence sensors feature
-- PTZ preset management UI
-- Timeline/file browser improvements
-- Git cleanup: untracked credential files from config/
+**Requirements:**
 
-See `docs/README_project_history.md` for full details.
+1. **User Authentication:**
+   - Simple bcrypt-based auth (Auth0/Google/Facebook later)
+   - Session: indefinite until logout
+   - Two roles: `admin` and `user`
+   - Admin can create users, user cannot
+   - All users can change name and password
+   - Default: admin/admin with forced password change on first login
 
----
+2. **Per-User Stream Type Preferences:**
+   - Allow users to swap stream types (MJPEG, WebRTC, HLS, LL_HLS)
+   - Save as defaults in user's related table
+   - M2M schema needed (users ↔ cameras ↔ stream_types)
 
-## Current Session: January 31, 2026 (14:15-14:45 EST)
+**Planning Phase:**
 
-**Note:** Context compaction occurred at 14:45 EST.
+- Need to assess current database state (PostgreSQL)
+- Determine: Are we using JSON or database as source of truth?
+- Design schema for users, sessions, and per-user camera preferences
 
-### Completed: Camera Selector Dropdown Feature
+**Next Steps:**
 
-**Feature:** Multi-stream selection with show/hide cameras via header dropdown.
-
-**Files Created:**
-
-- [camera-selector.css](static/css/components/camera-selector.css) - Dropdown styling (dark theme, mobile-responsive)
-- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js) - Controller class with show/hide and HD/SD toggle
-
-**Files Modified:**
-
-- [streams.html](templates/streams.html) - Added dropdown HTML in header, HD badge on stream items, JS/CSS includes
-- [stream.js](static/js/streaming/stream.js) - Added localStorage helpers, skip hidden cameras, quality parameter support
-
-**Key Features:**
-
-- Camera filter dropdown in header with Select All checkbox
-- Individual camera show/hide via checkboxes
-- HD/SD quality toggle per camera
-- Grid dynamically rearranges (1-5 columns based on visible count)
-- Persistence via localStorage (`hiddenCameras`, `hdCameras`)
-- Custom events for stream restart and quality change
-
-**Commit:** `2cf54c8` - "Add camera selector dropdown for grid view filtering"
-
-### Resolved: REOLINK_OFFICE Green Screen
-
-**Root Cause:** Camera at 3072x1728 @ 8192 Kbps producing massive keyframes that overwhelmed WebRTC decoder buffer.
-
-**Solution:** User lowered resolution in native Reolink app.
-
----
-
-## Session: February 2, 2026 (08:00-08:15 EST)
-
-### Fixed: Fullscreen Control Button Overlap
-
-**Problem:** Close button (X) overlapping with other control buttons in fullscreen mode.
-
-**Fix:** Added explicit positioning for all control buttons in fullscreen mode with proper 12px gaps.
-
-**File Modified:** [fullscreen.css](static/css/components/fullscreen.css)
-
-**Commit:** `dc0868d` - "Fix fullscreen control button overlap with proper spacing"
-
-### Fixed: Grid Layout (Single Column Bug)
-
-**Problem:** Cameras displaying in single column instead of grid.
-
-**Root Cause:** `.streams-container` had `display: grid` but no default `grid-template-columns`. CSS Grid defaults to 1 column without this.
-
-**Fix:** Added default `grid-template-columns: repeat(3, 1fr)` as fallback when JavaScript doesn't apply grid-N class.
-
-**File Modified:** [grid-container.css](static/css/components/grid-container.css)
-
-**Commit:** `48a56ec` - "Fix grid layout default: add fallback 3-column grid template"
-
----
-
-## Session: February 3, 2026 (21:08 EST)
-
-**Note:** Context compaction occurred. Continuing from previous session.
-
-### Reverted: Failed Tablet Snapshot CSS Fix
-
-**Problem:** Previous commit `ab333d8` attempted to fix iPad black screens for non-HD cameras in snapshot mode by removing `height: 100%` and adding explicit snapshot img positioning.
-
-**Result:** Fix didn't help and added unwanted margins between stream rows.
-
-**Action:** Reverted commit `ab333d8`.
-
-**Commit:** `c69c440` - "Revert 'Fix tablet snapshot display: remove height:100% conflict with aspect-ratio'"
-
-### Still Investigating: iPad Black Screens
-
-**Issue:** Non-HD cameras showing black screens in grid view on iPad (snapshot mode issue).
-
-**Working scenarios:**
-
-- iPhone 2x2 grid with same cameras works fine
-- iPad fullscreen HD mode works fine
-- All HD-selected cameras work on iPad
-
-**Hypothesis:** Snapshot polling may have timing or size issues specific to iPad viewport/rendering.
-
----
-
-## Session: February 3, 2026 (21:30-22:15 EST)
-
-### Implemented: Mobile Header Gesture Control
-
-**Feature:** Mobile-specific header show/hide with touch gestures.
-
-**Files Created:**
-
-- [mobile-header-controller.js](static/js/controllers/mobile-header-controller.js) - Touch gesture handler for mobile header control
-
-**Files Modified:**
-
-- [streams.html](templates/streams.html) - Added mobile-header-controller script, moved presence indicators to left side of header
-- [header.css](static/css/components/header.css) - Added mobile gesture support, desktop hover-to-show, iOS transparent styling
-- [presence-indicators.css](static/css/components/presence-indicators.css) - Updated positioning for left-side placement
-
-**Behaviors:**
-
-- **Desktop:** Header toggle hidden by default, appears on hover near top (100px zone)
-- **iOS:** Header toggle visible, large and highly transparent (opacity 0.15), larger touch target
-- **Android/non-iOS mobile:** Gesture-based only (swipe down from top, tap to show temporarily)
-
-**Commit:** `20ee09f` - "Mobile header: hide toggle button, add gesture support; Move presence indicators to left side"
-
-### Fixed: Mobile UX Issues
-
-**Issues Addressed:**
-
-1. **Camera selector dropdown on iPhone:**
-   - Portrait mode: Dropdown not appearing properly
-   - Landscape mode: Scrolling barely functional
-
-2. **Desktop header toggle:** Should hide until mouse hovers at top
-
-3. **iOS header toggle:** Should be bigger and highly transparent
-
-**Fixes Applied:**
-
-**Camera Selector ([camera-selector.css](static/css/components/camera-selector.css)):**
-
-- Changed mobile breakpoint from 480px to 768px to catch all mobile devices
-- Added `position: fixed !important` with `bottom: 0` for reliable bottom sheet positioning
-- Increased `max-height` to 80vh for better content visibility
-- Added iOS-specific scrolling: `-webkit-overflow-scrolling: touch`, `overflow-y: scroll !important`
-- Added `overscroll-behavior: contain` to prevent scroll chaining
-- Larger touch targets: 52px min-height, 24px checkboxes, 48x36px HD toggles
-
-**Header Toggle ([header.css](static/css/components/header.css)):**
-
-- Desktop: Hidden by default (`opacity: 0`), shows on hover with 100px hover zone via `::before` pseudo-element
-- iOS: Always visible at `opacity: 0.15`, larger padding (0.6rem 1.5rem), bigger icon (1.4rem)
-- Non-iOS mobile: Completely hidden, gesture control only
-
-**Commit:** `44390ce` - "Fix mobile UX: camera dropdown scrolling, desktop/iOS header toggle visibility"
-
-### Fixed: Camera Selector Apply Button Position
-
-**Issue:** Apply button appearing at top of screen in portrait mode instead of at bottom of dropdown.
-
-**Root Cause:** Bottom sheet wasn't using flexbox layout, causing footer to render incorrectly.
-
-**Fix:**
-
-- Changed dropdown to `display: flex` with `flex-direction: column`
-- Explicitly ordered elements: Header (order: 1), List (order: 2), Footer (order: 3)
-- Made list `flex: 1 1 auto` to fill space
-- Made header and footer `flex-shrink: 0` to stay fixed
-- Footer gets safe-area padding for iOS home indicator
-
-**File Modified:** [camera-selector.css](static/css/components/camera-selector.css)
-
-**Commit:** `19e3a8f` - "Fix camera selector bottom sheet: ensure Apply button stays at bottom"
-
-### Fixed: Camera Selector Visibility Control
-
-**Issues:**
-
-1. Dropdown showing unwrapped on page load
-2. Apply button not closing dropdown
-3. JavaScript `.hide()` not working due to CSS `!important` override
-
-**Root Cause:** CSS used `display: flex !important` which prevented JavaScript from hiding the dropdown with `.show()` / `.hide()`.
-
-**Solution:** Class-based visibility approach
-
-- CSS: Dropdown hidden by default (`display: none`), shown with `.visible` class
-- JavaScript: Use `addClass('visible')` / `removeClass('visible')` instead of `.show()` / `.hide()`
-- Mobile: `.visible` class triggers `display: flex` for bottom sheet layout
-- Removed inline `style="display:none;"` from HTML template
-
-**Files Modified:**
-
-- [camera-selector.css](static/css/components/camera-selector.css) - Class-based visibility
-- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js) - Updated `_openDropdown()` and `_closeDropdown()`
-- [streams.html](templates/streams.html) - Removed inline style
-
-**Commit:** `1c6f3e0` - "Fix camera selector visibility: use class-based toggle instead of inline styles"
-
----
-
-## Session: February 4, 2026 (22:31-22:45 EST)
-
-**Note:** Context compaction occurred at 22:31 EST. Created new branch `multi_stream_hd_selection_JAN_31_2026_b`.
-
-### Fixed: Hubitat Environment Variable Names
-
-**Problem:** Python code was looking for `HUBITAT_API_TOKEN` but AWS exports `HUBITAT_API_TOKEN_4` (NVR uses Hub 4).
-
-**Root Cause:** Variable name mismatch between AWS secret field names and Python environment variable lookups.
-
-**Solution:**
-
-Updated Python services to use Hub 4 suffix:
-
-- `HUBITAT_API_TOKEN_4` (was `HUBITAT_API_TOKEN`)
-- `HUBITAT_API_NUMBER_4` (was `HUBITAT_API_APP_NUMBER`)
-- `HUBITAT_HUB_IP_4` (was `HUBITAT_HUB_IP`)
-
-**Files Modified:**
-
-- [presence_service.py](services/presence/presence_service.py):124-126 - Updated environment variable names
-- [hubitat_power_service.py](services/power/hubitat_power_service.py):177-179 - Updated environment variable names
-
-**AWS Secret Export (verified):**
-
-```bash
-Exporting HUBITAT_HUB_IP_1-4
-Exporting HUBITAT_API_NUMBER_1-4
-Exporting HUBITAT_API_TOKEN_1-4
-```
-
-**Commit:** `335ee6c` - "Fix Hubitat environment variable names to use Hub 4 suffix"
-
-**Next Steps:** User needs to run `./start.sh` to reload container with correct environment variables.
-
-### Fixed: Camera Selector Initialization Timing
-
-**Problem:** Camera selector dropdown showing only "Apply" button with no camera list on mobile.
-
-**Root Cause:** JavaScript controller initializing before stream items were fully rendered in DOM. The 100ms delay was insufficient, resulting in `_collectCameras()` finding zero stream items and creating an empty dropdown.
-
-**Solution:**
-
-Implemented retry mechanism with exponential backoff:
-
-- Check for stream items before initialization
-- Retry up to 10 times with increasing delays (200ms, 400ms, 600ms...)
-- Console logging for debugging
-- Only initialize once stream items are detected in DOM
-
-**File Modified:**
-
-- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js):552-575 - Added retry logic with exponential backoff
-
-**Commit:** `f86f91e` - "Fix camera selector initialization timing issue"
-
-**Testing:** Hard refresh browser (Ctrl+Shift+R or Cmd+Shift+R) to clear cached JavaScript.
-
-### Converted: Camera Selector to Modal Overlay
-
-**Reason:** Dropdown approach had persistent positioning and visibility issues on mobile. Modal is simpler and more reliable.
-
-**Changes:**
-
-**CSS ([camera-selector.css](static/css/components/camera-selector.css)):**
-
-- Full-screen backdrop with blur effect (`camera-selector-backdrop`)
-- Centered modal dialog (`camera-selector-modal`)
-- Close button (X) in top-right corner
-- Smooth animations (fadeIn for backdrop, modalSlideIn for modal)
-- Prevents body scroll when modal is open
-- Responsive sizing (90% width desktop, 95% mobile, 98% very small phones)
-
-**HTML ([streams.html](templates/streams.html)):**
-
-- Moved modal outside header container
-- Added backdrop element
-- Added close button with icon
-- Simplified structure (no nested positioning)
-
-**JavaScript ([camera-selector-controller.js](static/js/controllers/camera-selector-controller.js)):**
-
-- Renamed methods: `_toggleModal()`, `_openModal()`, `_closeModal()`
-- Added backdrop and close button references
-- Backdrop click closes modal
-- Escape key closes modal
-- Apply button closes modal
-- Prevents body scroll when modal open
-
-**Benefits:**
-
-- Consistent positioning across all devices
-- No more mobile bottom-sheet positioning issues
-- Backdrop makes modal obvious and prevents accidental clicks
-- Close button provides clear exit option
-- Simpler CSS (no complex responsive breakpoints)
-
-**Commit:** `12517ff` - "Convert camera selector from dropdown to modal overlay"
-
-**Testing:** Hard refresh browser to load new modal implementation.
-
-### Fixed: Pointer Events Blocking Touch/Click
-
-**Problem:** After adding camera selector modal, two issues appeared:
-
-1. PTZ controls not working on EUFY and ONVIF cameras
-2. Can't tap stream items to open fullscreen/expanded view on mobile
-
-**Root Cause:** The backdrop and modal elements were in the DOM with `display: none` but no `pointer-events: none`. On some browsers/devices, fixed-position elements with `display: none` can still block touch/click events even when invisible.
-
-**Solution:**
-
-Added `pointer-events: none` to both backdrop and modal when hidden:
-
-```css
-.camera-selector-backdrop {
-    display: none;
-    pointer-events: none;  /* Don't block events when hidden */
-}
-
-.camera-selector-backdrop.visible {
-    display: block;
-    pointer-events: auto;  /* Allow clicks when visible */
-}
-```
-
-Same for `.camera-selector-modal`.
-
-**File Modified:**
-
-- [camera-selector.css](static/css/components/camera-selector.css):58-95 - Added pointer-events control
-
-**Commit:** `3a83ecb` - "Fix pointer events on hidden backdrop/modal"
-
-**Testing:** Hard refresh browser. PTZ controls and stream tap-to-expand should now work.
+1. Explore current database schema and configuration storage
+2. Design user authentication system
+3. Design per-user settings schema (M2M relationships)
+4. Plan implementation approach
 
 ---
 
 ## TODO List
 
-**Testing Needed (New Feature):**
+**New Feature (User Auth):**
 
-- [ ] Test camera selector dropdown opens/closes on button click
-- [ ] Test all cameras listed with correct names
-- [ ] Test unchecking camera hides it from grid
-- [ ] Test grid rearranges correctly (column count)
-- [ ] Test selections persist after page reload
-- [ ] Test hidden cameras don't consume bandwidth (streams stopped)
-- [ ] Test re-checking camera shows and restarts stream
-- [ ] Test "Select All" checkbox works correctly
+- [ ] Explore current database schema and usage
+- [ ] Design user authentication tables
+- [ ] Design per-user settings tables (M2M)
+- [ ] Implement bcrypt auth endpoints
+- [ ] Implement login/logout UI
+- [ ] Implement user management UI (admin only)
+- [ ] Implement per-user stream type preferences
+- [ ] Add session management
+
+**Previous Testing Needed:**
+
+- [ ] Test camera selector modal on mobile (iPhone/iPad)
+- [ ] Test PTZ controls after pointer-events fix
+- [ ] Test stream tap-to-expand on mobile
 - [ ] Test HD toggle switches stream quality
-- [ ] Test mobile touch-friendly (if applicable)
-
-**Other Testing:**
-
-- [ ] Test digital zoom: zoom buttons, pan, reset
-- [ ] Test Eufy doorbell go2rtc P2P stream
-- [ ] Test auto-migration triggers correctly
-- [ ] Test PTZ preset save/delete/overwrite on PTZ cameras
 
 ---

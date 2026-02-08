@@ -42,6 +42,13 @@
     margin: 0;
 }
 
+/* MOBIUS.NVR logo in header */
+.header-logo {
+    height: 32px;
+    width: auto;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
+}
+
 /* Navigation controls - groups buttons together */
 .nav-controls {
     display: flex;

@@ -53,9 +53,16 @@
     transform: scale(1.1) !important;
 }
 
-/* Change icon from expand to compress when in fullscreen */
+/* Change icon from expand to X when in fullscreen */
 .stream-item.css-fullscreen .stream-fullscreen-btn .fa-expand::before {
     content: "\f00d" !important; /* Font Awesome times/X icon */
+}
+
+/* Also show X icon in expanded modal on mobile (acts as close/back button) */
+@media (max-width: 768px) {
+    .stream-item.expanded .stream-fullscreen-btn .fa-expand::before {
+        content: "\f00d" !important; /* Font Awesome times/X icon */
+    }
 }
 
 /* Stream overlay (title and status) positioning in fullscreen */

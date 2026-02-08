@@ -1047,7 +1047,7 @@ def api_create_user():
     """
     Create new user (admin only).
 
-    Expects JSON: {username, password, role}
+    Expects JSON: {username, password, role, must_change_password}
     """
     if current_user.role != 'admin':
         return jsonify({'error': 'Admin access required'}), 403
@@ -1057,6 +1057,7 @@ def api_create_user():
         username = data.get('username')
         password = data.get('password')
         role = data.get('role', 'user')
+        must_change_password = data.get('must_change_password', True)  # Default to requiring password change
 
         if not username or not password:
             return jsonify({'error': 'Username and password required'}), 400
@@ -1074,7 +1075,7 @@ def api_create_user():
                 'username': username,
                 'password_hash': password_hash,
                 'role': role,
-                'must_change_password': False
+                'must_change_password': must_change_password
             },
             headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
             timeout=5
@@ -1189,6 +1190,70 @@ def api_delete_user(user_id):
         return jsonify({'error': 'Failed to delete user'}), 500
     except requests.RequestException as e:
         print(f"Error deleting user: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+@app.route('/api/users/<int:user_id>/reset-password', methods=['POST'])
+@csrf.exempt
+@login_required
+def api_reset_user_password(user_id):
+    """
+    Reset user password (admin only).
+
+    Sets a new temporary password and forces user to change it on next login.
+    Validates that new password is different from current password.
+
+    Expects JSON: {new_password}
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        data = request.get_json()
+        new_password = data.get('new_password')
+
+        if not new_password:
+            return jsonify({'error': 'New password required'}), 400
+
+        if len(new_password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+        # Get current password hash from database
+        user_response = requests.get(
+            f"{POSTGREST_URL}/users",
+            params={'id': f'eq.{user_id}', 'select': 'password_hash'},
+            timeout=5
+        )
+
+        if user_response.status_code != 200 or not user_response.json():
+            return jsonify({'error': 'User not found'}), 404
+
+        current_password_hash = user_response.json()[0]['password_hash']
+
+        # Validate new password is different from current password
+        if bcrypt.checkpw(new_password.encode('utf-8'), current_password_hash.encode('utf-8')):
+            return jsonify({'error': 'New password must be different from current password'}), 400
+
+        # Hash new password
+        new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        # Update password and set must_change_password flag
+        response = requests.patch(
+            f"{POSTGREST_URL}/users",
+            params={'id': f'eq.{user_id}'},
+            json={
+                'password_hash': new_password_hash,
+                'must_change_password': True
+            },
+            headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+            timeout=5
+        )
+
+        if response.status_code == 204:
+            return jsonify({'success': True})
+
+        return jsonify({'error': 'Failed to reset password'}), 500
+    except requests.RequestException as e:
+        print(f"Error resetting password: {e}")
         return jsonify({'error': 'Database error'}), 500
 
 # ===== Main UI Routes =====

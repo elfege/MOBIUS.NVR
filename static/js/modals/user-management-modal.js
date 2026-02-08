@@ -21,6 +21,7 @@ class UserManagementModal {
         this.$formUsername = $('#user-form-username');
         this.$formPassword = $('#user-form-password');
         this.$formRole = $('#user-form-role');
+        this.$formMustChangePassword = $('#user-form-must-change-password');
         this.$formClose = $('#user-form-close');
         this.$formCancel = $('#user-form-cancel');
 
@@ -51,6 +52,12 @@ class UserManagementModal {
             const userId = $(e.currentTarget).data('id');
             const username = $(e.currentTarget).data('username');
             this.deleteUser(userId, username);
+        });
+
+        this.$userList.on('click', '.user-reset-password-btn', (e) => {
+            const userId = $(e.currentTarget).data('id');
+            const username = $(e.currentTarget).data('username');
+            this.showResetPasswordForm(userId, username);
         });
     }
 
@@ -114,6 +121,12 @@ class UserManagementModal {
                             data-role="${user.role}">
                         <i class="fas fa-edit"></i>
                     </button>
+                    <button class="btn btn-sm btn-secondary user-reset-password-btn"
+                            data-id="${user.id}"
+                            data-username="${this.escapeHtml(user.username)}"
+                            title="Reset Password">
+                        <i class="fas fa-key"></i>
+                    </button>
                     <button class="btn btn-sm btn-danger user-delete-btn"
                             data-id="${user.id}"
                             data-username="${this.escapeHtml(user.username)}">
@@ -136,6 +149,7 @@ class UserManagementModal {
         this.$formPassword.val('').prop('required', true);
         this.$formPassword.siblings('small').text('Minimum 8 characters');
         this.$formRole.val('user');
+        this.$formMustChangePassword.prop('checked', true); // Default to requiring password change
         this.$formModal.fadeIn(200);
     }
 
@@ -156,6 +170,7 @@ class UserManagementModal {
         this.$formPassword.val('').prop('required', false);
         this.$formPassword.siblings('small').text('Leave blank to keep existing password');
         this.$formRole.val(role);
+        this.$formMustChangePassword.prop('checked', false).closest('.form-group').hide(); // Hide checkbox for edit
         this.$formModal.fadeIn(200);
     }
 
@@ -165,6 +180,7 @@ class UserManagementModal {
     hideForm() {
         this.$formModal.fadeOut(200);
         this.$form[0].reset();
+        this.$formMustChangePassword.closest('.form-group').show(); // Show checkbox again for next use
     }
 
     /**
@@ -179,6 +195,7 @@ class UserManagementModal {
         const username = this.$formUsername.val();
         const password = this.$formPassword.val();
         const role = this.$formRole.val();
+        const mustChangePassword = this.$formMustChangePassword.is(':checked');
 
         const isEdit = !!userId;
 
@@ -191,6 +208,11 @@ class UserManagementModal {
             // Only include password if provided
             if (password) {
                 data.password = password;
+            }
+
+            // Include must_change_password when creating new users
+            if (!isEdit) {
+                data.must_change_password = mustChangePassword;
             }
 
             const url = isEdit ? `/api/users/${userId}` : '/api/users';
@@ -247,6 +269,47 @@ class UserManagementModal {
             this.showMessage(`User "${username}" deleted`, 'success');
         } catch (error) {
             console.error('Error deleting user:', error);
+            this.showMessage(error.message, 'error');
+        }
+    }
+
+    /**
+     * Show reset password form
+     *
+     * @param {number} userId - User ID
+     * @param {string} username - Username for display
+     */
+    async showResetPasswordForm(userId, username) {
+        const newPassword = prompt(`Reset password for "${username}"?\n\nEnter new temporary password (min 8 characters):`);
+
+        if (!newPassword) {
+            return; // User cancelled
+        }
+
+        if (newPassword.length < 8) {
+            this.showMessage('Password must be at least 8 characters', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/users/${userId}/reset-password`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    new_password: newPassword
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to reset password');
+            }
+
+            this.showMessage(`Password reset for "${username}". User will be required to change it on next login.`, 'success');
+        } catch (error) {
+            console.error('Error resetting password:', error);
             this.showMessage(error.message, 'error');
         }
     }

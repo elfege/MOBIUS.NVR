@@ -17,6 +17,12 @@
     position: relative;
     top: auto;
     right: auto;
+    /* Maintain flex properties and dimensions for proper alignment */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
 }
 
 /* Volume popup - drops down from the audio button */

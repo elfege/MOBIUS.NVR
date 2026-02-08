@@ -253,11 +253,31 @@
 /* Close button (X) - rightmost position */
 /* Already defined above at right: 20px */
 
-/* Audio button - left of close button */
-.stream-item.css-fullscreen .stream-audio-btn {
+/* Volume control container - position it where audio button should be in fullscreen */
+/* Without this, the container's own absolute positioning (right: 3.5rem) */
+/* causes the audio button inside to be misaligned relative to other buttons */
+.stream-item.css-fullscreen .volume-control-container {
     position: absolute !important;
     top: 20px !important;
     right: 92px !important;  /* 20px + 60px close btn + 12px gap */
+    z-index: 10001 !important;
+}
+
+/* Audio button - inside the repositioned container, use relative positioning */
+.stream-item.css-fullscreen .volume-control-container .stream-audio-btn {
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    width: 50px !important;
+    height: 50px !important;
+    border-radius: 50% !important;
+}
+
+/* Audio button when NOT inside volume-control-container (fallback) */
+.stream-item.css-fullscreen > .stream-audio-btn {
+    position: absolute !important;
+    top: 20px !important;
+    right: 92px !important;
     width: 50px !important;
     height: 50px !important;
     border-radius: 50% !important;

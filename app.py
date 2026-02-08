@@ -20,13 +20,16 @@ import traceback
 from datetime import datetime
 from threading import Thread
 
-from flask import Flask, render_template, jsonify, request, Response, redirect, send_file
+from flask import Flask, render_template, jsonify, request, Response, redirect, send_file, session
 from flask_wtf import FlaskForm
 from flask_wtf.csrf import CSRFProtect
 from wtforms import SelectField, SubmitField
 from wtforms.validators import DataRequired
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+import bcrypt
 
 # modular imports
+from models.user import User
 from services.camera_repository import CameraRepository
 from services.ptz.ptz_validator import PTZValidator
 from streaming.stream_manager import StreamManager
@@ -74,6 +77,36 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = '-ratatouillemescouilles'
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 csrf = CSRFProtect(app)
+
+# Flask-Login session configuration
+# Indefinite sessions until logout (no automatic expiry)
+from datetime import timedelta
+app.config['SESSION_PERMANENT'] = False
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when using HTTPS
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access this page.'
+
+# Flask-Login user loader
+# Called by Flask-Login to reload user object from user ID stored in session
+@login_manager.user_loader
+def load_user(user_id):
+    """
+    Load user by ID from database via PostgREST.
+
+    Args:
+        user_id (str): User ID from session
+
+    Returns:
+        User: User instance if found, None otherwise
+    """
+    return User.get_by_id(user_id)
 
 # Initialize Flask-SocketIO
 # async_mode='threading' works with Gunicorn gthread workers
@@ -816,6 +849,161 @@ class PTZControlForm(FlaskForm):
     """Form for PTZ camera selection"""
     camera = SelectField('Camera', validators=[DataRequired()])
     submit = SubmitField('Select Camera')
+
+# ===== Authentication Helper Functions =====
+
+# PostgREST connection URL
+POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+
+def _create_user_session(user_id, ip_address, user_agent):
+    """
+    Create session record in database via PostgREST.
+
+    Args:
+        user_id (int): User ID
+        ip_address (str): Client IP address
+        user_agent (str): Client User-Agent string
+    """
+    try:
+        requests.post(
+            f"{POSTGREST_URL}/user_sessions",
+            json={
+                'user_id': user_id,
+                'ip_address': ip_address,
+                'user_agent': user_agent,
+                'is_active': True
+            },
+            headers={'Content-Type': 'application/json'},
+            timeout=5
+        )
+    except requests.RequestException as e:
+        print(f"Error creating user session: {e}")
+
+def _deactivate_user_session(user_id):
+    """
+    Mark all user sessions as inactive in database.
+
+    Args:
+        user_id (int): User ID
+    """
+    try:
+        requests.patch(
+            f"{POSTGREST_URL}/user_sessions",
+            params={'user_id': f'eq.{user_id}', 'is_active': 'eq.true'},
+            json={'is_active': False},
+            headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+            timeout=5
+        )
+    except requests.RequestException as e:
+        print(f"Error deactivating user session: {e}")
+
+# ===== Authentication Routes =====
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """
+    User login page and authentication handler.
+
+    GET: Display login form
+    POST: Authenticate user credentials and create session
+    """
+    if request.method == 'GET':
+        return render_template('login.html')
+
+    # POST - handle login
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    if not username or not password:
+        return render_template('login.html', error='Username and password required')
+
+    # Load user and password hash from database
+    user, password_hash = User.get_by_username(username)
+
+    if not user:
+        return render_template('login.html', error='Invalid username or password')
+
+    # Verify password with bcrypt
+    if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+        return render_template('login.html', error='Invalid username or password')
+
+    # Check if password change required
+    if user.must_change_password:
+        session['pending_password_change_user_id'] = user.id
+        return redirect('/change-password')
+
+    # Log user in
+    login_user(user, remember=True)
+
+    # Create session record in database
+    _create_user_session(user.id, request.remote_addr, request.user_agent.string)
+
+    return redirect('/streams')
+
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout():
+    """
+    User logout handler.
+
+    Deactivates session in database and clears Flask-Login session.
+    """
+    # Mark session as inactive in database
+    _deactivate_user_session(current_user.id)
+
+    # Clear Flask-Login session
+    logout_user()
+
+    return redirect('/login')
+
+@app.route('/change-password', methods=['GET', 'POST'])
+def change_password():
+    """
+    Password change page for forced password updates.
+
+    Used when must_change_password flag is set (e.g., default admin account).
+    """
+    user_id = session.get('pending_password_change_user_id')
+    if not user_id:
+        return redirect('/login')
+
+    if request.method == 'GET':
+        return render_template('change_password.html')
+
+    # POST - handle password change
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+
+    if not new_password or new_password != confirm_password:
+        return render_template('change_password.html', error='Passwords do not match')
+
+    if len(new_password) < 8:
+        return render_template('change_password.html', error='Password must be at least 8 characters')
+
+    # Hash new password with bcrypt
+    password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    # Update database
+    try:
+        response = requests.patch(
+            f"{POSTGREST_URL}/users",
+            params={'id': f'eq.{user_id}'},
+            json={
+                'password_hash': password_hash,
+                'must_change_password': False
+            },
+            headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+            timeout=5
+        )
+
+        if response.status_code == 204:
+            session.pop('pending_password_change_user_id', None)
+            return redirect('/login')
+
+        return render_template('change_password.html', error='Failed to update password')
+    except requests.RequestException as e:
+        print(f"Error updating password: {e}")
+        return render_template('change_password.html', error='Database error')
 
 # ===== Main UI Routes =====
 @app.route('/')

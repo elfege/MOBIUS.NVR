@@ -218,15 +218,16 @@ class StorageMigrationService:
             logger.error(f"Failed to delete recording {recording_id}: {e}")
             return False
 
-    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 500) -> int:
+    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 50) -> int:
         """
         Delete multiple recordings from the database in batches.
         Uses PostgREST's id=in.(...) syntax to delete many records per request.
-        Includes a small delay between batches to avoid overwhelming PostgREST.
+        Includes delays between batches to avoid overwhelming PostgREST.
 
         Args:
             recording_ids: List of recording IDs to delete
-            batch_size: Number of IDs per DELETE request (default 500)
+            batch_size: Number of IDs per DELETE request (default 50,
+                        kept small to avoid 504 Gateway Timeouts from PostgREST)
 
         Returns:
             Number of successfully deleted records
@@ -253,7 +254,7 @@ class StorageMigrationService:
                     url,
                     params={'id': f'in.({ids_param})'},
                     headers={'Prefer': 'return=minimal'},
-                    timeout=30
+                    timeout=60
                 )
                 response.raise_for_status()
                 deleted_count += len(batch_ids)
@@ -262,9 +263,9 @@ class StorageMigrationService:
             except Exception as e:
                 logger.error(f"Batch delete failed for batch {batch_num + 1}: {e}")
 
-            # Small delay between batches to let PostgREST breathe
+            # Delay between batches to let PostgREST and Postgres breathe
             if batch_num < total_batches - 1:
-                time.sleep(0.5)
+                time.sleep(1.5)
 
         return deleted_count
 

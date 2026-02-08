@@ -354,12 +354,18 @@ class UserManagementModal {
             const hasRestrictions = accessData.length > 0;
 
             // Get all cameras from the streaming list
-            const cameras = camerasData.all || [];
+            // /api/cameras returns cameras as a dict keyed by serial number, not an array
+            const camerasObj = camerasData.all || {};
+            const cameras = Object.entries(camerasObj).map(([serial, cam]) => ({
+                serial,
+                name: cam.name || cam.display_name || serial,
+                ...cam
+            }));
 
             // Build modal HTML
             const cameraCheckboxes = cameras.map(cam => {
-                const serial = cam.serial || cam.id;
-                const name = cam.name || cam.display_name || serial;
+                const serial = cam.serial;
+                const name = cam.name || serial;
                 // If no restrictions exist, all cameras are checked by default
                 const checked = hasRestrictions ? allowedSerials.has(serial) : true;
                 return `

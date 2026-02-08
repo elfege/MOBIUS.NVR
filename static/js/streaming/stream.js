@@ -128,17 +128,11 @@ function isGridSnapshotsEnabled() {
 }
 
 /**
- * Check if iOS should force WebRTC in grid view instead of snapshots.
- * This is an EXPERIMENTAL option that allows iOS users to get real-time
- * video (~200ms latency) in grid view instead of 1fps snapshot polling.
+ * Check if mobile devices should force WebRTC in grid view.
+ * When enabled, bypasses the default MJPEG (Android) or snapshot (iOS)
+ * override, giving real-time WebRTC video (~200ms latency) in grid view.
  *
- * WARNING: This may cause issues on iOS due to:
- * - Higher resource usage (CPU/memory/battery)
- * - Safari limits concurrent video decodes (~4-8 streams)
- * - Less reliable than snapshot polling
- * - May cause black screens or freezes with many cameras
- *
- * Requires DTLS to be enabled on the server for iOS WebRTC support.
+ * Applies to all portable devices (iOS, Android, etc.)
  *
  * @returns {boolean}
  */
@@ -1866,8 +1860,8 @@ export class MultiStreamManager {
         const useIOSSnapshot = isIOSDevice() && isGridView && !debugForceMJPEG && !isForceWebRTCGridEnabled() && !isHDMode;
         // Desktop users can opt-in to snapshot mode via Settings (but HD cameras use native)
         const useDesktopSnapshot = !isPortableDevice() && isGridSnapshotsEnabled() && isGridView && !isHDMode;
-        // Android/other portable in grid: use MJPEG (but HD cameras use native)
-        const forcePortableMJPEG = (isPortableDevice() && !isIOSDevice() || debugForceMJPEG) && isGridView && !isHDMode;
+        // Android/other portable in grid: use MJPEG unless user forces WebRTC via settings
+        const forcePortableMJPEG = (isPortableDevice() && !isIOSDevice() || debugForceMJPEG) && isGridView && !isHDMode && !isForceWebRTCGridEnabled();
         // Use snapshots for: iOS, desktop opt-in, or debug mode (but never for HD cameras)
         const useSnapshot = useIOSSnapshot || useDesktopSnapshot || (debugForceSnapshot && isGridView && !isHDMode);
 
@@ -1920,12 +1914,12 @@ export class MultiStreamManager {
             }
         }
 
-        // iOS Force WebRTC Grid Mode (experimental)
-        // When enabled, iOS grid view uses WebRTC instead of snapshot polling
-        // This provides real-time video but may cause issues with many cameras
-        const forceIOSWebRTCGrid = isIOSDevice() && isGridView && isForceWebRTCGridEnabled();
-        if (forceIOSWebRTCGrid && streamType !== 'WEBRTC') {
-            console.log(`[Stream] iOS Force WebRTC Grid enabled - using WebRTC for ${cameraId}`);
+        // Force WebRTC Grid Mode (for all mobile devices)
+        // When enabled, portable devices use WebRTC in grid view instead of MJPEG/snapshots.
+        // This provides real-time video but may cause issues with many cameras.
+        const forceWebRTCGrid = isPortableDevice() && isGridView && isForceWebRTCGridEnabled();
+        if (forceWebRTCGrid && streamType !== 'WEBRTC') {
+            console.log(`[Stream] Force WebRTC Grid enabled - using WebRTC for ${cameraId}`);
             // Store original stream type for recovery
             $streamItem.data('original-stream-type', $streamItem.data('stream-type'));
             streamType = 'WEBRTC';

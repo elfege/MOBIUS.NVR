@@ -1007,11 +1007,13 @@ def change_password():
 
 # ===== Main UI Routes =====
 @app.route('/')
+@login_required
 def index():
     """Redirect to streams page (main interface)"""
     return redirect('/streams')
 
 @app.route('/streams')
+@login_required
 def streams_page():
     """Multi-stream viewing page"""
     try:
@@ -1025,6 +1027,7 @@ def streams_page():
         return f"Error loading streams page: {e}", 500
 
 @app.route('/reloading')
+@login_required
 def reloading_page():
     """Reconnection page shown when server is restarting"""
     return render_template('reloading.html')
@@ -1048,6 +1051,7 @@ def api_health():
     }), 200
 
 @app.route('/api/status')
+@login_required
 def api_status():
     """Get system status"""
     eufy_status = {
@@ -1077,6 +1081,7 @@ def api_status():
     })
 
 @app.route('/api/cameras')
+@login_required
 def api_cameras():
     """Get list of available cameras"""
     return jsonify({
@@ -1084,25 +1089,27 @@ def api_cameras():
         'ptz': camera_repo.get_ptz_cameras(),
         'streaming': camera_repo.get_streaming_cameras()
     })
-    
+
 @app.route('/api/cameras/<camera_id>')
+@login_required
 def api_camera_detail(camera_id):
     """Get single camera configuration"""
     try:
         # Get camera from repository
         camera = camera_repo.get_camera(camera_id)
-        
+
         if not camera:
             return jsonify({'error': 'Camera not found'}), 404
-        
+
         return jsonify(camera)
-        
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 # ===== Streaming Configuration Routes =====
 
 @app.route('/api/config/streaming')
+@login_required
 def api_streaming_config():
     """
     Get streaming configuration for frontend.
@@ -1134,6 +1141,7 @@ def api_streaming_config():
 # ===== Bridge Control Routes =====
 @app.route('/api/bridge/start', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_bridge_start():
     """Start the Eufy bridge"""
     try:
@@ -1149,6 +1157,7 @@ def api_bridge_start():
 
 @app.route('/api/bridge/stop', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_bridge_stop():
     """Stop the Eufy bridge"""
     try:
@@ -1162,6 +1171,7 @@ def api_bridge_stop():
 # ===== Device Management Routes =====
 @app.route('/api/devices/refresh', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_refresh_devices():
     """Refresh device list from bridge (Eufy only for now)"""
     try:
@@ -1181,6 +1191,7 @@ def api_refresh_devices():
 # RTMP
 @app.route('/api/camera/<camera_serial>/flv')
 @csrf.exempt
+@login_required
 def serve_camera_flv(camera_serial):
     """Serve FLV stream from already-running RTMP process"""
     
@@ -1224,6 +1235,7 @@ def serve_camera_flv(camera_serial):
 
 @app.route('/api/stream/start/<camera_serial>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_stream_start(camera_serial):
     """Start HLS stream for camera"""
     try:
@@ -1310,6 +1322,7 @@ def api_stream_start(camera_serial):
 
 @app.route('/api/stream/stop/<camera_serial>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_stream_stop(camera_serial):
     """Stop HLS stream for camera"""
     try:
@@ -1339,6 +1352,7 @@ def api_stream_stop(camera_serial):
 
 @app.route('/api/stream/restart/<camera_serial>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_stream_restart(camera_serial):
     """
     Restart stream for camera - stops FFmpeg process and starts fresh.
@@ -1436,6 +1450,7 @@ def api_stream_restart(camera_serial):
 
 
 @app.route('/api/stream/status/<camera_serial>')
+@login_required
 def api_stream_status(camera_serial):
     """Get stream status for camera"""
     try:
@@ -1458,6 +1473,7 @@ def api_stream_status(camera_serial):
         }), 500
 
 @app.route('/api/camera/state/<camera_id>')
+@login_required
 def api_camera_state(camera_id):
     """
     Get detailed camera state from CameraStateTracker
@@ -1514,6 +1530,7 @@ def api_camera_state(camera_id):
         }), 500
 
 @app.route('/api/streams')
+@login_required
 def api_streams():
     """Get all active streams"""
     try:
@@ -1527,12 +1544,14 @@ def api_streams():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/streams/active')
+@login_required
 def api_active_streams():
     """Get all active streams (alias)"""
     return api_streams()
 
 @app.route('/api/streams/stop-all', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_streams_stop_all():
     """Stop all active streams"""
     try:
@@ -1549,6 +1568,7 @@ def api_streams_stop_all():
 ########################################################-########################################################
 # ===== HLS Playlist and Segment Serving =====
 @app.route('/api/streams/<camera_serial>/playlist.m3u8')
+@login_required
 def serve_playlist(camera_serial):
     """Serve HLS playlist for camera"""
     try:
@@ -1576,6 +1596,7 @@ def serve_playlist(camera_serial):
         return f"Error serving playlist: {e}", 500
 
 @app.route('/api/streams/<camera_serial>/<segment>')
+@login_required
 def serve_segment(camera_serial, segment):
     """Serve HLS segment for camera - supports both MPEG-TS (.ts) and fMP4 (.m4s, init.mp4)"""
     try:
@@ -1624,6 +1645,7 @@ def serve_segment(camera_serial, segment):
 ########################################################-########################################################
 # ===== UniFi Camera Routes =====
 @app.route('/api/unifi/cameras')
+@login_required
 def api_unifi_cameras():
     """Get list of UniFi cameras"""
     try:
@@ -1641,6 +1663,7 @@ def api_unifi_cameras():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/unifi/<camera_id>/snapshot')
+@login_required
 def api_unifi_snapshot(camera_id):
     """Get UniFi camera snapshot"""
     try:
@@ -1659,6 +1682,7 @@ def api_unifi_snapshot(camera_id):
         return f"Snapshot error: {e}", 500
 
 @app.route('/api/unifi/<camera_id>/stream/mjpeg')
+@login_required
 def api_unifi_stream_mjpeg(camera_id):
     """
     MJPEG stream for UniFi cameras - Single capture, multiple clients
@@ -1716,6 +1740,7 @@ def api_unifi_stream_mjpeg(camera_id):
 
 # ===== UNIFI MJPEG Capture Service Status Routes =====
 @app.route('/api/status/mjpeg-captures')
+@login_required
 def api_mjpeg_capture_status():
     """Get status of all MJPEG capture processes"""
     try:
@@ -1729,6 +1754,7 @@ def api_mjpeg_capture_status():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/status/mjpeg-captures/<camera_id>')
+@login_required
 def api_mjpeg_capture_status_single(camera_id):
     """Get status of specific MJPEG capture process"""
     try:
@@ -1748,6 +1774,7 @@ def api_mjpeg_capture_status_single(camera_id):
 
 # ===== UniFi Resource Monitor Routes =====
 @app.route('/api/status/unifi-monitor')
+@login_required
 def api_unifi_monitor_status():
     """Get UniFi resource monitor status"""
     try:
@@ -1759,6 +1786,7 @@ def api_unifi_monitor_status():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/status/unifi-monitor/summary')
+@login_required
 def api_unifi_monitor_summary():
     """Get brief UniFi resource monitor summary"""
     try:
@@ -1771,6 +1799,7 @@ def api_unifi_monitor_summary():
 
 @app.route('/api/maintenance/recycle-unifi-sessions', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_recycle_unifi_sessions():
     """Manually trigger UniFi session recycling"""
     try:
@@ -1795,6 +1824,7 @@ def api_recycle_unifi_sessions():
 ########################################################-########################################################
 @app.route('/api/mediaserver/<camera_id>/stream/mjpeg')
 @csrf.exempt
+@login_required
 def api_mediaserver_stream_mjpeg(camera_id):
     """
     MJPEG stream for cameras with mjpeg_source: "mediaserver"
@@ -1909,6 +1939,7 @@ def api_mediaserver_stream_mjpeg(camera_id):
 
 
 @app.route('/api/status/mediaserver-mjpeg')
+@login_required
 def api_mediaserver_mjpeg_status():
     """Get status of all MediaServer MJPEG capture processes"""
     try:
@@ -1923,6 +1954,7 @@ def api_mediaserver_mjpeg_status():
 
 
 @app.route('/api/status/mediaserver-mjpeg/<camera_id>')
+@login_required
 def api_mediaserver_mjpeg_status_single(camera_id):
     """Get status of specific MediaServer MJPEG capture process"""
     try:
@@ -2510,6 +2542,7 @@ def handle_stop_talkback(data):
 
 
 @app.route('/api/talkback/<camera_serial>/capabilities')
+@login_required
 def api_talkback_capabilities(camera_serial):
     """
     Check if camera supports two-way audio (talkback).
@@ -2573,6 +2606,7 @@ def api_talkback_capabilities(camera_serial):
 
 
 @app.route('/api/status/websocket-mjpeg')
+@login_required
 def api_websocket_mjpeg_status():
     """Get status of WebSocket MJPEG service"""
     try:
@@ -2590,6 +2624,7 @@ def api_websocket_mjpeg_status():
 ########################################################-########################################################
 @app.route('/api/snap/<camera_id>')
 @csrf.exempt
+@login_required
 def api_snap_camera(camera_id):
     """
     Get a single JPEG snapshot from any camera.
@@ -2651,6 +2686,7 @@ def api_snap_camera(camera_id):
 ########################################################-########################################################
 @app.route('/api/reolink/<camera_id>/stream/mjpeg')
 @csrf.exempt
+@login_required
 def api_reolink_stream_mjpeg_default(camera_id):
     stream = request.args.get('stream', 'sub')
     if stream == 'sub':
@@ -2793,6 +2829,7 @@ def api_reolink_stream_mjpeg_main(camera_id):
 ########################################################-########################################################
 @app.route('/api/sv3c/<camera_id>/stream/mjpeg')
 @csrf.exempt
+@login_required
 def api_sv3c_stream_mjpeg_default(camera_id):
     """
     MJPEG stream for SV3C cameras via snapshot polling.
@@ -2936,6 +2973,7 @@ def api_sv3c_stream_mjpeg_main(camera_id):
 ########################################################-########################################################
 @app.route('/eufy-auth')
 @csrf.exempt
+@login_required
 def eufy_auth_page():
     """
     Serve Eufy authentication page for captcha and 2FA submission
@@ -2944,6 +2982,7 @@ def eufy_auth_page():
 
 @app.route('/api/eufy-auth/captcha', methods=['POST'])
 @csrf.exempt
+@login_required
 def submit_eufy_captcha():
     """
     Submit captcha code to Eufy bridge
@@ -3009,6 +3048,7 @@ def submit_eufy_captcha():
 
 @app.route('/api/eufy-auth/2fa', methods=['POST'])
 @csrf.exempt
+@login_required
 def submit_eufy_2fa():
     """
     Submit 2FA verification code to Eufy bridge
@@ -3074,6 +3114,7 @@ def submit_eufy_2fa():
 
 @app.route('/api/eufy-auth/status')
 @csrf.exempt
+@login_required
 def eufy_auth_status():
     """
     Check Eufy bridge authentication status
@@ -3117,6 +3158,7 @@ def eufy_auth_status():
 
 @app.route('/api/eufy-auth/captcha-image')
 @csrf.exempt
+@login_required
 def eufy_captcha_image():
     """
     Serve the current captcha image
@@ -3134,6 +3176,7 @@ def eufy_captcha_image():
 
 @app.route('/api/eufy-auth/refresh-captcha', methods=['POST'])
 @csrf.exempt
+@login_required
 def refresh_eufy_captcha():
     """Request a new captcha from the bridge"""
     try:
@@ -3186,6 +3229,7 @@ def refresh_eufy_captcha():
 
 # ===== AMCREST MJPEG Service Routes =====
 @app.route('/api/amcrest/<camera_id>/stream/mjpeg')
+@login_required
 def api_amcrest_stream_mjpeg(camera_id):
     """MJPEG sub stream for Amcrest cameras (grid mode)"""
     logger.info(f"Client requesting Amcrest MJPEG stream for {camera_id}")
@@ -3234,6 +3278,7 @@ def api_amcrest_stream_mjpeg(camera_id):
         return f"Stream error: {e}", 500
     
 @app.route('/api/amcrest/<camera_id>/stream/mjpeg/main')
+@login_required
 def api_amcrest_stream_mjpeg_main(camera_id):
     """MJPEG main stream for Amcrest cameras (fullscreen mode)"""
     logger.info(f"Client requesting Amcrest MJPEG MAIN stream for {camera_id}")
@@ -3288,6 +3333,7 @@ def api_amcrest_stream_mjpeg_main(camera_id):
 ########################################################-########################################################
 @app.route('/api/ptz/<camera_serial>/<direction>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_ptz_move(camera_serial, direction):
     """Execute PTZ movement with ONVIF priority"""
     import time as _time
@@ -3378,6 +3424,7 @@ def api_ptz_move(camera_serial, direction):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/ptz/<camera_serial>/presets', methods=['GET'])
+@login_required
 def api_ptz_get_presets(camera_serial):
     """
     Get list of PTZ presets for camera.
@@ -3445,6 +3492,7 @@ def api_ptz_get_presets(camera_serial):
 
 @app.route('/api/ptz/<camera_serial>/preset/<preset_token>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_ptz_goto_preset(camera_serial, preset_token):
     """Move camera to preset position"""
     try:
@@ -3501,6 +3549,7 @@ def api_ptz_goto_preset(camera_serial, preset_token):
 
 @app.route('/api/ptz/<camera_serial>/preset', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_ptz_set_preset(camera_serial):
     """Save current position as preset
 
@@ -3573,6 +3622,7 @@ def api_ptz_set_preset(camera_serial):
 
 @app.route('/api/ptz/<camera_serial>/preset/<preset_token>', methods=['DELETE'])
 @csrf.exempt
+@login_required
 def api_ptz_delete_preset(camera_serial, preset_token):
     """
     Delete a PTZ preset.
@@ -3614,6 +3664,7 @@ def api_ptz_delete_preset(camera_serial, preset_token):
 
 
 @app.route('/api/ptz/latency/<client_uuid>/<camera_serial>', methods=['GET'])
+@login_required
 def api_ptz_get_latency(client_uuid, camera_serial):
     """
     Get learned PTZ latency for a client/camera pair.
@@ -3673,6 +3724,7 @@ def api_ptz_get_latency(client_uuid, camera_serial):
 
 @app.route('/api/ptz/latency/<client_uuid>/<camera_serial>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_ptz_update_latency(client_uuid, camera_serial):
     """
     Update learned PTZ latency for a client/camera pair.
@@ -3786,6 +3838,7 @@ def api_ptz_update_latency(client_uuid, camera_serial):
 
 @app.route('/api/ptz/<camera_serial>/reversal', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_ptz_get_reversal(camera_serial):
     """
     Get PTZ reversal settings for a camera.
@@ -3810,6 +3863,7 @@ def api_ptz_get_reversal(camera_serial):
 
 @app.route('/api/ptz/<camera_serial>/reversal', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_ptz_update_reversal(camera_serial):
     """
     Update PTZ reversal settings for a camera.
@@ -3862,6 +3916,7 @@ def api_ptz_update_reversal(camera_serial):
 
 @app.route('/api/camera/<camera_serial>/reboot', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_camera_reboot(camera_serial):
     """
     Reboot a camera.
@@ -3924,6 +3979,7 @@ def api_camera_reboot(camera_serial):
 
 @app.route('/api/hubitat/devices/switch', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_hubitat_switch_devices():
     """
     Get all Hubitat devices with Switch capability.
@@ -3945,6 +4001,7 @@ def api_hubitat_switch_devices():
 
 @app.route('/api/cameras/<camera_serial>/power_supply', methods=['GET', 'POST'])
 @csrf.exempt
+@login_required
 def api_camera_power_supply(camera_serial):
     """
     Get or set power supply settings for a camera.
@@ -4028,6 +4085,7 @@ def api_camera_power_supply(camera_serial):
 
 @app.route('/api/cameras/<camera_serial>/speaker_volume', methods=['GET', 'POST'])
 @csrf.exempt
+@login_required
 def api_camera_speaker_volume(camera_serial):
     """
     Get or set speaker volume for a camera's two-way audio.
@@ -4077,6 +4135,7 @@ def api_camera_speaker_volume(camera_serial):
 
 @app.route('/api/power/<camera_serial>/cycle', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_power_cycle(camera_serial):
     """
     Trigger power cycle for a camera via its Hubitat smart plug.
@@ -4100,6 +4159,7 @@ def api_power_cycle(camera_serial):
 
 @app.route('/api/power/<camera_serial>/status', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_power_status(camera_serial):
     """
     Get power cycle status for a camera.
@@ -4119,6 +4179,7 @@ def api_power_status(camera_serial):
 
 @app.route('/api/hubitat/cameras', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_hubitat_cameras():
     """
     Get all cameras with power_supply='hubitat'.
@@ -4142,6 +4203,7 @@ def api_hubitat_cameras():
 
 @app.route('/api/presence', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_get_all_presence():
     """
     Get presence status for all tracked people.
@@ -4162,6 +4224,7 @@ def api_get_all_presence():
 
 @app.route('/api/presence/<person_name>', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_get_presence(person_name):
     """
     Get presence status for a specific person.
@@ -4190,6 +4253,7 @@ def api_get_presence(person_name):
 
 @app.route('/api/presence/<person_name>/toggle', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_toggle_presence(person_name):
     """
     Toggle presence status for a person.
@@ -4222,6 +4286,7 @@ def api_toggle_presence(person_name):
 
 @app.route('/api/presence/<person_name>/set', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_set_presence(person_name):
     """
     Set presence status for a person.
@@ -4266,6 +4331,7 @@ def api_set_presence(person_name):
 
 @app.route('/api/presence/devices', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_get_presence_devices():
     """
     Get all Hubitat devices with PresenceSensor capability.
@@ -4285,6 +4351,7 @@ def api_get_presence_devices():
 
 @app.route('/api/presence/<person_name>/device', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_set_presence_device(person_name):
     """
     Associate a Hubitat presence sensor with a person.
@@ -4327,6 +4394,7 @@ def api_set_presence_device(person_name):
 
 @app.route('/api/unifi-poe/switches', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_unifi_poe_switches():
     """
     Get all UniFi switches from the controller.
@@ -4346,6 +4414,7 @@ def api_unifi_poe_switches():
 
 @app.route('/api/unifi-poe/switches/<switch_mac>/ports', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_unifi_poe_switch_ports(switch_mac):
     """
     Get all ports on a specific switch with POE status.
@@ -4365,6 +4434,7 @@ def api_unifi_poe_switch_ports(switch_mac):
 
 @app.route('/api/cameras/<camera_serial>/poe_config', methods=['GET', 'POST'])
 @csrf.exempt
+@login_required
 def api_camera_poe_config(camera_serial):
     """
     Get or set POE configuration for a camera.
@@ -4419,6 +4489,7 @@ def api_camera_poe_config(camera_serial):
 
 @app.route('/api/poe/<camera_serial>/cycle', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_poe_power_cycle(camera_serial):
     """
     Manually trigger POE power cycle for a camera.
@@ -4440,6 +4511,7 @@ def api_poe_power_cycle(camera_serial):
 
 @app.route('/api/poe/<camera_serial>/status', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_poe_power_status(camera_serial):
     """
     Get POE power cycle status for a camera.
@@ -4459,6 +4531,7 @@ def api_poe_power_status(camera_serial):
 
 @app.route('/api/unifi-poe/cameras', methods=['GET'])
 @csrf.exempt
+@login_required
 def api_poe_cameras():
     """
     Get all cameras with power_supply='poe'.
@@ -4482,6 +4555,7 @@ def api_poe_cameras():
 
 @app.route('/api/recording/settings/<camera_id>', methods=['GET', 'POST'])
 @csrf.exempt
+@login_required
 def api_recording_settings(camera_id):
     """Get or update recording settings for a camera"""
     if not recording_service:
@@ -4522,6 +4596,7 @@ def api_recording_settings(camera_id):
 
 @app.route('/api/recording/start/<camera_id>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_recording_start(camera_id):
     """Start manual recording for a camera"""
     if not recording_service:
@@ -4559,6 +4634,7 @@ def api_recording_start(camera_id):
 
 @app.route('/api/recording/stop/<recording_id>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_recording_stop(recording_id):
     """Stop an active recording by recording ID"""
     if not recording_service:
@@ -4585,6 +4661,7 @@ def api_recording_stop(recording_id):
 
 
 @app.route('/api/recording/active', methods=['GET'])
+@login_required
 def api_recording_active():
     """Get list of all currently active recordings"""
     if not recording_service:
@@ -4609,6 +4686,7 @@ def api_recording_active():
 ########################################################
 
 @app.route('/api/timeline/segments/<camera_id>', methods=['GET'])
+@login_required
 def api_timeline_segments(camera_id: str):
     """
     Get timeline segments for a camera within a time range.
@@ -4688,6 +4766,7 @@ def api_timeline_segments(camera_id: str):
 
 
 @app.route('/api/timeline/summary/<camera_id>', methods=['GET'])
+@login_required
 def api_timeline_summary(camera_id: str):
     """
     Get timeline summary with recording coverage by time buckets.
@@ -4747,6 +4826,7 @@ def api_timeline_summary(camera_id: str):
 
 @app.route('/api/timeline/export', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_timeline_export_create():
     """
     Create a video export job for a time range.
@@ -4813,6 +4893,7 @@ def api_timeline_export_create():
 
 
 @app.route('/api/timeline/export/<job_id>', methods=['GET'])
+@login_required
 def api_timeline_export_status(job_id: str):
     """
     Get export job status.
@@ -4839,6 +4920,7 @@ def api_timeline_export_status(job_id: str):
 
 @app.route('/api/timeline/export/<job_id>/start', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_timeline_export_start(job_id: str):
     """
     Start processing a pending export job.
@@ -4864,6 +4946,7 @@ def api_timeline_export_start(job_id: str):
 
 @app.route('/api/timeline/export/<job_id>/cancel', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_timeline_export_cancel(job_id: str):
     """Cancel a pending or processing export job."""
     try:
@@ -4887,6 +4970,7 @@ def api_timeline_export_cancel(job_id: str):
 
 
 @app.route('/api/timeline/export/<job_id>/download', methods=['GET'])
+@login_required
 def api_timeline_export_download(job_id: str):
     """
     Download completed export file.
@@ -4921,6 +5005,7 @@ def api_timeline_export_download(job_id: str):
 
 
 @app.route('/api/timeline/export/<job_id>/stream', methods=['GET'])
+@login_required
 def api_timeline_export_stream(job_id: str):
     """
     Stream export file for inline playback (iOS save workaround).
@@ -5003,6 +5088,7 @@ def api_timeline_export_stream(job_id: str):
 
 
 @app.route('/api/timeline/preview/<int:recording_id>', methods=['GET'])
+@login_required
 def api_timeline_preview(recording_id: int):
     """
     Stream a recording file for in-browser preview playback.
@@ -5087,6 +5173,7 @@ def api_timeline_preview(recording_id: int):
 
 
 @app.route('/api/timeline/exports', methods=['GET'])
+@login_required
 def api_timeline_export_list():
     """
     List all export jobs, optionally filtered by camera.
@@ -5117,6 +5204,7 @@ def api_timeline_export_list():
 
 @app.route('/api/timeline/preview-merge', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_timeline_preview_merge_create():
     """
     Create a merged preview from selected segment IDs.
@@ -5164,6 +5252,7 @@ def api_timeline_preview_merge_create():
 
 
 @app.route('/api/timeline/preview-merge/<job_id>', methods=['GET'])
+@login_required
 def api_timeline_preview_merge_status(job_id: str):
     """
     Get preview merge job status and progress.
@@ -5193,6 +5282,7 @@ def api_timeline_preview_merge_status(job_id: str):
 
 @app.route('/api/timeline/preview-merge/<job_id>/cancel', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_timeline_preview_merge_cancel(job_id: str):
     """
     Cancel a preview merge job.
@@ -5220,6 +5310,7 @@ def api_timeline_preview_merge_cancel(job_id: str):
 
 
 @app.route('/api/timeline/preview-merge/<job_id>/stream', methods=['GET'])
+@login_required
 def api_timeline_preview_merge_stream(job_id: str):
     """
     Stream the merged preview file for playback.
@@ -5301,6 +5392,7 @@ def api_timeline_preview_merge_stream(job_id: str):
 
 @app.route('/api/timeline/preview-merge/<job_id>/cleanup', methods=['DELETE'])
 @csrf.exempt
+@login_required
 def api_timeline_preview_merge_cleanup(job_id: str):
     """
     Delete temp preview files and cleanup resources.
@@ -5329,6 +5421,7 @@ def api_timeline_preview_merge_cleanup(job_id: str):
 
 @app.route('/api/timeline/preview-merge/<job_id>/promote', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_timeline_preview_merge_promote(job_id: str):
     """
     Promote a preview merge to a permanent export.
@@ -5374,6 +5467,7 @@ def api_timeline_preview_merge_promote(job_id: str):
 
 
 @app.route('/api/timeline/export/download/<filename>', methods=['GET'])
+@login_required
 def api_timeline_export_download_by_filename(filename: str):
     """
     Download an exported file by filename.
@@ -5408,6 +5502,7 @@ def api_timeline_export_download_by_filename(filename: str):
 
 
 @app.route('/api/timeline/export/stream/<filename>', methods=['GET'])
+@login_required
 def api_timeline_export_stream_by_filename(filename: str):
     """
     Stream an exported file by filename for inline playback.
@@ -5488,6 +5583,7 @@ ALTERNATE_RECORDING_BASE = '/recordings/ALTERNATE'
 
 
 @app.route('/api/files/browse', methods=['GET'])
+@login_required
 def api_browse_files():
     """
     Browse files in a directory within the allowed paths.
@@ -5580,6 +5676,7 @@ def api_browse_files():
 
 
 @app.route('/api/files/stream/<path:filepath>', methods=['GET'])
+@login_required
 def api_stream_file(filepath):
     """
     Stream a video file from the alternate recording storage.
@@ -5671,6 +5768,7 @@ def api_stream_file(filepath):
 
 
 @app.route('/api/files/download/<path:filepath>', methods=['GET'])
+@login_required
 def api_download_file(filepath):
     """
     Download a video file from the alternate recording storage.
@@ -5734,6 +5832,7 @@ def api_download_file(filepath):
 RECORDINGS_BASE = '/recordings'
 
 @app.route('/api/recordings/download/<path:filepath>', methods=['GET'])
+@login_required
 def api_download_recording(filepath):
     """
     Download a recording file from the main recordings storage.
@@ -5815,6 +5914,7 @@ def get_storage_migration_service():
 
 
 @app.route('/api/storage/stats', methods=['GET'])
+@login_required
 def api_storage_stats():
     """
     Get storage statistics for UI display.
@@ -5838,6 +5938,7 @@ def api_storage_stats():
 
 @app.route('/api/storage/migrate', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_storage_migrate():
     """
     Trigger storage migration from recent to archive tier.
@@ -5927,6 +6028,7 @@ def api_storage_migrate():
 
 @app.route('/api/storage/cleanup', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_storage_cleanup():
     """
     Trigger archive cleanup (deletion of old files).
@@ -5987,6 +6089,7 @@ def api_storage_cleanup():
 
 @app.route('/api/storage/reconcile', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_storage_reconcile():
     """
     Reconcile database with filesystem.
@@ -6056,6 +6159,7 @@ def api_storage_reconcile():
 
 @app.route('/api/storage/migrate/full', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_storage_full_migration():
     """
     Run complete migration cycle for all recording types.
@@ -6108,6 +6212,7 @@ def api_storage_full_migration():
 
 
 @app.route('/api/storage/operations', methods=['GET'])
+@login_required
 def api_storage_operations():
     """
     Query file operations log.
@@ -6154,6 +6259,7 @@ def api_storage_operations():
 
 @app.route('/api/storage/settings', methods=['GET', 'POST'])
 @csrf.exempt
+@login_required
 def api_storage_settings():
     """
     Get or update storage migration settings.
@@ -6311,6 +6417,7 @@ def check_migration_cancelled():
 
 @app.route('/api/storage/cancel', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_storage_cancel():
     """
     Cancel the current storage operation.
@@ -6337,6 +6444,7 @@ def api_storage_cancel():
 
 
 @app.route('/api/storage/migration-status', methods=['GET'])
+@login_required
 def api_migration_status():
     """
     Get current migration operation status for real-time UI updates.
@@ -6361,6 +6469,7 @@ def api_migration_status():
 ########################################################
 
 @app.route('/api/motion/status', methods=['GET'])
+@login_required
 def api_motion_status():
     """Get status of all motion detection services"""
     try:
@@ -6400,6 +6509,7 @@ def api_motion_status():
 
 @app.route('/api/motion/start/<camera_id>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_motion_start(camera_id):
     """Start motion detection for a specific camera"""
     if not recording_service:
@@ -6458,6 +6568,7 @@ def api_motion_start(camera_id):
 
 @app.route('/api/motion/stop/<camera_id>', methods=['POST'])
 @csrf.exempt
+@login_required
 def api_motion_stop(camera_id):
     """Stop motion detection for a specific camera"""
     try:

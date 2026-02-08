@@ -417,34 +417,66 @@ Change-password route:
 
 **Status:** Core authentication system complete and functional
 
+### Password Management Features (Feb 7, ~11:15 EST)
+
+- Checkbox "Require password change on first login" when creating users (defaults checked)
+- Reset password button (key icon) for admins
+- Backend validates new password != old password
+- Reset forces user to change password on next login
+- **Commit:** `9caeb88`
+
+### UI Button Fixes (Feb 8, ~11:00 EST)
+
+- Fixed icon-only buttons in user management to be circular (36x36px)
+- **Commit:** `8ed80e5`
+
+### Audio Button Fullscreen Fix (Feb 8, ~11:15 EST)
+
+- Fixed `.volume-control-container` positioning in fullscreen mode
+- Container's `right: 3.5rem` was making audio button's `right: 92px` relative to container not stream-item
+- Override container position to match intended audio button position
+- **Commit:** `76fa2f3`
+
+### RLS INSERT Fix (Feb 8, ~11:10 EST)
+
+- Migration 008: Added permissive INSERT/DELETE policies on users table
+- Fixes new user creation failing (RLS blocked INSERT via PostgREST)
+- **Commit:** `7183145`
+
+### Per-User Camera Access Control (Feb 8, ~11:30 EST)
+
+- Migration 009: `user_camera_access` table (user_id, camera_serial, allowed)
+- Backend: GET/PUT `/api/users/<id>/camera-access`, GET `/api/my-camera-access`
+- Frontend: Gear icon per user -> fixed modal with camera checkboxes
+- Server-side filtering: streams page and /api/cameras both filter by user permissions
+- If no rules exist for user = all access; if rules exist = only allowed cameras shown
+- Admins always see all cameras
+- **Commits:** `b2a12b4`, `b7dea25`
+
 ---
 
 ## TODO List
 
-**New Feature (User Auth):**
+**Completed:**
 
-- [x] Explore current database schema and usage
-- [x] Design user authentication tables
-- [x] Design per-user settings tables (M2M)
-- [x] Create database migration
-- [x] Add dependencies to requirements.txt (flask-login, bcrypt)
-- [x] Create User model (models/user.py)
-- [x] Add Flask-Login configuration to app.py
-- [x] Implement login/logout/change-password routes
-- [x] Create login templates (login.html, change_password.html)
-- [x] Create login CSS (static/css/components/login.css)
-- [x] Protect existing routes with @login_required
-- [x] Implement user management UI (admin only)
+- [x] User authentication system (login, logout, password change)
+- [x] User management UI (CRUD, admin only)
+- [x] Password management (reset, force change)
+- [x] Per-user camera access control (admin assigns cameras)
+- [x] Camera filtering (server-side, streams page + API)
+- [x] Fix RLS policies for INSERT/DELETE/SELECT/UPDATE
+- [x] Fix fullscreen audio button alignment
+- [x] Fix user action button alignment
+
+**Pending:**
+
+- [ ] Investigate admin storage settings issue (user report: "admin can't edit storage settings" - needs clarification)
 - [ ] Implement per-user stream type preferences API
-- [ ] Modify frontend to load user preferences
-- [ ] Run database migration (user action required)
-- [ ] Install Python dependencies (user action required: pip install -r requirements.txt)
-- [ ] Restart container with ./start.sh (user action required)
-- [ ] Test complete authentication flow (user testing required)
-
-**Future Features:**
-
+- [ ] Modify frontend to load user stream type preferences
+- [ ] Test per-user camera access after container restart
 - [ ] Add snapshot feature in fullscreen mode (capture current frame)
+- [ ] WebRTC HD/SD fallback - falls back too fast, doesn't retry HD
+- [ ] Security TODO: Implement stricter RLS policies (currently permissive)
 
 **Previous Testing Needed:**
 

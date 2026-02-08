@@ -1,5 +1,5 @@
 {
-  "7C202AB533CA481D": {
+  "15B35B70C4B647B6": {
     "motion_recording": {
       "enabled": true,
       "detection_method": "onvif",
@@ -24,24 +24,24 @@
       "quality": 85
     }
   },
-  "5C4D19F2D7724387": {
+  "48A1005DE797466C": {
     "motion_max_mb": 50000,
     "continuous_max_mb": 900000,
     "snapshots_max_mb": 5000,
     "min_free_space_mb": 10000
   },
-  "58CED24F7C194FE9": {
+  "D07F887B77604B7E": {
     "enabled": true,
     "cron": "0 3 * * *",
     "run_on_startup": false
   },
-  "50A6D2B804C54CB3": {
+  "1F5C8B2571144CBB": {
     "recent_base": "/recordings",
     "recent_host_path": "/mnt/sdc/NVR_Recent",
     "archive_base": "/recordings/STORAGE",
     "archive_host_path": "/mnt/THE_BIG_DRIVE/NVR_RECORDINGS"
   },
-  "5D1D558629D34459": {
+  "C21468D114EF4592": {
     "enabled": true,
     "age_threshold_days": 3,
     "archive_retention_days": 90,
@@ -52,14 +52,14 @@
     "max_archive_storage_mb": 8000,
     "parallel_workers": 8
   },
-  "B322CEBE3AE84368": {
+  "10E3876608D14175": {
     "video_codec": "libx264",
     "preset": "veryfast",
     "crf": 23,
     "audio_codec": "aac",
     "audio_bitrate": "128k"
   },
-  "7605B9CB12E049C8": {
+  "7897E1D805E24EBD": {
     "_comment": "Settings for timeline export and preview merge",
     "default": {
       "_comment": "Fast stream copy - no re-encoding (used on desktop)",
@@ -80,12 +80,12 @@
       "movflags": "+faststart"
     }
   },
-  "EE829CE2E2EA4D32": {
+  "3AA85F5FD92C47C8": {
     "cooldown_sec": 60,
     "min_event_duration_sec": 3,
     "debounce_sec": 2
   },
-  "3FBFD05A6074498F": {
+  "228A779BFD1243CB": {
     "T8416P0023370398": {
       "motion_recording": {
         "enabled": true,
@@ -275,11 +275,11 @@
     },
     "C6F0SgZ0N0PoL2": {
       "motion_recording": {
-        "enabled": false,
+        "enabled": true,
         "detection_method": "ffmpeg",
         "recording_source": "mjpeg_service",
         "segment_duration_sec": 30,
-        "pre_buffer_enabled": false,
+        "pre_buffer_enabled": true,
         "pre_buffer_sec": 10,
         "post_buffer_sec": 30,
         "max_age_days": 28,

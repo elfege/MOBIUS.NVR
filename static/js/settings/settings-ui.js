@@ -483,7 +483,8 @@ export class SettingsUI {
             </div>
         </div>
 
-        <!-- Storage Status Section -->
+        <!-- Storage Status Section (admin only) -->
+        ${window.USER_ROLE === 'admin' ? `
         <div class="setting-row" style="border-left-color: #28a745;">
             <div class="setting-top">
                 <div class="setting-label">
@@ -499,13 +500,16 @@ export class SettingsUI {
                 <!-- StorageStatus component renders here -->
             </div>
         </div>
+        ` : ''}
     `;
 
         this.$content.html(html);
         console.log('[SettingsUI] Settings rendered');
 
-        // Initialize storage status component
-        storageStatus.init('#storage-status-container');
+        // Initialize storage status component (admin only)
+        if (window.USER_ROLE === 'admin') {
+            storageStatus.init('#storage-status-container');
+        }
     }
 
     updateDelayInputState(enabled) {

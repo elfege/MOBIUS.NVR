@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NVR Health Monitor Flow Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 15px;
+            background: #f5f5f5;
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 2.2em;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #34495e;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+            margin-top: 25px;
+            font-size: 1.4em;
+        }
+
+        h3 {
+            color: #2980b9;
+            font-size: 1.2em;
+        }
+
+        .diagram-container {
+            background: #fafafa;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .diagram-wrapper {
+            overflow-x: auto;
+            overflow-y: auto;
+            max-height: 800px;
+        }
+
+        .legend {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 8px;
+            margin: 15px 0;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            margin-right: 8px;
+        }
+
+        .critical-note {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            border-left: 4px solid #dc3545;
+            font-size: 14px;
+        }
+
+        .warning-note {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            border-left: 4px solid #ffc107;
+            font-size: 14px;
+        }
+
+        .info-note {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            border-left: 4px solid #17a2b8;
+            font-size: 14px;
+        }
+
+        .success-note {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            border-left: 4px solid #28a745;
+            font-size: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        th {
+            background: #3498db;
+            color: white;
+            font-weight: 600;
+        }
+
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #c7254e;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        ul {
+            padding-left: 20px;
+        }
+
+        li {
+            margin: 8px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🔍 NVR Health Monitor Flow Analysis</h1>
+
+        <div class="info-note">
+            <strong>📊 Analysis Date:</strong> November 3, 2025<br>
+            <strong>🎯 Purpose:</strong> Investigate health monitor failures causing streams to remain in "Restart failed" state<br>
+            <strong>🐛 Issue:</strong> Health monitor detaches on restart attempt but never reattaches on failure
+        </div>
+
+        <h2>Health Monitor Complete Flow Diagram</h2>
+        <div class="diagram-container">
+            <div class="diagram-wrapper">
+                <div class="mermaid" id="flow-diagram">
+flowchart TD
+    Start[Stream Starts] --> Attach[health.attach called]
+    Attach --> SetTimer[Start interval timer<br/>sampleIntervalMs: 6000ms]
+    
+    SetTimer --> WarmupCheck{Within warmup<br/>period?<br/>20000ms}
+    WarmupCheck -->|Yes| Skip[Skip health check]
+    Skip --> SetTimer
+    
+    WarmupCheck -->|No| SampleFrame[Sample video frame<br/>via canvas]
+    
+    SampleFrame --> CalcSig[Calculate frame signature<br/>FNV-1a hash]
+    
+    CalcSig --> CompareCheck{Signature changed<br/>from last sample?}
+    
+    CompareCheck -->|Yes| UpdateProgress[Update lastProgressAt<br/>Reset blanks counter]
+    UpdateProgress --> SetTimer
+    
+    CompareCheck -->|No| CheckStale{Time since last<br/>progress > 6000ms?}
+    
+    CheckStale -->|No| CheckBlank[Check luminance<br/>avg < 2, std < 5]
+    CheckBlank --> SetTimer
+    
+    CheckStale -->|Yes| LogStale[Log STALE warning]
+    LogStale --> CooldownCheck{Within cooldown<br/>period?<br/>60000ms}
+    
+    CooldownCheck -->|Yes| SetTimer
+    
+    CooldownCheck -->|No| CallUnhealthy[Call onUnhealthy callback]
+    CallUnhealthy --> SetCooldown[Set cooldown timer<br/>60000ms]
+    
+    SetCooldown --> GetAttempts[Get restart attempts<br/>from Map]
+    
+    GetAttempts --> MaxCheck{Attempts >= 10?}
+    
+    MaxCheck -->|Yes| SetFailed[Set status: failed<br/>Stop trying]
+    SetFailed --> End1[End]
+    
+    MaxCheck -->|No| CalcDelay[Calculate exponential backoff<br/>5s × 2^attempts<br/>max 60s]
+    
+    CalcDelay --> IncrementAttempts[Increment attempt counter]
+    IncrementAttempts --> ScheduleRestart[setTimeout for restart]
+    
+    ScheduleRestart --> WaitDelay[Wait for delay...]
+    
+    WaitDelay --> ExecuteRestart[Execute restartStream]
+    
+    ExecuteRestart --> DetachHealth[Detach health monitor]
+    
+    DetachHealth --> CheckStreamType{Stream type?}
+    
+    CheckStreamType -->|HLS/LL_HLS| ForceRefresh[Call forceRefreshStream]
+    CheckStreamType -->|MJPEG| StopStart[Stop then start stream]
+    CheckStreamType -->|RTMP| DestroyRecreate[Destroy and recreate FLV]
+    
+    ForceRefresh --> DestroyHLS[hls.destroy]
+    DestroyHLS --> ClearCache[Clear HLS cache]
+    ClearCache --> CallStartStream[Call startStream]
+    
+    StopStart --> CallStartStream
+    DestroyRecreate --> CallStartStream
+    
+    CallStartStream --> StartSuccess{Start successful?}
+    
+    StartSuccess -->|Yes| ResetCounter[Reset attempt counter to 0<br/>Clear retry timer]
+    ResetCounter --> ReattachHealth[Reattach health monitor]
+    ReattachHealth --> SetTimer
+    
+    StartSuccess -->|No| CatchError[Catch error in try-catch]
+    CatchError --> SetError[Set status: Restart failed]
+    SetError --> KeepCounter[Keep attempt counter<br/>Keep retry timer]
+    KeepCounter --> Question[❓ What happens next?]
+    
+    Question -.->|Health detached| NoMoreRetries[No more automatic retries]
+    Question -.->|Stream frozen| UserMustManualRefresh[User must manually refresh]
+    
+    classDef normalFlow fill:#e3f2fd,stroke:#1976d2,stroke-width:2px
+    classDef errorFlow fill:#ffebee,stroke:#c62828,stroke-width:2px
+    classDef warningFlow fill:#fff3e0,stroke:#f57c00,stroke-width:2px
+    classDef successFlow fill:#e8f5e9,stroke:#388e3c,stroke-width:2px
+    classDef criticalIssue fill:#ff6b6b,stroke:#c92a2a,stroke-width:3px
+    
+    class Start,Attach,SetTimer,WarmupCheck,Skip,SampleFrame,CalcSig,CompareCheck,UpdateProgress normalFlow
+    class CheckStale,CheckBlank,LogStale,CooldownCheck,CallUnhealthy,SetCooldown warningFlow
+    class GetAttempts,MaxCheck,CalcDelay,IncrementAttempts,ScheduleRestart,WaitDelay,ExecuteRestart normalFlow
+    class DetachHealth,CheckStreamType,ForceRefresh,StopStart,DestroyRecreate,DestroyHLS,ClearCache warningFlow
+    class CallStartStream,StartSuccess,ResetCounter,ReattachHealth successFlow
+    class CatchError,SetError,KeepCounter,Question,NoMoreRetries,UserMustManualRefresh,SetFailed,End1 errorFlow
+    class Question,NoMoreRetries,UserMustManualRefresh criticalIssue
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e3f2fd;"></div>
+                Normal Flow
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #fff3e0;"></div>
+                Warning/Monitoring
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e8f5e9;"></div>
+                Success Path
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffebee;"></div>
+                Error Path
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff6b6b;"></div>
+                Critical Issue
+            </div>
+        </div>
+
+        <h2>🚨 Critical Issues Identified</h2>
+
+        <h3>Issue #1: Health Monitor Never Reattaches After Failed Restart</h3>
+        <div class="critical-note">
+            <strong>⚠️ CRITICAL BUG:</strong> Once a restart fails, the health monitor is permanently detached and never reattaches, leaving the stream in a broken state with no automatic recovery possible.
+        </div>
+
+        <div class="info-note">
+            <strong>Problem Flow:</strong>
+            <ol>
+                <li>Health detects stale frame → schedules restart</li>
+                <li><code>restartStream()</code> called → DETACHES health monitor (line 495)</li>
+                <li><code>forceRefreshStream()</code> throws network error</li>
+                <li>Catch block sets status to "Restart failed"</li>
+                <li>Health monitor NEVER REATTACHES ❌</li>
+                <li>Camera stuck forever - no more auto-retries possible</li>
+            </ol>
+        </div>
+
+        <div class="warning-note">
+            <strong>📍 Location in Code:</strong> <code>stream.js</code> lines 488-534
+            <pre>async restartStream(cameraId, $streamItem) {
+    try {
+        // ... restart logic ...
+        
+        // Detach health monitor during restart (line 495)
+        if (videoElement && videoElement._healthDetach) {
+            videoElement._healthDetach();
+            delete videoElement._healthDetach;
+        }
+        
+        // If forceRefreshStream() fails here...
+        await this.hlsManager.forceRefreshStream(cameraId, videoElement);
+        
+    } catch (e) {
+        // ...error is caught here
+        console.error(`[Restart] ${cameraId}: Failed`, e);
+        this.setStreamStatus($streamItem, 'error', 'Restart failed');
+        // ❌ NO REATTACHMENT OF HEALTH MONITOR!
+    }
+}</pre>
+        </div>
+
+        <h3>Issue #2: Attempt Counter Persists But Monitoring Stops</h3>
+        <div class="warning-note">
+            <strong>Inconsistent State:</strong> When restart fails:
+            <ul>
+                <li>✅ <code>restartAttempts.set(serial, N)</code> persists</li>
+                <li>❌ <code>restartTimers.delete(serial)</code> was already called</li>
+                <li>❌ Health monitor is detached</li>
+                <li><strong>Result:</strong> System thinks it attempted N times, but won't try again</li>
+            </ul>
+        </div>
+
+        <h3>Issue #3: No Backend Stop = Potential Zombie Streams</h3>
+        <div class="info-note">
+            <strong>Frontend-Only Stop After Refactoring:</strong>
+            <ul>
+                <li><strong>Previous behavior:</strong> Called <code>/api/stream/stop/</code> endpoint</li>
+                <li><strong>Current behavior:</strong> Client-side only (HLS.js destroy, img src clear)</li>
+                <li><strong>Good:</strong> Multiple clients don't kill each other's streams</li>
+                <li><strong>Issue:</strong> When frontend refresh fails, backend stream keeps running</li>
+                <li><strong>Issue:</strong> Health monitor can't distinguish "stream frozen" from "network error"</li>
+            </ul>
+        </div>
+
+        <h2>📈 Health Monitor Configuration</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Parameter</th>
+                    <th>Value</th>
+                    <th>Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>sampleIntervalMs</code></td>
+                    <td>6000ms</td>
+                    <td>Time between frame samples</td>
+                </tr>
+                <tr>
+                    <td><code>staleAfterMs</code></td>
+                    <td>6000ms</td>
+                    <td>Timeout before marking stream stale</td>
+                </tr>
+                <tr>
+                    <td><code>warmupMs</code></td>
+                    <td>20000ms</td>
+                    <td>Initial grace period after stream start</td>
+                </tr>
+                <tr>
+                    <td><code>cooldownMs</code></td>
+                    <td>60000ms</td>
+                    <td>Wait time between restart attempts</td>
+                </tr>
+                <tr>
+                    <td><code>consecutiveBlankNeeded</code></td>
+                    <td>10</td>
+                    <td>Black frames needed to trigger restart</td>
+                </tr>
+                <tr>
+                    <td><code>maxAttempts</code></td>
+                    <td>10</td>
+                    <td>Maximum restart attempts before giving up</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>💡 Proposed Solutions</h2>
+
+        <h3>Solution #1: Reattach Health Monitor on Restart Failure (Recommended)</h3>
+        <div class="success-note">
+            <strong>Approach:</strong> Add health monitor reattachment in the <code>restartStream()</code> catch block.
+            <pre>catch (e) {
+    console.error(`[Restart] ${serial}: Failed`, e);
+    this.setStreamStatus($streamItem, 'error', 'Restart failed');
+    
+    // ✅ REATTACH health monitor even on failure
+    const el = $streamItem.find('.stream-video')[0];
+    if (el && this.health) {
+        if (streamType === 'HLS' || streamType === 'LL_HLS' ...) {
+            const hls = this.hlsManager?.hlsInstances?.get?.(serial);
+            el._healthDetach = this.health.attachHls(serial, el, hls);
+        } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
+            el._healthDetach = this.health.attachMjpeg(serial, el);
+        } else if (streamType === 'RTMP') {
+            const flv = this.flvManager?.flvInstances?.get?.(serial);
+            el._healthDetach = this.health.attachRTMP(serial, el, flv);
+        }
+    }
+}</pre>
+        </div>
+
+        <h3>Solution #2: Don't Detach Health During Restart</h3>
+        <div class="info-note">
+            <strong>Approach:</strong> Keep health monitoring running during restart attempts. Only detach/reattach when explicitly stopping.<br>
+            <strong>Pros:</strong> Simpler logic, continuous monitoring<br>
+            <strong>Cons:</strong> May trigger false STALE warnings during restart
+        </div>
+
+        <h3>Solution #3: Add Retry Logic in forceRefreshStream</h3>
+        <div class="info-note">
+            <strong>Approach:</strong> Wrap HLS startup in retry logic with exponential backoff.<br>
+            <strong>Pros:</strong> More resilient to transient network errors<br>
+            <strong>Cons:</strong> Adds complexity to stream manager
+        </div>
+
+        <h2>🎯 Recommended Action Plan</h2>
+        <div class="success-note">
+            <strong>Step 1:</strong> Implement Solution #1 (reattach on failure)<br>
+            <strong>Step 2:</strong> Test with artificial network errors<br>
+            <strong>Step 3:</strong> Monitor for 24-48 hours to verify stability<br>
+            <strong>Step 4:</strong> If still unstable, consider Solution #3 for additional resilience
+        </div>
+
+        <h2>📝 Testing Checklist</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Test Case</th>
+                    <th>Expected Behavior</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Normal stream operation</td>
+                    <td>Health monitor attached, no STALE warnings</td>
+                    <td>✅ Pass</td>
+                </tr>
+                <tr>
+                    <td>Stream goes stale (backend dies)</td>
+                    <td>Auto-restart triggered, health reattaches</td>
+                    <td>⚠️ Testing needed</td>
+                </tr>
+                <tr>
+                    <td>Restart fails (network error)</td>
+                    <td>Health reattaches, retry scheduled</td>
+                    <td>❌ Currently fails</td>
+                </tr>
+                <tr>
+                    <td>Max retries reached</td>
+                    <td>Status set to 'failed', monitoring stops</td>
+                    <td>⚠️ Testing needed</td>
+                </tr>
+                <tr>
+                    <td>Manual refresh button</td>
+                    <td>Restart successful, health reattaches</td>
+                    <td>✅ Pass</td>
+                </tr>
+                <tr>
+                    <td>MJPEG stream health</td>
+                    <td>Health monitor properly attached</td>
+                    <td>✅ Fixed</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>🔗 Related Files</h2>
+        <ul>
+            <li><strong>stream.js</strong> - Lines 47-86: onUnhealthy callback</li>
+            <li><strong>stream.js</strong> - Lines 488-534: restartStream method</li>
+            <li><strong>stream.js</strong> - Lines 396-406: Health monitor attachment</li>
+            <li><strong>health.js</strong> - Lines 101-112: markUnhealthy method</li>
+            <li><strong>health.js</strong> - Lines 114-171: attach method</li>
+            <li><strong>hls-stream.js</strong> - Lines 220-250: forceRefreshStream method</li>
+        </ul>
+
+        <div class="info-note">
+            <strong>📅 Document Generated:</strong> November 3, 2025<br>
+            <strong>🔄 Last Updated:</strong> During health monitor investigation session<br>
+            <strong>👤 Author:</strong> Claude (AI Assistant) + User debugging session
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis',
+                padding: 10,
+                nodeSpacing: 30,
+                rankSpacing: 40
+            }
+        });
+    </script>
+</body>
+
+</html>

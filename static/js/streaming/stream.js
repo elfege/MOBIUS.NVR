@@ -761,8 +761,8 @@ export class MultiStreamManager {
 
         // Click on stream item (not buttons) to expand
         this.$container.on('click', '.stream-item', async (e) => {
-            // Don't expand if clicking on a button or interactive element
-            if ($(e.target).closest('button, .ptz-controls, .stream-controls, a, input, select').length) {
+            // Don't expand if clicking on a button, interactive element, or the more menu
+            if ($(e.target).closest('button, .ptz-controls, .stream-controls, .stream-more-menu, a, input, select').length) {
                 return;
             }
 
@@ -783,6 +783,80 @@ export class MultiStreamManager {
         // Click backdrop to collapse expanded camera
         $('#expanded-backdrop').on('click', () => {
             this.collapseExpandedCamera();
+        });
+
+        // ============================================================================
+        // MOBILE HAMBURGER MENU HANDLERS
+        // The more button toggles a slide-up menu with all controls.
+        // Each menu item proxies the click to the corresponding real button.
+        // ============================================================================
+
+        // Toggle the more menu
+        this.$container.on('click', '.stream-more-btn', (e) => {
+            e.stopPropagation();
+            const $streamItem = $(e.currentTarget).closest('.stream-item');
+            const $menu = $streamItem.find('.stream-more-menu');
+            $menu.toggleClass('menu-visible');
+
+            // Sync menu item active states with real button states
+            if ($menu.hasClass('menu-visible')) {
+                this._syncMoreMenuStates($streamItem);
+            }
+        });
+
+        // Menu item click - proxy to the real button action
+        this.$container.on('click', '.more-menu-item', (e) => {
+            e.stopPropagation();
+            const $item = $(e.currentTarget);
+            const action = $item.data('action');
+            const $streamItem = $item.closest('.stream-item');
+
+            switch (action) {
+                case 'audio':
+                    $streamItem.find('.stream-audio-btn').trigger('click');
+                    break;
+                case 'ptz':
+                    $streamItem.find('.stream-ptz-toggle-btn').trigger('click');
+                    break;
+                case 'controls':
+                    $streamItem.find('.stream-controls-toggle-btn').trigger('click');
+                    break;
+                case 'settings':
+                    $streamItem.find('.camera-settings-btn').trigger('click');
+                    break;
+                case 'record':
+                    $streamItem.find('.camera-record-btn').trigger('click');
+                    break;
+                case 'playback':
+                    $streamItem.find('.camera-playback-btn').trigger('click');
+                    break;
+                case 'power':
+                    $streamItem.find('.stream-power-btn').trigger('click');
+                    break;
+                case 'talkback':
+                    $streamItem.find('.stream-talkback-btn').trigger('click');
+                    break;
+                case 'fullscreen':
+                    $streamItem.find('.stream-fullscreen-btn').trigger('click');
+                    break;
+            }
+
+            // Close the menu after action (except for toggles that stay open)
+            if (!['ptz', 'controls'].includes(action)) {
+                $streamItem.find('.stream-more-menu').removeClass('menu-visible');
+            } else {
+                // Re-sync states after toggle
+                setTimeout(() => this._syncMoreMenuStates($streamItem), 100);
+            }
+        });
+
+        // Close more menu when tapping outside it (on the video area)
+        this.$container.on('click', '.stream-video', (e) => {
+            const $streamItem = $(e.target).closest('.stream-item');
+            const $menu = $streamItem.find('.stream-more-menu.menu-visible');
+            if ($menu.length) {
+                $menu.removeClass('menu-visible');
+            }
         });
 
         // Audio button click - toggle volume popup visibility
@@ -3239,6 +3313,9 @@ export class MultiStreamManager {
             $expandedItem.find('.stream-controls-toggle-btn').removeClass('controls-active');
         }
 
+        // Close mobile more menu if open
+        $expandedItem.find('.stream-more-menu').removeClass('menu-visible');
+
         // Hide backdrop
         $('#expanded-backdrop').removeClass('visible');
 
@@ -3247,6 +3324,32 @@ export class MultiStreamManager {
 
         // Restore body scroll
         $('body').css('overflow', '');
+    }
+
+    /**
+     * Sync the hamburger menu item active states with the real button states.
+     * Called when the menu is opened to reflect current toggle states.
+     *
+     * @param {jQuery} $streamItem - The stream item containing the menu
+     */
+    _syncMoreMenuStates($streamItem) {
+        const $menu = $streamItem.find('.stream-more-menu');
+
+        // Audio active state
+        const audioActive = $streamItem.find('.stream-audio-btn').hasClass('audio-active');
+        $menu.find('[data-action="audio"]').toggleClass('active', audioActive);
+
+        // PTZ active state
+        const ptzActive = $streamItem.find('.stream-ptz-toggle-btn').hasClass('ptz-active');
+        $menu.find('[data-action="ptz"]').toggleClass('active', ptzActive);
+
+        // Controls active state
+        const controlsActive = $streamItem.find('.stream-controls-toggle-btn').hasClass('controls-active');
+        $menu.find('[data-action="controls"]').toggleClass('active', controlsActive);
+
+        // Recording state
+        const isRecording = $streamItem.find('.camera-record-btn').attr('data-recording') === 'true';
+        $menu.find('[data-action="record"]').toggleClass('active', isRecording);
     }
 
     async restoreFullscreenFromLocalStorage() {

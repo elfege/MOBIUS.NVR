@@ -306,6 +306,57 @@
             </button>
             {% endif %}
 
+            <!-- Mobile hamburger menu button - visible only on mobile in expanded/fullscreen -->
+            <button class="stream-more-btn" aria-label="More Controls" title="More Controls">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+
+            <!-- Mobile slide-up menu - activated by the more button -->
+            <div class="stream-more-menu">
+                <div class="more-menu-grid">
+                    <button class="more-menu-item" data-action="audio">
+                        <i class="fas fa-volume-mute"></i>
+                        <span>Audio</span>
+                    </button>
+                    <button class="more-menu-item" data-action="ptz">
+                        <i class="fas fa-arrows-alt"></i>
+                        <span>PTZ</span>
+                    </button>
+                    <button class="more-menu-item" data-action="controls">
+                        <i class="fas fa-sliders-h"></i>
+                        <span>Controls</span>
+                    </button>
+                    <button class="more-menu-item" data-action="settings">
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
+                    </button>
+                    <button class="more-menu-item" data-action="record">
+                        <i class="fas fa-circle"></i>
+                        <span>Record</span>
+                    </button>
+                    <button class="more-menu-item" data-action="playback">
+                        <i class="fas fa-history"></i>
+                        <span>Playback</span>
+                    </button>
+                    {% if info.power_supply and info.power_supply != 'none' %}
+                    <button class="more-menu-item" data-action="power">
+                        <i class="fas fa-plug"></i>
+                        <span>Power</span>
+                    </button>
+                    {% endif %}
+                    {% if info.two_way_audio is defined and info.two_way_audio.enabled and info.two_way_audio.protocol in ['eufy_p2p', 'onvif'] %}
+                    <button class="more-menu-item" data-action="talkback">
+                        <i class="fas fa-microphone-alt"></i>
+                        <span>Talk</span>
+                    </button>
+                    {% endif %}
+                    <button class="more-menu-item" data-action="fullscreen">
+                        <i class="fas fa-expand"></i>
+                        <span>Fullscreen</span>
+                    </button>
+                </div>
+            </div>
+
             <div class="stream-controls">
                 <div class="control-row">
                     <button class="stream-btn btn-success start-stream-btn" title="Start stream">

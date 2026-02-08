@@ -463,10 +463,9 @@ export class DigitalZoomManager {
         const state = this.zoomState.get(cameraId);
         if (!state) return;
 
-        e.preventDefault();
-
-        // Two-finger touch = pinch-to-zoom
+        // Two-finger touch = pinch-to-zoom (always handle)
         if (e.touches.length === 2) {
+            e.preventDefault();
             const distance = this._getTouchDistance(e.touches[0], e.touches[1]);
             const center = this._getTouchCenter(e.touches[0], e.touches[1]);
 
@@ -487,8 +486,10 @@ export class DigitalZoomManager {
             return;
         }
 
-        // Single touch = pan (only if zoomed)
+        // Single touch = pan (only if zoomed in)
+        // preventDefault only when zoomed so normal taps still produce click events
         if (e.touches.length === 1 && state.level > this.config.minZoom) {
+            e.preventDefault();
             const touch = e.touches[0];
 
             this.dragState = {

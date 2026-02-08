@@ -359,6 +359,64 @@ curl http://postgrest:3001/users?username=eq.admin
 
 **Commit:** `45b3385` - "Fix RLS policies to allow authentication queries"
 
+### RLS Policies for Password Updates (11:00 EST)
+
+**File Created:** `psql/migrations/007_allow_password_change_without_login.sql`
+
+**What:** Made UPDATE policies permissive to allow password changes
+
+**Problem:**
+
+- Password change route was failing silently
+- RLS policies blocked UPDATE because user wasn't "logged in" yet
+- Original flow: authenticate → set session variable → redirect → change password (no Flask-Login context)
+
+**Temporary Solution:**
+
+- Made UPDATE policy permissive (`USING (true)`)
+- Security relies on Flask session cookies and PostgREST isolation
+- TODO: Implement stricter policies with RLS context headers
+
+**Commit:** `f5f31fa` - "Allow password changes without authenticated context"
+
+### Authentication Flow Refactored (11:05 EST)
+
+**File Modified:** `app.py`
+
+**What:** Refactored login and password change flow to use proper authenticated context
+
+**Rationale:** User correctly pointed out that they DID authenticate with admin/admin, so we should have auth context
+
+**Changes:**
+
+Login route:
+- Now calls `login_user()` IMMEDIATELY after password verification (before checking must_change_password)
+- Creates session record in database
+- THEN checks if password change required and redirects
+- User is now fully authenticated when they reach /change-password
+
+Change-password route:
+- Added `@login_required` decorator
+- Uses `current_user.id` instead of session variable
+- Security check: only accessible if `must_change_password` is true
+- After successful password change: calls `logout_user()` to clear session
+- Redirects to `/login` so user can verify new password works
+
+**Why:** Provides proper Flask-Login authenticated context, cleaner than session variables, allows for future stricter RLS policies
+
+**Commit:** `f31a86a` - "Refactor password change flow to use authenticated context"
+
+### Testing Complete (11:08 EST)
+
+**User confirmed:** Authentication flow works end-to-end
+
+**Flow tested:**
+1. ✅ Login with admin/admin → redirected to change-password
+2. ✅ Changed password → logged out and redirected to login
+3. ✅ Login with new password → successfully authenticated
+
+**Status:** Core authentication system complete and functional
+
 ---
 
 ## TODO List

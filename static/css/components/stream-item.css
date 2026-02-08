@@ -28,12 +28,15 @@
     /* Allows grid item to shrink below content size */
 }
 
-/* Hover effect on stream item */
-.stream-item:hover {
-    transform: scale(1.02);
-    /* Slightly enlarges */
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
-    cursor: pointer;
+/* Hover effect on stream item - DESKTOP ONLY
+   On touch devices, :hover is "sticky" after tap and the transform: scale()
+   causes layout shifts that make tap-to-expand unreliable. */
+@media (hover: hover) and (pointer: fine) {
+    .stream-item:hover {
+        transform: scale(1.02);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        cursor: pointer;
+    }
 }
 
 /* ============================================================================
@@ -329,6 +332,7 @@
 .camera-settings-btn,
 .camera-playback-btn,
 .stream-power-btn,
+.stream-talkback-btn,
 .volume-control-container {
     opacity: 0 !important;
     pointer-events: none !important;
@@ -344,6 +348,7 @@
 .stream-item:hover .camera-settings-btn,
 .stream-item:hover .camera-playback-btn,
 .stream-item:hover .stream-power-btn,
+.stream-item:hover .stream-talkback-btn,
 .stream-item:hover .volume-control-container {
     opacity: 0 !important;
     pointer-events: none !important;

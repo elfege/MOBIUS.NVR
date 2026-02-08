@@ -160,6 +160,23 @@
     transition: transform 0.3s ease, box-shadow 0.3s ease !important;
 }
 
+/* Mobile expanded: fill the viewport for maximum usable space */
+@media (max-width: 768px) {
+    .stream-item.expanded {
+        width: 100vw !important;
+        height: 100vh !important;
+        max-width: none !important;
+        aspect-ratio: unset !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+
+    .stream-item.expanded .stream-video {
+        object-fit: contain !important;
+        border-radius: 0 !important;
+    }
+}
+
 /* Disable hover scale effect in expanded mode */
 .stream-item.expanded:hover {
     transform: translate(-50%, -50%) scale(1) !important;
@@ -183,6 +200,7 @@
 .stream-item.expanded .camera-settings-btn,
 .stream-item.expanded .camera-playback-btn,
 .stream-item.expanded .stream-power-btn,
+.stream-item.expanded .stream-talkback-btn,
 .stream-item.expanded .volume-control-container {
     opacity: 1 !important;
     pointer-events: auto !important;
@@ -245,6 +263,7 @@
 .stream-item.css-fullscreen .camera-settings-btn,
 .stream-item.css-fullscreen .camera-playback-btn,
 .stream-item.css-fullscreen .stream-power-btn,
+.stream-item.css-fullscreen .stream-talkback-btn,
 .stream-item.css-fullscreen .volume-control-container {
     opacity: 1 !important;
     pointer-events: auto !important;

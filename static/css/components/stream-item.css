@@ -313,48 +313,40 @@
 }
 
 /* ============================================================================
-   GRID MODE - HIDE BUTTONS BY DEFAULT
-   Buttons are hidden in grid view for a clean look.
-   They reappear in expanded modal or fullscreen mode.
-   Exception: settings button stays visible for quick access.
+   GRID MODE - HIDE ALL BUTTONS
+   ALL buttons are hidden in grid view so the entire tile is tappable
+   to open the expanded modal (especially important on mobile where
+   visible buttons intercept touch events and prevent expansion).
+   Buttons reappear in expanded modal or fullscreen mode.
    ============================================================================ */
 
-/* Hide all control buttons in grid mode by default */
+/* Hide ALL control buttons in grid mode */
 .stream-fullscreen-btn,
 .stream-audio-btn,
 .stream-ptz-toggle-btn,
 .stream-controls-toggle-btn,
-.camera-record-btn {
+.camera-record-btn,
+.camera-settings-btn,
+.camera-playback-btn,
+.stream-power-btn,
+.volume-control-container {
     opacity: 0 !important;
     pointer-events: none !important;
     transition: opacity 0.3s ease;
 }
 
-/* Remove hover-based visibility in grid mode - buttons stay hidden */
+/* Remove hover-based visibility in grid mode - ALL buttons stay hidden */
 .stream-item:hover .stream-fullscreen-btn,
 .stream-item:hover .stream-audio-btn,
 .stream-item:hover .stream-ptz-toggle-btn,
 .stream-item:hover .stream-controls-toggle-btn,
-.stream-item:hover .camera-record-btn {
+.stream-item:hover .camera-record-btn,
+.stream-item:hover .camera-settings-btn,
+.stream-item:hover .camera-playback-btn,
+.stream-item:hover .stream-power-btn,
+.stream-item:hover .volume-control-container {
     opacity: 0 !important;
     pointer-events: none !important;
-}
-
-/* Settings button exception - always visible in grid mode */
-.camera-settings-btn {
-    opacity: 0.7 !important;
-    pointer-events: auto !important;
-}
-
-.stream-item:hover .camera-settings-btn {
-    opacity: 1 !important;
-}
-
-/* Touch devices - settings button more visible */
-@media (hover: none) {
-    .camera-settings-btn {
-        opacity: 0.8 !important;
-    }
 }
 
 /* ============================================================================

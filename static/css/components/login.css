@@ -39,6 +39,14 @@
     margin-right: 0.5rem;
 }
 
+/* MOBIUS.NVR logo on login page */
+.login-logo {
+    height: 48px;
+    width: auto;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+}
+
 .login-panel h2 {
     text-align: center;
     color: #666;

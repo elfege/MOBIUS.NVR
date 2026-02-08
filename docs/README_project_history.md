@@ -15981,3 +15981,111 @@ Branch: `timeline_download_files_JAN_27_2026_a` (merged to main)
 ---
 
 {% endraw %}
+
+---
+
+## February 2026: Camera Selector Modal & Mobile UX Improvements
+
+**Branch:** `multi_stream_hd_selection_JAN_31_2026_a` → `multi_stream_hd_selection_JAN_31_2026_b`
+
+**Period:** February 2-7, 2026
+
+### Camera Selector Feature (February 2-4, 2026)
+
+**Feature:** Multi-camera selection interface with show/hide toggles and HD/SD quality switching.
+
+**Initial Implementation:**
+
+- Created dropdown interface with checkbox list of all cameras
+- Individual camera show/hide via checkboxes
+- HD/SD quality toggle per camera (for HLS/LL_HLS/WebRTC streams)
+- Grid dynamically rearranges (1-5 columns based on visible count)
+- Persistence via localStorage (`hiddenCameras`, `hdCameras`)
+- Select All checkbox for bulk operations
+
+**Files Created:**
+
+- [camera-selector.css](static/css/components/camera-selector.css) - Modal styling with backdrop and animations
+- [camera-selector-controller.js](static/js/controllers/camera-selector-controller.js) - Controller with retry initialization logic
+
+**Mobile UX Improvements (February 3-4, 2026):**
+
+1. **Mobile header gesture control**
+   - Desktop: Hover-to-show header toggle
+   - iOS: Transparent visible toggle
+   - Android: Swipe-down gesture
+
+2. **Camera selector mobile fixes**
+   - Changed breakpoint from 480px to 768px
+   - iOS smooth scrolling optimizations
+   - Larger touch targets (52px min-height)
+
+3. **Converted dropdown to modal overlay** (February 4)
+   - Reason: Persistent positioning issues on mobile
+   - Full-screen backdrop with blur
+   - Centered dialog (90% width, 80vh max-height)
+   - Close button (X) and backdrop click to close
+   - Smooth fade-in/slide-in animations
+
+**Critical Fix: Pointer Events Blocking**
+
+- Problem: PTZ controls and stream tap-to-expand not working after modal addition
+- Root cause: Fixed-position backdrop/modal blocking events even with `display: none`
+- Solution: Added `pointer-events: none` when hidden, `pointer-events: auto` when visible
+
+**Commits:**
+
+- `2cf54c8` - Add camera selector dropdown for grid view filtering
+- `44390ce` - Fix mobile UX: camera dropdown scrolling, desktop/iOS header toggle visibility
+- `19e3a8f` - Fix camera selector bottom sheet: ensure Apply button stays at bottom
+- `1c6f3e0` - Fix camera selector visibility: use class-based toggle
+- `f86f91e` - Fix camera selector initialization timing issue (retry mechanism)
+- `12517ff` - Convert camera selector from dropdown to modal overlay
+- `3a83ecb` - Fix pointer events on hidden backdrop/modal
+
+### Hubitat Integration Fix (February 4, 2026)
+
+**Problem:** Python services looking for `HUBITAT_API_TOKEN` but AWS exports `HUBITAT_API_TOKEN_4`.
+
+**Solution:** Updated environment variable names to use Hub 4 suffix:
+
+- `HUBITAT_API_TOKEN_4`, `HUBITAT_API_NUMBER_4`, `HUBITAT_HUB_IP_4`
+
+**Files Modified:**
+
+- [presence_service.py](services/presence/presence_service.py)
+- [hubitat_power_service.py](services/power/hubitat_power_service.py)
+
+**Commit:** `335ee6c` - Fix Hubitat environment variable names to use Hub 4 suffix
+
+### Other Fixes (February 2, 2026)
+
+**Fullscreen Control Button Overlap:**
+
+- Added explicit positioning with 12px gaps
+- File: [fullscreen.css](static/css/components/fullscreen.css)
+- Commit: `dc0868d`
+
+**Grid Layout Default:**
+
+- Added fallback `grid-template-columns: repeat(3, 1fr)`
+- Prevents single-column display when JavaScript doesn't apply grid-N class
+- File: [grid-container.css](static/css/components/grid-container.css)
+- Commit: `48a56ec`
+
+**Reverted:** Attempted iPad black screen fix (commit `ab333d8`) - didn't help and added unwanted margins.
+
+---
+
+## February 7, 2026: Session Wrap-Up
+
+**Branch:** Merged `multi_stream_hd_selection_JAN_31_2026_b` → `main`
+
+**Status:** Camera selector modal feature complete. PTZ and mobile touch issues resolved.
+
+**New Branch:** `user_auth_and_settings_FEB_07_2026_c`
+
+**Next Work:** User authentication and per-user settings implementation.
+
+---
+

@@ -1,22 +1,32 @@
-/* Presence Indicators - Navbar buttons for household presence status */
+/* ============================================================================
+   PRESENCE INDICATORS
+   Compact pills in the navbar showing household member presence status.
+   Styled to match the dark glassmorphism navbar design.
+   ============================================================================ */
 
 .presence-container {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     align-items: center;
-    /* Positioned as first child in header - flex will push it to the left */
     flex-shrink: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.presence-container::-webkit-scrollbar {
+    display: none;
 }
 
 .presence-btn {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    border: 2px solid transparent;
-    background-color: rgba(255, 255, 255, 0.1);
-    color: white;
+    padding: 5px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
@@ -25,13 +35,13 @@
 }
 
 .presence-btn:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
 }
 
-/* Away state - grayed out with red indicator */
+/* Away state - subtle red indicator */
 .presence-btn.away {
     opacity: 0.7;
-    border-color: rgba(244, 67, 54, 0.5);
+    border-color: rgba(244, 67, 54, 0.3);
 }
 
 .presence-btn.away .presence-status-dot {
@@ -39,10 +49,10 @@
     box-shadow: 0 0 6px rgba(244, 67, 54, 0.6);
 }
 
-/* Present state - full opacity with green indicator */
+/* Present state - subtle green indicator */
 .presence-btn.present {
     opacity: 1;
-    border-color: rgba(76, 175, 80, 0.5);
+    border-color: rgba(76, 175, 80, 0.3);
 }
 
 .presence-btn.present .presence-status-dot {
@@ -52,15 +62,16 @@
 
 /* Status dot indicator */
 .presence-status-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     transition: all 0.2s ease;
+    flex-shrink: 0;
 }
 
 /* Person name */
 .presence-name {
-    font-size: 13px;
+    font-size: 12px;
     letter-spacing: 0.3px;
 }
 
@@ -76,28 +87,24 @@
 }
 
 .presence-btn.loading .presence-status-dot {
-    animation: pulse 1s infinite;
+    animation: presencePulse 1s infinite;
 }
 
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.3;
-    }
+@keyframes presencePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
 }
 
 /* Responsive - smaller on mobile */
 @media (max-width: 768px) {
     .presence-btn {
-        padding: 5px 8px;
-        font-size: 12px;
+        padding: 4px 8px;
+        font-size: 11px;
     }
 
     .presence-status-dot {
-        width: 8px;
-        height: 8px;
+        width: 7px;
+        height: 7px;
     }
 
     .presence-container {
@@ -105,13 +112,13 @@
     }
 }
 
-/* Very small screens - icons only */
+/* Very small screens - dots only, no names */
 @media (max-width: 480px) {
     .presence-name {
         display: none;
     }
 
     .presence-btn {
-        padding: 6px 8px;
+        padding: 5px 7px;
     }
 }

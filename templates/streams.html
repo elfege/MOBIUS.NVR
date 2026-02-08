@@ -40,63 +40,95 @@
 </head>
 
 <body>
-    <!-- Hidden checkbox to control collapse state (CSS-only toggle trick) -->
-    <input type="checkbox" id="header-toggle" class="header-toggle-input" checked>
+    <!-- ================================================================
+         NAVBAR - Dark glassmorphism design (matches 0_TILES)
+         Always visible, slim fixed bar with slide-in navigation menu.
+         ================================================================ -->
+    <nav class="navbar-redesign" id="main-navbar">
+        <!-- Hamburger menu button (opens slide-in nav) -->
+        <button class="navbar-hamburger" id="navbar-hamburger-btn" title="Menu">
+            <i class="fas fa-bars"></i>
+        </button>
 
-    <div class="header">
-        <!-- Presence Indicators (left side) -->
+        <!-- Presence Indicators -->
         <div class="presence-container" id="presence-container">
             <!-- Populated by JavaScript -->
         </div>
 
-        <h1><img src="{{ url_for('static', filename='images/logo.svg') }}" alt="MOBIUS.NVR" class="header-logo"></h1>
+        <!-- Center logo -->
+        <div class="navbar-logo-section">
+            <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="MOBIUS.NVR" class="navbar-logo">
+        </div>
 
-        <div class="nav-controls">
-            <!-- <div class="global-controls">
-                <button id="start-all-streams" class="btn btn-success">
-                    <i class="fas fa-play"></i> Start All
-                </button>
-                <button id="stop-all-streams" class="btn btn-danger">
-                    <i class="fas fa-stop"></i> Stop All
-                </button>
-            </div> -->
-            <!-- <span id="stream-count">0 cameras</span> -->
-
-
-            <button id="reload-button" class="btn btn-beserious" onclick="location.reload()">Reload</button>
-
-            <!-- Fullscreen toggle button (icon only) -->
-            <i id="fullscreen-toggle-btn" class="fas fa-expand header-icon-btn" title="Toggle Fullscreen"></i>
-
-            <!-- Camera Selector Button -->
-            <div class="camera-selector-container">
-                <button id="camera-selector-btn" class="btn btn-secondary" title="Select cameras to display">
-                    <i class="fas fa-filter"></i>
-                    <span id="camera-count-label">All</span>
-                    <i class="fas fa-chevron-down"></i>
-                </button>
-            </div>
-
-            <!-- Settings button -->
-            <button id="settings-btn" class="btn btn-secondary">
-                <i class="fas fa-cog"></i> Settings
+        <!-- Right-side actions -->
+        <div class="navbar-actions">
+            <!-- Camera Selector Button (compact) -->
+            <button id="camera-selector-btn" class="navbar-action-btn" title="Filter cameras">
+                <i class="fas fa-filter"></i>
+                <span id="camera-count-label">All</span>
             </button>
 
-            <!-- User menu -->
-            <div class="user-menu">
-                <span class="username"><i class="fas fa-user"></i> {{ current_user.username }}</span>
-                {% if current_user.role == 'admin' %}
-                <button id="manage-users-btn" class="btn btn-secondary" title="Manage users">
-                    <i class="fas fa-users"></i>
-                </button>
-                {% endif %}
-                <form method="POST" action="/logout" style="display: inline; margin: 0;">
-                    <button type="submit" class="btn btn-secondary" title="Logout">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
-                </form>
-            </div>
+            <!-- Settings gear -->
+            <button id="settings-btn" class="navbar-action-btn" title="Settings">
+                <i class="fas fa-cog"></i>
+            </button>
+        </div>
+    </nav>
 
+    <!-- Slide-in Navigation Menu overlay -->
+    <div class="nav-menu-overlay" id="nav-menu-overlay"></div>
+
+    <!-- Slide-in Navigation Menu -->
+    <div class="nav-menu" id="nav-menu">
+        <div class="nav-menu-header">
+            <span>MOBIUS.NVR</span>
+            <button class="nav-menu-close" id="nav-menu-close">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="nav-menu-section">
+            <div class="nav-menu-title">Cameras</div>
+            <button class="nav-menu-item" id="menu-camera-selector">
+                <i class="fas fa-filter"></i>
+                <span>Camera Selector</span>
+                <span class="menu-badge" id="menu-camera-count">All</span>
+            </button>
+            <button class="nav-menu-item" id="menu-fullscreen-toggle">
+                <i class="fas fa-expand"></i>
+                <span>Toggle Fullscreen</span>
+            </button>
+            <button class="nav-menu-item" id="menu-reload" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i>
+                <span>Reload</span>
+            </button>
+        </div>
+
+        <div class="nav-menu-section">
+            <div class="nav-menu-title">Settings</div>
+            <button class="nav-menu-item" id="menu-settings-btn">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </button>
+            {% if current_user.role == 'admin' %}
+            <button class="nav-menu-item" id="menu-manage-users">
+                <i class="fas fa-users"></i>
+                <span>Manage Users</span>
+            </button>
+            {% endif %}
+        </div>
+
+        <div class="nav-menu-footer">
+            <div class="nav-menu-user">
+                <i class="fas fa-user"></i>
+                <span>{{ current_user.username }}</span>
+            </div>
+            <form method="POST" action="/logout" style="margin: 0;">
+                <button type="submit" class="nav-menu-item nav-menu-logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </form>
         </div>
     </div>
 
@@ -186,10 +218,7 @@
         </div>
     </div>
 
-    <!-- Toggle button (always visible) -->
-    <label for="header-toggle" class="header-toggle-btn">
-        <i class="fas fa-chevron-up"></i>
-    </label>
+    <!-- Old toggle button removed - navbar is always visible now -->
 
     <!-- Backdrop for expanded camera modal -->
     <div id="expanded-backdrop" class="expanded-backdrop"></div>
@@ -797,7 +826,7 @@
     <script type="module" src="{{ url_for('static', filename='js/controllers/power-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/presence-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/camera-selector-controller.js') }}"></script>
-    <script type="module" src="{{ url_for('static', filename='js/controllers/mobile-header-controller.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/controllers/nav-menu-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/ptz-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/utils/eufy-auth-notifier.js') }}"></script>

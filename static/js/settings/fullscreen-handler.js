@@ -333,7 +333,9 @@ export class FullscreenHandler {
  * Set up header button listener
  */
     setupHeaderButton() {
+        /* Bind both the old header icon button and the new slide-in menu button */
         const $fullscreenBtn = $('#fullscreen-toggle-btn');
+        const $menuFullscreenBtn = $('#menu-fullscreen-toggle');
 
         if ($fullscreenBtn.length > 0) {
             $fullscreenBtn.on('click', (e) => {
@@ -341,9 +343,18 @@ export class FullscreenHandler {
                 console.log('[FullscreenHandler] Header fullscreen button clicked');
                 this.toggleFullscreen();
             });
-            console.log('[FullscreenHandler] Header button listener attached');
-        } else {
-            console.warn('[FullscreenHandler] Header fullscreen button not found');
+        }
+
+        if ($menuFullscreenBtn.length > 0) {
+            $menuFullscreenBtn.on('click', (e) => {
+                e.preventDefault();
+                console.log('[FullscreenHandler] Menu fullscreen button clicked');
+                /* Close the nav menu before toggling fullscreen */
+                $('#nav-menu').removeClass('open');
+                $('#nav-menu-overlay').removeClass('show');
+                this.toggleFullscreen();
+            });
+            console.log('[FullscreenHandler] Menu fullscreen listener attached');
         }
     }
 

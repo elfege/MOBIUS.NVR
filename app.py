@@ -6357,7 +6357,7 @@ def api_storage_stats():
 @login_required
 def api_storage_migrate():
     """
-    Trigger storage migration from recent to archive tier.
+    Trigger storage migration from recent to archive tier (admin only).
 
     Request Body (JSON, optional):
         recording_type: Type to migrate (default: "motion")
@@ -6366,6 +6366,8 @@ def api_storage_migrate():
     Returns:
         Migration result with counts and details
     """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
     try:
         # Prevent concurrent operations
         if _migration_status.get('in_progress'):
@@ -6447,7 +6449,7 @@ def api_storage_migrate():
 @login_required
 def api_storage_cleanup():
     """
-    Trigger archive cleanup (deletion of old files).
+    Trigger archive cleanup (deletion of old files) (admin only).
 
     Request Body (JSON, optional):
         recording_type: Type to clean (default: "motion")
@@ -6456,6 +6458,8 @@ def api_storage_cleanup():
     Returns:
         Cleanup result with counts and details
     """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
     try:
         # Prevent concurrent operations
         if _migration_status.get('in_progress'):
@@ -6508,12 +6512,14 @@ def api_storage_cleanup():
 @login_required
 def api_storage_reconcile():
     """
-    Reconcile database with filesystem.
+    Reconcile database with filesystem (admin only).
     Removes orphaned database entries where files no longer exist.
 
     Returns:
         Reconciliation result with removed entry count
     """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
     try:
         # Prevent concurrent operations
         if _migration_status.get('in_progress'):
@@ -6678,7 +6684,7 @@ def api_storage_operations():
 @login_required
 def api_storage_settings():
     """
-    Get or update storage migration settings.
+    Get or update storage migration settings (admin only).
 
     GET: Returns current migration settings from recording_settings.json
     POST: Updates migration settings (persisted to recording_settings.json)
@@ -6691,6 +6697,10 @@ def api_storage_settings():
         - max_archive_storage_mb: Max size for archive storage (0 = unlimited)
     """
     import json
+
+    # Admin-only for all storage settings operations
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
 
     config_path = '/app/config/recording_settings.json'
 

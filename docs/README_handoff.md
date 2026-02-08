@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 8, 2026 01:16 EST*
+*Last updated: February 8, 2026 01:18 EST*
 
 Branch: `user_auth_and_settings_FEB_07_2026_c`
 
@@ -119,6 +119,35 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 **Why:** User model is required for Flask-Login to manage user sessions and authentication
 
 **Commit:** `e0d696f` - "Create User model with PostgREST integration"
+
+### Flask-Login Configuration & Auth Routes (01:18 EST)
+
+**File Modified:** `app.py`
+
+**What:** Added Flask-Login configuration and authentication routes
+
+**Details:**
+
+- Imported `flask-login` and `bcrypt` libraries
+- Imported `User` model and `session` from Flask
+- Added Flask-Login configuration:
+  - Indefinite sessions (365 days until logout)
+  - HTTPOnly cookies for security
+  - SameSite='Lax' for CSRF protection
+- Created `@login_manager.user_loader` function
+- Implemented helper functions:
+  - `_create_user_session()` - Track sessions in database
+  - `_deactivate_user_session()` - Mark sessions inactive on logout
+- Implemented authentication routes:
+  - `/login` (GET/POST) - Login form and bcrypt authentication
+  - `/logout` (POST) - Session cleanup and logout
+  - `/change-password` (GET/POST) - Forced password change flow
+- Bcrypt password verification on login
+- Redirect to change-password if `must_change_password` flag set
+
+**Why:** Backend authentication infrastructure required before creating frontend templates
+
+**Commit:** `c6fbc76` - "Add Flask-Login configuration and authentication routes"
 
 ---
 

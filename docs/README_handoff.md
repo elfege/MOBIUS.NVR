@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 8, 2026 01:13 EST*
+*Last updated: February 8, 2026 01:14 EST*
 
 Branch: `user_auth_and_settings_FEB_07_2026_c`
 
@@ -80,6 +80,21 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 **Why:** Foundation for authentication system - database schema must exist before backend/frontend implementation
 
 **Commit:** `c3b9b88` - "Add database migration for user authentication system"
+
+### Dependencies Added (01:14 EST)
+
+**File Modified:** `requirements.txt`
+
+**What:** Added authentication dependencies
+
+**Details:**
+
+- `flask-login==0.6.3` - Session management and user authentication
+- `bcrypt==4.1.2` - Secure password hashing with salt
+
+**Why:** Required for implementing login/logout functionality and secure password storage
+
+**Commit:** `dbf0d02` - "Add flask-login and bcrypt dependencies for authentication"
 
 ---
 

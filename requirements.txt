@@ -36,3 +36,4 @@ requests
 onvif-zeep
 reolink_aio
 gunicorn
+psycopg2-binary

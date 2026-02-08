@@ -218,6 +218,56 @@ class StorageMigrationService:
             logger.error(f"Failed to delete recording {recording_id}: {e}")
             return False
 
+    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 500) -> int:
+        """
+        Delete multiple recordings from the database in batches.
+        Uses PostgREST's id=in.(...) syntax to delete many records per request.
+        Includes a small delay between batches to avoid overwhelming PostgREST.
+
+        Args:
+            recording_ids: List of recording IDs to delete
+            batch_size: Number of IDs per DELETE request (default 500)
+
+        Returns:
+            Number of successfully deleted records
+        """
+        import time
+
+        if not recording_ids:
+            return 0
+
+        deleted_count = 0
+        total_batches = (len(recording_ids) + batch_size - 1) // batch_size
+
+        for batch_num in range(total_batches):
+            start = batch_num * batch_size
+            end = start + batch_size
+            batch_ids = recording_ids[start:end]
+
+            # PostgREST supports: id=in.(1,2,3,...)
+            ids_param = ','.join(str(rid) for rid in batch_ids)
+
+            try:
+                url = f"{self.postgrest_url}/recordings"
+                response = requests.delete(
+                    url,
+                    params={'id': f'in.({ids_param})'},
+                    headers={'Prefer': 'return=minimal'},
+                    timeout=30
+                )
+                response.raise_for_status()
+                deleted_count += len(batch_ids)
+                logger.info(f"Batch-deleted {len(batch_ids)} orphaned recordings "
+                           f"(batch {batch_num + 1}/{total_batches})")
+            except Exception as e:
+                logger.error(f"Batch delete failed for batch {batch_num + 1}: {e}")
+
+            # Small delay between batches to let PostgREST breathe
+            if batch_num < total_batches - 1:
+                time.sleep(0.5)
+
+        return deleted_count
+
     def _log_operation(self, operation: str, source_path: str,
                        destination_path: Optional[str] = None,
                        file_size_bytes: int = 0,
@@ -398,24 +448,17 @@ class StorageMigrationService:
                     actual_type = rtype
                     break
 
-            # Skip if file doesn't exist - also clean up orphaned DB entry
+            # Skip if file doesn't exist - mark as orphan for batch cleanup later
+            # (individual DELETEs from parallel workers would overwhelm PostgREST)
             if not source_path.exists():
-                logger.warning(f"Source file missing (orphaned DB entry): {source_path}")
-                # Remove orphaned DB entry so it won't slow down future migration runs
-                if recording_id:
-                    try:
-                        import requests as http_requests
-                        postgrest_url = os.environ.get('POSTGREST_URL', 'http://postgrest:3001')
-                        http_requests.delete(
-                            f"{postgrest_url}/recordings",
-                            params={'id': f'eq.{recording_id}'},
-                            headers={'Prefer': 'return=minimal'},
-                            timeout=5
-                        )
-                        logger.info(f"Removed orphaned DB entry: recording_id={recording_id}")
-                    except Exception as cleanup_err:
-                        logger.debug(f"Failed to clean orphaned entry {recording_id}: {cleanup_err}")
-                return {'status': 'skipped', 'bytes': 0, 'error': None, 'detail': None}
+                logger.debug(f"Source file missing (orphaned DB entry): {source_path}")
+                return {
+                    'status': 'orphan',
+                    'bytes': 0,
+                    'error': None,
+                    'detail': None,
+                    'orphan_id': recording_id
+                }
 
             # Get destination path
             try:
@@ -561,8 +604,9 @@ class StorageMigrationService:
         files_processed = [0]  # Use list for mutable reference in closure
         counter_lock = threading.Lock()
 
-        # Track cancelled count
+        # Track cancelled count and orphan IDs for batch cleanup
         cancelled_count = [0]
+        orphan_ids = []  # Collect orphaned recording IDs for batch deletion
 
         # Process recordings in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -593,6 +637,11 @@ class StorageMigrationService:
                                 result.errors.append(worker_result['error'])
                         elif worker_result['status'] == 'cancelled':
                             cancelled_count[0] += 1
+                        elif worker_result['status'] == 'orphan':
+                            # Collect orphan ID for batch deletion after all workers finish
+                            if worker_result.get('orphan_id'):
+                                orphan_ids.append(worker_result['orphan_id'])
+                            result.skipped_count += 1
                         else:  # skipped
                             result.skipped_count += 1
 
@@ -613,6 +662,13 @@ class StorageMigrationService:
                         result.failed_count += 1
                         result.errors.append(str(e))
                         files_processed[0] += 1
+
+        # Batch-delete orphaned DB entries (files that no longer exist on disk)
+        # Done AFTER all workers finish to avoid flooding PostgREST during migration
+        if orphan_ids:
+            logger.info(f"Batch-deleting {len(orphan_ids)} orphaned DB entries...")
+            deleted = self._batch_delete_recordings(orphan_ids)
+            logger.info(f"Batch-deleted {deleted} orphaned entries")
 
         # Cleanup empty directories
         self._cleanup_empty_dirs(self.recent_base / recording_type)
@@ -808,45 +864,33 @@ class StorageMigrationService:
 
         logger.info(f"Found {len(orphaned)} orphaned database entries")
 
-        # Phase 2: Remove orphaned entries (with progress updates)
+        # Phase 2: Remove orphaned entries using batch DELETE
+        # Instead of individual DELETE requests (which overwhelm PostgREST),
+        # use batch deletion with PostgREST's id=in.(...) syntax.
         total_orphans = len(orphaned)
-        for idx, rec in enumerate(orphaned):
-            recording_id = rec.get('id')
-            file_path = rec.get('file_path', '')
-            camera_id = rec.get('camera_id')
+        orphan_ids = [rec.get('id') for rec in orphaned if rec.get('id')]
 
-            db_deleted = self._delete_recording(recording_id)
+        if orphan_ids:
+            logger.info(f"Batch-deleting {len(orphan_ids)} orphaned DB entries...")
+            deleted = self._batch_delete_recordings(orphan_ids)
+            result.success_count = deleted
+            result.failed_count = len(orphan_ids) - deleted
 
-            if db_deleted:
-                result.success_count += 1
-                result.details.append({
-                    'recording_id': recording_id,
-                    'camera_id': camera_id,
-                    'path': file_path,
-                    'reason': 'file not found on disk'
-                })
+            # Log a single reconcile operation for the batch
+            self._log_operation(
+                operation='reconcile',
+                source_path=f"batch:{len(orphan_ids)} orphaned entries",
+                reason=f'{deleted} orphaned entries removed (batch)',
+                trigger_type='reconcile',
+                success=deleted > 0
+            )
 
-                self._log_operation(
-                    operation='reconcile',
-                    source_path=file_path,
-                    recording_id=recording_id,
-                    camera_id=camera_id,
-                    reason='file not found on disk',
-                    trigger_type='reconcile',
-                    success=True
-                )
-
-                logger.debug(f"Removed orphaned entry: {file_path}")
-            else:
-                result.failed_count += 1
-                result.errors.append(f"Failed to delete orphaned entry {recording_id}")
-
-            # Update progress after each deletion
+            # Update progress
             if progress_callback:
                 progress_callback(
-                    files_processed=idx + 1,
+                    files_processed=total_orphans,
                     files_total=total_orphans,
-                    current_file=file_path
+                    current_file=f"Batch-deleted {deleted} orphaned entries"
                 )
 
         logger.info(f"Reconciliation complete: {result.success_count} orphaned entries removed")

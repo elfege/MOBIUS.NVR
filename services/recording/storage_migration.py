@@ -398,19 +398,23 @@ class StorageMigrationService:
                     actual_type = rtype
                     break
 
-            # Skip if file doesn't exist
+            # Skip if file doesn't exist - also clean up orphaned DB entry
             if not source_path.exists():
-                logger.warning(f"Source file missing: {source_path}")
-                self._log_operation(
-                    operation='error',
-                    source_path=str(source_path),
-                    recording_id=recording_id,
-                    camera_id=camera_id,
-                    reason='source file missing',
-                    trigger_type=trigger_type,
-                    success=False,
-                    error_message='File not found on disk'
-                )
+                logger.warning(f"Source file missing (orphaned DB entry): {source_path}")
+                # Remove orphaned DB entry so it won't slow down future migration runs
+                if recording_id:
+                    try:
+                        import requests as http_requests
+                        postgrest_url = os.environ.get('POSTGREST_URL', 'http://postgrest:3001')
+                        http_requests.delete(
+                            f"{postgrest_url}/recordings",
+                            params={'id': f'eq.{recording_id}'},
+                            headers={'Prefer': 'return=minimal'},
+                            timeout=5
+                        )
+                        logger.info(f"Removed orphaned DB entry: recording_id={recording_id}")
+                    except Exception as cleanup_err:
+                        logger.debug(f"Failed to clean orphaned entry {recording_id}: {cleanup_err}")
                 return {'status': 'skipped', 'bytes': 0, 'error': None, 'detail': None}
 
             # Get destination path

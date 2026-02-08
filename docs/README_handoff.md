@@ -322,6 +322,43 @@ CSS Styling:
 
 **Why:** Required for authentication system to function - login was failing because users table didn't exist
 
+### RLS Policies Fixed for Authentication (10:52 EST)
+
+**File Created:** `psql/migrations/006_fix_users_rls_for_login.sql`
+
+**What:** Fixed RLS policies that were blocking authentication queries
+
+**Problem Diagnosed:**
+
+- User exists in database (verified with direct psql query)
+- Password hash is correct (verified with bcrypt)
+- But PostgREST was returning empty array `[]` when Flask queried for user
+- RLS policies required `app.user_role` or `app.user_id` to be set
+- Chicken-and-egg problem: need to query users to login, but RLS requires authenticated user context
+
+**Solution:**
+
+- Dropped restrictive SELECT policies that required user context
+- Created permissive policy: `USING (true)` - allows all reads for authentication
+- Kept write operations restricted to authenticated admins/users
+- Migration applied successfully
+
+**Verification:**
+
+```bash
+# Before fix:
+curl http://postgrest:3001/users?username=eq.admin
+[]  # Empty!
+
+# After fix:
+curl http://postgrest:3001/users?username=eq.admin
+[{"id":1,"username":"admin",...}]  # Works!
+```
+
+**Why:** RLS security was too restrictive - prevented the authentication query itself from working
+
+**Commit:** `45b3385` - "Fix RLS policies to allow authentication queries"
+
 ---
 
 ## TODO List

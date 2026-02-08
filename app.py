@@ -1005,6 +1005,185 @@ def change_password():
         print(f"Error updating password: {e}")
         return render_template('change_password.html', error='Database error')
 
+# ===== User Management API (Admin Only) =====
+
+@app.route('/api/users', methods=['GET'])
+@login_required
+def api_get_users():
+    """
+    Get list of all users (admin only).
+
+    Returns list of users with id, username, role (password_hash excluded).
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        response = requests.get(
+            f"{POSTGREST_URL}/users",
+            params={'select': 'id,username,role,created_at'},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+
+        return jsonify({'error': 'Failed to fetch users'}), 500
+    except requests.RequestException as e:
+        print(f"Error fetching users: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+@app.route('/api/users', methods=['POST'])
+@csrf.exempt
+@login_required
+def api_create_user():
+    """
+    Create new user (admin only).
+
+    Expects JSON: {username, password, role}
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        role = data.get('role', 'user')
+
+        if not username or not password:
+            return jsonify({'error': 'Username and password required'}), 400
+
+        if len(password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+
+        # Hash password with bcrypt
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        # Create user in database
+        response = requests.post(
+            f"{POSTGREST_URL}/users",
+            json={
+                'username': username,
+                'password_hash': password_hash,
+                'role': role,
+                'must_change_password': False
+            },
+            headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+            timeout=5
+        )
+
+        if response.status_code == 201:
+            user = response.json()[0]
+            return jsonify({
+                'success': True,
+                'user': {
+                    'id': user['id'],
+                    'username': user['username'],
+                    'role': user['role']
+                }
+            })
+
+        if response.status_code == 409:
+            return jsonify({'error': 'Username already exists'}), 409
+
+        return jsonify({'error': 'Failed to create user'}), 500
+    except requests.RequestException as e:
+        print(f"Error creating user: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+@app.route('/api/users/<int:user_id>', methods=['PATCH'])
+@csrf.exempt
+@login_required
+def api_update_user(user_id):
+    """
+    Update user (admin only).
+
+    Expects JSON: {username?, password?, role?}
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        data = request.get_json()
+        update_data = {}
+
+        # Update username if provided
+        if 'username' in data:
+            update_data['username'] = data['username']
+
+        # Update password if provided
+        if 'password' in data and data['password']:
+            if len(data['password']) < 8:
+                return jsonify({'error': 'Password must be at least 8 characters'}), 400
+            password_hash = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            update_data['password_hash'] = password_hash
+
+        # Update role if provided
+        if 'role' in data:
+            update_data['role'] = data['role']
+
+        if not update_data:
+            return jsonify({'error': 'No fields to update'}), 400
+
+        # Update user in database
+        response = requests.patch(
+            f"{POSTGREST_URL}/users",
+            params={'id': f'eq.{user_id}'},
+            json=update_data,
+            headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            user = response.json()[0]
+            return jsonify({
+                'success': True,
+                'user': {
+                    'id': user['id'],
+                    'username': user['username'],
+                    'role': user['role']
+                }
+            })
+
+        return jsonify({'error': 'Failed to update user'}), 500
+    except requests.RequestException as e:
+        print(f"Error updating user: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@csrf.exempt
+@login_required
+def api_delete_user(user_id):
+    """
+    Delete user (admin only).
+
+    Cannot delete yourself or the default admin account.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    # Prevent deleting yourself
+    if user_id == current_user.id:
+        return jsonify({'error': 'Cannot delete your own account'}), 400
+
+    try:
+        # Delete user from database
+        response = requests.delete(
+            f"{POSTGREST_URL}/users",
+            params={'id': f'eq.{user_id}'},
+            headers={'Prefer': 'return=minimal'},
+            timeout=5
+        )
+
+        if response.status_code == 204:
+            return jsonify({'success': True})
+
+        return jsonify({'error': 'Failed to delete user'}), 500
+    except requests.RequestException as e:
+        print(f"Error deleting user: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
 # ===== Main UI Routes =====
 @app.route('/')
 @login_required

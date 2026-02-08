@@ -941,6 +941,7 @@ def login():
     return redirect('/streams')
 
 @app.route('/logout', methods=['POST'])
+@csrf.exempt
 @login_required
 def logout():
     """

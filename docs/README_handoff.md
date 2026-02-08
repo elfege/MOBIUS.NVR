@@ -306,6 +306,22 @@ CSS Styling:
 
 **Branch Transition:** Context compaction occurred at 10:38 EST, moved to branch `user_auth_and_settings_FEB_07_2026_d`
 
+### Database Migration Applied (10:40 EST)
+
+**Command:** `docker exec -i nvr-postgres psql -U nvr_api -d nvr < psql/migrations/005_add_user_authentication.sql`
+
+**What:** Executed database migration to create authentication tables
+
+**Details:**
+
+- Created `users` table with default admin account (admin/admin)
+- Created `user_sessions` table for session tracking
+- Created `user_camera_preferences` table for per-user stream preferences
+- Applied RLS policies for multi-user data isolation
+- Migration output confirmed successful creation of all tables
+
+**Why:** Required for authentication system to function - login was failing because users table didn't exist
+
 ---
 
 ## TODO List

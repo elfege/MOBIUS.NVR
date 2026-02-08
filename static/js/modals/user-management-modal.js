@@ -59,6 +59,13 @@ class UserManagementModal {
             const username = $(e.currentTarget).data('username');
             this.showResetPasswordForm(userId, username);
         });
+
+        // Camera access button
+        this.$userList.on('click', '.user-camera-access-btn', (e) => {
+            const userId = $(e.currentTarget).data('id');
+            const username = $(e.currentTarget).data('username');
+            this.showCameraAccessModal(userId, username);
+        });
     }
 
     /**
@@ -126,6 +133,12 @@ class UserManagementModal {
                             data-username="${this.escapeHtml(user.username)}"
                             title="Reset Password">
                         <i class="fas fa-key"></i>
+                    </button>
+                    <button class="btn btn-sm btn-secondary user-camera-access-btn"
+                            data-id="${user.id}"
+                            data-username="${this.escapeHtml(user.username)}"
+                            title="Camera Access">
+                        <i class="fas fa-cog"></i>
                     </button>
                     <button class="btn btn-sm btn-danger user-delete-btn"
                             data-id="${user.id}"
@@ -310,6 +323,142 @@ class UserManagementModal {
             this.showMessage(`Password reset for "${username}". User will be required to change it on next login.`, 'success');
         } catch (error) {
             console.error('Error resetting password:', error);
+            this.showMessage(error.message, 'error');
+        }
+    }
+
+    /**
+     * Show camera access modal for a user.
+     * Loads all cameras and current access rules, renders checkboxes.
+     * Modal has no backdrop exit - only Save/Cancel buttons.
+     *
+     * @param {number} userId - User ID
+     * @param {string} username - Username for display
+     */
+    async showCameraAccessModal(userId, username) {
+        try {
+            // Fetch cameras and current access in parallel
+            const [camerasRes, accessRes] = await Promise.all([
+                fetch('/api/cameras'),
+                fetch(`/api/users/${userId}/camera-access`)
+            ]);
+
+            if (!camerasRes.ok) throw new Error('Failed to fetch cameras');
+            const camerasData = await camerasRes.json();
+            const accessData = accessRes.ok ? await accessRes.json() : [];
+
+            // Build set of allowed camera serials
+            const allowedSerials = new Set(
+                accessData.filter(a => a.allowed).map(a => a.camera_serial)
+            );
+            const hasRestrictions = accessData.length > 0;
+
+            // Get all cameras from the streaming list
+            const cameras = camerasData.all || [];
+
+            // Build modal HTML
+            const cameraCheckboxes = cameras.map(cam => {
+                const serial = cam.serial || cam.id;
+                const name = cam.name || cam.display_name || serial;
+                // If no restrictions exist, all cameras are checked by default
+                const checked = hasRestrictions ? allowedSerials.has(serial) : true;
+                return `
+                    <label class="camera-access-item">
+                        <input type="checkbox"
+                               class="camera-access-checkbox"
+                               data-serial="${this.escapeHtml(serial)}"
+                               ${checked ? 'checked' : ''}>
+                        <span class="camera-access-name">${this.escapeHtml(name)}</span>
+                        <span class="camera-access-serial">${this.escapeHtml(serial)}</span>
+                    </label>
+                `;
+            }).join('');
+
+            // Remove existing modal if present
+            $('#camera-access-modal').remove();
+
+            // Create fixed modal (no backdrop exit)
+            const modalHtml = `
+                <div id="camera-access-modal" class="camera-access-modal">
+                    <div class="camera-access-panel">
+                        <div class="modal-header">
+                            <h3><i class="fas fa-video"></i> Camera Access: ${this.escapeHtml(username)}</h3>
+                        </div>
+                        <div class="camera-access-body">
+                            <div class="camera-access-controls">
+                                <button type="button" class="btn btn-sm btn-secondary" id="camera-access-select-all">Select All</button>
+                                <button type="button" class="btn btn-sm btn-secondary" id="camera-access-select-none">Select None</button>
+                            </div>
+                            <div class="camera-access-list">
+                                ${cameraCheckboxes || '<div class="no-cameras">No cameras configured</div>'}
+                            </div>
+                        </div>
+                        <div class="camera-access-footer">
+                            <button type="button" class="btn btn-secondary" id="camera-access-cancel">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="camera-access-save">Save</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            $('body').append(modalHtml);
+
+            const $modal = $('#camera-access-modal');
+
+            // Select All / Select None
+            $('#camera-access-select-all').on('click', () => {
+                $modal.find('.camera-access-checkbox').prop('checked', true);
+            });
+            $('#camera-access-select-none').on('click', () => {
+                $modal.find('.camera-access-checkbox').prop('checked', false);
+            });
+
+            // Cancel - just close
+            $('#camera-access-cancel').on('click', () => {
+                $modal.remove();
+            });
+
+            // Save - collect checked cameras and PUT to API
+            $('#camera-access-save').on('click', async () => {
+                const cameraAccess = [];
+                $modal.find('.camera-access-checkbox').each(function() {
+                    cameraAccess.push({
+                        camera_serial: $(this).data('serial'),
+                        allowed: $(this).is(':checked')
+                    });
+                });
+
+                // Check if all cameras are selected
+                const allChecked = cameraAccess.every(c => c.allowed);
+
+                try {
+                    const response = await fetch(`/api/users/${userId}/camera-access`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            // If all checked, send empty list (means "all access")
+                            cameras: allChecked ? [] : cameraAccess
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.error || 'Failed to save');
+                    }
+
+                    $modal.remove();
+                    this.showMessage(`Camera access updated for "${username}"`, 'success');
+                } catch (error) {
+                    console.error('Error saving camera access:', error);
+                    this.showMessage(error.message, 'error');
+                }
+            });
+
+            // Show modal with fade
+            $modal.fadeIn(200);
+
+        } catch (error) {
+            console.error('Error loading camera access:', error);
             this.showMessage(error.message, 'error');
         }
     }

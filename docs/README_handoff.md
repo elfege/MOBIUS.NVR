@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 8, 2026 01:20 EST*
+*Last updated: February 8, 2026 10:15 EST*
 
 Branch: `user_auth_and_settings_FEB_07_2026_c`
 
@@ -32,7 +32,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 ---
 
-## Current Session: February 7-8, 2026 (23:10-01:13 EST)
+## Current Session: February 7-8, 2026 (23:10-10:15 EST)
 
 **New Feature:** User Authentication & Per-User Settings
 
@@ -175,6 +175,30 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 
 **Commit:** `3cea508` - "Create login and password change templates with styling"
 
+### Route Protection (10:15 EST)
+
+**File Modified:** `app.py`
+
+**What:** Protected all routes with @login_required decorator
+
+**Details:**
+
+- Added `@login_required` to 112 out of 115 total routes
+- Exempted routes (remain public):
+  - `/login` - login page itself
+  - `/change-password` - password change flow
+  - `/api/health` - health check endpoint for monitoring
+- Protected routes:
+  - Main UI: `/`, `/streams`, `/reloading`, `/eufy-auth`
+  - All API endpoints for cameras, streams, PTZ, recording, timeline, storage, etc.
+- Decorator order: `@app.route` → `@csrf.exempt` → `@login_required`
+- Used Python script to systematically add decorators to avoid errors
+- Verified exempted routes remain unprotected
+
+**Why:** Secure all application endpoints - unauthenticated users now redirected to login
+
+**Commit:** `5c4ed76` - "Protect all routes with @login_required decorator"
+
 ---
 
 ## TODO List
@@ -191,7 +215,7 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - [x] Implement login/logout/change-password routes
 - [x] Create login templates (login.html, change_password.html)
 - [x] Create login CSS (static/css/components/login.css)
-- [ ] Protect existing routes with @login_required (requires careful testing)
+- [x] Protect existing routes with @login_required
 - [ ] Implement user management UI (admin only)
 - [ ] Implement per-user stream type preferences API
 - [ ] Modify frontend to load user preferences
@@ -199,6 +223,10 @@ Always read `CLAUDE.md` in case I updated it in between sessions.
 - [ ] Install Python dependencies (user action required: pip install -r requirements.txt)
 - [ ] Restart container with ./start.sh (user action required)
 - [ ] Test complete authentication flow (user testing required)
+
+**Future Features:**
+
+- [ ] Add snapshot feature in fullscreen mode (capture current frame)
 
 **Previous Testing Needed:**
 

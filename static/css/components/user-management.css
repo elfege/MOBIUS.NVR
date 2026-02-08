@@ -219,6 +219,17 @@
     font-size: 0.9rem;
 }
 
+/* Icon-only buttons (circular) */
+.user-actions .btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .btn-primary {
     background: #2196F3;
     color: white;

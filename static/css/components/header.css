@@ -335,6 +335,27 @@
 }
 
 /* ============================================================================
+   HIDE NAVBAR IN EXPANDED / FULLSCREEN MODE
+   When a stream is expanded (modal) or in CSS fullscreen, the navbar must
+   get out of the way so stream controls are fully accessible.
+   ============================================================================ */
+
+body:has(.stream-item.expanded) .navbar-redesign,
+body:has(.stream-item.css-fullscreen) .navbar-redesign {
+    transform: translateY(-100%);
+    pointer-events: none;
+    transition: transform 0.3s ease;
+}
+
+/* Also hide the nav menu overlay/drawer when in expanded/fullscreen */
+body:has(.stream-item.expanded) .nav-menu-overlay,
+body:has(.stream-item.css-fullscreen) .nav-menu-overlay,
+body:has(.stream-item.expanded) .nav-menu,
+body:has(.stream-item.css-fullscreen) .nav-menu {
+    display: none !important;
+}
+
+/* ============================================================================
    RESPONSIVE - MOBILE ADAPTATIONS
    ============================================================================ */
 

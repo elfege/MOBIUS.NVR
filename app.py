@@ -1256,6 +1256,127 @@ def api_reset_user_password(user_id):
         print(f"Error resetting password: {e}")
         return jsonify({'error': 'Database error'}), 500
 
+# ===== User Camera Access Control =====
+
+@app.route('/api/users/<int:user_id>/camera-access', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_get_user_camera_access(user_id):
+    """
+    Get camera access list for a user (admin only).
+
+    Returns list of camera serials the user is allowed to see.
+    Empty list means user can see ALL cameras (default).
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        response = requests.get(
+            f"{POSTGREST_URL}/user_camera_access",
+            params={'user_id': f'eq.{user_id}', 'select': 'camera_serial,allowed'},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+
+        return jsonify([])
+    except requests.RequestException as e:
+        print(f"Error fetching camera access: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+
+@app.route('/api/users/<int:user_id>/camera-access', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_set_user_camera_access(user_id):
+    """
+    Set camera access for a user (admin only).
+
+    Expects JSON: {cameras: [{camera_serial, allowed}, ...]}
+    Replaces all existing access rules for the user.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        data = request.get_json()
+        cameras = data.get('cameras', [])
+
+        # Delete existing access rules for this user
+        requests.delete(
+            f"{POSTGREST_URL}/user_camera_access",
+            params={'user_id': f'eq.{user_id}'},
+            headers={'Prefer': 'return=minimal'},
+            timeout=5
+        )
+
+        # Insert new access rules (only for cameras that are allowed)
+        allowed_cameras = [c for c in cameras if c.get('allowed', False)]
+        if allowed_cameras:
+            rows = [
+                {
+                    'user_id': user_id,
+                    'camera_serial': c['camera_serial'],
+                    'allowed': True
+                }
+                for c in allowed_cameras
+            ]
+            response = requests.post(
+                f"{POSTGREST_URL}/user_camera_access",
+                json=rows,
+                headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+                timeout=5
+            )
+
+            if response.status_code not in [200, 201]:
+                return jsonify({'error': 'Failed to save camera access'}), 500
+
+        return jsonify({'success': True})
+    except requests.RequestException as e:
+        print(f"Error saving camera access: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+
+@app.route('/api/my-camera-access', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_get_my_camera_access():
+    """
+    Get current user's camera access list.
+
+    Admins always get all cameras.
+    For regular users: if no access rules exist, they see all cameras.
+    If access rules exist, they only see allowed cameras.
+    """
+    # Admins always see everything
+    if current_user.role == 'admin':
+        return jsonify({'all_access': True, 'cameras': []})
+
+    try:
+        response = requests.get(
+            f"{POSTGREST_URL}/user_camera_access",
+            params={'user_id': f'eq.{current_user.id}', 'select': 'camera_serial,allowed'},
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            access_list = response.json()
+            if not access_list:
+                # No restrictions set - user sees all cameras
+                return jsonify({'all_access': True, 'cameras': []})
+            else:
+                # Return only allowed camera serials
+                allowed = [a['camera_serial'] for a in access_list if a.get('allowed', False)]
+                return jsonify({'all_access': False, 'cameras': allowed})
+
+        return jsonify({'all_access': True, 'cameras': []})
+    except requests.RequestException as e:
+        print(f"Error fetching user camera access: {e}")
+        return jsonify({'all_access': True, 'cameras': []})
+
+
 # ===== Main UI Routes =====
 @app.route('/')
 @login_required

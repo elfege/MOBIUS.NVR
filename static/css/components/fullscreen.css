@@ -180,7 +180,10 @@
 .stream-item.expanded .stream-ptz-toggle-btn,
 .stream-item.expanded .stream-controls-toggle-btn,
 .stream-item.expanded .camera-record-btn,
-.stream-item.expanded .camera-settings-btn {
+.stream-item.expanded .camera-settings-btn,
+.stream-item.expanded .camera-playback-btn,
+.stream-item.expanded .stream-power-btn,
+.stream-item.expanded .volume-control-container {
     opacity: 1 !important;
     pointer-events: auto !important;
 }
@@ -239,7 +242,10 @@
 .stream-item.css-fullscreen .stream-ptz-toggle-btn,
 .stream-item.css-fullscreen .stream-controls-toggle-btn,
 .stream-item.css-fullscreen .camera-record-btn,
-.stream-item.css-fullscreen .camera-settings-btn {
+.stream-item.css-fullscreen .camera-settings-btn,
+.stream-item.css-fullscreen .camera-playback-btn,
+.stream-item.css-fullscreen .stream-power-btn,
+.stream-item.css-fullscreen .volume-control-container {
     opacity: 1 !important;
     pointer-events: auto !important;
 }

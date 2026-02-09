@@ -364,9 +364,13 @@ export class MultiStreamManager {
             console.warn('[Init] Failed to pre-fetch streaming config:', err);
         });
 
-        // Start all streams (fire and forget - don't await)
-        console.log('[Init] Starting streams in background...');
-        this.startAllStreams().then(() => {
+        // Load user stream type preferences, then start all streams.
+        // Preferences override the data-stream-type set by cameras.json so each
+        // user gets their saved stream type per camera (WEBRTC, HLS, MJPEG, etc.)
+        console.log('[Init] Loading user stream preferences then starting streams...');
+        this.loadUserStreamPreferences().then(() => {
+            return this.startAllStreams();
+        }).then(() => {
             console.log('[Init] All streams completed');
         }).catch(err => {
             console.error('[Init] Stream loading error:', err);
@@ -1805,6 +1809,151 @@ export class MultiStreamManager {
         } catch (e) {
             return [];
         }
+    }
+
+    /**
+     * Load user's per-camera stream type preferences from the database.
+     * Overrides the data-stream-type attribute on each .stream-item
+     * so that startAllStreams() uses the user's preferred type.
+     * Falls back silently to cameras.json defaults if the API fails.
+     */
+    async loadUserStreamPreferences() {
+        try {
+            const response = await fetch('/api/user/stream-preferences');
+            if (!response.ok) {
+                console.warn('[Prefs] Failed to load stream preferences:', response.status);
+                return;
+            }
+
+            const prefs = await response.json();
+            if (!prefs || prefs.length === 0) {
+                console.log('[Prefs] No user stream preferences saved');
+                return;
+            }
+
+            // Build lookup map: camera_serial → preferred_stream_type
+            const prefMap = {};
+            for (const p of prefs) {
+                prefMap[p.camera_serial] = p.preferred_stream_type;
+            }
+
+            // Override data-stream-type on each stream item that has a preference
+            let overrideCount = 0;
+            this.$container.find('.stream-item').each(function () {
+                const $item = $(this);
+                const serial = $item.data('camera-serial');
+                if (prefMap[serial]) {
+                    const oldType = $item.data('stream-type');
+                    const newType = prefMap[serial];
+                    if (oldType !== newType) {
+                        $item.attr('data-stream-type', newType);
+                        $item.data('stream-type', newType);
+                        console.log(`[Prefs] ${serial}: ${oldType} → ${newType}`);
+                        overrideCount++;
+                    }
+                }
+            });
+
+            console.log(`[Prefs] Applied ${overrideCount} stream type overrides from ${prefs.length} saved preferences`);
+        } catch (err) {
+            console.warn('[Prefs] Error loading stream preferences (using defaults):', err);
+        }
+    }
+
+    /**
+     * Switch a camera's stream type live (stop current, start new, save preference).
+     * Handles element swaps (video ↔ img) when switching to/from MJPEG.
+     *
+     * @param {string} cameraSerial - Camera serial number
+     * @param {string} newStreamType - New stream type (WEBRTC, HLS, LL_HLS, MJPEG, etc.)
+     */
+    async switchStreamType(cameraSerial, newStreamType) {
+        const $streamItem = this.$container.find(`.stream-item[data-camera-serial="${cameraSerial}"]`);
+        if ($streamItem.length === 0) {
+            console.error(`[SwitchType] Camera ${cameraSerial} not found`);
+            return;
+        }
+
+        const oldStreamType = $streamItem.data('stream-type');
+        if (oldStreamType === newStreamType) {
+            console.log(`[SwitchType] ${cameraSerial}: already ${newStreamType}, no change`);
+            return;
+        }
+
+        console.log(`[SwitchType] ${cameraSerial}: ${oldStreamType} → ${newStreamType}`);
+
+        // Phase 1: Stop current stream
+        this.hlsManager.stopStream(cameraSerial);
+        this.webrtcManager.stopStream(cameraSerial);
+        if (this.mjpegManager) {
+            this.mjpegManager.stopStream(cameraSerial);
+        }
+
+        // Phase 2: Handle element swap if switching to/from MJPEG
+        let videoEl = $streamItem.find('video')[0];
+        const imgEl = $streamItem.find('img.mjpeg-stream')[0];
+
+        if (newStreamType === 'MJPEG') {
+            // Switching TO MJPEG: need img element, hide video
+            if (videoEl) videoEl.style.display = 'none';
+            if (!imgEl) {
+                const img = document.createElement('img');
+                img.className = 'mjpeg-stream';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'contain';
+                $streamItem.find('.video-container').append(img);
+            } else {
+                imgEl.style.display = '';
+            }
+        } else {
+            // Switching FROM MJPEG (or between video-based types): show video, hide img
+            if (imgEl) imgEl.style.display = 'none';
+            if (videoEl) videoEl.style.display = '';
+        }
+
+        // Phase 3: Update data attribute so all downstream code uses new type
+        $streamItem.attr('data-stream-type', newStreamType);
+        $streamItem.data('stream-type', newStreamType);
+
+        // Phase 4: Start new stream
+        const quality = $streamItem.hasClass('hd-mode') ? 'main' : 'sub';
+        try {
+            if (newStreamType === 'MJPEG') {
+                const targetEl = $streamItem.find('img.mjpeg-stream')[0];
+                if (this.mjpegManager && targetEl) {
+                    await this.mjpegManager.startStream(cameraSerial, targetEl, quality);
+                }
+            } else if (newStreamType === 'WEBRTC') {
+                videoEl = $streamItem.find('video')[0];
+                if (videoEl) {
+                    await this.webrtcManager.startStream(cameraSerial, videoEl, quality);
+                }
+            } else {
+                // HLS, LL_HLS, NEOLINK, NEOLINK_LL_HLS — all go through HLS manager
+                videoEl = $streamItem.find('video')[0];
+                if (videoEl) {
+                    await this.hlsManager.startStream(cameraSerial, videoEl, quality);
+                }
+            }
+
+            this.setStreamStatus($streamItem, 'live', quality === 'main' ? 'HD' : 'Live');
+            console.log(`[SwitchType] ${cameraSerial}: now streaming ${newStreamType}`);
+        } catch (err) {
+            console.error(`[SwitchType] ${cameraSerial}: failed to start ${newStreamType}:`, err);
+            this.setStreamStatus($streamItem, 'error', 'Error');
+        }
+
+        // Phase 5: Save preference to database (fire and forget)
+        fetch(`/api/user/stream-preferences/${cameraSerial}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preferred_stream_type: newStreamType })
+        }).then(resp => {
+            if (!resp.ok) console.warn(`[SwitchType] Failed to save preference: ${resp.status}`);
+        }).catch(err => {
+            console.warn('[SwitchType] Error saving preference:', err);
+        });
     }
 
     /**

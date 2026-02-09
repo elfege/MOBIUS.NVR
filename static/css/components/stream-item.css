@@ -125,91 +125,45 @@
 
 /* ============================================================================
    STREAM TYPE SELECTOR
-   Per-camera dropdown to switch between WEBRTC, HLS, LL_HLS, MJPEG, etc.
+   Inline row inside .stream-controls panel for switching stream types.
    ============================================================================ */
 
-.stream-type-selector {
-    position: absolute;
-    top: 0.5rem;
-    right: 3.5rem;
-    z-index: 25;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.stream-item:hover .stream-type-selector {
-    opacity: 1;
-}
-
-@media (hover: none) {
-    .stream-type-selector {
-        opacity: 0.7;
-    }
-}
-
-.stream-type-btn {
+.stream-type-row {
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 4px 8px;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 6px;
-    color: white;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.stream-type-current-label {
+    color: rgba(255, 255, 255, 0.5);
     font-size: 11px;
-    font-weight: 500;
-    cursor: pointer;
+    margin-right: 2px;
     white-space: nowrap;
-    transition: background 0.2s ease;
-}
-
-.stream-type-btn:hover {
-    background: rgba(0, 0, 0, 0.8);
-    border-color: rgba(255, 255, 255, 0.4);
-}
-
-.stream-type-btn i {
-    font-size: 10px;
-    opacity: 0.7;
-}
-
-.stream-type-dropdown {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    margin-top: 4px;
-    background: rgba(20, 20, 28, 0.95);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 8px;
-    padding: 4px;
-    min-width: 100px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    z-index: 30;
 }
 
 .stream-type-option {
-    display: block;
-    width: 100%;
-    padding: 6px 10px;
-    background: transparent;
-    border: none;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     border-radius: 4px;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 12px;
-    text-align: left;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 11px;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: all 0.15s ease;
+    white-space: nowrap;
 }
 
 .stream-type-option:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.15);
     color: white;
 }
 
 .stream-type-option.active {
     background: rgba(33, 150, 243, 0.3);
+    border-color: rgba(33, 150, 243, 0.5);
     color: #64b5f6;
 }
 

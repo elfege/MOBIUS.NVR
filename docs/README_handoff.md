@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 9, 2026 00:16 EST*
+*Last updated: February 9, 2026 02:02 EST*
 
 Branch: `stream_type_preferences_FEB_08_2026_a`
 
@@ -25,7 +25,7 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 
 ---
 
-## Current Session: February 8, 2026 (19:35 EST) → February 9, 2026 (00:16 EST)
+## Current Session: February 8, 2026 (19:35 EST) → February 9, 2026 (02:02 EST)
 
 **Feature:** Per-User Stream Type Preferences (live switching)
 
@@ -64,16 +64,42 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
    - Removed mobile CSS that changed icon to X in expanded mode
    - Users close modal via backdrop click
 
-### What's Still Needed
+8. **MediaMTX path validation** (app.py, stream.js, commit `61d667b`):
+   - Backend: `GET /api/mediamtx/path-status/<serial>` checks if camera has active MediaMTX publisher
+   - Frontend: `switchStreamType()` pre-checks path before switching to WebRTC/HLS/LL_HLS
+   - Toast notification tells user if path missing (server may need `start.sh` restart)
+   - MJPEG bypasses the check (connects directly to camera)
 
-- **Backend restart required** — `docker compose restart nvr` needed for Python API endpoints
-- **End-to-end testing** — verify stream type switching works live
+9. **SV3C WebRTC fix** (cameras.json):
+   - Removed `-reconnect`, `-reconnect_streamed`, `-reconnect_delay_max` from SV3C `rtsp_input`
+   - These flags are HTTP-only in FFmpeg 7.x, caused `Option reconnect not found` crash
+   - Also removed `-stimeout` (deprecated in FFmpeg 7.x)
+   - SV3C_Living_3 now configured as `stream_type: "WEBRTC"` (was MJPEG)
+
+10. **E1 Cat Feeders PTZ** (baichuan_ptz_handler.py, cameras.json):
+    - Added `"ptz"` to Cat Feeders capabilities in cameras.json
+    - Fixed Baichuan PTZ handler to skip speed param for E1 cameras (`host.supported(channel, "ptz_speed")`)
+
+11. **Grid layout fix** (stream.js):
+    - Guard in `_updateGridLayoutForVisibleCameras()` skips during fullscreen
+    - `setupLayout()` called in `closeFullscreen()` and `forceExitFullscreen()`
+
+12. **NEOLINK options** (streams.html):
+    - Added NEOLINK and NEOLINK_LL_HLS buttons for Reolink cameras in stream type selector
+
+### Segment buffer issue (pre-alarm recording)
+
+- Segment buffer ffmpeg dies with code 0 for HALLWAY, Office Desk, SV3C
+- For SV3C: publisher dying (reconnect flags) caused chain reaction
+- For others: need to investigate after restart — may be MediaMTX path not ready at startup
+- Pre-alarm recording not working (`Retrieved 0 buffer segments`)
 
 ### Key Files
 
-- `app.py` lines ~1468-1540: stream preference endpoints
-- `static/js/streaming/stream.js`: `loadUserStreamPreferences()` (~line 1813), `switchStreamType()` (~line 1867)
-- Plan file: `/home/elfege/.claude/plans/curious-rolling-meerkat.md`
+- `app.py` lines ~1468-1600: stream preference + MediaMTX path endpoints
+- `static/js/streaming/stream.js`: `loadUserStreamPreferences()`, `switchStreamType()`, `_showStreamTypeToast()`
+- `services/ptz/baichuan_ptz_handler.py`: E1 speed check fix
+- `services/recording/segment_buffer.py`: pre-alarm buffer (investigating failures)
 
 ---
 
@@ -87,10 +113,14 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - [x] Stream type selector UI in controls panel
 - [x] JS event handlers for stream type buttons
 - [x] Fullscreen button fix (enters fullscreen from expanded modal)
+- [x] MediaMTX path validation before stream type switch
+- [x] SV3C ffmpeg fix (removed reconnect/stimeout flags)
+- [x] E1 Cat Feeders PTZ (capability + speed check)
+- [x] Grid layout fix (fullscreen exit race condition)
+- [x] NEOLINK options for Reolink cameras
 
-**Needs testing:**
+**Needs testing (restart done):**
 
-- [ ] Restart NVR container (`docker compose restart nvr`) for backend changes
 - [ ] End-to-end test: switch stream type, verify live switch works
 - [ ] Verify preferences persist across page reload
 - [ ] Verify per-user isolation (different users see their own preferences)
@@ -102,5 +132,7 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - [ ] Security: Implement stricter RLS policies (currently permissive)
 - [ ] WebRTC HD/SD fallback - falls back too fast, doesn't retry HD
 - [ ] Add snapshot feature in fullscreen mode
+- [ ] Investigate segment buffer failures (HALLWAY, Office Desk) — pre-alarm recording broken
+- [ ] Warm restart sub-service: a `restart_warm.sh` script (separate from `start.sh`) that skips AWS secrets pull — captures env vars from running container, regenerates MediaMTX paths, runs service init scripts, restarts container with saved env. No MFA hang = Claude Code can run it (solves RULE 9 restriction). Triggered from UI or by Claude directly. `start.sh` remains for cold starts only.
 
 ---

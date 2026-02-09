@@ -78,11 +78,13 @@ class StorageMigrationService:
         self.recent_base = Path(storage_paths['recent_base'])
         self.archive_base = Path(storage_paths['archive_base'])
 
-        # Threading lock to prevent concurrent bulk delete operations.
+        # Reentrant lock to prevent concurrent bulk delete operations.
         # Multiple simultaneous DELETEs on the recordings table cause
         # massive lock contention and PostgREST pool exhaustion.
-        # Used by both reconciliation and migration paths.
-        self._bulk_delete_lock = threading.Lock()
+        # RLock (reentrant) because reconcile_db_with_filesystem acquires it,
+        # then calls _batch_delete_recordings which also acquires it —
+        # a non-reentrant Lock would deadlock on the same thread.
+        self._bulk_delete_lock = threading.RLock()
 
         logger.info(f"StorageMigrationService initialized")
         logger.info(f"  Recent: {self.recent_base}")
@@ -271,18 +273,20 @@ class StorageMigrationService:
         # Both migrate_recent_to_archive and reconcile_db_with_filesystem call
         # this method, and concurrent DELETEs on recordings cause massive
         # lock contention with the 98M-row file_operations_log FK.
-        if not self._bulk_delete_lock.acquire(blocking=False):
-            logger.warning(f"Bulk delete already in progress - "
-                          f"queuing {len(recording_ids)} IDs (waiting for lock)")
+        # Use a timeout to avoid deadlocks - if lock not available in 120s, proceed anyway.
+        acquired = self._bulk_delete_lock.acquire(timeout=120)
+        if not acquired:
+            logger.warning(f"Could not acquire bulk delete lock after 120s - "
+                          f"proceeding with {len(recording_ids)} IDs anyway")
         else:
-            self._bulk_delete_lock.release()  # Release to re-acquire below as blocking
+            logger.info(f"Acquired bulk delete lock for {len(recording_ids)} recording IDs")
 
-        # Acquire lock (blocking - will wait for any in-progress delete to finish)
-        self._bulk_delete_lock.acquire()
         try:
             return self._do_batch_delete(recording_ids, batch_size, progress_callback)
         finally:
-            self._bulk_delete_lock.release()
+            if acquired:
+                self._bulk_delete_lock.release()
+                logger.info("Released bulk delete lock")
 
     def _do_batch_delete(self, recording_ids: List[int], batch_size: int,
                          progress_callback: Optional[Callable] = None) -> int:

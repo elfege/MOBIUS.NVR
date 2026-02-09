@@ -488,20 +488,21 @@ export class MultiStreamManager {
                     // Exit fullscreen
                     await this.closeFullscreen();
                     console.log('[Fullscreen] Exit complete');
-                } else if (isCurrentlyExpanded) {
-                    // In expanded modal: close the modal back to grid
-                    // (on mobile, this button acts as the close/back button)
-                    this.collapseExpandedCamera();
-                    console.log('[Expanded] Collapsed via fullscreen button');
                 } else {
-                    // Enter fullscreen from grid
+                    // Enter fullscreen from either grid or expanded modal
                     const cameraId = $streamItem.data('camera-serial');
                     const name = $streamItem.data('camera-name');
                     const cameraType = $streamItem.data('camera-type');
                     const streamType = $streamItem.data('stream-type');
 
+                    // If coming from expanded modal, collapse it first so fullscreen
+                    // starts clean (the modal overlay and expanded class are removed)
+                    if (isCurrentlyExpanded) {
+                        this.collapseExpandedCamera();
+                    }
+
                     await this.openFullscreen(cameraId, name, cameraType, streamType);
-                    console.log('[Fullscreen] Enter complete');
+                    console.log(`[Fullscreen] Enter complete (from ${isCurrentlyExpanded ? 'expanded' : 'grid'})`);
                 }
 
             } catch (error) {
@@ -1182,45 +1183,29 @@ export class MultiStreamManager {
         // Setup camera selector event handlers for show/hide and HD/SD quality changes
         this.setupCameraSelectorHandlers();
 
-        // Stream type selector: toggle dropdown on button click
-        this.$container.on('click.streamtype', '.stream-type-btn', (e) => {
-            e.stopPropagation();
-            const $selector = $(e.target).closest('.stream-type-selector');
-            const $dropdown = $selector.find('.stream-type-dropdown');
-            const currentType = $selector.closest('.stream-item').data('stream-type');
-
-            // Mark current type as active
-            $dropdown.find('.stream-type-option').removeClass('active');
-            $dropdown.find(`.stream-type-option[data-type="${currentType}"]`).addClass('active');
-
-            // Toggle dropdown visibility
-            const isVisible = $dropdown.is(':visible');
-            // Close all other dropdowns first
-            this.$container.find('.stream-type-dropdown').hide();
-            if (!isVisible) $dropdown.show();
-        });
-
-        // Stream type selector: handle option click — live switch
+        // Stream type selector: handle option click in .stream-type-row — live switch
         this.$container.on('click.streamtype-option', '.stream-type-option', async (e) => {
             e.stopPropagation();
             const $option = $(e.target);
             const newType = $option.data('type');
-            const $selector = $option.closest('.stream-type-selector');
-            const cameraSerial = $selector.data('camera-serial');
+            const $row = $option.closest('.stream-type-row');
+            const cameraSerial = $row.data('camera-serial');
 
-            // Hide dropdown
-            $selector.find('.stream-type-dropdown').hide();
-
-            // Update the label immediately for responsiveness
-            $selector.find('.stream-type-label').text(newType);
+            // Update active state immediately for responsiveness
+            $row.find('.stream-type-option').removeClass('active');
+            $option.addClass('active');
 
             // Perform live switch (stops old, starts new, saves to DB)
             await this.switchStreamType(cameraSerial, newType);
         });
 
-        // Close stream type dropdown when clicking outside
-        $(document).on('click.streamtype-close', () => {
-            this.$container.find('.stream-type-dropdown').hide();
+        // When stream controls panel opens, mark the current stream type as active
+        this.$container.on('click.streamcontrols-type-sync', '.stream-controls-toggle-btn', (e) => {
+            const $streamItem = $(e.target).closest('.stream-item');
+            const currentType = $streamItem.data('stream-type');
+            const $row = $streamItem.find('.stream-type-row');
+            $row.find('.stream-type-option').removeClass('active');
+            $row.find(`.stream-type-option[data-type="${currentType}"]`).addClass('active');
         });
     }
 

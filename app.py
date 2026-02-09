@@ -93,6 +93,20 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Please log in to access this page.'
 
+
+@login_manager.unauthorized_handler
+def unauthorized_api():
+    """
+    Return JSON 401 for API requests instead of redirecting to HTML login page.
+
+    Without this handler, Flask-Login redirects ALL unauthorized requests to the
+    login page (HTML). When the frontend JS fetches /api/* endpoints and gets
+    HTML back, it fails with: Unexpected token '<', "<!DOCTYPE"... is not valid JSON.
+    """
+    if request.path.startswith('/api/') or request.is_json or request.headers.get('Accept') == 'application/json':
+        return jsonify({'error': 'Authentication required', 'login_required': True}), 401
+    return redirect('/login')
+
 # Flask-Login user loader
 # Called by Flask-Login to reload user object from user ID stored in session
 @login_manager.user_loader

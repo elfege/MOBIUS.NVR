@@ -1181,6 +1181,47 @@ export class MultiStreamManager {
 
         // Setup camera selector event handlers for show/hide and HD/SD quality changes
         this.setupCameraSelectorHandlers();
+
+        // Stream type selector: toggle dropdown on button click
+        this.$container.on('click.streamtype', '.stream-type-btn', (e) => {
+            e.stopPropagation();
+            const $selector = $(e.target).closest('.stream-type-selector');
+            const $dropdown = $selector.find('.stream-type-dropdown');
+            const currentType = $selector.closest('.stream-item').data('stream-type');
+
+            // Mark current type as active
+            $dropdown.find('.stream-type-option').removeClass('active');
+            $dropdown.find(`.stream-type-option[data-type="${currentType}"]`).addClass('active');
+
+            // Toggle dropdown visibility
+            const isVisible = $dropdown.is(':visible');
+            // Close all other dropdowns first
+            this.$container.find('.stream-type-dropdown').hide();
+            if (!isVisible) $dropdown.show();
+        });
+
+        // Stream type selector: handle option click — live switch
+        this.$container.on('click.streamtype-option', '.stream-type-option', async (e) => {
+            e.stopPropagation();
+            const $option = $(e.target);
+            const newType = $option.data('type');
+            const $selector = $option.closest('.stream-type-selector');
+            const cameraSerial = $selector.data('camera-serial');
+
+            // Hide dropdown
+            $selector.find('.stream-type-dropdown').hide();
+
+            // Update the label immediately for responsiveness
+            $selector.find('.stream-type-label').text(newType);
+
+            // Perform live switch (stops old, starts new, saves to DB)
+            await this.switchStreamType(cameraSerial, newType);
+        });
+
+        // Close stream type dropdown when clicking outside
+        $(document).on('click.streamtype-close', () => {
+            this.$container.find('.stream-type-dropdown').hide();
+        });
     }
 
     /**

@@ -6622,6 +6622,15 @@ def api_storage_reconcile():
         migration_service = get_storage_migration_service()
         result = migration_service.reconcile_db_with_filesystem(progress_callback=progress_callback)
 
+        # Check if the service-level lock prevented execution
+        if result.errors and "already in progress" in str(result.errors):
+            update_migration_status(in_progress=False)
+            return jsonify({
+                'success': False,
+                'error': 'Reconciliation already running (service lock)',
+                'in_progress': True
+            }), 409
+
         # Update migration status - complete
         update_migration_status(
             in_progress=False,

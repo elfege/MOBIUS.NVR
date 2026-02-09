@@ -413,6 +413,10 @@
                     <button class="stream-type-option" data-type="HLS">HLS</button>
                     <button class="stream-type-option" data-type="LL_HLS">LL-HLS</button>
                     <button class="stream-type-option" data-type="MJPEG">MJPEG</button>
+                    {% if info.type == 'reolink' %}
+                    <button class="stream-type-option" data-type="NEOLINK">Neolink</button>
+                    <button class="stream-type-option" data-type="NEOLINK_LL_HLS">Neo-LLHLS</button>
+                    {% endif %}
                 </div>
             </div>
 

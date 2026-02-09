@@ -195,20 +195,26 @@ class BaichuanPTZHandler:
             if not host:
                 return False, "Failed to connect to camera via Baichuan"
 
-            # Calculate speed (1-64 range for Reolink)
-            speed = int(cls.DEFAULT_SPEED * speed_multiplier)
-            speed = max(1, min(64, speed))
-
             # Execute PTZ command
             # Channel 0 is the main channel for most Reolink cameras
             channel = 0
 
+            # Check if camera supports speed control (E1 and some budget models don't)
+            supports_speed = host.supported(channel, "ptz_speed")
+
             if direction == 'stop':
                 await host.set_ptz_command(channel, command='Stop')
                 logger.info(f"Baichuan PTZ stopped for {camera_serial}")
-            else:
+            elif supports_speed:
+                # Calculate speed (1-64 range for Reolink)
+                speed = int(cls.DEFAULT_SPEED * speed_multiplier)
+                speed = max(1, min(64, speed))
                 await host.set_ptz_command(channel, command=command, speed=speed)
                 logger.info(f"Baichuan PTZ {direction} started for {camera_serial} (speed: {speed})")
+            else:
+                # No speed support — send command without speed parameter
+                await host.set_ptz_command(channel, command=command)
+                logger.info(f"Baichuan PTZ {direction} started for {camera_serial} (no speed control)")
 
             return True, "PTZ command executed successfully"
 

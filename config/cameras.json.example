@@ -1,12 +1,12 @@
 {
   "devices": {
-    "3E28A75E8AA74F4B": {
+    "DB095307641346C4": {
       "notes": "",
       "packager_path": "68d49398005cf203e400043f",
       "type": "unifi",
       "name": "UNIFI_Camera_1",
-      "camera_id": "T8400PF7E34DC76B",
-      "serial": "3E28A75E8AA74F4B",
+      "camera_id": "T8400P6CF27DA7F9",
+      "serial": "DB095307641346C4",
       "host": "192.168.1.100",
       "mac": "AA:BB:CC:DD:EE:00",
       "rtsp_alias": "this value is exported into the environment by get_cameras_credentials function in .bash_utils, called by start.sh",
@@ -56,7 +56,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "3E28A75E8AA74F4B",
+          "path": "DB095307641346C4",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -135,7 +135,7 @@
       "ui_health_monitor": true,
       "reversed_pan": false,
       "reversed_tilt": false,
-      "id": "447fd97248de48a5",
+      "id": "c63c92220d4d4881",
       "two_way_audio": {
         "enabled": false,
         "protocol": null,
@@ -165,7 +165,7 @@
           "enabled": false
         }
       },
-      "station": "T8010P24F5B95862",
+      "station": "T8010P7ED2F12221",
       "model": null,
       "power_supply_device_id": null,
       "image_mirrored": false,
@@ -176,16 +176,16 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "6B520DAF51C94DCD": {
+    "836ED97DC1894F73": {
       "notes": "",
       "packager_path": "T8416P0023352DA9",
       "name": "EUFY_Camera_2",
       "model": "T8416",
       "type": "eufy",
-      "serial": "6B520DAF51C94DCD",
+      "serial": "836ED97DC1894F73",
       "host": "192.168.1.101",
       "mac": "AA:BB:CC:DD:EE:01",
-      "station": "T8010P756A8818AA",
+      "station": "T8010P7E997188AE",
       "image_mirrored": true,
       "capabilities": [
         "streaming",
@@ -234,7 +234,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "6B520DAF51C94DCD",
+          "path": "836ED97DC1894F73",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -349,24 +349,24 @@
       },
       "power_supply_device_id": null,
       "rtsp_alias": null,
-      "id": "d2e19a7f2710425b",
-      "camera_id": "T8T84PBD690AEE58",
+      "id": "5337ce699fbd4f30",
+      "camera_id": "T8T84PEF9BFCF366",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "38761D1943834360": {
+    "D756FC83ABB54705": {
       "notes": "",
       "packager_path": "T8416P0023370398",
       "name": "EUFY_Camera_3",
       "model": "T8416",
       "type": "eufy",
-      "serial": "38761D1943834360",
+      "serial": "D756FC83ABB54705",
       "host": "192.168.1.102",
       "mac": "AA:BB:CC:DD:EE:02",
-      "station": "T8010P99030829E6",
+      "station": "T8010PCE72CE6E15",
       "image_mirrored": false,
       "capabilities": [
         "streaming",
@@ -415,7 +415,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "38761D1943834360",
+          "path": "D756FC83ABB54705",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -530,24 +530,24 @@
       },
       "power_supply_device_id": null,
       "rtsp_alias": null,
-      "id": "9c2636e9de4b43c2",
-      "camera_id": "T8T84PF5C9CFBDA1",
+      "id": "6049e4adbec846dc",
+      "camera_id": "T8T84PFD5FF92BDF",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "6E1A7B80B6BD4544": {
+    "B5078EC7A30348A0": {
       "notes": "",
       "packager_path": "T8416P00233717CB",
       "name": "EUFY_Camera_4",
       "model": "T8416",
       "type": "eufy",
-      "serial": "6E1A7B80B6BD4544",
+      "serial": "B5078EC7A30348A0",
       "host": "192.168.1.103",
       "mac": "AA:BB:CC:DD:EE:03",
-      "station": "T8010P8D2E177933",
+      "station": "T8010P84219D9D2E",
       "image_mirrored": false,
       "capabilities": [
         "streaming",
@@ -596,7 +596,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "6E1A7B80B6BD4544",
+          "path": "B5078EC7A30348A0",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -711,24 +711,24 @@
       },
       "power_supply_device_id": null,
       "rtsp_alias": null,
-      "id": "e70c5d2631614415",
-      "camera_id": "T8T84P9EABB4281A",
+      "id": "e993dea76a354cf2",
+      "camera_id": "T8T84P4BE270C396",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "0C49E1E11DF44DF2": {
+    "38069DADFE924DBA": {
       "notes": "",
       "packager_path": "T8416P0023390DE9",
       "name": "EUFY_Camera_5",
       "model": "T8416",
       "type": "eufy",
-      "serial": "0C49E1E11DF44DF2",
+      "serial": "38069DADFE924DBA",
       "host": "192.168.1.104",
       "mac": "AA:BB:CC:DD:EE:04",
-      "station": "T8010P472C1DFD15",
+      "station": "T8010PB5506B1496",
       "image_mirrored": true,
       "capabilities": [
         "streaming",
@@ -777,7 +777,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "0C49E1E11DF44DF2",
+          "path": "38069DADFE924DBA",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -892,24 +892,24 @@
         }
       },
       "rtsp_alias": null,
-      "id": "2bc975f3382341dd",
-      "camera_id": "T8T84PE4AA8CE899",
+      "id": "a28e1cc425f941f4",
+      "camera_id": "T8T84P3782475942",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "ECC88396A16B4B00": {
+    "8D1E9A1C4305469A": {
       "notes": "",
       "packager_path": "T8416P6024350412",
       "name": "EUFY_Camera_6",
       "model": "T8416",
       "type": "eufy",
-      "serial": "ECC88396A16B4B00",
+      "serial": "8D1E9A1C4305469A",
       "host": "192.168.1.105",
       "mac": "AA:BB:CC:DD:EE:05",
-      "station": "T8010P0D5D96DC1D",
+      "station": "T8010P2B8A484938",
       "image_mirrored": false,
       "capabilities": [
         "streaming",
@@ -958,7 +958,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "ECC88396A16B4B00",
+          "path": "8D1E9A1C4305469A",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -1073,24 +1073,24 @@
         }
       },
       "rtsp_alias": null,
-      "id": "1d0a7dd62646499d",
-      "camera_id": "T8T84P55F36887C3",
+      "id": "9178e7b1c5e94539",
+      "camera_id": "T8T84P9B7B89DD44",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "89F101DD6CEC4948": {
+    "C656D7DB761F4D53": {
       "notes": "",
       "packager_path": "T8419P0024110C6A",
       "name": "EUFY_Camera_7",
       "model": "T8419",
       "type": "eufy",
-      "serial": "89F101DD6CEC4948",
+      "serial": "C656D7DB761F4D53",
       "host": "192.168.1.106",
       "mac": "AA:BB:CC:DD:EE:06",
-      "station": "T8010PA7AC6E1EE8",
+      "station": "T8010P566FA5F32F",
       "image_mirrored": false,
       "capabilities": [
         "streaming",
@@ -1139,7 +1139,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "89F101DD6CEC4948",
+          "path": "C656D7DB761F4D53",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -1254,24 +1254,24 @@
       },
       "power_supply_device_id": null,
       "rtsp_alias": null,
-      "id": "0a105a9e500841ef",
-      "camera_id": "T8T84P5CEDF68614",
+      "id": "2f82b35f59894c61",
+      "camera_id": "T8T84P1FBE97C207",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "D1BDE49B4D7A4173": {
+    "9A9009A616EB414A": {
       "notes": "",
       "packager_path": "T8441P12242302AC",
       "name": "EUFY_Camera_8",
       "model": "T8441",
       "type": "eufy",
-      "serial": "D1BDE49B4D7A4173",
+      "serial": "9A9009A616EB414A",
       "host": "192.168.1.107",
       "mac": "AA:BB:CC:DD:EE:07",
-      "station": "T8010PDAAB39301F",
+      "station": "T8010P76579C2D5F",
       "image_mirrored": false,
       "capabilities": [
         "streaming",
@@ -1319,7 +1319,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "D1BDE49B4D7A4173",
+          "path": "9A9009A616EB414A",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -1434,24 +1434,24 @@
       },
       "power_supply_device_id": null,
       "rtsp_alias": null,
-      "id": "839887aee60e4434",
-      "camera_id": "T8T84PE6D304409E",
+      "id": "6163d9c7f40c4cd9",
+      "camera_id": "T8T84PFFD8DBDA3E",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "8FB1CAF33E09493E": {
+    "6D44D92C98D34672": {
       "notes": "",
       "packager_path": "T8441P122428038A",
       "name": "EUFY_Camera_9",
       "model": "T8441",
       "type": "eufy",
-      "serial": "8FB1CAF33E09493E",
+      "serial": "6D44D92C98D34672",
       "host": "192.168.1.108",
       "mac": "AA:BB:CC:DD:EE:08",
-      "station": "T8010P976F39EF01",
+      "station": "T8010P8357F9B608",
       "image_mirrored": false,
       "capabilities": [
         "streaming",
@@ -1500,7 +1500,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "8FB1CAF33E09493E",
+          "path": "6D44D92C98D34672",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -1615,24 +1615,24 @@
       },
       "power_supply_device_id": null,
       "rtsp_alias": null,
-      "id": "1c54de6c6ba6438d",
-      "camera_id": "T8T84P2EC18266F6",
+      "id": "e6d41dd624284e9f",
+      "camera_id": "T8T84P38D1A71F14",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "5BCA9769A4ED4115": {
+    "CA93F72009434245": {
       "notes": "",
       "packager_path": "T821451024233587",
       "name": "EUFY_Camera_10",
       "model": "T8214",
       "type": "eufy",
-      "serial": "5BCA9769A4ED4115",
+      "serial": "CA93F72009434245",
       "host": "192.168.1.109",
       "mac": "AA:BB:CC:DD:EE:09",
-      "station": "T8010P93FA19D2AC",
+      "station": "T8010P8ACCE71884",
       "image_mirrored": false,
       "capabilities": [
         "doorbell",
@@ -1702,7 +1702,7 @@
           "codec": "pcmu",
           "sample_rate": 8000,
           "backchannel_url": null,
-          "go2rtc_stream": "camera_5bca9769"
+          "go2rtc_stream": "camera_ca93f720"
         },
         "baichuan": {
           "enabled": false
@@ -1713,23 +1713,23 @@
       "rtsp_output": null,
       "rtsp_input": null,
       "power_supply_device_id": null,
-      "camera_id": "T8T82P64B03A3B19",
+      "camera_id": "T8T82P20AA0532D8",
       "true_mjpeg": "false",
       "ll_hls": null,
-      "id": "f9c1ac660ba24c9e",
+      "id": "83d70e46b7724328",
       "power_cycle_on_failure": {
         "enabled": false,
         "cooldown_hours": 24,
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "2BF521628F0A4D87": {
+    "40F1ED6FA7254D5E": {
       "notes": "",
       "packager_path": "95270001Q3D82PF7",
       "name": "REOLINK_Camera_11",
       "model": "E1 Pro",
       "type": "reolink",
-      "serial": "2BF521628F0A4D87",
+      "serial": "40F1ED6FA7254D5E",
       "host": "192.168.1.110",
       "mac": "AA:BB:CC:DD:EE:0A",
       "capabilities": [
@@ -1749,7 +1749,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "2BF521628F0A4D87",
+          "path": "40F1ED6FA7254D5E",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -1858,14 +1858,14 @@
         }
       },
       "rtsp_alias": null,
-      "station": "T8010PD1E49A341F",
+      "station": "T8010P1437AB0FF4",
       "mjpeg_snap": null,
       "power_supply_device_id": null,
-      "camera_id": "T8E1 P05462C58E8",
+      "camera_id": "T8E1 P4BA6DA233A",
       "neolink": null,
       "player_settings": null,
       "image_mirrored": false,
-      "id": "5751fdf982de41be",
+      "id": "57249f2a04794773",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -1873,13 +1873,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "BC93939D0F384FB6": {
+    "56C5E157C8014EEF": {
       "notes": "",
       "packager_path": "XCPTP369388MNVTG",
       "name": "REOLINK_Camera_12",
       "model": "RLC-423WS",
       "type": "reolink",
-      "serial": "BC93939D0F384FB6",
+      "serial": "56C5E157C8014EEF",
       "host": "192.168.1.111",
       "mac": "AA:BB:CC:DD:EE:0B",
       "capabilities": [
@@ -1931,7 +1931,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "BC93939D0F384FB6",
+          "path": "56C5E157C8014EEF",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -2040,11 +2040,11 @@
         }
       },
       "rtsp_alias": null,
-      "station": "T8010P961DCF86F8",
+      "station": "T8010P97E2586F93",
       "power_supply_device_id": null,
-      "camera_id": "T8RLCP4F6BE04CDF",
+      "camera_id": "T8RLCP0A913F6053",
       "image_mirrored": false,
-      "id": "c67cfe4b8f634dbf",
+      "id": "f92857f0cd2b4c5e",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -2052,13 +2052,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "AD2511C6F7F84EED": {
+    "9CEC3AE3C44C4BD2": {
       "notes": "",
       "packager_path": "C6F0SgZ0N0PoL2",
       "name": "SV3C_Camera_13",
       "model": "IPCAM SV3C 1080P DEAS",
       "type": "sv3c",
-      "serial": "AD2511C6F7F84EED",
+      "serial": "9CEC3AE3C44C4BD2",
       "host": "192.168.1.112",
       "mac": "AA:BB:CC:DD:EE:0C",
       "capabilities": [
@@ -2112,7 +2112,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "AD2511C6F7F84EED",
+          "path": "9CEC3AE3C44C4BD2",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -2220,17 +2220,17 @@
           "codec": "pcmu",
           "sample_rate": 8000,
           "backchannel_url": null,
-          "go2rtc_stream": "camera_ad2511c6"
+          "go2rtc_stream": "camera_9cec3ae3"
         },
         "baichuan": {
           "enabled": false
         }
       },
       "rtsp_alias": null,
-      "station": "T8010P004BDD6D76",
-      "camera_id": "T8IPCP8916D9B69E",
+      "station": "T8010PBB4C9739FA",
+      "camera_id": "T8IPCP62B7A3487F",
       "image_mirrored": false,
-      "id": "46386118506f420b",
+      "id": "7759720bb4714ecf",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -2238,13 +2238,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "5A9C062023D241C9": {
+    "9CD100A8AFB645E4": {
       "notes": "",
       "packager_path": "95270000D1B5FBEW",
       "name": "REOLINK_Camera_14",
       "model": "RLC-410W",
       "type": "reolink",
-      "serial": "5A9C062023D241C9",
+      "serial": "9CD100A8AFB645E4",
       "host": "192.168.1.113",
       "mac": "AA:BB:CC:DD:EE:0D",
       "capabilities": [
@@ -2295,7 +2295,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "5A9C062023D241C9",
+          "path": "9CD100A8AFB645E4",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -2404,11 +2404,11 @@
         }
       },
       "rtsp_alias": null,
-      "station": "T8010P97CC42DBDB",
+      "station": "T8010PC515AC0F06",
       "power_supply_device_id": null,
-      "camera_id": "T8RLCP490803BB75",
+      "camera_id": "T8RLCP684371A227",
       "image_mirrored": false,
-      "id": "9a18caf956804e7b",
+      "id": "cb747e6248ba4c67",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -2416,13 +2416,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "480E7FD380964B52": {
+    "FD31320E1CED461A": {
       "notes": "",
       "packager_path": "95270001CSO4BPDZ",
       "name": "REOLINK_Camera_15",
       "model": "RLC-410-5MP",
       "type": "reolink",
-      "serial": "480E7FD380964B52",
+      "serial": "FD31320E1CED461A",
       "host": "192.168.1.114",
       "mac": "AA:BB:CC:DD:EE:0E",
       "capabilities": [
@@ -2473,7 +2473,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "480E7FD380964B52",
+          "path": "FD31320E1CED461A",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -2582,11 +2582,11 @@
         }
       },
       "rtsp_alias": null,
-      "station": "T8010PD54873CCC6",
+      "station": "T8010PF5A1E58F13",
       "power_supply_device_id": "device_15",
-      "camera_id": "T8RLCPC66005D41D",
+      "camera_id": "T8RLCPA732435C4E",
       "image_mirrored": false,
-      "id": "f4e392a875624bcb",
+      "id": "45b36b68310a4d72",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -2594,13 +2594,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "62034C07EBDD4D7E": {
+    "D4D0EF6AC9B04268": {
       "notes": "",
       "packager_path": "95270001CSHLPO74",
       "name": "REOLINK_Camera_16",
       "model": "RLC-410-5MP",
       "type": "reolink",
-      "serial": "62034C07EBDD4D7E",
+      "serial": "D4D0EF6AC9B04268",
       "host": "192.168.1.115",
       "mac": "AA:BB:CC:DD:EE:0F",
       "capabilities": [
@@ -2652,7 +2652,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "62034C07EBDD4D7E",
+          "path": "D4D0EF6AC9B04268",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -2761,11 +2761,11 @@
         }
       },
       "rtsp_alias": null,
-      "station": "T8010PD3AE69FEEF",
+      "station": "T8010PFE880C2C5C",
       "power_supply_device_id": null,
-      "camera_id": "T8RLCP2A2EA75CBD",
+      "camera_id": "T8RLCP303EC26FDE",
       "image_mirrored": false,
-      "id": "1951c4650b094229",
+      "id": "b02fa5aeb1a64feb",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -2773,13 +2773,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "6D53E1C50D424F35": {
+    "9BEE5429C9A44000": {
       "notes": "",
       "packager_path": "95270001NT3KNA67",
       "name": "REOLINK_Camera_17",
       "model": "Reolink E1 Zoom",
       "type": "reolink",
-      "serial": "6D53E1C50D424F35",
+      "serial": "9BEE5429C9A44000",
       "host": "192.168.1.116",
       "mac": "AA:BB:CC:DD:EE:10",
       "capabilities": [
@@ -2832,7 +2832,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "6D53E1C50D424F35",
+          "path": "9BEE5429C9A44000",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -2934,18 +2934,18 @@
           "codec": "pcmu",
           "sample_rate": 8000,
           "backchannel_url": null,
-          "go2rtc_stream": "camera_6d53e1c5"
+          "go2rtc_stream": "camera_9bee5429"
         },
         "baichuan": {
           "enabled": false
         }
       },
       "rtsp_alias": null,
-      "station": "T8010P3E99878EF5",
+      "station": "T8010P64F7A26CE0",
       "power_supply_device_id": "device_17",
-      "camera_id": "T8ReoP3E714123B1",
+      "camera_id": "T8ReoP548139C09D",
       "image_mirrored": false,
-      "id": "e8e81b9451754166",
+      "id": "50bc69734aa642b6",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -2953,13 +2953,13 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "8509C44C1395464D": {
+    "A75B8CB03A2F4DF5": {
       "notes": "",
       "packager_path": "AMC043145A67EFBF79",
       "name": "AMCREST_Camera_18",
       "model": "AMCREST IP2M-841B",
       "type": "amcrest",
-      "serial": "8509C44C1395464D",
+      "serial": "A75B8CB03A2F4DF5",
       "host": "192.168.1.117",
       "mac": "AA:BB:CC:DD:EE:11",
       "capabilities": [
@@ -3011,7 +3011,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "8509C44C1395464D",
+          "path": "A75B8CB03A2F4DF5",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -3113,18 +3113,18 @@
           "codec": "pcmu",
           "sample_rate": 8000,
           "backchannel_url": null,
-          "go2rtc_stream": "camera_8509c44c"
+          "go2rtc_stream": "camera_a75b8cb0"
         },
         "baichuan": {
           "enabled": false
         }
       },
       "rtsp_alias": null,
-      "station": "T8010P794394D508",
+      "station": "T8010P26E0EBB8F5",
       "power_supply_device_id": null,
-      "camera_id": "T8AMCPAFEECC4B97",
+      "camera_id": "T8AMCP65A61154BA",
       "image_mirrored": false,
-      "id": "6e5e738c780c42c5",
+      "id": "50afa1bb200a4656",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,
@@ -3132,19 +3132,20 @@
         "_note": "If true, camera will be auto power-cycled when OFFLINE (3+ failures). Max once per cooldown_hours."
       }
     },
-    "DFF7C85358D4426C": {
-      "notes": "Reolink E1 - no ONVIF, no direct RTSP. Streaming via Baichuan/NEOLINK. PTZ: direct reolink_aio not supported; Neolink MQTT PTZ TBD",
+    "E198C572BECF4BCF": {
+      "notes": "Reolink E1 - no ONVIF, no direct RTSP. Streaming via Baichuan/NEOLINK. PTZ enabled via Baichuan (reolink_aio).",
       "packager_path": "95270000YPTKLLD6",
       "name": "REOLINK_Camera_19",
       "model": "Reolink E1",
       "type": "reolink",
-      "serial": "DFF7C85358D4426C",
+      "serial": "E198C572BECF4BCF",
       "host": "192.168.1.118",
       "mac": "AA:BB:CC:DD:EE:12",
       "capabilities": [
         "streaming",
         "reboot",
-        "two_way_audio"
+        "two_way_audio",
+        "ptz"
       ],
       "stream_type": "NEOLINK",
       "_max_connections_note": "Max concurrent RTSP/HTTP connections camera can handle. 1=snap-polling only, no MediaMTX. Used to prevent overwhelming budget cameras.",
@@ -3178,7 +3179,7 @@
           "protocol": "rtsp",
           "host": "nvr-packager",
           "port": 8554,
-          "path": "DFF7C85358D4426C",
+          "path": "E198C572BECF4BCF",
           "rtsp_transport": "tcp"
         },
         "audio": {
@@ -3262,13 +3263,13 @@
         }
       },
       "rtsp_alias": null,
-      "station": "T8010PE096B1006D",
+      "station": "T8010PE6373CF023",
       "rtsp_output": null,
       "mjpeg_snap": null,
       "power_supply_device_id": null,
-      "camera_id": "T8ReoP6555A5F306",
+      "camera_id": "T8ReoP785F542D7D",
       "image_mirrored": false,
-      "id": "4b97ae2e384541db",
+      "id": "a2b20124caf84d3a",
       "rtsp": null,
       "power_cycle_on_failure": {
         "enabled": false,

@@ -1986,6 +1986,12 @@ export class MultiStreamManager {
      * Update grid layout based on currently visible cameras
      */
     _updateGridLayoutForVisibleCameras() {
+        // Guard: never recalculate grid during fullscreen — only 1 item is visible
+        // due to CSS :has() hiding, which would incorrectly set grid-1.
+        if ($('.stream-item.css-fullscreen').length > 0) {
+            console.log('[Layout] Skipping grid update (in fullscreen mode)');
+            return;
+        }
         const visibleCount = this.$container.find('.stream-item:visible').length;
         let cols;
         if (visibleCount === 0) cols = 1;
@@ -3148,6 +3154,14 @@ export class MultiStreamManager {
         localStorage.removeItem('fullscreenCameraSerial');
         console.log('[Fullscreen] CSS fullscreen class removed - UI exited immediately');
 
+        // STEP 1b: Restore grid layout immediately.
+        // During fullscreen, all other stream items are display:none (via CSS :has()).
+        // If _updateGridLayoutForVisibleCameras() ran during fullscreen (e.g. via
+        // startAllStreams triggered by reconnect/recovery), it would have seen only
+        // 1 visible camera and set grid-1. We must restore the correct column count
+        // now that all cameras are visible again.
+        this.setupLayout();
+
         // Reset processing flag early so button becomes responsive
         this._fullscreenProcessing = false;
 
@@ -3412,6 +3426,9 @@ export class MultiStreamManager {
 
         // Clear localStorage
         localStorage.removeItem('fullscreenCameraSerial');
+
+        // Restore grid layout (may have been set to grid-1 during fullscreen)
+        this.setupLayout();
 
         // Reset all processing flags
         this._fullscreenProcessing = false;

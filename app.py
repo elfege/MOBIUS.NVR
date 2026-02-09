@@ -1465,6 +1465,84 @@ def api_put_my_preferences():
         return jsonify({'error': str(e)}), 500
 
 
+# Valid stream types matching the CHECK constraint in user_camera_preferences table
+VALID_STREAM_TYPES = {'MJPEG', 'HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'}
+
+
+@app.route('/api/user/stream-preferences', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_get_stream_preferences():
+    """
+    Get current user's per-camera stream type preferences.
+    Returns list of {camera_serial, preferred_stream_type} for all cameras
+    where the user has set a preference.
+    """
+    try:
+        response = requests.get(
+            f"{POSTGREST_URL}/user_camera_preferences",
+            params={
+                'user_id': f'eq.{current_user.id}',
+                'select': 'camera_serial,preferred_stream_type'
+            },
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            return jsonify(response.json())
+
+        return jsonify([])
+    except requests.RequestException as e:
+        logger.error(f"Error fetching stream preferences: {e}")
+        return jsonify([])
+
+
+@app.route('/api/user/stream-preferences/<camera_serial>', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_put_stream_preference(camera_serial):
+    """
+    Save or update stream type preference for a specific camera.
+    Uses upsert on the (user_id, camera_serial) unique constraint.
+
+    Body: { "preferred_stream_type": "WEBRTC" }
+    """
+    data = request.get_json()
+    if not data or 'preferred_stream_type' not in data:
+        return jsonify({'error': 'preferred_stream_type is required'}), 400
+
+    stream_type = data['preferred_stream_type']
+    if stream_type not in VALID_STREAM_TYPES:
+        return jsonify({'error': f'Invalid stream type. Must be one of: {", ".join(sorted(VALID_STREAM_TYPES))}'}), 400
+
+    try:
+        response = requests.post(
+            f"{POSTGREST_URL}/user_camera_preferences",
+            json={
+                'user_id': current_user.id,
+                'camera_serial': camera_serial,
+                'preferred_stream_type': stream_type
+            },
+            headers={
+                'Prefer': 'resolution=merge-duplicates,return=representation',
+                'Content-Type': 'application/json'
+            },
+            timeout=5
+        )
+
+        if response.status_code in (200, 201):
+            rows = response.json()
+            if rows:
+                return jsonify(rows[0])
+            return jsonify({'status': 'saved'})
+        else:
+            logger.error(f"Failed to save stream preference: {response.status_code} {response.text}")
+            return jsonify({'error': 'Failed to save stream preference'}), 500
+    except requests.RequestException as e:
+        logger.error(f"Error saving stream preference: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 def _get_allowed_camera_serials(user):
     """
     Get set of allowed camera serials for a user.

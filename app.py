@@ -1543,6 +1543,64 @@ def api_put_stream_preference(camera_serial):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/mediamtx/path-status/<camera_serial>', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_mediamtx_path_status(camera_serial):
+    """
+    Check if a MediaMTX path exists and has an active publisher for a camera.
+    Used by the frontend to validate before switching to MediaMTX-based stream types
+    (WebRTC, HLS, LL_HLS). MJPEG doesn't need MediaMTX.
+
+    Returns:
+        {ready: bool, path: str, message: str}
+    """
+    try:
+        # Resolve MediaMTX path name from camera config
+        from services.camera_repository import CameraRepository
+        camera_config = CameraRepository.get_camera(camera_serial) or {}
+        path_name = camera_config.get('packager_path') or camera_serial
+
+        # Query MediaMTX API for path list
+        resp = requests.get(
+            'http://nvr-packager:9997/v3/paths/list',
+            auth=('nvr-api', ''),
+            timeout=3
+        )
+
+        if resp.status_code != 200:
+            return jsonify({
+                'ready': False,
+                'path': path_name,
+                'message': 'MediaMTX API unavailable'
+            })
+
+        paths_data = resp.json()
+        for item in paths_data.get('items', []):
+            if item.get('name') == path_name:
+                is_ready = bool(item.get('ready', False))
+                return jsonify({
+                    'ready': is_ready,
+                    'path': path_name,
+                    'message': 'Stream source active' if is_ready else 'Path exists but no active publisher'
+                })
+
+        # Path not found at all
+        return jsonify({
+            'ready': False,
+            'path': path_name,
+            'message': f'No MediaMTX path "{path_name}" found. The server may need a full restart (start.sh) to configure streaming paths.'
+        })
+
+    except requests.RequestException as e:
+        logger.error(f"Error checking MediaMTX path for {camera_serial}: {e}")
+        return jsonify({
+            'ready': False,
+            'path': camera_serial,
+            'message': 'Could not reach MediaMTX service'
+        })
+
+
 def _get_allowed_camera_serials(user):
     """
     Get set of allowed camera serials for a user.

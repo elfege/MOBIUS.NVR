@@ -1,5 +1,5 @@
 {
-  "3368F7E535874B26": {
+  "42D6AD73EA3D49A0": {
     "motion_recording": {
       "enabled": true,
       "detection_method": "onvif",
@@ -24,24 +24,24 @@
       "quality": 85
     }
   },
-  "035160F457664147": {
+  "2D168D397FEC4D4B": {
     "motion_max_mb": 50000,
     "continuous_max_mb": 900000,
     "snapshots_max_mb": 5000,
     "min_free_space_mb": 10000
   },
-  "49F67C6EE8224F2A": {
+  "3188C8A401334CA1": {
     "enabled": true,
     "cron": "0 3 * * *",
     "run_on_startup": false
   },
-  "2B803CD50AB94F08": {
+  "3286566EA4B5424E": {
     "recent_base": "/recordings",
     "recent_host_path": "/mnt/sdc/NVR_Recent",
     "archive_base": "/recordings/STORAGE",
     "archive_host_path": "/mnt/THE_BIG_DRIVE/NVR_RECORDINGS"
   },
-  "9A26D49774D84A87": {
+  "4172F898C1DB427E": {
     "enabled": true,
     "age_threshold_days": 3,
     "archive_retention_days": 90,
@@ -52,14 +52,14 @@
     "max_archive_storage_mb": 8000,
     "parallel_workers": 8
   },
-  "33A875E4B39F4F3B": {
+  "AEBEDC0114994E58": {
     "video_codec": "libx264",
     "preset": "veryfast",
     "crf": 23,
     "audio_codec": "aac",
     "audio_bitrate": "128k"
   },
-  "56CFEC4EF2DD4239": {
+  "35C87B733819422E": {
     "_comment": "Settings for timeline export and preview merge",
     "default": {
       "_comment": "Fast stream copy - no re-encoding (used on desktop)",
@@ -80,12 +80,12 @@
       "movflags": "+faststart"
     }
   },
-  "922EADCB58B34D05": {
+  "9E788472ED13496F": {
     "cooldown_sec": 60,
     "min_event_duration_sec": 3,
     "debounce_sec": 2
   },
-  "B0E0B758BFBD43EC": {
+  "168ADCDF16914186": {
     "T8416P0023370398": {
       "motion_recording": {
         "enabled": true,

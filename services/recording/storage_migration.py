@@ -78,10 +78,11 @@ class StorageMigrationService:
         self.recent_base = Path(storage_paths['recent_base'])
         self.archive_base = Path(storage_paths['archive_base'])
 
-        # Threading lock to prevent concurrent reconciliation operations.
+        # Threading lock to prevent concurrent bulk delete operations.
         # Multiple simultaneous DELETEs on the recordings table cause
         # massive lock contention and PostgREST pool exhaustion.
-        self._reconcile_lock = threading.Lock()
+        # Used by both reconciliation and migration paths.
+        self._bulk_delete_lock = threading.Lock()
 
         logger.info(f"StorageMigrationService initialized")
         logger.info(f"  Recent: {self.recent_base}")
@@ -244,6 +245,10 @@ class StorageMigrationService:
         Delete multiple recordings from the database using direct SQL.
         Bypasses PostgREST entirely to avoid 504 Gateway Timeout issues.
 
+        Thread-safe: Uses _bulk_delete_lock to prevent concurrent bulk deletes
+        from both the migration and reconciliation paths, which would cause
+        PostgreSQL lock contention and PostgREST connection pool exhaustion.
+
         Performance note: file_operations_log has an ON DELETE SET NULL FK
         referencing recordings. With ~100M rows in that table, each DELETE
         triggers a massive scan. We pre-clear FK references in bulk and
@@ -262,6 +267,37 @@ class StorageMigrationService:
         if not recording_ids:
             return 0
 
+        # Serialize bulk deletes - only one batch delete operation at a time.
+        # Both migrate_recent_to_archive and reconcile_db_with_filesystem call
+        # this method, and concurrent DELETEs on recordings cause massive
+        # lock contention with the 98M-row file_operations_log FK.
+        if not self._bulk_delete_lock.acquire(blocking=False):
+            logger.warning(f"Bulk delete already in progress - "
+                          f"queuing {len(recording_ids)} IDs (waiting for lock)")
+        else:
+            self._bulk_delete_lock.release()  # Release to re-acquire below as blocking
+
+        # Acquire lock (blocking - will wait for any in-progress delete to finish)
+        self._bulk_delete_lock.acquire()
+        try:
+            return self._do_batch_delete(recording_ids, batch_size, progress_callback)
+        finally:
+            self._bulk_delete_lock.release()
+
+    def _do_batch_delete(self, recording_ids: List[int], batch_size: int,
+                         progress_callback: Optional[Callable] = None) -> int:
+        """
+        Internal batch delete implementation (called with lock held).
+
+        Strategy: Disable FK triggers via session_replication_role='replica'
+        to skip the ON DELETE SET NULL check against file_operations_log (98M+ rows).
+        Then per-batch: clear FK references for just that batch, then delete.
+        This avoids both the massive single UPDATE and the massive FK trigger scan.
+
+        Dangling recording_ids in file_operations_log are harmless (it's a log table).
+        """
+        import time
+
         deleted_count = 0
         total_ids = len(recording_ids)
         total_batches = (total_ids + batch_size - 1) // batch_size
@@ -271,42 +307,38 @@ class StorageMigrationService:
             conn.autocommit = False
             cursor = conn.cursor()
 
-            # Phase 1: Pre-clear FK references in file_operations_log to avoid
-            # the ON DELETE SET NULL trigger scanning 100M+ rows per batch.
-            # This is much faster as a single bulk UPDATE.
-            logger.info(f"Pre-clearing file_operations_log FK references for {total_ids} recordings...")
-            try:
-                cursor.execute(
-                    "UPDATE file_operations_log SET recording_id = NULL "
-                    "WHERE recording_id = ANY(%s)",
-                    (recording_ids,)
-                )
-                fk_cleared = cursor.rowcount
-                conn.commit()
-                logger.info(f"Cleared {fk_cleared} file_operations_log FK references")
-            except Exception as e:
-                conn.rollback()
-                logger.warning(f"FK pre-clear failed (will proceed with triggers): {e}")
-
-            # Phase 2: Disable triggers/FK checks for bulk delete performance.
-            # session_replication_role='replica' skips all user-defined triggers
-            # and FK constraint checks for this session only.
+            # Disable triggers and FK checks for this session.
+            # This skips the ON DELETE SET NULL trigger on file_operations_log
+            # (98M+ rows) which was causing 14+ minute per-batch deletes.
+            # Dangling recording_ids in the log table are harmless.
+            triggers_disabled = False
             try:
                 cursor.execute("SET session_replication_role = 'replica'")
                 conn.commit()
                 triggers_disabled = True
-                logger.info("Disabled triggers for bulk delete session")
+                logger.info("Disabled triggers/FK checks for bulk delete session")
             except Exception as e:
-                logger.warning(f"Could not disable triggers (proceeding normally): {e}")
-                triggers_disabled = False
+                conn.rollback()
+                logger.warning(f"Could not disable triggers: {e}")
+                # If we can't disable triggers, do per-batch FK pre-clear as fallback
+                logger.info("Will pre-clear FK references per batch instead")
 
-            # Phase 3: Batch delete recordings
+            # Batch delete recordings
             for batch_num in range(total_batches):
                 start = batch_num * batch_size
                 end = start + batch_size
                 batch_ids = recording_ids[start:end]
 
                 try:
+                    # If triggers couldn't be disabled, pre-clear FK refs for this batch
+                    if not triggers_disabled:
+                        cursor.execute(
+                            "UPDATE file_operations_log SET recording_id = NULL "
+                            "WHERE recording_id = ANY(%s)",
+                            (batch_ids,)
+                        )
+                        conn.commit()
+
                     cursor.execute(
                         "DELETE FROM recordings WHERE id = ANY(%s)",
                         (batch_ids,)
@@ -314,7 +346,7 @@ class StorageMigrationService:
                     rows_deleted = cursor.rowcount
                     conn.commit()
                     deleted_count += rows_deleted
-                    logger.info(f"Batch-deleted {rows_deleted} orphaned recordings "
+                    logger.info(f"Batch-deleted {rows_deleted} recordings "
                                f"(batch {batch_num + 1}/{total_batches}, "
                                f"total: {deleted_count}/{total_ids})")
 
@@ -334,7 +366,7 @@ class StorageMigrationService:
                     conn.rollback()
                     logger.error(f"Batch delete failed for batch {batch_num + 1}: {e}")
 
-                # Brief pause between batches to avoid locking contention
+                # Brief pause between batches
                 if batch_num < total_batches - 1:
                     time.sleep(0.3)
 
@@ -352,7 +384,6 @@ class StorageMigrationService:
         except Exception as e:
             logger.error(f"Database connection error during batch delete: {e}")
             logger.info("Falling back to individual deletes via direct SQL")
-            # Fallback: individual deletes via psycopg2 (still no PostgREST)
             try:
                 conn2 = self._get_db_connection()
                 conn2.autocommit = True
@@ -936,7 +967,7 @@ class StorageMigrationService:
         # Prevent concurrent reconciliation - multiple DELETE operations on
         # recordings table cause massive lock contention (98M+ rows in
         # file_operations_log FK makes each batch take minutes)
-        if not self._reconcile_lock.acquire(blocking=False):
+        if not self._bulk_delete_lock.acquire(blocking=False):
             logger.warning("Reconciliation already in progress - skipping duplicate request")
             result = MigrationResult()
             result.trigger_reason = "reconciliation"
@@ -946,7 +977,7 @@ class StorageMigrationService:
         try:
             return self._do_reconcile(progress_callback)
         finally:
-            self._reconcile_lock.release()
+            self._bulk_delete_lock.release()
 
     def _do_reconcile(self, progress_callback: Optional[Callable] = None) -> MigrationResult:
         """

@@ -78,6 +78,11 @@ class StorageMigrationService:
         self.recent_base = Path(storage_paths['recent_base'])
         self.archive_base = Path(storage_paths['archive_base'])
 
+        # Threading lock to prevent concurrent reconciliation operations.
+        # Multiple simultaneous DELETEs on the recordings table cause
+        # massive lock contention and PostgREST pool exhaustion.
+        self._reconcile_lock = threading.Lock()
+
         logger.info(f"StorageMigrationService initialized")
         logger.info(f"  Recent: {self.recent_base}")
         logger.info(f"  Archive: {self.archive_base}")
@@ -233,16 +238,21 @@ class StorageMigrationService:
             connect_timeout=10
         )
 
-    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 500) -> int:
+    def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 500,
+                                  progress_callback: Optional[Callable] = None) -> int:
         """
         Delete multiple recordings from the database using direct SQL.
         Bypasses PostgREST entirely to avoid 504 Gateway Timeout issues.
-        Uses parameterized queries with psycopg2 for safe bulk deletes.
+
+        Performance note: file_operations_log has an ON DELETE SET NULL FK
+        referencing recordings. With ~100M rows in that table, each DELETE
+        triggers a massive scan. We pre-clear FK references in bulk and
+        disable triggers during the delete to avoid this bottleneck.
 
         Args:
             recording_ids: List of recording IDs to delete
-            batch_size: Number of IDs per DELETE statement (default 500,
-                        safe with direct SQL since there's no HTTP overhead)
+            batch_size: Number of IDs per DELETE statement (default 500)
+            progress_callback: Optional callback(files_processed, files_total, current_file)
 
         Returns:
             Number of successfully deleted records
@@ -253,20 +263,50 @@ class StorageMigrationService:
             return 0
 
         deleted_count = 0
-        total_batches = (len(recording_ids) + batch_size - 1) // batch_size
+        total_ids = len(recording_ids)
+        total_batches = (total_ids + batch_size - 1) // batch_size
 
         try:
             conn = self._get_db_connection()
             conn.autocommit = False
             cursor = conn.cursor()
 
+            # Phase 1: Pre-clear FK references in file_operations_log to avoid
+            # the ON DELETE SET NULL trigger scanning 100M+ rows per batch.
+            # This is much faster as a single bulk UPDATE.
+            logger.info(f"Pre-clearing file_operations_log FK references for {total_ids} recordings...")
+            try:
+                cursor.execute(
+                    "UPDATE file_operations_log SET recording_id = NULL "
+                    "WHERE recording_id = ANY(%s)",
+                    (recording_ids,)
+                )
+                fk_cleared = cursor.rowcount
+                conn.commit()
+                logger.info(f"Cleared {fk_cleared} file_operations_log FK references")
+            except Exception as e:
+                conn.rollback()
+                logger.warning(f"FK pre-clear failed (will proceed with triggers): {e}")
+
+            # Phase 2: Disable triggers/FK checks for bulk delete performance.
+            # session_replication_role='replica' skips all user-defined triggers
+            # and FK constraint checks for this session only.
+            try:
+                cursor.execute("SET session_replication_role = 'replica'")
+                conn.commit()
+                triggers_disabled = True
+                logger.info("Disabled triggers for bulk delete session")
+            except Exception as e:
+                logger.warning(f"Could not disable triggers (proceeding normally): {e}")
+                triggers_disabled = False
+
+            # Phase 3: Batch delete recordings
             for batch_num in range(total_batches):
                 start = batch_num * batch_size
                 end = start + batch_size
                 batch_ids = recording_ids[start:end]
 
                 try:
-                    # Use ANY() with array parameter for safe batch delete
                     cursor.execute(
                         "DELETE FROM recordings WHERE id = ANY(%s)",
                         (batch_ids,)
@@ -275,35 +315,58 @@ class StorageMigrationService:
                     conn.commit()
                     deleted_count += rows_deleted
                     logger.info(f"Batch-deleted {rows_deleted} orphaned recordings "
-                               f"(batch {batch_num + 1}/{total_batches})")
+                               f"(batch {batch_num + 1}/{total_batches}, "
+                               f"total: {deleted_count}/{total_ids})")
+
+                    # Report progress to UI
+                    if progress_callback:
+                        try:
+                            progress_callback(
+                                files_processed=deleted_count,
+                                files_total=total_ids,
+                                current_file=f"Deleting orphans: {deleted_count}/{total_ids} "
+                                            f"(batch {batch_num + 1}/{total_batches})"
+                            )
+                        except Exception:
+                            pass  # Don't let callback errors stop the delete
+
                 except Exception as e:
                     conn.rollback()
                     logger.error(f"Batch delete failed for batch {batch_num + 1}: {e}")
 
                 # Brief pause between batches to avoid locking contention
                 if batch_num < total_batches - 1:
-                    time.sleep(0.5)
+                    time.sleep(0.3)
+
+            # Restore normal trigger behavior
+            if triggers_disabled:
+                try:
+                    cursor.execute("SET session_replication_role = 'origin'")
+                    conn.commit()
+                except Exception:
+                    pass
 
             cursor.close()
             conn.close()
 
         except Exception as e:
             logger.error(f"Database connection error during batch delete: {e}")
-            # Fall back to PostgREST single deletes if psycopg2 fails
-            logger.info("Falling back to PostgREST single-record deletes")
-            for rid in recording_ids:
-                try:
-                    resp = requests.delete(
-                        f"{self.postgrest_url}/recordings",
-                        params={'id': f'eq.{rid}'},
-                        headers={'Prefer': 'return=minimal'},
-                        timeout=30
-                    )
-                    resp.raise_for_status()
-                    deleted_count += 1
-                except Exception:
-                    pass
-                time.sleep(0.1)
+            logger.info("Falling back to individual deletes via direct SQL")
+            # Fallback: individual deletes via psycopg2 (still no PostgREST)
+            try:
+                conn2 = self._get_db_connection()
+                conn2.autocommit = True
+                cur2 = conn2.cursor()
+                for rid in recording_ids:
+                    try:
+                        cur2.execute("DELETE FROM recordings WHERE id = %s", (rid,))
+                        deleted_count += 1
+                    except Exception:
+                        pass
+                cur2.close()
+                conn2.close()
+            except Exception as e2:
+                logger.error(f"Fallback individual deletes also failed: {e2}")
 
         return deleted_count
 
@@ -855,6 +918,9 @@ class StorageMigrationService:
         """
         Remove orphaned database entries where files no longer exist.
 
+        Uses a threading lock to prevent concurrent reconciliation operations
+        (which cause PostgreSQL lock contention and PostgREST pool exhaustion).
+
         This handles:
         - Files manually deleted from disk
         - Disk failures
@@ -866,6 +932,25 @@ class StorageMigrationService:
 
         Returns:
             MigrationResult with reconciliation details
+        """
+        # Prevent concurrent reconciliation - multiple DELETE operations on
+        # recordings table cause massive lock contention (98M+ rows in
+        # file_operations_log FK makes each batch take minutes)
+        if not self._reconcile_lock.acquire(blocking=False):
+            logger.warning("Reconciliation already in progress - skipping duplicate request")
+            result = MigrationResult()
+            result.trigger_reason = "reconciliation"
+            result.errors.append("Reconciliation already in progress")
+            return result
+
+        try:
+            return self._do_reconcile(progress_callback)
+        finally:
+            self._reconcile_lock.release()
+
+    def _do_reconcile(self, progress_callback: Optional[Callable] = None) -> MigrationResult:
+        """
+        Internal reconciliation implementation (called with lock held).
         """
         result = MigrationResult()
         result.trigger_reason = "reconciliation"
@@ -893,25 +978,27 @@ class StorageMigrationService:
             if not file_path.exists():
                 orphaned.append(rec)
 
-            # Update progress every 100 records during scan phase
-            if progress_callback and checked % 100 == 0:
+            # Update progress every 500 records during scan phase
+            if progress_callback and checked % 500 == 0:
                 progress_callback(
-                    files_processed=0,
+                    files_processed=checked,
                     files_total=total_records,
-                    current_file=f"Scanning... {checked}/{total_records} checked, {len(orphaned)} orphans found"
+                    current_file=f"Scanning: {checked}/{total_records} checked, {len(orphaned)} orphans found"
                 )
 
         logger.info(f"Found {len(orphaned)} orphaned database entries")
 
-        # Phase 2: Remove orphaned entries using batch DELETE
-        # Instead of individual DELETE requests (which overwhelm PostgREST),
-        # use batch deletion with PostgREST's id=in.(...) syntax.
+        # Phase 2: Remove orphaned entries using direct SQL batch DELETE.
+        # PostgREST is NOT used for this - it's all psycopg2 direct SQL.
         total_orphans = len(orphaned)
         orphan_ids = [rec.get('id') for rec in orphaned if rec.get('id')]
 
         if orphan_ids:
-            logger.info(f"Batch-deleting {len(orphan_ids)} orphaned DB entries...")
-            deleted = self._batch_delete_recordings(orphan_ids)
+            logger.info(f"Batch-deleting {len(orphan_ids)} orphaned DB entries via direct SQL...")
+            deleted = self._batch_delete_recordings(
+                orphan_ids,
+                progress_callback=progress_callback
+            )
             result.success_count = deleted
             result.failed_count = len(orphan_ids) - deleted
 
@@ -924,12 +1011,12 @@ class StorageMigrationService:
                 success=deleted > 0
             )
 
-            # Update progress
+            # Final progress update
             if progress_callback:
                 progress_callback(
                     files_processed=total_orphans,
                     files_total=total_orphans,
-                    current_file=f"Batch-deleted {deleted} orphaned entries"
+                    current_file=f"Complete: {deleted} orphaned entries removed"
                 )
 
         logger.info(f"Reconciliation complete: {result.success_count} orphaned entries removed")

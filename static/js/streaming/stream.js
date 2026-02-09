@@ -1908,6 +1908,30 @@ export class MultiStreamManager {
 
         console.log(`[SwitchType] ${cameraSerial}: ${oldStreamType} → ${newStreamType}`);
 
+        // Phase 0: Check MediaMTX path availability for non-MJPEG types
+        // MJPEG connects directly to camera, all others need MediaMTX
+        const mediamtxTypes = ['WEBRTC', 'HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS'];
+        if (mediamtxTypes.includes(newStreamType)) {
+            try {
+                const checkResp = await fetch(`/api/mediamtx/path-status/${cameraSerial}`);
+                if (checkResp.ok) {
+                    const pathStatus = await checkResp.json();
+                    if (!pathStatus.ready) {
+                        console.warn(`[SwitchType] MediaMTX path not ready for ${cameraSerial}: ${pathStatus.message}`);
+                        const cameraName = $streamItem.data('camera-name') || cameraSerial;
+                        this._showStreamTypeToast(cameraName, pathStatus.message, 'error');
+                        // Revert the active button in the selector row
+                        const $row = $streamItem.find('.stream-type-row');
+                        $row.find('.stream-type-option').removeClass('active');
+                        $row.find(`.stream-type-option[data-type="${oldStreamType}"]`).addClass('active');
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn('[SwitchType] Could not check MediaMTX path, proceeding anyway:', err);
+            }
+        }
+
         // Phase 1: Stop current stream
         this.hlsManager.stopStream(cameraSerial);
         this.webrtcManager.stopStream(cameraSerial);
@@ -1980,6 +2004,42 @@ export class MultiStreamManager {
         }).catch(err => {
             console.warn('[SwitchType] Error saving preference:', err);
         });
+    }
+
+    /**
+     * Show a toast notification for stream type operations.
+     * @param {string} cameraName - Camera display name
+     * @param {string} message - Message text
+     * @param {string} type - 'error', 'success', or 'info'
+     */
+    _showStreamTypeToast(cameraName, message, type = 'info') {
+        const iconClass = type === 'success' ? 'fa-check-circle' :
+                         type === 'error' ? 'fa-exclamation-triangle' :
+                         'fa-info-circle';
+        const bgColor = type === 'success' ? 'rgba(46, 204, 113, 0.95)' :
+                       type === 'error' ? 'rgba(231, 76, 60, 0.95)' :
+                       'rgba(52, 152, 219, 0.95)';
+
+        const $toast = $(`
+            <div class="stream-type-toast" style="
+                position: fixed; top: 80px; right: 20px;
+                background: ${bgColor}; color: #fff;
+                padding: 16px 20px; border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 100000; display: flex; align-items: center;
+                gap: 12px; max-width: 400px;
+                animation: slideInRight 0.3s ease;
+            ">
+                <i class="fas ${iconClass}" style="font-size: 20px; flex-shrink: 0;"></i>
+                <div>
+                    <div style="font-weight: 600;">${cameraName}</div>
+                    <div style="font-size: 13px; opacity: 0.9;">${message}</div>
+                </div>
+            </div>
+        `);
+
+        $('body').append($toast);
+        setTimeout(() => $toast.fadeOut(400, () => $toast.remove()), 6000);
     }
 
     /**

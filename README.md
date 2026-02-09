@@ -432,4 +432,16 @@ python app.py
 
 ## License
 
-Private project. Not for redistribution.
+Copyright (c) 2024-2026 Elfege Leylavergne. All rights reserved.
+
+This project is dual-licensed:
+
+### Personal / Default License
+
+This software is proprietary and confidential. No part of this codebase may be reproduced, distributed, or transmitted in any form without prior written permission from the author. Unauthorized copying, modification, or distribution is strictly prohibited.
+
+### Commercial License
+
+A commercial license is available for organizations wishing to use, adapt, or integrate this system (or portions thereof) into their own products or infrastructure. Terms are negotiated on a case-by-case basis.
+
+For licensing inquiries, contact the author directly.

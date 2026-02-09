@@ -275,6 +275,20 @@
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
                 <i class="fas fa-expand"></i>
             </button>
+            <!-- Stream type selector - shows current type, click to switch -->
+            <div class="stream-type-selector" data-camera-serial="{{ serial }}">
+                <button class="stream-type-btn" title="Change stream type">
+                    <span class="stream-type-label">{{ info.stream_type }}</span>
+                    <i class="fas fa-exchange-alt"></i>
+                </button>
+                <div class="stream-type-dropdown" style="display: none;">
+                    <button class="stream-type-option" data-type="WEBRTC">WebRTC</button>
+                    <button class="stream-type-option" data-type="HLS">HLS</button>
+                    <button class="stream-type-option" data-type="LL_HLS">LL-HLS</button>
+                    <button class="stream-type-option" data-type="MJPEG">MJPEG</button>
+                    <button class="stream-type-option" data-type="NEOLINK">Neolink</button>
+                </div>
+            </div>
             {% if info.stream_type != 'MJPEG' and info.stream_type != 'mjpeg_proxy' %}
             <!-- Volume control container - wraps button and popup for positioning -->
             <div class="volume-control-container">

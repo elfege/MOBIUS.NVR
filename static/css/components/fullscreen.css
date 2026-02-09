@@ -58,12 +58,8 @@
     content: "\f00d" !important; /* Font Awesome times/X icon */
 }
 
-/* Also show X icon in expanded modal on mobile (acts as close/back button) */
-@media (max-width: 768px) {
-    .stream-item.expanded .stream-fullscreen-btn .fa-expand::before {
-        content: "\f00d" !important; /* Font Awesome times/X icon */
-    }
-}
+/* In expanded modal, fullscreen button enters fullscreen (not close).
+   Users close the modal by tapping the backdrop instead. */
 
 /* Stream overlay (title and status) positioning in fullscreen */
 .stream-item.css-fullscreen .stream-overlay {

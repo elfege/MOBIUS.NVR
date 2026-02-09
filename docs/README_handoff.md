@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 8, 2026 20:15 EST*
+*Last updated: February 9, 2026 00:16 EST*
 
 Branch: `stream_type_preferences_FEB_08_2026_a`
 
@@ -25,7 +25,7 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 
 ---
 
-## Current Session: February 8, 2026 (19:35-20:15 EST)
+## Current Session: February 8, 2026 (19:35 EST) → February 9, 2026 (00:16 EST)
 
 **Feature:** Per-User Stream Type Preferences (live switching)
 
@@ -49,12 +49,25 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
    - `docker compose restart` now allowed
    - `./start.sh` and `./deploy.sh` still forbidden (AWS MFA hang rationale documented)
 
+5. **Stream type selector UI** (streams.html, stream-item.css, commit `7993e31`):
+   - Inline button row inside `.stream-controls` panel (accessible via sliders toggle in expanded/fullscreen)
+   - Buttons: WebRTC, HLS, LL-HLS, MJPEG — active button highlighted in blue
+   - CSS: `.stream-type-row` with `.stream-type-option` buttons
+
+6. **JS event handlers updated** (stream.js, commit `7993e31`):
+   - Replaced old `.stream-type-btn`/`.stream-type-selector`/`.stream-type-dropdown` handlers
+   - New handlers use `.stream-type-row` and `.stream-type-option` classes
+   - Controls panel open syncs active type highlight
+
+7. **Fullscreen button fix** (stream.js, fullscreen.css, commit `7993e31`):
+   - Fullscreen button in expanded modal now enters fullscreen instead of closing modal
+   - Removed mobile CSS that changed icon to X in expanded mode
+   - Users close modal via backdrop click
+
 ### What's Still Needed
 
-- **Per-camera stream type selector UI** — dropdown/button in each camera tile to trigger `switchStreamType()`
-  - Should show current type and available options (WEBRTC, HLS, LL_HLS, MJPEG, NEOLINK)
-  - Place near HD toggle in camera controls overlay
-  - CSS styling for the dropdown
+- **Backend restart required** — `docker compose restart nvr` needed for Python API endpoints
+- **End-to-end testing** — verify stream type switching works live
 
 ### Key Files
 
@@ -66,10 +79,21 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 
 ## TODO List
 
-**In Progress:**
+**Done this session:**
 
-- [ ] Per-camera stream type selector UI (dropdown in camera tile)
-- [ ] CSS styling for stream type selector
+- [x] Backend API endpoints (GET/PUT stream preferences)
+- [x] Frontend preference loader (`loadUserStreamPreferences`)
+- [x] Live stream switch method (`switchStreamType`)
+- [x] Stream type selector UI in controls panel
+- [x] JS event handlers for stream type buttons
+- [x] Fullscreen button fix (enters fullscreen from expanded modal)
+
+**Needs testing:**
+
+- [ ] Restart NVR container (`docker compose restart nvr`) for backend changes
+- [ ] End-to-end test: switch stream type, verify live switch works
+- [ ] Verify preferences persist across page reload
+- [ ] Verify per-user isolation (different users see their own preferences)
 
 **Pending:**
 

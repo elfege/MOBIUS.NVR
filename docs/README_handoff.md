@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 8, 2026 10:38 EST*
+*Last updated: February 8, 2026 19:35 EST*
 
 Branch: `user_auth_and_settings_FEB_07_2026_d` (context compaction occurred at 10:38 EST)
 
@@ -437,6 +437,25 @@ Change-password route:
 - Override container position to match intended audio button position
 - **Commit:** `76fa2f3`
 
+### PostgREST Resilience & Batch Delete Fixes (Feb 8, 10:38-19:35 EST)
+
+**Context:** Reconcile DB operation exposed cascading failures:
+1. `file_operations_log` has 98M rows with `ON DELETE SET NULL` FK → each batch delete triggers massive scan
+2. Two concurrent DELETE operations caused PostgreSQL lock contention
+3. PostgREST connection pool exhaustion → 504 timeouts on auth queries → session invalidation
+
+**Files Modified:**
+
+- `models/user.py` - Added psycopg2 direct SQL fallback for `User.get_by_id()` and `User.get_by_username()` when PostgREST is unavailable/saturated. Commit: `d315c84`
+- `services/recording/storage_migration.py` - Major rework:
+  - Added `_bulk_delete_lock` (now `RLock`) to serialize concurrent bulk deletes
+  - `_batch_delete_recordings` bypasses PostgREST entirely (direct psycopg2)
+  - Uses `SET session_replication_role = 'replica'` to skip FK trigger checks
+  - Fixed deadlock: `Lock()` → `RLock()` because `reconcile_db_with_filesystem` acquires the lock then calls `_batch_delete_recordings` which also acquires it (same thread)
+  - Fixed racy lock pattern: non-blocking check + release + re-acquire → `timeout=120`
+  - Commits: `b809199`, `819aced`, `1208e8d`
+- `app.py` - Added `@login_manager.unauthorized_handler` to return JSON 401 for `/api/*` requests instead of HTML login redirect. Fixes "Unexpected token '<'" errors. Commit: `1208e8d`
+
 ### RLS INSERT Fix (Feb 8, ~11:10 EST)
 
 - Migration 008: Added permissive INSERT/DELETE policies on users table
@@ -470,6 +489,8 @@ Change-password route:
 
 **Pending:**
 
+- [ ] file_operations_log cleanup: 98M rows (34GB) needs retention/pruning policy
+- [ ] VACUUM ANALYZE on recordings table (never been vacuumed)
 - [ ] Investigate admin storage settings issue (user report: "admin can't edit storage settings" - needs clarification)
 - [ ] Implement per-user stream type preferences API
 - [ ] Modify frontend to load user stream type preferences

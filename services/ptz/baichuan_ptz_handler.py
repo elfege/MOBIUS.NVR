@@ -339,9 +339,16 @@ class BaichuanPTZHandler:
             # Execute goto preset
             # Channel 0 is the main channel
             channel = 0
-            await host.set_ptz_command(channel, command='ToPos', preset=preset_id, speed=speed)
 
-            logger.info(f"Camera {camera_serial} moving to preset {preset_token} via Baichuan")
+            # Check if camera supports speed control (E1 and some budget models don't)
+            supports_speed = host.supported(channel, "ptz_speed")
+
+            if supports_speed:
+                await host.set_ptz_command(channel, command='ToPos', preset=preset_id, speed=speed)
+                logger.info(f"Camera {camera_serial} moving to preset {preset_token} via Baichuan (speed: {speed})")
+            else:
+                await host.set_ptz_command(channel, command='ToPos', preset=preset_id)
+                logger.info(f"Camera {camera_serial} moving to preset {preset_token} via Baichuan (no speed control)")
             return True, f"Moving to preset {preset_token}"
 
         except Exception as e:

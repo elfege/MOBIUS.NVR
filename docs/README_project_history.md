@@ -16089,3 +16089,75 @@ Branch: `timeline_download_files_JAN_27_2026_a` (merged to main)
 
 ---
 
+## February 7-8, 2026: User Authentication & Settings (23:10-19:35 EST)
+
+**Branches:** `user_auth_and_settings_FEB_07_2026_c` → `user_auth_and_settings_FEB_07_2026_d`
+
+### User Authentication System
+
+Complete bcrypt-based authentication with Flask-Login:
+
+- **Database migration** (`psql/migrations/005_add_user_authentication.sql`): `users`, `user_sessions`, `user_camera_preferences` tables with RLS policies
+- **User model** (`models/user.py`): Flask-Login `UserMixin` with PostgREST integration + psycopg2 direct SQL fallback for resilience
+- **Auth routes** (`app.py`): `/login`, `/logout`, `/change-password` with bcrypt verification, CSRF tokens, forced password change on first login
+- **Templates**: `login.html`, `change_password.html` with `login.css` styling
+- **Route protection**: `@login_required` on 112/115 routes (exempted: login, change-password, health)
+- **Dependencies**: `flask-login==0.6.3`, `bcrypt==4.1.2`
+
+### RLS Policy Fixes
+
+- Migration 006: Permissive SELECT for auth queries (chicken-and-egg: need to query users to login)
+- Migration 007: Permissive UPDATE for password changes
+- Migration 008: Permissive INSERT/DELETE for user creation
+
+### User Management (Admin)
+
+- **API**: GET/POST/PATCH/DELETE `/api/users` (admin only)
+- **Frontend**: `user-management-modal.js` + `user-management.css` — modal with user list, add/edit/delete, role badges
+- **Password management**: Reset button, "require change on first login" checkbox, validates new != old
+
+### Per-User Camera Access Control
+
+- Migration 009: `user_camera_access` table (user_id, camera_serial, allowed)
+- **Backend**: GET/PUT `/api/users/<id>/camera-access`, GET `/api/my-camera-access`
+- **Frontend**: Gear icon per user → modal with camera checkboxes
+- **Server-side filtering**: Streams page and `/api/cameras` both filter by user permissions
+- No rules = all access; rules exist = only allowed cameras; admins always see all
+
+### PostgREST Resilience & Batch Delete Fixes
+
+Reconcile DB operation exposed cascading failures:
+
+1. `file_operations_log` has 98M rows (34GB) with `ON DELETE SET NULL` FK → each batch delete triggers massive scan
+2. Concurrent DELETE operations caused PostgreSQL lock contention
+3. PostgREST connection pool exhaustion → 504 timeouts on auth queries → session invalidation
+
+**Fixes:**
+
+- `models/user.py`: psycopg2 direct SQL fallback when PostgREST unavailable
+- `services/recording/storage_migration.py`: Bypass PostgREST for batch deletes (direct psycopg2), `SET session_replication_role = 'replica'` to skip FK triggers, `RLock` (reentrant) to prevent deadlock between reconciliation and batch delete
+- `app.py`: `@login_manager.unauthorized_handler` returns JSON 401 for `/api/*` instead of HTML login redirect
+
+### UI Fixes
+
+- Fixed icon-only buttons to be circular (36x36px) in user management
+- Fixed audio button vertical alignment in fullscreen HD mode
+
+### Commits (key)
+
+`c3b9b88`, `dbf0d02`, `e0d696f`, `c6fbc76`, `3cea508`, `5c4ed76`, `a64d669`, `da651b2`, `cb7b565`, `f07908c`, `45b3385`, `f5f31fa`, `f31a86a`, `9caeb88`, `8ed80e5`, `76fa2f3`, `7183145`, `b2a12b4`, `b7dea25`, `d315c84`, `b809199`, `819aced`, `1208e8d`, `ba13273`
+
+---
+
+## TODO
+
+- [ ] Implement per-user stream type preferences API
+- [ ] Frontend: load user stream type preferences, allow live switching
+- [ ] file_operations_log cleanup: 98M rows (34GB) needs retention/pruning policy
+- [ ] VACUUM ANALYZE on recordings table (never been vacuumed)
+- [ ] Security: Implement stricter RLS policies (currently permissive)
+- [ ] WebRTC HD/SD fallback - falls back too fast, doesn't retry HD
+- [ ] Add snapshot feature in fullscreen mode
+
+---
+

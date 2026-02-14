@@ -1117,15 +1117,9 @@ class StorageMigrationService:
         Returns:
             Dict with disk usage, file counts, warnings
         """
-        # For archive, use a mounted subdir (archive_base itself may not be a mount point)
-        # In Docker, subdirs like /recordings/STORAGE/motion are mounted, not /recordings/STORAGE
-        archive_check_path = self.archive_base / 'motion'
-        if not archive_check_path.exists():
-            archive_check_path = self.archive_base  # fallback
-
         stats = {
             'recent': self.get_disk_usage(self.recent_base),
-            'archive': self.get_disk_usage(archive_check_path),
+            'archive': self.get_disk_usage(self.archive_base),
             'config': {
                 'age_threshold_days': self.config.get_migration_age_threshold(),
                 'archive_retention_days': self.config.get_archive_retention_days(),

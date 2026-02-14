@@ -1,5 +1,5 @@
 {
-  "8F25C0AABA1D4469": {
+  "CE2DF89FF5424C96": {
     "motion_recording": {
       "enabled": true,
       "detection_method": "onvif",
@@ -24,24 +24,24 @@
       "quality": 85
     }
   },
-  "9494B6665B8149AA": {
+  "9AF603945FA54176": {
     "motion_max_mb": 50000,
     "continuous_max_mb": 900000,
     "snapshots_max_mb": 5000,
     "min_free_space_mb": 10000
   },
-  "151C44F78741424E": {
+  "E6289D96BD2547E6": {
     "enabled": true,
     "cron": "0 3 * * *",
     "run_on_startup": false
   },
-  "5BF0482A6E454924": {
+  "3588B1EC129E4A44": {
     "recent_base": "/recordings",
     "recent_host_path": "/mnt/sdc/NVR_Recent",
     "archive_base": "/recordings/STORAGE",
     "archive_host_path": "/mnt/THE_BIG_DRIVE/NVR_RECORDINGS"
   },
-  "9C6DD9D1475543B5": {
+  "D0246C88C699468C": {
     "enabled": true,
     "age_threshold_days": 3,
     "archive_retention_days": 90,
@@ -52,14 +52,14 @@
     "max_archive_storage_mb": 8000,
     "parallel_workers": 8
   },
-  "6DF5C714371449F4": {
+  "FFE39F4428D840F9": {
     "video_codec": "libx264",
     "preset": "veryfast",
     "crf": 23,
     "audio_codec": "aac",
     "audio_bitrate": "128k"
   },
-  "5339366765F44408": {
+  "D763239F62BE4AC9": {
     "_comment": "Settings for timeline export and preview merge",
     "default": {
       "_comment": "Fast stream copy - no re-encoding (used on desktop)",
@@ -80,12 +80,12 @@
       "movflags": "+faststart"
     }
   },
-  "04E96208239A4AB4": {
+  "3D53282F40394296": {
     "cooldown_sec": 60,
     "min_event_duration_sec": 3,
     "debounce_sec": 2
   },
-  "2C027A0F58A34AD3": {
+  "984DC847F4A34AE9": {
     "T8416P0023370398": {
       "motion_recording": {
         "enabled": true,
@@ -202,9 +202,9 @@
       "motion_recording": {
         "enabled": true,
         "detection_method": "baichuan",
-        "recording_source": "rtsp",
+        "recording_source": "mjpeg_service",
         "segment_duration_sec": 30,
-        "pre_buffer_enabled": false,
+        "pre_buffer_enabled": true,
         "pre_buffer_sec": 5,
         "post_buffer_sec": 10,
         "max_age_days": 7,
@@ -254,8 +254,8 @@
         "detection_method": "baichuan",
         "recording_source": "rtsp",
         "segment_duration_sec": 30,
-        "pre_buffer_enabled": false,
-        "pre_buffer_sec": 5,
+        "pre_buffer_enabled": true,
+        "pre_buffer_sec": 15,
         "post_buffer_sec": 10,
         "max_age_days": 7,
         "quality": "main"
@@ -376,13 +376,13 @@
     "AMC043145A67EFBF79": {
       "motion_recording": {
         "enabled": true,
-        "detection_method": "ffmpeg",
+        "detection_method": "onvif",
         "recording_source": "rtsp",
         "segment_duration_sec": 30,
         "pre_buffer_enabled": true,
-        "pre_buffer_sec": 5,
+        "pre_buffer_sec": 10,
         "post_buffer_sec": 10,
-        "max_age_days": 7,
+        "max_age_days": 365,
         "quality": "main"
       },
       "continuous_recording": {

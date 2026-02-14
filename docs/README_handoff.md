@@ -94,6 +94,28 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - For others: need to investigate after restart — may be MediaMTX path not ready at startup
 - Pre-alarm recording not working (`Retrieved 0 buffer segments`)
 
+### Storage Stats Bug Fix (February 14, 2026 01:20-01:23 EST)
+
+**Problem:** UI showed 1011 GB / 1097 GB (92% full) when disk actually had 903 GB free (14% used)
+
+**Root Cause:** Atomistic docker-compose mounts caused `/recordings` parent to be overlay FS
+- Each subdirectory mounted separately (`/mnt/sdc/NVR_Recent/motion:/recordings/motion`, etc.)
+- `os.statvfs('/recordings')` returned overlay FS stats (wrong)
+- `os.statvfs('/recordings/motion')` returned actual disk stats (correct)
+
+**Solution:**
+1. Simplified docker-compose.yml mounts:
+   - `/mnt/sdc/NVR_Recent:/recordings` (was 6 separate subdirs)
+   - `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS:/recordings/STORAGE` (was 4 separate subdirs)
+2. Removed workaround code in storage_migration.py (lines 1120-1124)
+3. Recreated container with `docker compose up -d --force-recreate nvr`
+
+**Result:** Container now sees correct stats (196 GB used / 1099 GB = 18%)
+
+**Files changed:**
+- `docker-compose.yml` (commit 0707529)
+- `services/recording/storage_migration.py` (commit fc9f926)
+
 ### Key Files
 
 - `app.py` lines ~1468-1600: stream preference + MediaMTX path endpoints
@@ -118,6 +140,7 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - [x] E1 Cat Feeders PTZ (capability + speed check)
 - [x] Grid layout fix (fullscreen exit race condition)
 - [x] NEOLINK options for Reolink cameras
+- [x] **Storage stats bug fix** - simplified docker mounts to fix overlay FS issue (UI showed 92% full when actually 14% used)
 
 **Needs testing (restart done):**
 

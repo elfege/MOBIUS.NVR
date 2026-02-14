@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 9, 2026 02:02 EST*
+*Last updated: February 14, 2026 14:30 EST*
 
 Branch: `stream_type_preferences_FEB_08_2026_a`
 
@@ -25,9 +25,9 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 
 ---
 
-## Current Session: February 8, 2026 (19:35 EST) → February 9, 2026 (02:02 EST)
+## Current Session: February 8, 2026 (19:35 EST) → February 14, 2026 (ongoing)
 
-**Feature:** Per-User Stream Type Preferences (live switching)
+**Feature:** Per-User Stream Type Preferences (live switching) + Stream Stability Fixes
 
 ### What's Done
 
@@ -116,10 +116,50 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - `docker-compose.yml` (commit 0707529)
 - `services/recording/storage_migration.py` (commit fc9f926)
 
+### Stream Stability Fixes — Phase 1 (February 14, 2026 ~14:00-14:30 EST)
+
+**Problem:** Streams frequently freeze/go black, UI health monitor constantly restarting, manual restart button unreliable.
+
+**Root Causes Identified:**
+1. FFmpeg→MediaMTX race condition: `time.sleep(3)` marked streams "active" before MediaMTX publisher ready (5-15s needed)
+2. UI health monitor and backend watchdog fighting each other (no coordination)
+3. Conservative watchdog timing (30s cooldown blocks restarts)
+
+**Fixes Applied (Phase 1 — commits `8957510`, `4f23f70`, `278d6a2`):**
+
+13. **FFmpeg→MediaMTX race condition fix** (camera_state_tracker.py, stream_manager.py):
+    - Added `wait_for_publisher_ready()` to CameraStateTracker — polls MediaMTX API every 1s until path ready (15s timeout)
+    - LL_HLS stream start now waits for publisher confirmation before marking active
+    - `restart_stream()` waits for publisher readiness before returning success
+    - Reduced `STARTING_TIMEOUT_SECONDS` from 60 to 20
+
+14. **UI/Backend recovery coordination** (stream.js, camera-state-monitor.js):
+    - `onUnhealthy` handler now checks backend camera state before scheduling UI restart
+    - If backend watchdog already knows stream is degraded/offline → UI defers to watchdog
+    - Added `isBackendHandling()` method to CameraStateMonitor
+
+15. **Watchdog timing & manual restart fix** (stream_watchdog.py, app.py):
+    - Reduced `RESTART_COOLDOWN_SECONDS` from 30 to 10
+    - Added `clear_cooldown()` method to StreamWatchdog
+    - Manual restart endpoint now clears watchdog cooldown before restarting
+    - Manual restart endpoint waits for MediaMTX publisher readiness (15s timeout)
+    - Returns `publisher_ready` status in response
+
+**Files Changed:**
+- `services/camera_state_tracker.py` — `wait_for_publisher_ready()`, reduced STARTING timeout
+- `streaming/stream_manager.py` — publisher readiness in `_start_stream()` and `restart_stream()`
+- `static/js/streaming/stream.js` — backend state check in `onUnhealthy`
+- `static/js/streaming/camera-state-monitor.js` — `isBackendHandling()` method
+- `services/stream_watchdog.py` — reduced cooldown, `clear_cooldown()`
+- `app.py` — restart endpoint with cooldown clear + publisher readiness wait
+
 ### Key Files
 
 - `app.py` lines ~1468-1600: stream preference + MediaMTX path endpoints
-- `static/js/streaming/stream.js`: `loadUserStreamPreferences()`, `switchStreamType()`, `_showStreamTypeToast()`
+- `app.py` lines ~1993-2089: stream restart endpoint (updated with publisher readiness)
+- `static/js/streaming/stream.js`: `loadUserStreamPreferences()`, `switchStreamType()`, `onUnhealthy`
+- `services/camera_state_tracker.py`: `wait_for_publisher_ready()`, exponential backoff
+- `services/stream_watchdog.py`: `clear_cooldown()`, reduced timing
 - `services/ptz/baichuan_ptz_handler.py`: E1 speed check fix
 - `services/recording/segment_buffer.py`: pre-alarm buffer (investigating failures)
 
@@ -140,22 +180,41 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - [x] E1 Cat Feeders PTZ (capability + speed check)
 - [x] Grid layout fix (fullscreen exit race condition)
 - [x] NEOLINK options for Reolink cameras
-- [x] **Storage stats bug fix** - simplified docker mounts to fix overlay FS issue (UI showed 92% full when actually 14% used)
+- [x] **Storage stats bug fix** — simplified docker mounts to fix overlay FS issue
+- [x] **Phase 1.1** — FFmpeg→MediaMTX race condition fix (publisher readiness check)
+- [x] **Phase 1.2** — UI/backend recovery coordination (onUnhealthy checks backend state)
+- [x] **Phase 1.3** — Reduced watchdog cooldown (30s→10s), STARTING timeout (60s→20s)
+- [x] **Phase 1.4** — Fixed manual restart button (clear cooldown + publisher readiness wait)
 
-**Needs testing (restart done):**
+**Needs testing (requires `docker compose restart`):**
 
+- [ ] Verify Phase 1 fixes: streams should load reliably on first try
+- [ ] Manual restart button: should work within 10-15 seconds
+- [ ] Verify no duplicate restart conflicts (UI + backend)
 - [ ] End-to-end test: switch stream type, verify live switch works
 - [ ] Verify preferences persist across page reload
-- [ ] Verify per-user isolation (different users see their own preferences)
 
-**Pending:**
+**Pending (Phase 2 — Code Quality):**
+
+- [ ] Centralize 30+ hardcoded timeouts to config/timeouts.yaml
+- [ ] Centralize hardcoded MediaMTX addresses to config/services.yaml
+- [ ] Remove commented-out code from MJPEG service files
+- [ ] Fix bare except clauses in talkback_transcoder.py
+
+**Pending (Phase 3 — Refactoring):**
+
+- [ ] Extract MJPEG handler base class (reduce ~300 lines duplication)
+- [ ] Fix circular import architecture
+- [ ] Add camera state audit trail (90-day retention)
+
+**Pending (Other):**
 
 - [ ] file_operations_log cleanup: 98M rows (34GB) needs retention/pruning policy
 - [ ] VACUUM ANALYZE on recordings table (never been vacuumed)
 - [ ] Security: Implement stricter RLS policies (currently permissive)
-- [ ] WebRTC HD/SD fallback - falls back too fast, doesn't retry HD
+- [ ] WebRTC HD/SD fallback — falls back too fast, doesn't retry HD
 - [ ] Add snapshot feature in fullscreen mode
 - [ ] Investigate segment buffer failures (HALLWAY, Office Desk) — pre-alarm recording broken
-- [ ] Warm restart sub-service: a `restart_warm.sh` script (separate from `start.sh`) that skips AWS secrets pull — captures env vars from running container, regenerates MediaMTX paths, runs service init scripts, restarts container with saved env. No MFA hang = Claude Code can run it (solves RULE 9 restriction). Triggered from UI or by Claude directly. `start.sh` remains for cold starts only.
+- [ ] Warm restart sub-service (`restart_warm.sh`)
 
 ---

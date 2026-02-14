@@ -128,42 +128,16 @@ services:
       # recording volumes
 
       # RECENT RECORDINGS
-      - /mnt/sdc/NVR_Recent/motion:/recordings/motion
-      - /mnt/sdc/NVR_Recent/continuous:/recordings/continuous
-      - /mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots
-      - /mnt/sdc/NVR_Recent/manual:/recordings/manual
-      - /mnt/sdc/NVR_Recent/buffer:/recordings/buffer
-      - /mnt/sdc/NVR_Recent/exports:/recordings/exports
+      - /mnt/sdc/NVR_Recent:/recordings
 
       # LONG TERM STORAGE
-      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion
-      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous:/recordings/STORAGE/continuous
-      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual:/recordings/STORAGE/manual
-      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots:/recordings/STORAGE/snapshots
+      - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS:/recordings/STORAGE
 
       # ALTERNATE RECORDING SOURCE (FTP uploads from older surveillance system)
       - ${ALTERNATE_RECORDING_STORAGE:-/mnt/sdc/VIDEOSURVEILLANCE_FTP}:/recordings/ALTERNATE
 
       # Mount Python source code for hot-reloading
       - ./:/app
-      # - ./streaming:/app/streaming
-      # - ./services:/app/services  
-      # - ./packager/mediamtx.yml:/app/packager/mediamtx.yml
-      # - ./config:/app/config:rw
-      # - ./streams:/app/streams
-      # - ./app.py:/app/app.py:ro
-      # - ./requirements.txt:/app/requirements.txt:ro
-      # - ./templates:/app/templates:ro
-      # - ./static:/app/static:ro
-
-      # # Node modules for Eufy bridge
-      # - ./node_modules:/app/node_modules:ro
-
-      # # static for fast ui editting/testing
-      # - ./static:/app/static
-
-      # Persist auth tokens
-      # - ./persistent.json:/app/persistent.json
       
     restart: unless-stopped
 

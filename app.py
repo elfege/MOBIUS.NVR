@@ -2033,10 +2033,13 @@ def api_stream_restart(camera_serial):
 
         logger.info(f"[RESTART] Restarting stream for {camera_name} ({camera_serial})")
 
+        # Clear watchdog cooldown so it doesn't block this manual restart
+        try:
+            stream_watchdog.clear_cooldown(camera_serial)
+        except Exception as e:
+            logger.debug(f"[RESTART] Could not clear watchdog cooldown: {e}")
+
         # Step 1: Stop the stream (kills FFmpeg) or clear zombie slot
-        # NOTE: We must clear ANY slot (even 'starting' status) to prevent zombie slots
-        # from blocking new stream starts. is_stream_alive() returns False for 'starting'
-        # status, but those slots still need to be cleared.
         was_running = stream_manager.is_stream_alive(camera_serial)
         has_slot = camera_serial in stream_manager.active_streams
 
@@ -2050,7 +2053,6 @@ def api_stream_restart(camera_serial):
                     logger.warning(f"[RESTART] Stop returned False for {camera_name}, continuing anyway")
             else:
                 # Zombie slot: has entry but process isn't running
-                # Force remove the slot to allow fresh start
                 logger.warning(f"[RESTART] Removing zombie slot for {camera_name} (status: {slot_status})")
                 stream_manager.active_streams.pop(camera_serial, None)
 
@@ -2068,7 +2070,20 @@ def api_stream_restart(camera_serial):
                 'camera_serial': camera_serial
             }), 500
 
-        logger.info(f"[RESTART] Stream restarted for {camera_name}: {stream_url}")
+        # Step 3: Wait for MediaMTX publisher to be ready
+        # This ensures the UI gets a working stream URL, not a 404
+        import time
+        publisher_ready = camera_state_tracker.wait_for_publisher_ready(
+            camera_serial, timeout=15
+        )
+
+        if not publisher_ready:
+            logger.warning(
+                f"[RESTART] Stream started but publisher not confirmed ready "
+                f"for {camera_name} (FFmpeg may still be connecting to camera)"
+            )
+
+        logger.info(f"[RESTART] Stream restarted for {camera_name}: {stream_url} (publisher_ready: {publisher_ready})")
 
         return jsonify({
             'success': True,
@@ -2076,6 +2091,7 @@ def api_stream_restart(camera_serial):
             'camera_name': camera_name,
             'stream_url': stream_url,
             'was_running': was_running,
+            'publisher_ready': publisher_ready,
             'message': f'Stream restarted for {camera_name}'
         })
 

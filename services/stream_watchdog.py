@@ -71,7 +71,7 @@ class StreamWatchdog:
     STARTUP_WARMUP_SECONDS = 60
 
     # Per-camera cooldown after restart attempt (prevents rapid restart cycling)
-    RESTART_COOLDOWN_SECONDS = 30
+    RESTART_COOLDOWN_SECONDS = 10
 
     def __init__(
         self,
@@ -422,6 +422,21 @@ class StreamWatchdog:
         except Exception as e:
             logger.error(f"[WATCHDOG] MJPEG restart error for {camera_id}: {e}")
             self._state_tracker.register_failure(camera_id, str(e))
+
+    def clear_cooldown(self, camera_id: str) -> None:
+        """
+        Clear restart cooldown for a specific camera.
+
+        Called when a manual restart is triggered via the UI restart button.
+        This ensures the watchdog doesn't block the manual restart due to
+        a prior cooldown period.
+
+        Args:
+            camera_id: Camera serial number
+        """
+        if camera_id in self._restart_cooldowns:
+            del self._restart_cooldowns[camera_id]
+            logger.info(f"[WATCHDOG] Cleared cooldown for {camera_id} (manual restart)")
 
     def set_mjpeg_services(self, services: Dict[str, Any]) -> None:
         """

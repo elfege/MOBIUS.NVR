@@ -134,7 +134,7 @@ services:
       - /mnt/THE_BIG_DRIVE/NVR_RECORDINGS:/recordings/STORAGE
 
       # ALTERNATE RECORDING SOURCE (FTP uploads from older surveillance system)
-      - ${ALTERNATE_RECORDING_STORAGE:-/mnt/sdc/VIDEOSURVEILLANCE_FTP}:/recordings/ALTERNATE
+      - ${ALTERNATE_RECORDING_STORAGE:-/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP}:/recordings/ALTERNATE
 
       # Mount Python source code for hot-reloading
       - ./:/app

@@ -268,6 +268,19 @@ export class CameraStateMonitor {
     }
 
     /**
+     * Check if the backend is currently handling recovery for a camera.
+     * Used by the UI health monitor to avoid scheduling duplicate restarts
+     * when the backend watchdog is already aware and restarting the stream.
+     *
+     * @param {string} cameraId - Camera serial number
+     * @returns {boolean} True if backend shows degraded/offline (watchdog handling it)
+     */
+    isBackendHandling(cameraId) {
+        const state = this.previousStates.get(cameraId);
+        return state === 'degraded' || state === 'offline';
+    }
+
+    /**
      * Calculate remaining time until next retry
      * @param {string} nextRetryISO - ISO timestamp of next retry
      * @returns {number} Remaining seconds (rounded)

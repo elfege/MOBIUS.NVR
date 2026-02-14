@@ -268,6 +268,18 @@ export class MultiStreamManager {
                     const $streamItem = $(`.stream-item[data-camera-serial="${cameraId}"]`);
                     if (!$streamItem.length) return;
 
+                    // CHECK BACKEND STATE: If the backend watchdog already knows
+                    // the stream is down (degraded/offline), defer to it instead of
+                    // scheduling duplicate UI restarts that conflict with backend recovery
+                    const backendState = this.cameraStateMonitor?.previousStates?.get(cameraId);
+                    if (backendState && (backendState === 'degraded' || backendState === 'offline')) {
+                        console.log(
+                            `[Health] ${cameraId}: Backend already aware (state: ${backendState}), ` +
+                            `deferring to watchdog - skipping UI restart`
+                        );
+                        return;
+                    }
+
                     // Get camera metadata for nuclear recovery
                     const cameraType = $streamItem.data('camera-type');
                     const streamType = $streamItem.data('stream-type');

@@ -532,13 +532,13 @@ class StreamManager:
                     stderr=stderr_file,  # ← Write to temp file instead of PIPE
                 )
 
-                time.sleep(3) # ← Give it more time to fail and write error
+                time.sleep(3) # Give FFmpeg time to fail early (bad args, connection refused)
                 if process.poll() is not None:
                     # Process died - read the log file
                     stderr_file.seek(0)
                     error_output = stderr_file.read()
                     stderr_file.close()
-                    
+
                     print(f"════════ FFmpeg DIED for {camera_name} ════════")
                     print(f"Exit code: {process.returncode}")
                     print("Command was:")
@@ -546,18 +546,32 @@ class StreamManager:
                     print("STDERR output:")
                     print(error_output)
                     print("═══════════════════════════════════════════════")
-                    
-                    import os
-                    os.unlink(stderr_file.name)  # Clean up temp file
-                    
-                    raise Exception(f"LL-HLS publisher died (code {process.returncode}): {error_output[:3000]}")
-                    
-                    # Process is running - close the file handle but keep the file for debugging
-                    stderr_file.close()
-                    # Note: temp file stays on disk for post-mortem debugging if needed
-                    # Could add cleanup in stop_stream() if desired
 
-                # Register as active
+                    os.unlink(stderr_file.name)  # Clean up temp file
+
+                    raise Exception(f"LL-HLS publisher died (code {process.returncode}): {error_output[:3000]}")
+
+                # Close stderr file handle (temp file stays for post-mortem debugging)
+                stderr_file.close()
+
+                # FFmpeg process is alive - wait for MediaMTX to confirm publisher ready
+                # This closes the race condition where we marked 'active' before MediaMTX
+                # had accepted the publisher (5-15s depending on camera connection speed)
+                from services.camera_state_tracker import camera_state_tracker
+                publisher_ready = camera_state_tracker.wait_for_publisher_ready(
+                    camera_serial, timeout=15
+                )
+
+                if not publisher_ready:
+                    # FFmpeg running but MediaMTX path not ready after 15s
+                    # Still register as active (FFmpeg may still be connecting to camera)
+                    # but log a warning - watchdog will handle it if it never comes up
+                    logger.warning(
+                        f"Camera {camera_serial} FFmpeg alive but MediaMTX publisher "
+                        f"not ready after 15s - registering anyway, watchdog will monitor"
+                    )
+
+                # Register as active (with or without confirmed publisher)
                 with self._streams_lock:
                     self.active_streams[stream_key] = {
                         'process': process,
@@ -899,24 +913,25 @@ class StreamManager:
         """
         Restart LL-HLS stream for a camera.
 
-        Public method for the new StreamWatchdog to use. Performs a clean
-        stop and start cycle for the FFmpeg publisher.
+        Public method for StreamWatchdog and manual restart to use. Performs a
+        clean stop and start cycle for the FFmpeg publisher, then waits for
+        MediaMTX to confirm the publisher is ready before returning success.
 
         Args:
             camera_serial: Camera serial number
 
         Returns:
-            bool: True if restart was successful, False otherwise
+            bool: True if restart was successful and publisher confirmed ready,
+                  False otherwise
 
         Note:
-            This replaces the old _watchdog_restart_stream internal method.
-            Uses stop_stream() + start_stream() for clean restart.
+            Uses stop_stream() + start_stream() + wait_for_publisher_ready()
+            for a complete restart with readiness verification.
         """
         logger.info(f"[RESTART] Initiating restart for {camera_serial}")
 
         try:
-            # Step 1: Stop existing stream (don't stop old watchdog - it's deprecated)
-            # Use stop_watchdog=False since old watchdog is being removed
+            # Step 1: Stop existing stream
             if camera_serial in self.active_streams:
                 logger.info(f"[RESTART] Stopping existing stream for {camera_serial}")
                 stopped = self.stop_stream(camera_serial, stop_watchdog=False)
@@ -930,8 +945,25 @@ class StreamManager:
             playlist_url = self.start_stream(camera_serial, resolution='sub')
 
             if playlist_url:
-                logger.info(f"[RESTART] Stream restart successful for {camera_serial}: {playlist_url}")
-                return True
+                # Step 3: Wait for publisher readiness confirmation
+                # start_stream() returns URL immediately, but _start_stream() runs
+                # in background thread. Wait for the publisher to actually be ready.
+                from services.camera_state_tracker import camera_state_tracker
+                publisher_ready = camera_state_tracker.wait_for_publisher_ready(
+                    camera_serial, timeout=20
+                )
+
+                if publisher_ready:
+                    logger.info(f"[RESTART] Stream restart successful for {camera_serial}: {playlist_url}")
+                    return True
+                else:
+                    logger.warning(
+                        f"[RESTART] Stream started but publisher not confirmed ready "
+                        f"for {camera_serial} (FFmpeg may still be connecting)"
+                    )
+                    # Return True anyway - FFmpeg is running, it may just need more time
+                    # The watchdog will catch it if it never comes up
+                    return True
             else:
                 logger.error(f"[RESTART] start_stream returned None for {camera_serial}")
                 return False

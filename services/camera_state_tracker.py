@@ -535,11 +535,65 @@ class CameraStateTracker:
             logger.error(f"Error parsing MediaMTX API response: {e}", exc_info=True)
 
 
+    def wait_for_publisher_ready(self, camera_id: str, timeout: float = 15.0) -> bool:
+        """
+        Block until MediaMTX reports publisher as ready for the given camera.
+
+        Polls MediaMTX API directly (not waiting for background poll cycle)
+        every 1 second until the path reports "ready: true" or timeout expires.
+
+        This closes the race condition where FFmpeg is marked 'active' after
+        a fixed sleep (3s) but MediaMTX hasn't accepted the publisher yet
+        (takes 5-15s depending on camera connection speed).
+
+        Args:
+            camera_id: Camera serial number
+            timeout: Maximum seconds to wait (default: 15)
+
+        Returns:
+            True if publisher became ready within timeout, False otherwise
+        """
+        start = time.time()
+        poll_interval = 1.0
+
+        while (time.time() - start) < timeout:
+            try:
+                response = requests.get(
+                    f"{self._mediamtx_api_url}/v3/paths/list",
+                    auth=('nvr-api', ''),
+                    timeout=2
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    for path_info in data.get('items', []):
+                        if path_info.get('name') == camera_id:
+                            if path_info.get('ready', False):
+                                elapsed = time.time() - start
+                                logger.info(
+                                    f"Camera {camera_id} publisher ready after {elapsed:.1f}s"
+                                )
+                                # Update internal state to match
+                                self.update_publisher_state(camera_id, True)
+                                return True
+                            break  # Found path but not ready yet
+
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"MediaMTX API check for {camera_id}: {e}")
+
+            time.sleep(poll_interval)
+
+        elapsed = time.time() - start
+        logger.warning(
+            f"Camera {camera_id} publisher not ready after {elapsed:.1f}s (timeout: {timeout}s)"
+        )
+        return False
+
     def _check_starting_timeouts(self):
         """
         Check for cameras stuck in STARTING state and transition to DEGRADED.
 
-        If a camera has been in STARTING state for 60+ seconds without
+        If a camera has been in STARTING state for 20+ seconds without
         publisher_active becoming True, it's likely stuck (FFmpeg never started
         or died immediately). Transition to DEGRADED so StreamWatchdog can
         pick it up and attempt a restart.
@@ -547,7 +601,7 @@ class CameraStateTracker:
         This fixes the issue where cameras get stuck showing "Starting..."
         forever because the watchdog skips cameras in STARTING state.
         """
-        STARTING_TIMEOUT_SECONDS = 60
+        STARTING_TIMEOUT_SECONDS = 20
 
         with self._lock:
             now = datetime.now()

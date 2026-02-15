@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/presence-indicators.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/camera-selector.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/user-management.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/standby-overlay.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -40,6 +41,32 @@
 </head>
 
 <body>
+
+<!-- Standby overlay — shown when monitor is off/standby to save bandwidth -->
+<div id="standby-overlay" class="standby-overlay">
+    <div class="standby-particles">
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+        <div class="standby-particle"></div>
+    </div>
+    <div class="standby-rings">
+        <div class="standby-ring"></div>
+        <div class="standby-ring"></div>
+        <div class="standby-ring"></div>
+        <div class="standby-ring"></div>
+        <div class="standby-ring"></div>
+        <div class="standby-eye"></div>
+    </div>
+    <div class="standby-message">
+        <div class="standby-title">Streams Paused</div>
+        <div class="standby-subtitle">Monitor standby detected</div>
+    </div>
+</div>
     <!-- ================================================================
          NAVBAR - Dark glassmorphism design (matches 0_TILES)
          Always visible, slim fixed bar with slide-in navigation menu.

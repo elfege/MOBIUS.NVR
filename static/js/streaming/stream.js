@@ -23,6 +23,7 @@ import { CameraStateMonitor } from './camera-state-monitor.js';
 import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
 import { SnapshotStreamManager } from './snapshot-stream.js';
 import { talkbackManager } from './talkback-manager.js';
+import { VisibilityManager } from './visibility-manager.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
@@ -403,6 +404,29 @@ export class MultiStreamManager {
             console.log('[Init] Attempting fullscreen restore...');
             this.restoreFullscreenFromLocalStorage();
         }, 1000);  // Reduced from 3000ms - just needs DOM ready
+
+        // Visibility manager: detect monitor standby/off, tear down streams to
+        // save bandwidth, show hypnotic overlay, reload page on wake
+        this.visibilityManager = new VisibilityManager({
+            graceMs: 3000,       // Ignore tab switches < 3 seconds
+            reloadDelayMs: 1800, // Show wake animation before reload
+            onSleep: () => {
+                console.log('[Visibility] Tearing down all browser-side stream consumers');
+                // Stop all stream types (HLS.js, WebRTC PeerConnections, MJPEG img polling)
+                this.stopAllStreams();
+                // Stop health monitor (no point checking dead streams)
+                if (this.health) {
+                    this.trackers?.forEach((_, serial) => this.health.detach(serial));
+                }
+                // Stop camera state polling
+                this.cameraStateMonitor?.stop();
+                // Disconnect stream events WebSocket
+                if (this.streamEventsSocket) {
+                    this.streamEventsSocket.disconnect();
+                }
+            }
+        });
+        this.visibilityManager.start();
     }
 
     async nuclear(cameraId, streamItem, cameraType, streamType) {

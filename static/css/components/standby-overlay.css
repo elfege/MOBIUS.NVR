@@ -1,0 +1,207 @@
+/* ==========================================================================
+   Standby Overlay — Shown when monitor is off/standby (Page Visibility API)
+   Streams are torn down to save bandwidth. Page reloads when monitor returns.
+   ========================================================================== */
+
+.standby-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 100000;
+    background: #0a0a0f;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+}
+
+.standby-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+/* ---- Hypnotic ring animation (camera lens / radar motif) ---- */
+
+.standby-rings {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin-bottom: 48px;
+}
+
+.standby-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    transform: translate(-50%, -50%);
+}
+
+/* Ring 1 — outermost, slow rotation */
+.standby-ring:nth-child(1) {
+    width: 260px;
+    height: 260px;
+    border-top-color: rgba(59, 130, 246, 0.5);
+    border-right-color: rgba(59, 130, 246, 0.15);
+    animation: ring-spin 8s linear infinite;
+}
+
+/* Ring 2 */
+.standby-ring:nth-child(2) {
+    width: 210px;
+    height: 210px;
+    border-top-color: rgba(99, 102, 241, 0.5);
+    border-left-color: rgba(99, 102, 241, 0.15);
+    animation: ring-spin 6s linear infinite reverse;
+}
+
+/* Ring 3 */
+.standby-ring:nth-child(3) {
+    width: 160px;
+    height: 160px;
+    border-bottom-color: rgba(139, 92, 246, 0.6);
+    border-right-color: rgba(139, 92, 246, 0.15);
+    animation: ring-spin 4.5s linear infinite;
+}
+
+/* Ring 4 */
+.standby-ring:nth-child(4) {
+    width: 110px;
+    height: 110px;
+    border-top-color: rgba(168, 85, 247, 0.6);
+    border-left-color: rgba(168, 85, 247, 0.2);
+    animation: ring-spin 3s linear infinite reverse;
+}
+
+/* Ring 5 — innermost, fastest */
+.standby-ring:nth-child(5) {
+    width: 60px;
+    height: 60px;
+    border-bottom-color: rgba(192, 132, 252, 0.7);
+    border-right-color: rgba(192, 132, 252, 0.25);
+    animation: ring-spin 2s linear infinite;
+}
+
+/* Center dot — the "eye" / lens aperture */
+.standby-eye {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(192, 132, 252, 0.9) 0%, rgba(59, 130, 246, 0.4) 100%);
+    transform: translate(-50%, -50%);
+    animation: eye-pulse 3s ease-in-out infinite;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.4), 0 0 60px rgba(139, 92, 246, 0.15);
+}
+
+@keyframes ring-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes eye-pulse {
+    0%, 100% {
+        width: 16px;
+        height: 16px;
+        box-shadow: 0 0 20px rgba(139, 92, 246, 0.4), 0 0 60px rgba(139, 92, 246, 0.15);
+    }
+    50% {
+        width: 22px;
+        height: 22px;
+        box-shadow: 0 0 30px rgba(139, 92, 246, 0.6), 0 0 80px rgba(139, 92, 246, 0.25);
+    }
+}
+
+/* ---- Text messages ---- */
+
+.standby-message {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    user-select: none;
+}
+
+.standby-title {
+    font-size: 1.4rem;
+    font-weight: 300;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    opacity: 0.9;
+    transition: opacity 0.4s, color 0.4s;
+}
+
+.standby-subtitle {
+    font-size: 0.85rem;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.35);
+    transition: opacity 0.4s, color 0.4s;
+}
+
+/* ---- "Waking up" state — rings speed up, message changes ---- */
+
+.standby-overlay.waking .standby-ring:nth-child(1) { animation-duration: 1.5s; }
+.standby-overlay.waking .standby-ring:nth-child(2) { animation-duration: 1.2s; }
+.standby-overlay.waking .standby-ring:nth-child(3) { animation-duration: 0.9s; }
+.standby-overlay.waking .standby-ring:nth-child(4) { animation-duration: 0.7s; }
+.standby-overlay.waking .standby-ring:nth-child(5) { animation-duration: 0.5s; }
+
+.standby-overlay.waking .standby-eye {
+    animation: eye-pulse 0.6s ease-in-out infinite;
+    background: radial-gradient(circle, rgba(52, 211, 153, 0.9) 0%, rgba(59, 130, 246, 0.5) 100%);
+    box-shadow: 0 0 30px rgba(52, 211, 153, 0.5), 0 0 80px rgba(52, 211, 153, 0.2);
+}
+
+.standby-overlay.waking .standby-title {
+    color: rgba(52, 211, 153, 0.95);
+}
+
+.standby-overlay.waking .standby-subtitle {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ---- Ambient floating particles (subtle depth) ---- */
+
+.standby-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.standby-particle {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.3);
+    animation: particle-float linear infinite;
+}
+
+.standby-particle:nth-child(1) { left: 15%; animation-duration: 18s; animation-delay: 0s; }
+.standby-particle:nth-child(2) { left: 35%; animation-duration: 22s; animation-delay: -4s; }
+.standby-particle:nth-child(3) { left: 55%; animation-duration: 16s; animation-delay: -8s; }
+.standby-particle:nth-child(4) { left: 75%; animation-duration: 20s; animation-delay: -12s; }
+.standby-particle:nth-child(5) { left: 90%; animation-duration: 24s; animation-delay: -6s; }
+.standby-particle:nth-child(6) { left: 5%;  animation-duration: 19s; animation-delay: -10s; }
+.standby-particle:nth-child(7) { left: 45%; animation-duration: 21s; animation-delay: -2s; }
+.standby-particle:nth-child(8) { left: 65%; animation-duration: 17s; animation-delay: -14s; }
+
+@keyframes particle-float {
+    0%   { transform: translateY(100vh) scale(0.5); opacity: 0; }
+    10%  { opacity: 0.6; }
+    90%  { opacity: 0.6; }
+    100% { transform: translateY(-20px) scale(1.2); opacity: 0; }
+}

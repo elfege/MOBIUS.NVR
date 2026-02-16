@@ -81,6 +81,14 @@ if [[ -f ~/0_NVR/ensure_recording_paths.sh ]]; then
 	~/0_NVR/ensure_recording_paths.sh >/dev/null 
 fi
 
+# Ensure TLS certs exist (MediaMTX + nginx need them)
+if [ ! -f certs/dev/fullchain.pem ] || [ ! -f certs/dev/privkey.pem ]; then
+	echo ""
+	echo "TLS certs missing — generating self-signed certs..."
+	~/0_NVR/0_MAINTENANCE_SCRIPTS/make_self_signed_tls.sh
+	echo -e "${GREEN}✓ TLS certs generated${NC}"
+fi
+
 # Start the container
 echo ""
 echo "Starting container..."
@@ -100,10 +108,6 @@ if docker ps | grep -q unified-nvr; then
 	echo "  - HTTPS (edge, HTTP/2): https://$(hostname -I | awk '{print $1}')/"
 	echo "  - HTTP  (direct app):   http://$(hostname -I | awk '{print $1}'):5000"
 	echo ""
-	if [ ! -f certs/dev/fullchain.pem ] || [ ! -f certs/dev/privkey.pem ]; then
-		echo "⚠️  TLS certs not found in certs/dev/. Run:"
-		echo "    ~/0_NVR/0_MAINTENANCE_SCRIPTS/make_self_signed_tls.sh"
-	fi
 	echo "Useful commands:"
 	echo "  View logs:        docker compose logs -f"
 	echo "  Follow logs:      docker compose logs -f nvr"

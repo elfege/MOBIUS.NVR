@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 15, 2026 21:20 EST*
+*Last updated: February 15, 2026 21:26 EST*
 
 Branch: `stream_type_preferences_FEB_08_2026_a`
 
@@ -187,11 +187,17 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - App became unresponsive (HTTP 000) despite Gunicorn running
 - User running `./deploy.sh` to rebuild
 
+**Feb 9 cameras.json restored (21:23 EST):**
+- Copied from recovery to config/cameras.json (gitignored, can't commit)
+- Containers restarted
+- Backup: config/cameras.json.backup_jan29_NOW
+
 **Next session TODO:**
-- Fix Entrance door RTSP config (add back from Jan 29 or properly handle null)
-- Verify app responds after deploy
-- Push commit f2bdba1 (TLS cert fix) to remote
+- Push 2 commits (f2bdba1 TLS fix, b294074 handoff update)
+- Monitor for Entrance door RTSP null exceptions
+- Verify app responds (was HTTP 000 with Jan 29 version)
 - Test Phase 1 stream stability fixes
+- Investigate why hidden cameras show in UI (localStorage vs cameras.json flag mismatch)
 
 ### Context Compaction & Git Recovery (February 15, 2026 ~17:00 EST)
 

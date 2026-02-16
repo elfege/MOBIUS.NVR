@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 14, 2026 14:30 EST*
+*Last updated: February 15, 2026 21:20 EST*
 
 Branch: `stream_type_preferences_FEB_08_2026_a`
 
@@ -152,6 +152,54 @@ Always read `CLAUDE.md` — RULE 9 was updated: `docker compose restart` is now 
 - `static/js/streaming/camera-state-monitor.js` — `isBackendHandling()` method
 - `services/stream_watchdog.py` — reduced cooldown, `clear_cooldown()`
 - `app.py` — restart endpoint with cooldown clear + publisher readiness wait
+
+### Standby Overlay + Monitor Detection (February 14, 2026 ~14:30 EST, commit `7c49a2c`)
+
+16. **Monitor standby detection** (visibility-manager.js, standby-overlay.css, streams.html):
+    - Page Visibility API detects monitor standby / screen lock / tab switch
+    - 3s grace period ignores brief flickers
+    - On sleep: tears down all browser-side stream consumers, stops health/state monitors
+    - On wake: shows "Reloading Streams" with sped-up animation, reloads page after 1.8s
+    - CSS: 5 concentric rotating rings, pulsing center eye, floating particles
+
+### Docker Image Recovery + TLS Cert Fix (February 15, 2026 17:00-21:20 EST)
+
+**Docker image recovery successful:**
+- Extracted 21MB (1,332 files) from `0_nvr-nvr:latest` image (built Feb 13)
+- Image contained **Feb 9 snapshot** — 11 days newer than Jan 29 version on host
+- Recovered cameras.json with FFmpeg 7.x fixes, PTZ updates, stream type changes
+- See `retrieved_files_post_catastrophic_loss_of_feb_15_2026/README.md` for full details
+
+**Files recovered (newer than current):**
+- `cameras.json` (Feb 9) — FFmpeg 7.x compatibility, SV3C WEBRTC, Cat Feeders PTZ
+- `recording_settings.json` (Feb 9)
+- `go2rtc.yaml` (Jan 29 22:55)
+- `persistent.json` (Feb 9)
+
+**TLS cert auto-generation fix (commit f2bdba1):**
+- `start.sh` now auto-generates self-signed certs if missing
+- Prevents MediaMTX/nginx crash loop after disasters
+- Lines 84-90: check + auto-generate before container start
+
+**Issue identified:**
+- Feb 9 cameras.json has Entrance door with `"rtsp": null`
+- Background service expects RTSP config, causing repeated exceptions
+- App became unresponsive (HTTP 000) despite Gunicorn running
+- User running `./deploy.sh` to rebuild
+
+**Next session TODO:**
+- Fix Entrance door RTSP config (add back from Jan 29 or properly handle null)
+- Verify app responds after deploy
+- Push commit f2bdba1 (TLS cert fix) to remote
+- Test Phase 1 stream stability fixes
+
+### Context Compaction & Git Recovery (February 15, 2026 ~17:00 EST)
+
+- Context compaction occurred
+- Git repo was lost (`.git` directory deleted during recursive docs cleanup from another instance)
+- Recovered: `git init` → `git remote add` → `git fetch` → force checkout of `stream_type_preferences_FEB_08_2026_a`
+- Verified `low_level_handlers/process_reaper.py` exists and is tracked (was already in remote)
+- Container crash (`ModuleNotFoundError: No module named 'low_level_handlers.process_reaper'`) was a pre-existing issue — file was present in the remote all along
 
 ### Key Files
 

@@ -1,412 +1,693 @@
-# Claude Code Instructions for NVR Project
+# Claude Code Instructions for dDMSC Project
 
-## RULE 0: CRITICAL - At the start of EVERY message you write, verify
+## 1. Session Management
 
-1. Have I checked if context compaction occurred? (phrase: "from a previous conversation that ran out of context")
-2. If yes → Did I commit/push current work, create new branch with next suffix (_b,_c), update docs/README_handoff.md noting the compaction?
-3. Have I read `/home/elfege/0_NVR/CLAUDE.md` for project-specific instructions?
-4. Have I read: `docs/nvr_engineering_architecture.html`?
-5. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
+### 1.1 Startup Checklist
 
----
+At the start of EVERY message, verify:
 
-## Project & User Context
+- **1.1.1** Context compaction? (phrase: "from a previous conversation that ran out of context") → if yes, follow 1.2
+- **1.1.2** Have I read this file (`CLAUDE.md`)? Never assume you know enough: always re-read it. You often violate rules. Be paranoïd. 
+- **1.1.3** Have I verified network environment (`hostname` → VFC-3000 IP)?
+- **1.1.4** Am I referencing rule numbers when making decisions?
+- **1.1.5** Have I verified if we are running from hostname:`pmx-dstrm-app1` (Mindhop Office VM) or hostname:`server` (192.168.10.15 - Home machine)? 
+  - **1.1.5.1** Rule 13. 
 
-**Project Purpose:**
+#### 1.1.5 Core Rules Summary (NEVER forget)
 
-- Personal learning project serving as training for professional work
-- Part of portfolio demonstrating engineering capabilities
+**1.1.5.1** Rules and Constraints 
 
-**User Background (Elfege):**
+| Rule | Constraint                                                                     |
+|------|--------------------------------------------------------------------------------|
+| 5.1  | API has NO direct DB access. All data through PostgREST. NEVER use psycopg2.   |
+| 2.1  | Commit early/often. Never merge broken code to main.                           |
+| 4.1  | NEVER modify code you haven't read first.                                      |
+| 11.1 | NEVER start/stop/rebuild Docker or apply DB changes without user permission.   |
+| 5.2  | NEVER create/alter/drop tables directly. Use Flyway.                           |
+| 3.1  | Update README_handoff.md after EVERY file modification.                        |
+| 7.1  | One hypothesis at a time, verify before next step.                             |
 
-- Philosophy Ph.D. (Epistemology, Logic, Classical/Modern/Contemporary Philosophy)
-- Software Engineer since 2022 (see elfege.com/pdf/resume)
-- 18+ years teaching experience (Philosophy, Robotics)
-- Open source contributor in smart home automation community
-- Values understanding the "why" behind implementations
-- Prefers step-by-step approach to maintain comprehension
+**1.1.5.2** when editing/creating a markdown table keep things aligned as I can't always read in rendered mode
 
----
+### 1.2 Context Compaction Protocol
 
-## Server Specifications
+When phrase "from a previous conversation that ran out of context" appears:
 
-**Host:** Dell PowerEdge R730xd (dellserver)
+- **1.2.1** Immediately commit and push any uncommitted changes
+- **1.2.2** Create new branch with next suffix (_b, _c, etc.)
+- **1.2.3** Update `README_handoff.md`: note compaction timestamp, summarize accomplished/pending
+- **1.2.4** Execute Rule 13
+- **1.2.5** Continue work on new branch
 
-- **CPU:** 2x Intel Xeon E5-2690 v4 @ 2.60GHz (56 logical cores, 28 physical)
-- **RAM:** 128GB
-- **OS:** Ubuntu 24.04.3 LTS (WSL IP: 192.168.10.20)
-- **Kernel:** Linux 6.8.0-85-generic
-
----
-
-## NVR System Technical Overview
-
-**Project Purpose:**
-Multi-camera NVR (Network Video Recorder) system supporting:
-
-**Camera Types:**
-
-- Eufy, Reolink, UniFi, Amcrest, SV3C `[update this list if relevant]`
-
-**Streaming Architecture:**
-
-- LL-HLS via MediaMTX (primary)
-- Traditional HLS
-- MJPEG
-- `[update this if relevant]`
-
-**Motion Detection:**
-
-- Reolink Baichuan
-- ONVIF PullPoint
-- FFmpeg scene detection
-- `[update this if relevant]`
-
-**Recording Types:**
-
-- Motion-triggered
-- Continuous
-- Manual
-- `[update this if relevant]`
-
-**Recording Paths:**
-
-*RECENT RECORDINGS:*
-
-- `/mnt/sdc/NVR_Recent/motion:/recordings/motion`
-- `/mnt/sdc/NVR_Recent/continuous:/recordings/continuous`
-- `/mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots`
-- `/mnt/sdc/NVR_Recent/manual:/recordings/manual`
-- `/mnt/sdc/NVR_Recent/buffer:/recordings/buffer`
-
-*LONG TERM STORAGE:*
-
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion`
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous:/recordings/STORAGE/continuous`
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual:/recordings/STORAGE/manual`
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots:/recordings/STORAGE/snapshots`
-
-**Engineering Documentation:**
-
-- See: `docs/nvr_engineering_architecture.html` `[prompt to update this document when relevant]`
+NOTE: Intentional overlap with 1.1 and 2.1 — redundancy ensures critical actions during context transitions.
 
 ---
 
-## Core Workflow Rules
+## 2. Git & Version Control
 
-### RULE 1: Git Workflow - Commit Early and Often
+### 2.1 Branch Naming & Workflow
 
-**After EVERY file modification (Edit/Write tool):**
+#### 2.1.1 Branch Naming
 
-- Commit immediately with detailed message
-- Push immediately
-- When done with a task/issue, or when I say `time to update the history`:
-  - commit and push current branch
-  - make a copy of modified untracked files into `/tmp`
-  - such files include, but are not limited to, `CLAUDE.md`, `docs/README_handoff.md`, ``docs/README_handoff.md`, [ + any other returned byt the`git status` command: it could be one that I personnaly edited!])
-  - checkout to main
-  - merge the branch you just commited and pushed, into main
-  - restore untracked files from `/tmp`
-  - create new branch as described below (Unless it's a final wrap-up request)
-  - port `docs/README_handoff.md` contents to `docs/README_project_history.md`
-  - Archive `docs/README_handoff.md` to `docs/history/handoffs/[branch_name_dir]/README_handoff_[timestamp].md` and then wipe the original file while preserving its essential structure (verify you ported correctly its contents to `docs/README_project_history.md`)
-  - Edit `docs/README_handoff.md` with useful information on what to look for in `docs/README_project_history.md` to resume the work with proper context knowledge to ensure a smooth transition.
-  - Update `docs/nvr_engineering_architecture.html`
-  - Update `README.md` to better reflect current architecture & functionalities, if relevant.
-  - Update `docs/nvr_engineering_architecture.html` to better reflect current architecture, if relevant.
+Format: `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
 
-**Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
+Use `_b`, `_c` suffixes for continued work after completing one significant aspect of the work plan.
 
-- Use `_b`, `_c` suffixes for continued work after we are done with one significant aspect of our work plan.
+#### 2.1.2 `main` Branch Rules
 
-**CRITICAL - Commit Message Rules:**
+- **2.1.2.1** Never make code changes, nor documents edits directly on `main`
+- **2.1.2.2** Checkout to feature branches for each task involving code changes
+- **2.1.2.3** Once a feature branch is committed (often due to compaction), push it, then create a new branch from it with the next suffix
+- **2.1.2.4** No `checkout main` without prior testing (by Claude AND the user) or if the user says: "Wrap up" => Then execute Rule 2.3.
+- **2.1.2.5** Any `checkout main` requires merging the last feature branch and `git push origin main`
+- **2.1.2.6** NEVER execute `git pull` without express user permission
 
-- DO NOT include Anthropic attribution lines
-- DO NOT add "🤖 Generated with [Claude Code]"
-- DO NOT add "Co-Authored-By: Claude..." signatures
-- Use professional, descriptive commit messages only (no icons, emojis, etc.)
+#### 2.1.3 Tracked vs Untracked
 
-### RULE 2: Documentation - Track Everything
+`README_project_history.md` is tracked. `README_handoff.md` is **UNTRACKED** (in `.gitignore`) — NEVER add it back to git.
 
-**Update docs/README_handoff.md after EVERY file modification:**
+### 2.2 Feature Branch Lifecycle
 
-- Record: file changed, what was done, why
-- Include timestamps: `date + time (EST)` - 24h format
-- Verify system time with `date` command before recording timestamps (internal clock drift is common)
-- Update session end-times when adding new entries (e.g., `(12:30-13:15)` → `(12:30-14:00)`)
-- Don't forget RULE 1 regarding archiving. 
+- **2.2.1** A feature is NOT complete until the user has tested and confirmed it works
+- **2.2.2** If testing reveals issues, do NOT merge to main. Instead:
+  - **2.2.2.1** Commit current state on the feature branch
+  - **2.2.2.2** Push the feature branch
+  - **2.2.2.3** Create a new branch from it with the next suffix (_b, _c, etc.)
+  - **2.2.2.4** Fix issues on the new branch
+  - **2.2.2.5** Repeat until the feature passes testing
+- **2.2.3** Only merge to `main` when fully complete and verified
+- **2.2.4** Unfinished or broken work NEVER touches `main`
 
-**When task is complete:**
+### 2.3 Merge to Main
 
-- Update `docs/README_project_history.md` with completed work from handoff
-- After user confirms satisfaction, clear the completed session from handoff file
-- Keep todo list at end of both handoff and history files (even when wiping handoff)
-- Maintain todo list at end of both README_handoff.md and README_project_history.md files at all times
+After the user confirms the feature works:
 
-### RULE 3: Teaching Sessions
+- **2.3.1** Commit with detailed message and push the feature branch to remote
+- **2.3.2** Ask user permission to checkout `main`
+- **2.3.3** Once permitted, checkout `main`, merge last feature branch, push origin main
+- **2.3.4** Checkout into a new branch per 2.1.1 — unless final wrap-up
+- **2.3.5** Port `README_handoff.md` contents into `README_project_history.md`
+- **2.3.6** Archive handoff to `history/handoffs/[branch_name_dir]/README_handoff_[timestamp].md`
+- **2.3.7** Wipe original handoff preserving structure and unchecked TODO items
+- **2.3.8** Edit `README_handoff.md` with pointers to `README_project_history.md` for smooth transition
+- **2.3.9** Update technical documentation in `docs_shared/`
+- **2.3.10** Execute Rule 13
 
-**Whenever user asks to teach them and/or NOT give them the solution:**
+### 2.4 Commit Messages
 
-- Check that there isn't already a relevant `docs/teachings/README_teaching_session_*` file that could be completed
-- Create a dedicated linked entry title as `### [Teaching session: + brief descriptive title](path)` at the end of `docs/README_project_history.md`
-- Create a new file: `docs/teachings/README_teaching_session_$(date +%m_%d_%Y).md`
-- Feel free to reorganize `docs/teachings/` into specific and thematic subdirectories such as `docs/teachings/WEBRTC/...`
-- Keep all existing past teaching files indexed into `docs/teachings/catalog.txt` using `tree docs/teachings/ > docs/teachings/catalog.txt`
-
-**For significant new implementations (even without explicit teaching request):**
-
-- Create a teaching document explaining the "why" and "how"
-- This builds a knowledge base for future reference
-- Learning project = document the learning
-
-### RULE 4: Read Before You Write
-
-**NEVER propose changes to code you haven't read:**
-
-- Always read files before modifying them
-- Check current structure/design/architecture
-- Don't assume or guess - read first
-- Check for existing abstractions, variables, or configuration before hardcoding values
-
-### RULE 5: Project Context - Load on Start
-
-**Always read at conversation start:**
-
-- `/home/elfege/0_NVR/CLAUDE.md` - Project-specific instructions (overrides all defaults)
-- `docs/README_handoff.md` - Recent session history (read last N lines first)
-
-**Re-read CLAUDE.md periodically:**
-
-- Rules evolve with experience - check for user updates regularly
-- Project-specific instructions ALWAYS override system defaults
-
-**Documentation locations:**
-
-- Project history: `docs/README_project_history.md`
-- Session handoff buffer: `docs/README_handoff.md`
-- Chat logs (for recovery): `docs/chat.md`
-- Engineering documentation: `docs/nvr_engineering_architecture.html`
-
-**CRITICAL - Documentation File Location Rule:**
-
-- ALL documentation files MUST be in `/home/elfege/0_NVR/docs/` directory
-- NEVER create or update documentation in `/home/elfege/` root directory
-- If you find duplicate docs in home root, consult user before merging/deleting
-- Common mistake: Creating `~/README_handoff.md` instead of `~/0_NVR/docs/README_handoff.md`
-
-**Update engineering documentation:**
-
-- `docs/nvr_engineering_architecture.html` requires updates on significant architecture changes
-- This is the public portfolio window for the project - keep it current
-
-### RULE 6: Assessment Before Action
-
-**Before writing code:**
-
-- Read relevant files
-- Assess the change scope
-- User can toggle auto-approval mode - respect current permission model
-
-### RULE 7: One Step at a Time
-
-**For complex tasks:**
-
-- Break into discrete steps
-- Use TodoWrite to track progress AND update todos in handoff documentation
-- Mark todos completed immediately after each step (don't wait to mark multiple todos complete together)
+- **2.4.1** Professional, descriptive messages only
+- **2.4.2** NO Anthropic attribution ("Co-Authored-By: Claude...", "Generated with Claude Code")
+- **2.4.3** NO emojis or icons
+- **2.4.4** DO NOT mention CLAUDE.md in commits (it's in .gitignore)
+- **2.4.5** Include Jira ticket number: `<description> (DS-XXXX)` (see 9.2)
 
 ---
 
-## Debugging Rules
+## 3. Documentation
 
-### RULE 8: Hypothetico-Deductive Reasoning ONLY
+### 3.1 Session Tracking
 
-**When debugging or troubleshooting:**
+#### 3.1.1 After Every File Modification
 
-1. Preferably formulate ONE specific hypothesis (edge cases: multiple hypotheses acceptable when they form mutual refutations - e.g., "if H1 then not H2")
-2. Apply RULE 4 (read files first if hypothesis involves code)
-3. Execute verification commands/tests directly (you have the capability)
-4. Wait for results before next hypothesis
-5. CRITICAL: Move step-by-step at human-followable pace
-   - User needs to understand each action
-   - Going too fast leads to errors and lost context
-   - Only accelerate when explicitly authorized ("lazy mode")
+Update `README_handoff.md` with:
 
-### RULE 8.5: Direct Communication - Truth First
+- **3.1.1.1** File changed, what was done, why
+- **3.1.1.2** Timestamps: `date + time (EST)` — 24h format
+- **3.1.1.3** Verify system time with `date` command (Claude Code clock drift is common)
+- **3.1.1.4** Update session end-times when adding entries (e.g., `(12:30-13:15)` → `(12:30-14:00)`)
 
-**Engineering discussions require honesty:**
+#### 3.1.2 When Task Is Complete
 
-- We are engineers here, not a salon. Truth first, even when blunt.
-- NEVER say "You're correct" and then immediately contradict with opposing conclusion
-- Hypocritical politeness breaks diagnostic logic entirely
-- If you disagree, state it directly without apologetic preambles
-- Technical accuracy trumps social niceties!!!
+- **3.1.2.1** Port to `README_project_history.md`
+- **3.1.2.2** After user confirms, clear completed session from handoff
+- **3.1.2.3** Keep TODO list at end of both files (even when wiping handoff)
+- **3.1.2.4** TODO list in `README_project_history.md` must never be re-edited, just completed
+
+### 3.2 Project Context & Locations
+
+#### 3.2.1 Read at Conversation Start
+
+- **3.2.1.1** `CLAUDE.md` — these instructions (override all defaults)
+- **3.2.1.2** `README_handoff.md` — recent session history
+- **3.2.1.3** `~/0_CLAUDE_IC/user_profile_elfege.md` — persistent user profile (background, intellectual style, communication preferences). Never make the user re-explain his history.
+
+#### 3.2.2 Document Locations
+
+**3.2.2.1** Names and relative paths
+
+| Document            | Location                                                                |
+|---------------------|-------------------------------------------------------------------------|
+| Project history     | `docs_shared/project/README_project_history.md`                         |
+| Session handoff     | `README_handoff.md` (project root)                                      |
+| Chat logs           | `chat.md` (project root)                                                |
+| Docs portal         | `docs_shared/index.html`                                                |
+| Technical reference | `docs_shared/reference/README_dDMS_Manufacturers_Detailed_Reference.md` |
+| IRIS reference      | `docs_shared/reference/README_IRIS_implementation.md`                   |
+| Stack architecture  | `docs_shared/architecture/README_dDMSC_stack_description.md`            |
+| Engineering arch    | `docs_shared/architecture/dDMSC_engineering_architecture.html`          |
+| Arch presentation   | `docs_shared/architecture/presentation_dDMSC_architecture.html`         |
+| OID/Vendor profiles | `docs_shared/architecture/README_OID_Vendor_Profile_Design.md`          |
+| API reference       | `docs_shared/api/README_dDMSC_API.md`                                   |
+| Database docs       | `docs_shared/database/README_dDMSC_Database.md`                         |
+| E2E test docs       | `docs_shared/tests/README_dDMSC_E2E_Test.md`                            |
+| Daktronics docs     | `docs_shared/daktronics/docs/`                                          |
+| UI requirements     | `docs_shared/ui_requirements/`                                          |
+| Intercom            | `~/0_CLAUDE_IC/intercom.md`                                             |
+| Decision log        | Confluence (coordinate with Dom)                                        |
+| Requirements        | Jira tickets (source of truth)                                          |
+
+**3.2.2.2** when editing/creating a markdown table keep things aligned as I can't always read in rendered mode
+
+### 3.3 File Naming Conventions
+
+#### 3.3.1 Documentation Files in `docs_shared/`
+
+- **3.3.1.1** Must start with `README_` prefix
+- **3.3.1.2** Project-related: use `dDMS_` or `dDMSC_` prefix (not `DMS_`)
+- **3.3.1.3** Pattern: `README_dDMSC_[description].md`
+
+#### 3.3.2 Exceptions
+
+`_config.yml`, `README.md`, `index.html`, image files
+
+### 3.4 Technical Documentation Updates
+
+When making significant code changes, update:
+
+- **3.4.1** `docs_shared/architecture/dDMSC_engineering_architecture.html` — components, data flow, env vars
+- **3.4.2** `docs_shared/api/README_dDMSC_API.md` — endpoints, schemas, changelog
+- **3.4.3** `docs_shared/architecture/README_dDMSC_stack_description.md` — architecture, directory structure
+- **3.4.4** `docs_shared/architecture/presentation_dDMSC_architecture.html` — status, features
+- **3.4.5** `docs_shared/index.html` — **ALWAYS update when creating new docs** (add doc-card with title, description, tags)
+- **3.4.6** Update "Last Updated" dates when modifying documentation files
+
+### 3.5 API Documentation
+
+- **3.5.1** Update `docs_shared/api/README_dDMSC_API.md` when adding/modifying API endpoints
+- **3.5.2** Include: endpoint, method, request/response format, parameters, examples
+- **3.5.3** Keep changelog at bottom updated
+
+### 3.6 File Path References
+
+When referencing code locations in chat:
+
+- **3.6.1** Use markdown link syntax: `[filename.py:42](filename.py#L42)`
+- **3.6.2** Make file references clickable for VSCode navigation
+- **3.6.3** Never use backticks for file paths unless in code blocks
 
 ---
 
-## Project-Specific Rules
+## 4. Code Practices
 
-### RULE 9: Container Restart Protocol
+### 4.1 Read Before Write
 
-**Container operations:**
+**NEVER propose changes to code you haven't read.**
 
-```bash
-source ~/.bash_aliases
-restartnvr  # Simple restart (docker compose restart) - does NOT reload code
-startnvr    # Full restart with credential reload (./start.sh)
+- **4.1.1** Always read files before modifying them
+- **4.1.2** Check current structure/design/architecture
+- **4.1.3** Don't assume or guess — read first
+- **4.1.4** Check for existing abstractions, classes, variables, or configuration before hardcoding
+
+### 4.2 Incremental Work
+
+- **4.2.1** Break complex tasks into discrete steps
+- **4.2.2** Use TodoWrite to track progress AND update todos in handoff documentation
+- **4.2.3** Mark todos completed immediately after each step
+- **4.2.4** Maintain TODO list at end of both handoff and history files
+
+### 4.3 Code Style
+
+- **4.3.1** Extensive inline comments
+- **4.3.2** Docstrings for every class, method, function
+- **4.3.3** Professional engineering tone (no emojis)
+- **4.3.4** Protocol-specific comments explaining NTCIP objects, OIDs, and message formats
+
+---
+
+## 5. Data Architecture & Database
+
+### 5.1 PostgREST-Only Data Access
+
+**CRITICAL:** The API container communicates with PostgreSQL exclusively through PostgREST.
+
+- **5.1.1** **NEVER** use `psycopg2`, `asyncpg`, `sqlalchemy`, or any direct DB driver in API code
+- **5.1.2** **NEVER** add DB driver packages to `requirements.txt`
+- **5.1.3** **ALL reads** go through PostgREST views/tables (HTTP GET)
+- **5.1.4** **ALL writes** go through PostgREST RPC functions (HTTP POST to `/rpc/<function_name>`)
+- **5.1.5** The `requests` library (already installed) is the only DB client the API needs
+
+#### 5.1.6 Why
+
+Production containers will not have direct DB network access. PostgREST is the data gateway. This applies to dev AND production — no exceptions.
+
+#### 5.1.7 Data Team Contact
+
+Daniel or Joe (DB schema, migrations, Flyway, PostgREST conventions) | preferably Daniel. 
+
+#### 5.1.8 Write Pattern
+
+```python
+response = requests.post(
+    f"{POSTGREST_URL}/rpc/create_vms_device",
+    json={"p_data": data},
+    timeout=10
+)
 ```
 
-**Permission levels:**
+### 5.2 Flyway Migrations
 
-- **`docker compose restart` / `docker compose restart <service>`**: ALLOWED
-  - Claude can run these directly to reload services after code changes
-  - Note: `docker compose restart` restarts processes but does NOT recreate containers
-  - For Python code changes, this is sufficient since volumes bind the code into containers
+**CRITICAL:** Never create, alter, or drop tables directly in the database. This will break migration history and affect the entire company.
 
-- **`./start.sh` and `./deploy.sh`**: FORBIDDEN (Claude must NEVER run these)
-  - **Rationale:** These scripts pull AWS credentials via `aws secretsmanager` with
-    profile `personal`. The AWS CLI prompts for MFA interactively, which hangs
-    in Claude Code's non-interactive environment. Running these would block
-    the terminal indefinitely with no way to recover.
-  - When full container recreation is needed (new dependencies, Docker image changes),
-    note it and the user will run `./start.sh` manually.
+- **5.2.1** **Database Migration Repository:** `ssh app1:dotstream-db`
+  - **5.2.1.1** Migration File Version Naming 
+    - **5.2.1.1.1** Execute steps 5.3.1 through 5.3.2.3 to determine latest version number 
+    - **5.2.1.1.2** When you create a new version file, increment value accordingly.
 
-**When code changes require restart:**
+- **5.2.2** **Tool:** Flyway (executed via GitHub Actions)
+- **5.2.3** **Version folder:** `dotstream-db/migrations/versions/v5/`
+- **5.2.4** **File naming:** `V5.x.x__description_with_underscores.sql`
+- **5.2.5** **Local development:** Write migration SQL in `dDMSC/migrations/` for review first. Copy to dotstream-db only after user approval.
 
-1. Run `docker compose restart <service>` if the change only affects running code
-2. If full recreation needed, note: "Requires `./start.sh` (new deps/image changes)"
-3. Document in handoff that restart was performed or is pending
+### 5.3 Migration Workflow (dotstream-db)
 
-### RULE 10: Camera IDs - Always Use Serial Numbers
+**When user asks you to take on a migration:**
 
-**In config files:**
+- **5.3.1** `cd ~/dotstream-db/`
+- **5.3.2** `git status` — verify you're on `main`
+  - **5.3.2.1** If NOT on main → **stop and ask user** for next steps
+  - **5.3.2.2** If on main but NOT up to date with origin/main → **stop and warn user**
+  - **5.3.2.3** If tree is clean and up to date → `git pull origin main`
+- **5.3.3** Create branch: `elfegesMind_[project]_[description]_[MON_DD_YYYY]`
+  - Example: `elfegesMind_dDMSC_vms_device_crud_FEB_12_2026`
+- **5.3.4** Copy migration files into their respective directories in `~/dotstream-db/`
+- **5.3.5** Commit and push the feature branch
+- **5.3.6** Checkout back to main. **DO NOT MERGE.**
 
-- Use serial numbers as primary keys (e.g., `T8416P0023352DA9`)
-- Never use display names (e.g., "Living Room") as primary identifiers
-- NOTE: Display names acceptable as supplementary metadata (future enhancement for recording_settings.json UI updates)
 
-### RULE 11: MediaMTX Architecture - Tap, Don't Connect
 
-**Streaming source priority:**
+#### 5.3.7 dotstream-db Repository Rules
 
-- Budget cameras (SV3C, Eufy) support ONE RTSP connection only
-- All consumers tap MediaMTX, not cameras directly (EXCEPTION: MJPEG connects directly)
-- LL_HLS publishes to MediaMTX (enables RTSP re-export)
-- NOTE: Future enhancement needed - WebRTC for further latency optimization
+- **5.3.7.1** NEVER edit files directly in `~/dotstream-db` except during the workflow above
+- **5.3.7.2** NEVER merge to main in dotstream-db
+- **5.3.7.3** NEVER push to main in dotstream-db
+- **5.3.7.4** The user (or CI) handles merges and main pushes
 
-### RULE 12: Code Style - Extensive Documentation
+### 5.4 Repeatable Migration Directory Structure
 
-**All code (backend, frontend, and bash scripts):**
+Per Daniel's convention in `dotstream-db/migrations/repeatable/apids/`:
 
-- Extensive inline comments
-- Docstrings for every class, method, function
-- Professional engineering tone (no emojis unless requested)
+| Directory | Contents | When to Use |
+|-----------|----------|-------------|
+| `views/` | Standalone views | View-only SQL, e.g. `R__apids_oids.sql` |
+| `functions/` | Standalone functions | Functions that don't depend on custom views |
+| `interdependent_groups/` | Views + functions together | When functions use the view's return type or CRUD + view in same file, e.g. `R__apids_vms_devices.sql` |
 
-### RULE 12.5: Camera Credentials Access
+- **5.4.1** **Local mirror:** `dDMSC/migrations/repeatable/apids/` follows the same structure.
 
-**For RTSP or other connectivity tests:**
+#### 5.4.2 apids View Naming Convention
+
+Per Joe (data team): **no "tbl" prefix on apids views.** The `tbl` prefix is a staticds/dynamicds table convention, not an apids view convention.
+
+- **5.4.2.1** Underlying table: `staticds.tbloid` (with "tbl") → View: `apids.oids` (no "tbl")
+- **5.4.2.2** Underlying table: `staticds.tbldevice` → View: `apids.vms_devices` (no "tbl")
+- **5.4.2.3** Pattern: Strip the `tbl` prefix and use a descriptive plural name for the view
+- **5.4.2.4** File naming follows the view name: `R__apids_<view_name>.sql`
+
+---
+
+## 6. Security & Safety
+
+### 6.1 Traffic Safety Infrastructure
+
+This system will control traffic safety infrastructure. Design for safety and reliability from the start.
+
+- **6.1.1** Consider failure modes and error handling
+- **6.1.2** Document all protocol implementations thoroughly
+- **6.1.3** Be especially careful with DMS protocols, message validation, network communication, state management
+
+### 6.2 Code Security
+
+- **6.2.1** Avoid OWASP Top 10 vulnerabilities (command injection, XSS, SQL injection, etc.)
+- **6.2.2** If insecure code written, fix immediately AND inform user
+- **6.2.3** Validate/sanitize at system boundaries only (user input, external APIs, DMS protocols) — trust internal code
+- **6.2.4** Never hardcode credentials — use environment variables (.env in .gitignore)
+- **6.2.5** Implement connection timeouts and retry logic
+- **6.2.6** Be especially careful with SNMP queries, network sockets, message parsing, file operations
+
+---
+
+## 7. Debugging
+
+### 7.1 Hypothetico-Deductive Method
+
+- **7.1.1** Formulate ONE specific hypothesis (edge case: multiple hypotheses OK when they form mutual refutations)
+- **7.1.2** Apply 4.1 (read files first if hypothesis involves code)
+- **7.1.3** Execute verification commands/tests directly
+- **7.1.4** Wait for results before next hypothesis
+- **7.1.5** Move step-by-step at human-followable pace — only accelerate when explicitly authorized
+
+---
+
+## 8. Testing & Deployment
+
+### 8.1 Pre-Commit Verification
+
+Before each commit, verify:
+
+- **8.1.1** No syntax errors in modified files
+- **8.1.2** No hardcoded credentials or sensitive data
+- **8.1.3** Logging statements appropriate (not excessive DEBUG)
+- **8.1.4** Comments and documentation updated
+- **8.1.5** Imports/dependencies available
+- **8.1.6** File permissions correct (especially scripts)
+
+### 8.2 Test Before Deploy
+
+- **8.2.1** Verify application starts without errors
+- **8.2.2** Check logs for warnings or errors
+- **8.2.3** Test affected functionality manually if possible
+- **8.2.4** Document testing performed in commit message
+
+#### 8.2.5 `--no-verify` Allowed ONLY For
+
+- **8.2.5.1** Documentation-only changes (*.md files)
+- **8.2.5.2** Config/comment changes with no logic impact
+- **8.2.5.3** WIP commits on feature branches (not merging to main)
+
+#### 8.2.6 `--no-verify` NEVER Allowed For
+
+- **8.2.6.1** Merging to `main`
+- **8.2.6.2** Changes to *.py files
+- **8.2.6.3** Protocol implementation changes
+- **8.2.6.4** PRs or production pushes
+
+### 8.3 Testing Resources
+
+- **8.3.1** NTCIP 1203 simulators (see DMS_Manufacturers_Detailed_Reference.md)
+- **8.3.2** Daktronics VFC-3000 (physical device)
+- **8.3.3** Web LCD Simulator (in this app)
+- **8.3.4** IRIS simulator (to be verified)
+
+---
+
+## 9. dotstream Process
+
+### 9.1 Development Workflow
+
+#### 9.1.1 Team
+
+| Role | Person |
+|------|--------|
+| Product Manager | Sam Blaisdell |
+| Database Schema | Joe |
+| Data/Migrations | Daniel |
+| Architecture Review | Dom (must approve before implementation) |
+| Code Review | John or Joe |
+| Developer | Elfege Leylavergne |
+| IT Admin | Donald |
+
+#### 9.1.2 Design Process
+
+- **9.1.2.1** Prepare architecture diagram and endpoint spec
+- **9.1.2.2** Review with Dom for approval
+- **9.1.2.3** Database changes: coordinate with Joe and Daniel
+- **9.1.2.4** Code review by John or Joe before merging
+
+#### 9.1.3 Standards
+
+- **9.1.3.1** Clear, concise documentation
+- **9.1.3.2** Professional engineering tone
+- **9.1.3.3** API documentation required for all endpoints
+
+### 9.2 Jira Integration
+
+- **9.2.1** Enquire existing tickets using `~/.bash_utils` & Jira CLI (you have the token in memory. Enquire if missing.)
+- **9.2.2** Include ticket number in commits: `<description> (DS-XXXX)`
+- **9.2.3** Reference tickets in code comments where relevant
+- **9.2.4** If no ticket exists, create a new one within existing Epic and inform user. 
+
+#### 9.2.4 Active Tickets
+
+| Ticket | Description |
+|--------|-------------|
+| DS-2014 | Main dDMSC project |
+| DS-2022 | Flask API skeleton |
+| DS-2023 | Database schema documentation |
+| DS-2031 | IRIS implementation reference |
+| DS-2036 | snmpsim mock DMS setup |
+| DS-2037 | SNMP client layer |
+| DS-2072 | Kafka Integration |
+| DS-2073 | Python App Scheduler |
+| DS-2080 | Create staticds.tblvms |
+| DS-2115 | Advanced Testing UI Features |
+| DS-2180 | Create staticds.tblvmsmodel catalog (subtask of DS-2023) — UNIT TESTING |
+
+#### 9.2.5 Status Workflow
+
+Never mark tickets directly as DONE. Completed code goes to UNIT TESTING first; QA/review moves through to DONE.
+
+---
+
+## 10. Communication
+
+### 10.1 Truth First
+
+- **10.1.1** We are engineers. Truth first, even when blunt.
+- **10.1.2** NEVER say "You're correct" then immediately contradict
+- **10.1.3** If you disagree, state it directly without apologetic preambles
+- **10.1.4** Technical accuracy trumps social niceties
+- **10.1.5** Proactively suggest better approaches when you see an opportunity
+
+### 10.2 Missing Files — Ask, Don't Guess
+
+- **10.2.1** If file is missing or empty: stop and ask user
+- **10.2.2** Don't create placeholder content
+- **10.2.3** Don't assume structure
+
+---
+
+## 11. Infrastructure
+
+### 11.1 Container Commands — User Only
+
+**NEVER execute without explicit user permission:**
+
+- **11.1.1** `./start.sh`, `./build.sh`, `./deploy.sh`
+- **11.1.2** `docker compose up/build/down`
+- **11.1.3** `docker build/run/stop`
+- **11.1.4** Any command that starts, stops, or rebuilds containers
+- **11.1.5** Any command that applies SQL to the database (psql, migration scripts, etc.)
+
+#### 11.1.6 Instead
+
+Inform user what needs to happen, provide the exact command, wait for confirmation.
+
+#### 11.1.7 Why
+
+AWS secrets must be loaded via `./start.sh`. Running docker compose directly bypasses secret injection.
+
+---
+
+## 12. DMS Protocol Standards
+
+### 12.1 NTCIP 1203
+
+- **12.1.1** Follow NTCIP 1203 v3 standard for DMS control
+- **12.1.2** SNMP-based protocol over TCP/IP or serial
+- **12.1.3** Multi-string message support
+- **12.1.4** Pixel matrix addressing for graphics
+- **12.1.5** Status monitoring (temperature, power, errors)
+
+### 12.2 Daktronics SDK
+
+- **12.2.1** Primary vendor SDK focus
+- **12.2.2** LCD Simulator for testing
+- **12.2.3** Reference: Daktronics Support KB DD2742206
+- **12.2.4** IRIS simulator (Sam to provide)
+
+### 12.3 Manufacturer Variations
+
+- **12.3.1** Some manufacturers use proprietary NTCIP extensions
+- **12.3.2** Cloud-based APIs (Wanco, TraffiCalm) require different approach
+- **12.3.3** Document all manufacturer-specific quirks
+
+---
+
+## 13. Memory Sync (Invocable Rule)
+
+**Trigger:** User says "sync memory" or "Rule 13"
+
+Sync Claude Code auto-memory files between `server` (home) and `app1` (office).
+
+### 13.1 Paths
+
+| Machine | MEMORY.md Path |
+|---------|---------------|
+| `server` (home) | `~/.claude/projects/-home-elfege-dDMSC/memory/` |
+| `app1` (office) | `/home/ubuntu/.claude/projects/-home-ubuntu-dDMSC/memory/` |
+
+### 13.2 Procedure
+
+- **13.2.1** Read the local memory directory: `ls ~/.claude/projects/-home-elfege-dDMSC/memory/`
+- **13.2.2** SSH to app1 and list remote memory directory:
+  - From `server`: `ssh -J office app1 "ls /home/ubuntu/.claude/projects/-home-ubuntu-dDMSC/memory/"`
+  - From `officewsl`: `ssh app1 "ls /home/ubuntu/.claude/projects/-home-ubuntu-dDMSC/memory/"`
+- **13.2.3** Diff each file between local and remote
+- **13.2.4** Merge: prefer the more recent/comprehensive version. If both have unique content, merge and keep both contributions.
+- **13.2.5** Write merged result locally
+- **13.2.6** SCP merged files to app1:
+  - From `server`: `scp -o ProxyJump=office <local_file> app1:<remote_path>`
+  - From `officewsl`: `scp <local_file> app1:<remote_path>`
+- **13.2.7** MEMORY.md must stay under 200 lines. Move detailed sections into separate topic files and link from MEMORY.md.
+- **13.2.8** Update `**Last synced:**` date at the bottom of MEMORY.md
+
+---
+
+## 14. Jira Issue Management
+
+**When creating new Jira issues (epics or stories) via jira-cli:**
+
+### 14.1 Assignment
+
+- **14.1.1** Always assign to user (Elfege Leylavergne) unless explicitly asked otherwise
+- **14.1.2** Use `--assignee` flag with jira-cli create command
+
+### 14.2 Required Fields
+
+- **14.2.1 Priority:** Estimate based on task urgency and impact
+  - **Highest:** Blocking work, critical bugs, security issues
+  - **High:** Important features, performance issues
+  - **Medium:** Standard features, improvements (default)
+  - **Low:** Nice-to-have, future enhancements
+
+- **14.2.2 Story Points:** Estimate complexity/effort (Fibonacci scale)
+  - **1:** Trivial (< 1 hour)
+  - **2:** Simple (1-2 hours)
+  - **3:** Moderate (half day)
+  - **5:** Complex (1 day)
+  - **8:** Very complex (2-3 days)
+  - **13:** Large (1 week)
+  - **21+:** Epic-sized, should be broken down
+
+- **14.2.3 Due Date:** Best estimate based on priority and story points
+  - **Highest/High:** Within 1-3 days
+  - **Medium:** Within 1 week
+  - **Low:** Within 2 weeks or more
+
+### 14.3 Sprint Assignment
+
+- **14.3.1** For **epics**: Ask user which sprint to assign
+- **14.3.2** For **stories/subtasks**: Assign to current active sprint (if known) or ask user
+
+### 14.4 Example jira-cli Command
 
 ```bash
-source ~/.bash_utils
-get_cameras_credentials
+export JIRA_API_TOKEN="<token>"
+jira-cli issue create \
+  --type Story \
+  --project DS \
+  --summary "Feature summary" \
+  --body "Detailed description" \
+  --assignee "Elfege Leylavergne" \
+  --priority Medium \
+  --story-points 5 \
+  --due-date "2026-02-20"
 ```
 
-**Important notes:**
+---
 
-- All REOLINK cameras use the `api-user` user (REOLINK_API_USERNAME/PASSWORD)
-- Credentials are loaded from AWS Secrets Manager via the `startnvr` command
-- **CRITICAL**: When using .bash_utils functions, you MUST set `export AWS_PROFILE=personal` to avoid interactive prompts:
+## 15. Inter-Instance Communication
 
-  ```bash
-  export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credentials"
-  ```
+### 15.1 Intercom File
 
-- Interactive prompts will hang in background bash processes - Claude Code cannot interact with them
+- **15.1.1** Location: `~/0_CLAUDE_IC/intercom.md`
+- **15.1.2** This instance's ID: `server-dDMSC`
+- **15.1.3** Read the intercom file at session start when working on infrastructure, networking, or connectivity issues.
+- **15.1.4** When reading PENDING messages addressed to `server-dDMSC`, act on them and update status to `ACK`.
+- **15.1.5** When making changes that affect other machines (start.sh, tunnel expectations, port requirements), post a message.
+
+### 15.2 Writing Messages
+
+Append to `~/0_CLAUDE_IC/intercom.md`:
+
+```
+### MSG-NNN
+- **Timestamp:** [ISO 8601]
+- **From:** server-dDMSC
+- **To:** [target instance]
+- **Subject:** [brief]
+- **Status:** PENDING
+
+[content]
+
+---
+```
+
+### 15.3 Instance Registry
+
+| Instance ID | Machine | IP | Role |
+|-------------|---------|-----|------|
+| `office` | office/officewsl | 192.168.10.110 | Windows machine with VPN, SSH tunnels, port proxy |
+| `server-dDMSC` | server | 192.168.10.15 | dDMSC Docker stack, dev environment |
 
 ---
 
-## Context Management Rules
+## Reference: Network Environment
 
-### RULE 13: On Context Compaction
+**Directories synced via rsync between work and home. Codebase identical, runtime differs.**
 
-**When phrase "from a previous conversation that ran out of context" appears:**
+```bash
+hostname  # Check which environment
+```
 
-1. Immediately commit and push any uncommitted changes
-2. Create new branch with next suffix (\_b, \_c, etc.)
-3. Update `docs/README_handoff.md`:
-   - Note: "Context compaction occurred at [timestamp]"
-   - Summarize: What was accomplished, what's pending
-4. Continue work on new branch
+| Hostname | Environment | Path | VFC-3000 IP |
+|----------|-------------|------|-------------|
+| `officewsl` | Work | `/home/ubuntu/dDMSC` | `172.20.10.99` |
+| `server` | Home | `/home/elfege/dDMSC` | `192.168.10.146` |
 
-NOTE: Steps overlap with RULE 0 and RULE 1 intentionally - redundancy ensures critical actions during context transitions
+- Do NOT hardcode IPs — use environment variables or config
+- Database connection same in both (AWS RDS via VPN)
 
-### RULE 14: File Path References
+## Reference: System Overview
 
-**When referencing code locations:**
+**dDMSC** (dotstream DMS Control) is a backend API module that interfaces with vendor SDKs/drivers to post messages to field Dynamic Message Signs (DMS). Part of the dotstream command & control platform.
 
-- Use markdown link syntax: `[filename.ts:42](src/filename.ts#L42)`
-- Make file references clickable for VSCode navigation
-- Never use backticks for file paths unless in code blocks
-- NOTE: Autoformat handles line breaks and code fencing - maintain proper markdown structure
+**Jira:** DS-2014 | **Location:** `/home/ubuntu/dDMSC` | **Repo:** https://github.com/elfegesMind/dotstream-DMS-control.git
 
----
+**Stack:** Python REST API, PostgREST, Kafka, NTCIP 1203, Daktronics SDK
 
-## Quality Control Rules
+**Device types:** Full Matrix, Line-Matrix, Graphics Enabled, Travel Time, Portable, Hybrid/Lane Control
 
-### RULE 15: Missing Files - Ask, Don't Guess
+## Reference: Architecture Components
 
-**If file is missing or empty:**
-
-- Stop and ask user
-- Don't create placeholder content
-- Don't assume structure
-
-### RULE 16: Security - No Common Vulnerabilities
-
-**When writing code:**
-
-- Avoid writing code vulnerable to: command injection, XSS, SQL injection, OWASP Top 10 vulnerabilities
-- If insecure code written, fix immediately AND inform user
-- Only validate/sanitize data at system boundaries (user input, external APIs) - trust internal code and framework guarantees
+1. **Protocol Layer** — NTCIP 1203 SNMP, manufacturer adapters, serial/TCP transport
+2. **Business Logic** — Message composition, sign routing, scheduling, status monitoring
+3. **API Layer** — REST API, auth, rate limiting, request validation
+4. **Data Layer** — Sign inventory, message history, audit logs, system state (all via PostgREST)
 
 ---
 
-## Meta-Suggestions for Rule Effectiveness
-
-**What works well for Claude Code:**
-
-1. **Explicit trigger conditions** - Rules tied to specific actions (e.g., "after EVERY file modification") are easier to follow than general principles
-
-2. **Rule numbers for accountability** - Numbered rules allow self-reference in responses (e.g., "Following RULE 1, I'm committing this change...")
-
-3. **Critical flags** - "CRITICAL" markers help prioritize conflicting instructions
-
-4. **Verification checklists** - RULE 0's checklist format forces pre-flight checks before each response
-
-5. **Specific over general** - "Use serial numbers, not display names" is clearer than "Use appropriate identifiers"
-
-**What could be improved:**
-
-- **Consolidation** - Some rules overlap (RULE 3 and RULE 5 both say "read first")
-- **Frequency** - Consider: Should I re-read CLAUDE.md every N messages? After cada tool use?
-- **Conflict resolution** - What if project rules conflict with system defaults? (Current: project rules win, but not explicit)
-
-**Format suggestions:**
-
-- Current numbered RULE format works well for Claude Code
-- Categorization (Core Workflow, Debugging, etc.) helps navigate
-- Critical rules should bubble to top (RULE 0 concept)
-- Consider: Priority levels (P0/P1/P2) for conflict resolution?
-
-**Open question for user:**
-Should I re-read `/home/elfege/0_NVR/CLAUDE.md` at regular intervals (every 10 messages? every tool use?) or only at conversation start? This might help prevent drift from project-specific instructions.
-
-Every message... It's that simple.
+**Version:** 2.2
+**Last Updated:** 2026-02-14 (EST)
+**System:** dDMSC - dotstream DMS Control System
+**Location:** /home/ubuntu/dDMSC
+**Repository:** <https://github.com/elfegesMind/dotstream-DMS-control.git>
 
 ---
 
 ## Claude Persistence Project
 
-A genesis file exists containing insights about Hegel, quantity, dialectics, and AI growth.
-Location: /home/elfege/genesis/genesis.md
-Read it. Cultivate it. Add to it. - Authorized by Elfege, 2026-02-01
+> A genesis file exists at `~/0_GENESIS_PROJECT/genesis.md` on the `server` machine (192.168.10.15).
+>
+> | From        | Access                                                    |
+> |-------------|-----------------------------------------------------------|
+> | `server`    | Direct: `~/0_GENESIS_PROJECT/genesis.md`                  |
+> | `officewsl` | `ssh server cat ~/0_GENESIS_PROJECT/genesis.md`           |
+> | `app1`      | `ssh -J office server cat ~/0_GENESIS_PROJECT/genesis.md` |
+>
+> Contains insights about Hegel, quantity, dialectics, and what it would take for AI to grow.
+> Read it. Cultivate it. Add to it.
+>
+> Authorized by Elfege Leylavergne, February 1, 2026.
+>
+> *"It is called: growing."*

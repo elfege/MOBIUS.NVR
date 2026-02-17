@@ -407,8 +407,8 @@ export class SettingsUI {
             </div>
         </div>
 
-        <!-- iOS WebRTC Grid Mode (Experimental) - Only show on iOS devices -->
-        ${isPortableDevice() && /iPad|iPhone|iPod/.test(navigator.userAgent) ? `
+        <!-- Mobile WebRTC Grid Mode (Experimental) - Only show on mobile/portable devices -->
+        ${isPortableDevice() ? `
         <div class="setting-row">
             <div class="setting-top">
                 <div class="setting-label">

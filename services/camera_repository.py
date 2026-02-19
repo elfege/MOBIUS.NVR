@@ -144,7 +144,8 @@ class CameraRepository:
         """
         config = {}
 
-        # Direct scalar fields
+        # Direct scalar fields — preserve nulls so consuming code that checks
+        # key presence (e.g., 'rtsp_alias' in config) works the same as JSON
         direct_fields = [
             'serial', 'name', 'type', 'camera_id', 'host', 'mac',
             'packager_path', 'stream_type', 'rtsp_alias', 'max_connections',
@@ -154,7 +155,7 @@ class CameraRepository:
         ]
 
         for field in direct_fields:
-            if field in row and row[field] is not None:
+            if field in row:
                 config[field] = row[field]
 
         # JSONB fields (stored as JSON objects in DB, already deserialized by PostgREST)
@@ -172,6 +173,11 @@ class CameraRepository:
         extra = row.get('extra_config')
         if extra and isinstance(extra, dict):
             config.update(extra)
+
+        # Synthesize 'id' field — cameras.json has 'id' as alias for camera_id/serial.
+        # Stream handlers use camera_config.get('id') as a fallback identifier.
+        if 'id' not in config:
+            config['id'] = config.get('camera_id') or config.get('serial')
 
         return config
 

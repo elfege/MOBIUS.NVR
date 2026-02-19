@@ -1,5 +1,17 @@
 #!/bin/bash
-# deploy.sh - Build Docker image for Unified NVR
+# ============================================
+# Unified NVR - Docker Image Build & Deploy
+# ============================================
+# Rebuilds all Docker images and starts the stack.
+# Use ./start.sh if you want to skip rebuild.
+#
+# Usage:
+#   ./deploy.sh                     # Rebuild + start (prompts for prune/no-cache)
+#   ./deploy.sh --prune             # Prune first, skip prompt
+#   ./deploy.sh --no-cache          # No-cache build, skip prompt
+#   ./deploy.sh --prune --no-cache  # Both, no prompts
+#
+# ============================================
 
 # set -e
 
@@ -16,6 +28,16 @@ sudo chown -R "$USER":"$USER" ./ &>/dev/null || true
 . ~/.env.colors
 . ~/logger.sh --no-exec &>/dev/null || true
 . /etc/profile.d/custom-env.sh --no-exec &>/dev/null || true
+
+# Parse flags
+do_prune=false
+do_nocache=false
+for arg in "$@"; do
+	case $arg in
+	--prune) do_prune=true ;;
+	--no-cache) do_nocache=true ;;
+	esac
+done
 
 echo "=========================================="
 echo "  Unified NVR - Docker Image Build"
@@ -34,10 +56,22 @@ if [ ! -f docker-compose.yml ]; then
 	exit 1
 fi
 
-read -t 10 -r -p "Prune?" prune
-# Clean up unused Docker resources
-if [[ "$prune" =~ ^[yY].*? ]]; then
+# Prune: flag or prompt (defaults to no on timeout)
+if ! $do_prune; then
+	prune_answer="no"
+	read -t 10 -r -p "Prune Docker system? (yes/no, 10s timeout = no): " prune_answer || true
+	[[ "$prune_answer" == "yes" || "$prune_answer" == "YES" ]] && do_prune=true
+fi
+if $do_prune; then
+	echo "Pruning Docker resources..."
 	docker system prune -f || true
+fi
+
+# No-cache: flag or prompt (defaults to yes on timeout for a clean build)
+if ! $do_nocache; then
+	nocache_answer=""
+	read -t 10 -r -p "No-cache build? (type 'no' to skip, ENTER/timeout = yes): " nocache_answer || true
+	[[ "$nocache_answer" == "no" || "$nocache_answer" == "NO" ]] || do_nocache=true
 fi
 
 start_spinner "" "$CYAN Cleaning up containers and images..."
@@ -56,8 +90,14 @@ stop_spinner &>/dev/null || true
 echo "Fetching camera credentials..."
 pull_nvr_secrets >/dev/null
 
-echo "Building Docker image..."
-docker compose build
+# Build Docker image
+if $do_nocache; then
+	echo "Building Docker image (--no-cache, full rebuild)..."
+	docker compose build --no-cache
+else
+	echo "Building Docker image (cached)..."
+	docker compose build
+fi
 
 if [ $? -eq 0 ]; then
 	echo ""

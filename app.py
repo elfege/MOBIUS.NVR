@@ -31,6 +31,7 @@ import bcrypt
 # modular imports
 from models.user import User
 from services.camera_repository import CameraRepository
+from services.camera_config_sync import sync_cameras_json_to_db
 from services.ptz.ptz_validator import PTZValidator
 from streaming.stream_manager import StreamManager
 
@@ -184,10 +185,23 @@ print("=" * 80)
 try:
     print("\n📦 Initializing core services...")
 
-    # Camera repository
+    # Camera repository (loads from DB first, falls back to JSON)
     camera_repo = CameraRepository('./config')
     print(
-        f"✅ Camera repository loaded: {camera_repo.get_camera_count()} cameras")
+        f"✅ Camera repository loaded: {camera_repo.get_camera_count()} cameras "
+        f"(source: {camera_repo.get_data_source()})")
+
+    # Auto-sync: migrate new cameras from cameras.json to database
+    try:
+        migrated, existing, warnings = sync_cameras_json_to_db('./config/cameras.json')
+        if migrated > 0:
+            # Reload from DB to pick up newly migrated cameras
+            camera_repo.reload()
+            print(f"✅ Camera sync: {migrated} new cameras migrated to database")
+        else:
+            print(f"✅ Camera sync: {existing} cameras in sync, no migration needed")
+    except Exception as e:
+        print(f"⚠️ Camera sync failed (non-fatal): {e}")
 
     # PTZ validator
     ptz_validator = PTZValidator(camera_repo)
@@ -1827,6 +1841,51 @@ def api_refresh_devices():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/cameras/force-sync', methods=['POST'])
+@csrf.exempt
+@login_required
+def api_force_sync_cameras():
+    """
+    Force-sync all camera configurations from cameras.json to database.
+    Used for reset operations when cameras.json is the canonical source.
+    Admin-only operation.
+    """
+    if not current_user or current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        from services.camera_config_sync import force_sync_from_json
+        updated = force_sync_from_json('./config/cameras.json')
+
+        # Reload repository from DB to pick up changes
+        camera_repo.reload()
+
+        return jsonify({
+            'success': True,
+            'cameras_updated': updated,
+            'total_devices': camera_repo.get_camera_count(),
+            'source': camera_repo.get_data_source(),
+            'message': f'Force-synced {updated} cameras from cameras.json to database'
+        })
+    except Exception as e:
+        logger.error(f"Force sync failed: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/cameras/data-source', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_camera_data_source():
+    """Get the current camera data source (database or json)."""
+    return jsonify({
+        'source': camera_repo.get_data_source(),
+        'total_devices': camera_repo.get_camera_count(include_hidden=True),
+        'visible_devices': camera_repo.get_camera_count(include_hidden=False),
+        'last_updated': camera_repo.get_last_updated()
+    })
+
+
 # ===== Streaming Routes =====
 # RTMP
 @app.route('/api/camera/<camera_serial>/flv')
@@ -1896,10 +1955,10 @@ def api_stream_start(camera_serial):
 
         print(f"Attempting to start camera {camera_serial} - {camera_name}")
 
-        # MJPEG cameras are completely isolated from HLS/RTSP paths
-        # They use snap-polling services which are the ONLY connection to the camera
-        # Returning success with MJPEG URL so frontend doesn't retry
-        stream_type = camera.get('stream_type', '')
+        # Resolve effective stream type (user preference overrides camera default)
+        # This allows per-user stream type switching to actually work end-to-end
+        stream_type = camera_repo.get_effective_stream_type(
+            camera_serial, user_id=current_user.id if current_user else None)
         if stream_type == 'MJPEG':
             camera_type = camera.get('type', '').lower()
             print(f"[API] {camera_serial} is MJPEG camera - skipping HLS/RTSP start")
@@ -2023,8 +2082,9 @@ def api_stream_restart(camera_serial):
         data = request.get_json() or {}
         resolution = data.get('type', 'sub')
 
-        # Check stream type - only support non-MJPEG for now
-        stream_type = camera.get('stream_type', 'HLS').upper()
+        # Resolve effective stream type (user preference overrides camera default)
+        stream_type = camera_repo.get_effective_stream_type(
+            camera_serial, user_id=current_user.id if current_user else None).upper()
         if stream_type == 'MJPEG':
             return jsonify({
                 'success': False,

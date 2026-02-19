@@ -115,12 +115,33 @@ After:
 
 **Branch:** `db_camera_config_migration_FEB_19_2026_a` (created from iPad fix branch)
 
-**All code written, NOT YET TESTED.** Requires:
-1. Run SQL migration: `docker exec -i nvr-db psql -U nvr_api -d nvr < psql/migrations/011_cameras_table.sql`
-2. Run migration script: `docker exec nvr python scripts/migrate_cameras_to_db.py`
-3. Restart containers: `./start.sh` (user must run, per RULE 9)
-4. Verify cameras load from DB
-5. Verify stream type switching works end-to-end
+**DB migration code written + SQL migration run + 19 cameras migrated to DB.**
+
+Completed:
+1. [x] SQL migration 011 run on `nvr-postgres` container
+2. [x] `NOTIFY pgrst, 'reload schema'` — PostgREST schema cache refreshed
+3. [x] Migration script: all 19 cameras inserted successfully
+4. [x] Fixed `global POSTGREST_URL` SyntaxError in migrate_cameras_to_db.py
+
+Requires:
+1. Restart containers: `./start.sh` (user must run, per RULE 9)
+2. Verify cameras load from DB (check logs for "source: database")
+3. Verify stream type switching works end-to-end
+
+### Post-Compaction Updates (11:50 EST)
+
+8. **`app.py`** — Registered `cert_bp` Blueprint (from side-chat MSG-042)
+   - Import: `from services.cert_routes import cert_bp`
+   - Registration: `app.register_blueprint(cert_bp)`
+   - Enables `/install-cert`, `/install-cert/download`, `/api/cert/status` endpoints
+
+9. **`deploy.sh`** — Improved with dDMSC flag parsing pattern
+   - Added `--prune` and `--no-cache` CLI flags
+   - Flags skip interactive prompts; without flags, prompts with timeouts
+   - `--no-cache` defaults to yes on timeout (clean builds preferred)
+   - Cleaner usage header with examples
+
+10. **Intercom MSG-043** — ACKed MSG-041 and MSG-042
 
 ---
 
@@ -154,8 +175,8 @@ export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credent
 ## Next Session TODO
 
 **Testing Required (DB Migration):**
-- [ ] Run SQL migration 011
-- [ ] Run cameras.json -> DB migration script
+- [x] Run SQL migration 011
+- [x] Run cameras.json -> DB migration script (19 cameras migrated)
 - [ ] Restart containers (user runs `./start.sh`)
 - [ ] Verify cameras load from database (check logs for "source: database")
 - [ ] Verify all streams start correctly (no regressions)

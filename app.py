@@ -66,6 +66,7 @@ from services.power.hubitat_power_service import HubitatPowerService
 from services.power.unifi_poe_service import UnifiPoePowerService
 from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
+from services.cert_routes import cert_bp
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -78,6 +79,9 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = '-ratatouillemescouilles'
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 csrf = CSRFProtect(app)
+
+# Register Blueprints
+app.register_blueprint(cert_bp)
 
 # Flask-Login session configuration
 # Indefinite sessions until logout (no automatic expiry)

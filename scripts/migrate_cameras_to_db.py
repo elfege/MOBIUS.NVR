@@ -182,6 +182,8 @@ def migrate_camera(record, force=False):
 
 def main():
     """Main migration entry point."""
+    global POSTGREST_URL
+
     parser = argparse.ArgumentParser(description='Migrate cameras.json to database')
     parser.add_argument('--force', action='store_true',
                         help='Update existing records (default: skip existing)')
@@ -214,7 +216,6 @@ def main():
     logger.info(f"Mode: {'force update' if args.force else 'insert only (skip existing)'}")
 
     # Override module-level POSTGREST_URL for migrate_camera()
-    global POSTGREST_URL
     POSTGREST_URL = postgrest_url
 
     # Build and migrate records

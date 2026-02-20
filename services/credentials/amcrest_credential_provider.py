@@ -18,12 +18,12 @@ class AmcrestCredentialProvider(CredentialProvider):
     
     Expected environment variables:
         Per-camera (priority):
-            {CAMERA_ID}_USERNAME  (e.g., AMCREST_LOBBY_USERNAME)
-            {CAMERA_ID}_PASSWORD  (e.g., AMCREST_LOBBY_PASSWORD)
-        
+            NVR_{CAMERA_ID}_USERNAME  (e.g., NVR_AMCREST_LOBBY_USERNAME)
+            NVR_{CAMERA_ID}_PASSWORD  (e.g., NVR_AMCREST_LOBBY_PASSWORD)
+
         Generic fallback:
-            AMCREST_USERNAME
-            AMCREST_PASSWORD
+            NVR_AMCREST_USERNAME
+            NVR_AMCREST_PASSWORD
     """
     
     def __init__(self):
@@ -44,8 +44,8 @@ class AmcrestCredentialProvider(CredentialProvider):
         
         # Try camera-specific credentials first
         if camera_id:
-            username_var = f"{camera_id}_USERNAME"
-            password_var = f"{camera_id}_PASSWORD"
+            username_var = f"NVR_{camera_id}_USERNAME"
+            password_var = f"NVR_{camera_id}_PASSWORD"
             
             print(f"AMCREST username_var: {username_var}, password_var: {password_var}")
             
@@ -61,8 +61,8 @@ class AmcrestCredentialProvider(CredentialProvider):
                 logger.debug(f"Camera-specific credentials not found: {username_var}, {password_var}")
         
         # Fallback to generic Amcrest credentials
-        username = os.getenv("AMCREST_LOBBY_USERNAME")
-        password = os.getenv("AMCREST_LOBBY_PASSWORD")
+        username = os.getenv("NVR_AMCREST_LOBBY_USERNAME")
+        password = os.getenv("NVR_AMCREST_LOBBY_PASSWORD")
         
         if not self.validate_credentials(username, password):
             logger.warning(

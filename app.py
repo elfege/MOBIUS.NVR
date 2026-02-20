@@ -67,6 +67,7 @@ from services.power.unifi_poe_service import UnifiPoePowerService
 from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
+from services.external_api_routes import external_api_bp, init_external_api
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -82,6 +83,7 @@ csrf = CSRFProtect(app)
 
 # Register Blueprints
 app.register_blueprint(cert_bp)
+app.register_blueprint(external_api_bp)
 
 # Flask-Login session configuration
 # Indefinite sessions until logout (no automatic expiry)
@@ -194,6 +196,9 @@ try:
     print(
         f"✅ Camera repository loaded: {camera_repo.get_camera_count()} cameras "
         f"(source: {camera_repo.get_data_source()})")
+
+    # Initialize external API with camera_repo reference (for TILES integration)
+    init_external_api(camera_repo)
 
     # Auto-sync: migrate new cameras from cameras.json to database
     try:
@@ -572,14 +577,14 @@ try:
 
     install_sigchld_handler()
 
-    if os.getenv('USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:
+    if os.getenv('NVR_USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:
         print("🌉 Initializing Eufy bridge...")
         eufy_bridge = EufyBridge()
         print("✅ Eufy bridge initialized")
     else:
         eufy_bridge = None
 
-    if os.getenv('USE_EUFY_BRIDGE_WATCHDOG', '0').lower() in ['1', 'true'] and eufy_bridge:
+    if os.getenv('NVR_USE_EUFY_BRIDGE_WATCHDOG', '0').lower() in ['1', 'true'] and eufy_bridge:
         bridge_watchdog = BridgeWatchdog(eufy_bridge)
         print("✅ Eufy bridge_watchdog initialized")
     else:
@@ -595,7 +600,7 @@ except Exception as e:
 
 def wait_for_bridge_ready(timeout=5):
     """Wait for bridge to be ready"""
-    if eufy_bridge and os.getenv('USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:
+    if eufy_bridge and os.getenv('NVR_USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:
         t0 = time.time()
         while time.time() - t0 < timeout:
             if eufy_bridge.is_running():
@@ -885,7 +890,7 @@ class PTZControlForm(FlaskForm):
 # ===== Authentication Helper Functions =====
 
 # PostgREST connection URL
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
 def _create_user_session(user_id, ip_address, user_agent):
     """
@@ -4401,7 +4406,7 @@ def api_ptz_get_latency(client_uuid, camera_serial):
     """
     try:
         import requests
-        postgrest_url = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+        postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
         # Query PostgREST for this client/camera pair
         response = requests.get(
@@ -4472,7 +4477,7 @@ def api_ptz_update_latency(client_uuid, camera_serial):
         if observed_latency is None:
             return jsonify({'success': False, 'error': 'observed_latency_ms required'}), 400
 
-        postgrest_url = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+        postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
         # First, try to get existing record
         get_response = requests.get(
@@ -7386,10 +7391,10 @@ def _resolve_ui_vs_watchdog():
     Returns (ui_health_enabled, watchdog_enabled)
     """
     # UI Health always available now (no conflict with new watchdog)
-    ui_enabled = _get_bool("UI_HEALTH_ENABLED", default=True)
+    ui_enabled = _get_bool("NVR_UI_HEALTH_ENABLED", default=True)
 
     # Old ENABLE_WATCHDOG is deprecated - check new STREAM_WATCHDOG_ENABLED
-    wd_enabled = _get_bool("STREAM_WATCHDOG_ENABLED", default=False)
+    wd_enabled = _get_bool("NVR_STREAM_WATCHDOG_ENABLED", default=False)
 
     return ui_enabled, wd_enabled
 
@@ -7400,16 +7405,16 @@ def _ui_health_from_env():
     """
     # Start with .env defaults (KEEP THIS - provides fallbacks)
     settings = {
-        'uiHealthEnabled': _get_bool("UI_HEALTH_ENABLED", True),
-        'sampleIntervalMs': _get_int("UI_HEALTH_SAMPLE_INTERVAL_MS", 2000),
-        'staleAfterMs': _get_int("UI_HEALTH_STALE_AFTER_MS", 20000),
-        'consecutiveBlankNeeded': _get_int("UI_HEALTH_CONSECUTIVE_BLANK_NEEDED", 10),
-        'cooldownMs': _get_int("UI_HEALTH_COOLDOWN_MS", 30000),
-        'warmupMs': _get_int("UI_HEALTH_WARMUP_MS", 60000),
-        'maxAttempts': _get_int("UI_HEALTH_MAX_ATTEMPTS", 10),  # NEW
+        'uiHealthEnabled': _get_bool("NVR_UI_HEALTH_ENABLED", True),
+        'sampleIntervalMs': _get_int("NVR_UI_HEALTH_SAMPLE_INTERVAL_MS", 2000),
+        'staleAfterMs': _get_int("NVR_UI_HEALTH_STALE_AFTER_MS", 20000),
+        'consecutiveBlankNeeded': _get_int("NVR_UI_HEALTH_CONSECUTIVE_BLANK_NEEDED", 10),
+        'cooldownMs': _get_int("NVR_UI_HEALTH_COOLDOWN_MS", 30000),
+        'warmupMs': _get_int("NVR_UI_HEALTH_WARMUP_MS", 60000),
+        'maxAttempts': _get_int("NVR_UI_HEALTH_MAX_ATTEMPTS", 10),  # NEW
         'blankThreshold': {
-            'avg': _get_int("UI_HEALTH_BLANK_AVG", 12),
-            'std': _get_int("UI_HEALTH_BLANK_STD", 5)
+            'avg': _get_int("NVR_UI_HEALTH_BLANK_AVG", 12),
+            'std': _get_int("NVR_UI_HEALTH_BLANK_STD", 5)
         }
     }
     

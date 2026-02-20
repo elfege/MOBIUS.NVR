@@ -18,7 +18,7 @@ Features:
 - Single daemon thread for all camera monitoring
 - Respects CameraStateTracker.can_retry() for exponential backoff
 - Reports restart success/failure back to CameraStateTracker
-- Configurable via STREAM_WATCHDOG_ENABLED environment variable
+- Configurable via NVR_STREAM_WATCHDOG_ENABLED environment variable
 
 Author: NVR System
 Date: January 4, 2026
@@ -147,13 +147,13 @@ class StreamWatchdog:
         """
         Start the watchdog monitoring thread.
 
-        Checks STREAM_WATCHDOG_ENABLED environment variable. If disabled,
+        Checks NVR_STREAM_WATCHDOG_ENABLED environment variable. If disabled,
         logs warning and returns without starting.
         """
         # Check if watchdog is enabled via environment
-        enabled = os.getenv('STREAM_WATCHDOG_ENABLED', '0').lower() in ('1', 'true', 'yes')
+        enabled = os.getenv('NVR_STREAM_WATCHDOG_ENABLED', '0').lower() in ('1', 'true', 'yes')
         if not enabled:
-            logger.warning("StreamWatchdog DISABLED via STREAM_WATCHDOG_ENABLED=0")
+            logger.warning("StreamWatchdog DISABLED via NVR_STREAM_WATCHDOG_ENABLED=0")
             return
 
         if self._running:

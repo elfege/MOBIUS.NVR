@@ -71,7 +71,7 @@ class StorageMigrationService:
         """
         self.config = RecordingConfig(config_path)
         # Use env var, then passed value, then Docker default
-        self.postgrest_url = postgrest_url or os.environ.get('POSTGREST_URL', 'http://nvr-postgrest:3001')
+        self.postgrest_url = postgrest_url or os.environ.get('NVR_POSTGREST_URL', 'http://nvr-postgrest:3001')
 
         # Get storage paths from config
         storage_paths = self.config.get_storage_paths()

@@ -117,11 +117,11 @@ class UnifiPoePowerService:
 
     Configuration:
         Environment variables:
-        - UNIFI_CONTROLLER_HOST: Controller IP/hostname (e.g., 192.168.10.3)
-        - UNIFI_CONTROLLER_USERNAME: Local user account username
-        - UNIFI_CONTROLLER_PASSWORD: Local user account password
-        - UNIFI_CONTROLLER_SITE: Site name (default: 'default')
-        - UNIFI_CONTROLLER_TYPE: 'udm' or 'controller' (default: 'udm')
+        - NVR_UNIFI_CONTROLLER_HOST: Controller IP/hostname (e.g., 192.168.10.3)
+        - NVR_UNIFI_CONTROLLER_USERNAME: Local user account username
+        - NVR_UNIFI_CONTROLLER_PASSWORD: Local user account password
+        - NVR_UNIFI_CONTROLLER_SITE: Site name (default: 'default')
+        - NVR_UNIFI_CONTROLLER_TYPE: 'udm' or 'controller' (default: 'udm')
 
         Camera config (cameras.json):
         - power_supply: "poe" - Camera is powered by POE
@@ -173,13 +173,13 @@ class UnifiPoePowerService:
 
         # Load configuration from environment
         self._controller_host = controller_host or os.environ.get(
-            'UNIFI_CONTROLLER_HOST', ''
+            'NVR_UNIFI_CONTROLLER_HOST', ''
         )
-        self._username = os.environ.get('UNIFI_CONTROLLER_USERNAME', '')
-        self._password = os.environ.get('UNIFI_CONTROLLER_PASSWORD', '')
-        self._site = os.environ.get('UNIFI_CONTROLLER_SITE', 'default')
+        self._username = os.environ.get('NVR_UNIFI_CONTROLLER_USERNAME', '')
+        self._password = os.environ.get('NVR_UNIFI_CONTROLLER_PASSWORD', '')
+        self._site = os.environ.get('NVR_UNIFI_CONTROLLER_SITE', 'default')
         self._controller_type = os.environ.get(
-            'UNIFI_CONTROLLER_TYPE', 'udm'
+            'NVR_UNIFI_CONTROLLER_TYPE', 'udm'
         ).lower()
 
         # API prefix differs between UDM and standard controller
@@ -218,8 +218,8 @@ class UnifiPoePowerService:
             )
         else:
             logger.warning(
-                "UnifiPoePowerService DISABLED - missing UNIFI_CONTROLLER_HOST, "
-                "UNIFI_CONTROLLER_USERNAME, or UNIFI_CONTROLLER_PASSWORD"
+                "UnifiPoePowerService DISABLED - missing NVR_UNIFI_CONTROLLER_HOST, "
+                "NVR_UNIFI_CONTROLLER_USERNAME, or NVR_UNIFI_CONTROLLER_PASSWORD"
             )
 
     def start(self) -> None:

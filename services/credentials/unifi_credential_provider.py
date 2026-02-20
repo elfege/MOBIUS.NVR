@@ -21,8 +21,8 @@ class UniFiCredentialProvider(CredentialProvider):
     They're only used for API access (snapshots, metadata, etc.)
     
     Expected environment variables:
-        PROTECT_USERNAME
-        PROTECT_SERVER_PASSWORD
+        NVR_PROTECT_USERNAME
+        NVR_PROTECT_SERVER_PASSWORD
     """
     
     def __init__(self):
@@ -38,13 +38,13 @@ class UniFiCredentialProvider(CredentialProvider):
         Returns:
             (username, password) tuple for Protect console
         """
-        username = os.getenv("PROTECT_USERNAME")
-        password = os.getenv("PROTECT_SERVER_PASSWORD")
-        
+        username = os.getenv("NVR_PROTECT_USERNAME")
+        password = os.getenv("NVR_PROTECT_SERVER_PASSWORD")
+
         if not self.validate_credentials(username, password):
             logger.warning(
                 "Missing or invalid UniFi Protect credentials. "
-                "Expected env vars: PROTECT_USERNAME, PROTECT_SERVER_PASSWORD"
+                "Expected env vars: NVR_PROTECT_USERNAME, NVR_PROTECT_SERVER_PASSWORD"
             )
         
         return (username, password)

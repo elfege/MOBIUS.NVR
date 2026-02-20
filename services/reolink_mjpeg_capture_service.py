@@ -50,13 +50,13 @@ class ReolinkMJPEGCaptureService:
         Tries API-specific credentials first, falls back to main credentials
         """
         # Try API-specific credentials first (for passwords with special characters)
-        username = os.getenv('REOLINK_API_USER')
-        password = os.getenv('REOLINK_API_PASSWORD')
-        
+        username = os.getenv('NVR_REOLINK_API_USER')
+        password = os.getenv('NVR_REOLINK_API_PASSWORD')
+
         # Fallback to main credentials if API credentials not set
         if not username or not password:
-            username = os.getenv('REOLINK_USERNAME')
-            password = os.getenv('REOLINK_PASSWORD')
+            username = os.getenv('NVR_REOLINK_USERNAME')
+            password = os.getenv('NVR_REOLINK_PASSWORD')
         
         return (username, password)
     

@@ -32,12 +32,12 @@ class ReolinkCredentialProvider(CredentialProvider):
     
     Expected environment variables:
         Main credentials (for RTSP streaming):
-            REOLINK_USERNAME
-            REOLINK_PASSWORD
-        
+            NVR_REOLINK_USERNAME
+            NVR_REOLINK_PASSWORD
+
         API credentials (for Baichuan motion detection):
-            REOLINK_API_USER
-            REOLINK_API_PASSWORD
+            NVR_REOLINK_API_USER
+            NVR_REOLINK_API_PASSWORD
     """
     
     def __init__(self, use_api_credentials: bool = True):
@@ -45,8 +45,8 @@ class ReolinkCredentialProvider(CredentialProvider):
         Initialize Reolink credential provider.
         
         Args:
-            use_api_credentials: If True, use REOLINK_API_USER/PASSWORD
-                                 If False, use REOLINK_USERNAME/PASSWORD
+            use_api_credentials: If True, use NVR_REOLINK_API_USER/PASSWORD
+                                 If False, use NVR_REOLINK_USERNAME/PASSWORD
         """
         self.use_api_credentials = use_api_credentials
         logger.info(f"Initialized Reolink credential provider (API creds: {use_api_credentials})")
@@ -62,13 +62,13 @@ class ReolinkCredentialProvider(CredentialProvider):
             (username, password) tuple for Reolink NVR
         """
         if self.use_api_credentials:
-            username = os.getenv("REOLINK_API_USER")
-            password = os.getenv("REOLINK_API_PASSWORD")
-            var_names = "REOLINK_API_USER, REOLINK_API_PASSWORD"
+            username = os.getenv("NVR_REOLINK_API_USER")
+            password = os.getenv("NVR_REOLINK_API_PASSWORD")
+            var_names = "NVR_REOLINK_API_USER, NVR_REOLINK_API_PASSWORD"
         else:
-            username = os.getenv("REOLINK_USERNAME")
-            password = os.getenv("REOLINK_PASSWORD")
-            var_names = "REOLINK_USERNAME, REOLINK_PASSWORD"
+            username = os.getenv("NVR_REOLINK_USERNAME")
+            password = os.getenv("NVR_REOLINK_PASSWORD")
+            var_names = "NVR_REOLINK_USERNAME, NVR_REOLINK_PASSWORD"
         
         if not self.validate_credentials(username, password):
             logger.warning(

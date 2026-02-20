@@ -27,10 +27,10 @@ if [[ ! -f "$CAMERAS_JSON" ]]; then
 fi
 
 # Get Reolink credentials from environment or AWS
-if [[ -z "$REOLINK_USERNAME" ]] || [[ -z "$REOLINK_PASSWORD" ]]; then
-    echo -e "${YELLOW}Warning: REOLINK_USERNAME/PASSWORD not set, using defaults${NC}"
-    REOLINK_USERNAME="admin"
-    REOLINK_PASSWORD="password"
+if [[ -z "$NVR_REOLINK_USERNAME" ]] || [[ -z "$NVR_REOLINK_PASSWORD" ]]; then
+    echo -e "${YELLOW}Warning: NVR_REOLINK_USERNAME/PASSWORD not set, using defaults${NC}"
+    NVR_REOLINK_USERNAME="admin"
+    NVR_REOLINK_PASSWORD="password"
 fi
 
 # Extract NEOLINK cameras from cameras.json
@@ -109,8 +109,8 @@ echo "$NEOLINK_CAMERAS" | while read -r camera_json; do
 
 [[cameras]]
 name = "$serial"
-username = "$REOLINK_USERNAME"
-password = "$REOLINK_PASSWORD"
+username = "$NVR_REOLINK_USERNAME"
+password = "$NVR_REOLINK_PASSWORD"
 uid = ""
 address = "$host:9000"
 stream = "$stream"

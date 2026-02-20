@@ -19,7 +19,7 @@ from typing import Dict, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
 
 # Fields that map directly from cameras.json device to DB columns

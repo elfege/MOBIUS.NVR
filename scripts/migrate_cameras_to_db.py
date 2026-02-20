@@ -27,7 +27,7 @@ import requests
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 CAMERAS_JSON_PATH = os.getenv('CAMERAS_JSON_PATH', './config/cameras.json')
 
 # Fields that map directly from cameras.json device to DB columns

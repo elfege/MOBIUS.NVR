@@ -48,7 +48,7 @@ class UniFiStreamHandler(StreamHandler):
         camera_name = camera_config.get("name", "UNKNOWN")
 
         # Construct env var name from camera_id (no spaces)
-        rtsp_alias = os.getenv(f"CAMERA_{camera_id}_TOKEN_ALIAS", None)
+        rtsp_alias = os.getenv(f"NVR_CAMERA_{camera_id}_TOKEN_ALIAS", None)
 
         print("═══════════════════════════════════════════════════════════════════════════")
         print(f"UNIFI protect_host: {protect_host}")

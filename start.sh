@@ -52,7 +52,7 @@ set -a
 pull_nvr_secrets # >/dev/null
 
 # Detect and export host IP
-export LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
+export NVR_LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
 stop_spinner
 set +a
 
@@ -82,10 +82,12 @@ if [[ -f ~/0_NVR/ensure_recording_paths.sh ]]; then
 fi
 
 # Ensure TLS certs exist (MediaMTX + nginx need them)
+# Uses CA-based certs so users can install the CA and avoid browser warnings.
+# The CA persists across regenerations; only the server cert is recreated if missing.
 if [ ! -f certs/dev/fullchain.pem ] || [ ! -f certs/dev/privkey.pem ]; then
 	echo ""
-	echo "TLS certs missing — generating self-signed certs..."
-	~/0_NVR/0_MAINTENANCE_SCRIPTS/make_self_signed_tls.sh
+	echo "TLS certs missing — generating CA-signed certs..."
+	~/0_NVR/0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh
 	echo -e "${GREEN}✓ TLS certs generated${NC}"
 fi
 

@@ -18,8 +18,8 @@ class SV3CCredentialProvider(CredentialProvider):
     
     Expected environment variables:
         Per-camera (priority):
-            SV3C_USERNAME
-            SV3C_PASSWORD
+            NVR_SV3C_USERNAME
+            NVR_SV3C_PASSWORD
         
     """
     
@@ -44,8 +44,8 @@ class SV3CCredentialProvider(CredentialProvider):
         if camera_id:
             # For SV3C, use hardcoded name since serial is not meaningful
             # User configured: SV3C_USERNAME, SV3C_PASSWORD
-            username_var = "SV3C_USERNAME"
-            password_var = "SV3C_PASSWORD"
+            username_var = "NVR_SV3C_USERNAME"
+            password_var = "NVR_SV3C_PASSWORD"
             
             logger.debug(f"SV3C trying camera-specific credentials: {username_var}, {password_var}")
             

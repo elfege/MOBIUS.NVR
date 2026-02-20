@@ -21,7 +21,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
 
 class CameraRepository:

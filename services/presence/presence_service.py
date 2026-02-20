@@ -75,10 +75,10 @@ class PresenceService:
 
     Configuration:
         Environment variables:
-        - POSTGREST_URL: PostgREST server URL (default: http://postgrest:3001)
-        - HUBITAT_API_TOKEN: Maker API access token (for presence sensors)
-        - HUBITAT_API_APP_NUMBER: Maker API app number
-        - HUBITAT_HUB_IP: Hub IP address (default: hubitat.local)
+        - NVR_POSTGREST_URL: PostgREST server URL (default: http://postgrest:3001)
+        - NVR_HUBITAT_API_TOKEN_4: Maker API access token (for presence sensors)
+        - NVR_HUBITAT_API_NUMBER_4: Maker API app number
+        - NVR_HUBITAT_HUB_IP_4: Hub IP address (default: hubitat.local)
 
     Usage:
         service = PresenceService()
@@ -117,13 +117,13 @@ class PresenceService:
         """
         # PostgREST configuration
         self._postgrest_url = postgrest_url or os.getenv(
-            'POSTGREST_URL', 'http://postgrest:3001'
+            'NVR_POSTGREST_URL', 'http://postgrest:3001'
         )
 
         # Hubitat configuration for presence sensor polling (Hub 4)
-        self._api_token = os.environ.get('HUBITAT_API_TOKEN_4', '')
-        self._app_number = os.environ.get('HUBITAT_API_NUMBER_4', '')
-        self._hub_ip = hub_ip or os.environ.get('HUBITAT_HUB_IP_4', 'hubitat.local')
+        self._api_token = os.environ.get('NVR_HUBITAT_API_TOKEN_4', '')
+        self._app_number = os.environ.get('NVR_HUBITAT_API_NUMBER_4', '')
+        self._hub_ip = hub_ip or os.environ.get('NVR_HUBITAT_HUB_IP_4', 'hubitat.local')
 
         # Track if Hubitat integration is enabled
         self._hubitat_enabled = bool(self._api_token and self._app_number)

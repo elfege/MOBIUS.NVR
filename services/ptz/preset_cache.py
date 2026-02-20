@@ -32,7 +32,7 @@ PRESET_CACHE_TTL_DAYS = 6
 
 # PostgREST URL (internal docker network)
 # Default matches the container alias used in docker-compose
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
 
 class PresetCache:

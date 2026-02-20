@@ -15,7 +15,7 @@ import requests
 import os
 
 # PostgREST connection URL (containerized service)
-POSTGREST_URL = os.getenv('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
 # Direct PostgreSQL connection parameters (used as fallback when PostgREST is unavailable)
 _PG_HOST = os.environ.get('POSTGRES_HOST', 'postgres')

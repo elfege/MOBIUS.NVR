@@ -32,9 +32,9 @@ BRIDGE_PORT="${1:-3000}"
 
 # Get host IP (not container IP)
 # Try multiple methods to get the actual host IP on the LAN
-if [[ -n "${LOCAL_HOST_IP}" ]]; then
+if [[ -n "${NVR_LOCAL_HOST_IP}" ]]; then
     # Use environment variable if set
-    SERVER_IP="${LOCAL_HOST_IP}"
+    SERVER_IP="${NVR_LOCAL_HOST_IP}"
 elif command -v ip &> /dev/null; then
     # Get default route interface IP (usually the LAN IP)
     SERVER_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)

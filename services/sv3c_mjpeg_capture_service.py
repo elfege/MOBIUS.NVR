@@ -61,12 +61,12 @@ class SV3CMJPEGCaptureService:
         Get SV3C credentials from environment.
         SV3C cameras typically use simple username/password auth.
         """
-        username = os.getenv('SV3C_USERNAME')
-        password = os.getenv('SV3C_PASSWORD')
+        username = os.getenv('NVR_SV3C_USERNAME')
+        password = os.getenv('NVR_SV3C_PASSWORD')
 
         if not username or not password:
             # Log warning but don't fail - some SV3C cameras may not require auth
-            logger.warning("SV3C credentials not found in environment (SV3C_USERNAME/SV3C_PASSWORD)")
+            logger.warning("SV3C credentials not found in environment (NVR_SV3C_USERNAME/NVR_SV3C_PASSWORD)")
 
         return (username, password)
 
@@ -264,7 +264,7 @@ class SV3CMJPEGCaptureService:
                                    f"size={len(snapshot)} bytes, clients={self.client_counts[camera_id]}")
 
                 elif response.status_code == 401:
-                    error_msg = "Authentication failed (401) - check SV3C_USERNAME/SV3C_PASSWORD"
+                    error_msg = "Authentication failed (401) - check NVR_SV3C_USERNAME/NVR_SV3C_PASSWORD"
                     with self.lock:
                         capture_info['last_error'] = error_msg
                     consecutive_errors += 1

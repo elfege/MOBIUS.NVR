@@ -27,7 +27,7 @@ RECORDING_DIRS = {
 RECORDING_TYPES = ['motion', 'continuous', 'manual']
 
 # PostgREST URL
-POSTGREST_URL = os.environ.get('POSTGREST_URL', 'http://postgrest:3001')
+POSTGREST_URL = os.environ.get('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
 
 def parse_filename(filename: str) -> dict:

@@ -18,8 +18,8 @@ class EufyCredentialProvider(CredentialProvider):
     Each camera has unique username/password for RTSP access
     
     Expected environment variables:
-        EUFY_CAMERA_{SERIAL}_USERNAME
-        EUFY_CAMERA_{SERIAL}_PASSWORD
+        NVR_EUFY_CAMERA_{SERIAL}_USERNAME
+        NVR_EUFY_CAMERA_{SERIAL}_PASSWORD
     """
     
     def __init__(self):
@@ -41,8 +41,8 @@ class EufyCredentialProvider(CredentialProvider):
         camera_serial = identifier
         
         # Build environment variable names
-        username_var = f"EUFY_CAMERA_{camera_serial}_USERNAME"
-        password_var = f"EUFY_CAMERA_{camera_serial}_PASSWORD"
+        username_var = f"NVR_EUFY_CAMERA_{camera_serial}_USERNAME"
+        password_var = f"NVR_EUFY_CAMERA_{camera_serial}_PASSWORD"
         
         # Retrieve from environment
         username = os.getenv(username_var)
@@ -63,13 +63,13 @@ class EufyCredentialProvider(CredentialProvider):
         Returns:
             (username, password) tuple for bridge authentication
         """
-        username = os.getenv("EUFY_BRIDGE_USERNAME")
-        password = os.getenv("EUFY_BRIDGE_PASSWORD")
-        
+        username = os.getenv("NVR_EUFY_BRIDGE_USERNAME")
+        password = os.getenv("NVR_EUFY_BRIDGE_PASSWORD")
+
         if not self.validate_credentials(username, password):
             logger.warning(
                 "Missing or invalid Eufy bridge credentials. "
-                "Expected env vars: EUFY_BRIDGE_USERNAME, EUFY_BRIDGE_PASSWORD"
+                "Expected env vars: NVR_EUFY_BRIDGE_USERNAME, NVR_EUFY_BRIDGE_PASSWORD"
             )
         
         return (username, password)

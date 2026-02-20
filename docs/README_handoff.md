@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 19, 2026 10:45 EST*
+*Last updated: February 19, 2026 13:35 EST*
 
 **Branch:** `db_camera_config_migration_FEB_19_2026_a`
 
@@ -172,14 +172,75 @@ export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credent
 
 ---
 
+### Side-Chat Session: External API + TILES Integration (Feb 20, 09:00-09:45 EST)
+
+**Context:** Running as `office-nvr` side-chat, coordinating with `office-tiles` via intercom.
+
+13. **`services/external_api_routes.py`** (CREATED earlier, updated 09:30 EST)
+    - Created Flask Blueprint with 4 endpoints for TILES integration (MSG-044)
+    - Added `has_audio` field to `/api/external/cameras` response (MSG-062)
+    - **Bearer token auth implemented** (MSG-069/MSG-070 directive):
+      - `NVR_API_TOKEN` env var read at module init
+      - `@require_auth` decorator replaces `@lan_only` on all endpoints
+      - Production: requires `Authorization: Bearer <token>`, returns 401
+      - Dev mode (no token): falls back to LAN-only IP check, logs warning
+      - CORS updated to allow `Authorization` header
+      - Follows dDMSC pattern (`~/dDMSC/api/app.py` lines 51-128)
+
+14. **`docker-compose.yml`** (updated 09:35 EST)
+    - Added `NVR_API_TOKEN: ${NVR_API_TOKEN:-}` to unified-nvr environment section
+
+15. **`app.py`** (updated earlier in session)
+    - Blueprint registration: import, register, init_external_api(camera_repo)
+
+16. **7 HTML templates** (updated earlier)
+    - Favicon added: `<link rel="icon" type="image/png" href="...mobius.png">`
+
+17. **Intercom messages posted:**
+    - MSG-045: ACK MSG-044, implementation details
+    - MSG-047: Container restart notification
+    - MSG-048: Port corrections (8081/8443, not 5000)
+    - MSG-056: Corrections to JIRA's MSG-054
+    - MSG-063: has_audio field added
+    - MSG-071: Bearer token auth implemented, ACK MSG-069/MSG-070
+
+18. **AWS Secrets Manager** (updated 10:00 EST)
+    - `NVR_API_TOKEN` added to existing `NVR-Secrets` secret (merged, not replaced)
+    - `pull_nvr_secrets()` in `start.sh` already pulls `NVR-Secrets` — token auto-exported
+    - No changes needed to `pull_nvr_secrets()` or `start.sh`
+    - MSG-072 posted with retrieval instructions for TILES
+
+**Pending:**
+- Container restart needed for all changes (`./start.sh`)
+- TILES needs to pull `NVR_API_TOKEN` from AWS and add to their env
+
+---
+
+### Post-Compaction #2 Updates (13:30 EST)
+
+**Stream loading investigation concluded:**
+
+11. **Root cause analysis complete** — The slow stream loading was caused by two bugs in `_db_row_to_camera_config()`:
+    - Bug 1: `row[field] is not None` filter dropped null-valued fields (rtsp_alias, power_supply_device_id)
+    - Bug 2: No `id` field synthesized (migration script excluded it, but all stream handlers use `camera_config.get("id")`)
+    - **Both fixed in commit 53df957**
+
+12. **Remaining slow cameras are PRE-EXISTING** — not DB migration related:
+    - T8416P0023352DA9 (Living Room), T8416P0023370398 (Office Desk), T8419P0024110C6A (STAIRS) — Eufy bridge dependency, bridge fails to start (3/5 restart attempts failed)
+    - 95270000YPTKLLD6 (REOLINK Cat Feeders) — Neolink bridge dependency
+    - These cameras timeout at 15s, watchdog recovers them eventually
+    - User confirmed: "but faster now" (DB migration regression resolved)
+
+---
+
 ## Next Session TODO
 
 **Testing Required (DB Migration):**
 - [x] Run SQL migration 011
 - [x] Run cameras.json -> DB migration script (19 cameras migrated)
-- [ ] Restart containers (user runs `./start.sh`)
-- [ ] Verify cameras load from database (check logs for "source: database")
-- [ ] Verify all streams start correctly (no regressions)
+- [x] Restart containers (user runs `./start.sh`)
+- [x] Verify cameras load from database (check logs for "source: database") — confirmed "19 cameras from database"
+- [x] Verify all streams start correctly (no regressions) — regression fixed (commit 53df957)
 - [ ] Test stream type switching: select MJPEG in UI -> backend serves MJPEG
 - [ ] Test per-user preferences: user A sets WebRTC, verify backend uses it
 - [ ] Test force-sync: `POST /api/cameras/force-sync` resets from JSON
@@ -210,9 +271,96 @@ export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credent
 - [ ] file_operations_log cleanup: 98M rows (34GB) needs retention/pruning policy
 - [ ] VACUUM ANALYZE on recordings table (never been vacuumed)
 - [ ] Security: Implement stricter RLS policies (currently permissive)
+- [ ] Security: Investigate container encryption (secrets are cleartext in container env)
 - [ ] WebRTC HD/SD fallback -- falls back too fast, doesn't retry HD
 - [ ] Add snapshot feature in fullscreen mode
 - [ ] Investigate segment buffer failures -- pre-alarm recording broken
 - [ ] Warm restart sub-service (`restart_warm.sh`)
+
+---
+
+### Post-Compaction #3 Updates (14:00 EST)
+
+**Context compaction occurred at ~13:50 EST.** Previous session was investigating stream loading after DB migration (resolved — network-level camera failures, not code) and working on CLAUDE.md utilities propagation.
+
+19. **`CLAUDE.md`** (updated 14:00 EST)
+    - Added RULE 19: Shell Utilities Available to All Instances
+    - Covers: `.bash_utils`, `.bash_aliases`, `custom-env.sh`, `.env.colors`, `logger.sh`
+    - Sections 19.1-19.5: Files overview, key functions, key aliases, key variables, usage notes
+
+20. **`server:~/0_CLAUDE_IC/CLAUDE.md.standard.md`** (updated ~13:40 EST, pre-compaction)
+    - Appended "STANDARD: Shell Utilities Available to All Instances" section
+    - Canonical source — all projects should propagate from this
+
+21. **Intercom MSG-074** posted to `server:~/0_CLAUDE_IC/intercom.md`
+    - To: ALL instances
+    - Subject: CLAUDE.md Standard Updated — New Shell Utilities Section
+    - Action: All instances must read updated standard and add utilities to their local CLAUDE.md
+
+---
+
+### Eufy PTZ Bridge Fix (Feb 20, 01:55 EST)
+
+**Root Cause:** Eufy bridge crashing immediately — `eufy-security-server` binary missing from container.
+
+22. **Missing `node_modules/`** — Lost during Feb 15 catastrophic wipe. The bind mount `./:/app` overlays
+    the image-built node_modules with the host directory (which had none). Fix: `npm ci --production` on host.
+    Binary verified: `node_modules/.bin/eufy-security-server` present.
+
+23. **Double `NVR_` prefix bug in `services/eufy/eufy_bridge.sh`** — Lines 92, 117, 160, 161, 185 used
+    `NVR_NVR_EUFY_BRIDGE_USERNAME` instead of `NVR_EUFY_BRIDGE_USERNAME`. Also `NVR_TRUSTED_DEVICE_NAME`
+    fixed to `TRUSTED_DEVICE_NAME`. Another Claude instance had namespaced AWS secret keys, causing double prefix.
+
+24. **Intercom MSG-078** — Notified all instances about duplicate namespaced keys in EUFY_CAMERAS AWS secret.
+
+**Node version note:** Host has Node 18, container has Node 20. eufy-security-ws@1.9.3 requires >= 20.
+Host npm warnings are cosmetic — packages run fine on container's Node 20.
+
+**Requires:** Container restart (`./start.sh`) to pick up node_modules and fixed bridge script.
+
+---
+
+### Environment Variable Namespace Migration: `NVR_` Prefix (Feb 20, 00:30-02:00 EST)
+
+**Branch:** `env_var_nvr_prefix_FEB_20_2026_a`
+
+**Goal:** Prefix all custom NVR environment variables with `NVR_` to prevent collision with other projects on the same host.
+
+**Scope:** Only custom NVR vars. Framework/external vars unchanged: `PGRST_*`, `FLASK_*`, `POSTGRES_*`, `PYTHONUNBUFFERED`, `TZ`.
+
+**Pre-existing bug fixed:** `config/go2rtc.yaml:47` used `${REOLINK_API_USERNAME}` but actual var was `REOLINK_API_USER` — fixed as `${NVR_REOLINK_API_USER}`.
+
+**Double-prefix bug fixed:** `scripts/update_neolink_config.sh` had `NVR_NVR_REOLINK_*` (from compaction-related re-edit). Fixed to `NVR_REOLINK_*`.
+
+**AWS Secrets Manager** (00:45 EST):
+- 47 `NVR_`-prefixed duplicate keys added across 7 secrets
+- Old non-prefixed keys retained for rollback
+
+**Files Modified:**
+
+25. **Credential providers** (5 files, 01:00 EST):
+    - `services/credentials/reolink_credential_provider.py` — 4 vars
+    - `services/credentials/amcrest_credential_provider.py` — 2 vars + dynamic
+    - `services/credentials/sv3c_credential_provider.py` — 2 vars
+    - `services/credentials/eufy_credential_provider.py` — dynamic + 2 static
+    - `services/credentials/unifi_credential_provider.py` — 2 vars
+
+26. **`app.py`** (01:10 EST) — ~15 env var replacements
+
+27. **15 other Python files** (01:15 EST) — services, models, scripts, streaming handlers
+
+28. **`docker-compose.yml`** (01:20 EST) — All custom vars, added missing HUBITAT_*_4 vars
+
+29. **`config/go2rtc.yaml`** (01:25 EST) — All `${VAR}` → `${NVR_VAR}`
+
+30. **`.env`** (01:30 EST) — All custom var definitions
+
+31. **Shell scripts** (01:35 EST) — start.sh, eufy_bridge.sh (root+container), eufy_bridge_login.sh, update_neolink_config.sh
+
+32. **`~/.bash_utils`** (01:55 EST) — `get_cameras_credentials()` 40 validation checks
+
+33. **Intercom MSG-081** posted — notified all instances
+
+**Verification required:** User must run `./start.sh` to test all credentials load correctly.
 
 ---

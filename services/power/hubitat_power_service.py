@@ -112,9 +112,9 @@ class HubitatPowerService:
 
     Configuration:
         Environment variables:
-        - HUBITAT_API_TOKEN: Maker API access token
-        - HUBITAT_API_APP_NUMBER: Maker API app number
-        - HUBITAT_HUB_IP: Hub IP address (default: hubitat.local)
+        - NVR_HUBITAT_API_TOKEN_4: Maker API access token
+        - NVR_HUBITAT_API_NUMBER_4: Maker API app number
+        - NVR_HUBITAT_HUB_IP_4: Hub IP address (default: hubitat.local)
 
         Camera config (cameras.json):
         - power_supply: "hubitat" - Camera is powered by Hubitat-controlled plug
@@ -174,9 +174,9 @@ class HubitatPowerService:
         self._stream_manager = stream_manager
 
         # Load configuration from environment (Hub 4)
-        self._api_token = os.environ.get('HUBITAT_API_TOKEN_4', '')
-        self._app_number = os.environ.get('HUBITAT_API_NUMBER_4', '')
-        self._hub_ip = hub_ip or os.environ.get('HUBITAT_HUB_IP_4', 'hubitat.local')
+        self._api_token = os.environ.get('NVR_HUBITAT_API_TOKEN_4', '')
+        self._app_number = os.environ.get('NVR_HUBITAT_API_NUMBER_4', '')
+        self._hub_ip = hub_ip or os.environ.get('NVR_HUBITAT_HUB_IP_4', 'hubitat.local')
 
         # Track power cycle state per camera
         self._power_cycle_status: Dict[str, PowerCycleStatus] = {}
@@ -199,8 +199,8 @@ class HubitatPowerService:
             )
         else:
             logger.warning(
-                "HubitatPowerService DISABLED - missing HUBITAT_API_TOKEN or "
-                "HUBITAT_API_APP_NUMBER environment variables"
+                "HubitatPowerService DISABLED - missing NVR_HUBITAT_API_TOKEN_4 or "
+                "NVR_HUBITAT_API_NUMBER_4 environment variables"
             )
 
     def start(self) -> None:

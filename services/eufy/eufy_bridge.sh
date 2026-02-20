@@ -89,32 +89,32 @@ echo "==========================================================================
 echo "STEP 1: LOADING CREDENTIALS"
 echo "============================================================================"
 
-echo "EUFY_BRIDGE_USERNAME: $EUFY_BRIDGE_USERNAME"
+echo "EUFY_BRIDGE_USERNAME: $NVR_EUFY_BRIDGE_USERNAME"
 
 # Pull AWS secrets if bridge credentials missing
-if [[ -z "${EUFY_BRIDGE_USERNAME}" || -z "${EUFY_BRIDGE_PASSWORD}" ]]; then
+if [[ -z "${NVR_EUFY_BRIDGE_USERNAME}" || -z "${NVR_EUFY_BRIDGE_PASSWORD}" ]]; then
 	log_warn "Credentials not in environment, attempting to load from AWS Secrets Manager..."
 	pull_aws_secrets "EUFY_CAMERAS" 2>/dev/null || true
 fi
 
 # Verify bridge credentials loaded
-if [[ -z "${EUFY_BRIDGE_USERNAME}" || -z "${EUFY_BRIDGE_PASSWORD}" ]]; then
+if [[ -z "${NVR_EUFY_BRIDGE_USERNAME}" || -z "${NVR_EUFY_BRIDGE_PASSWORD}" ]]; then
 	echo ""
 	log_error "Bridge credentials missing after attempting to load from AWS"
 	echo ""
-	echo "EUFY_BRIDGE_USERNAME: ${EUFY_BRIDGE_USERNAME:-NOT SET}"
-	echo "EUFY_BRIDGE_PASSWORD: ${EUFY_BRIDGE_PASSWORD:+SET (hidden)}"
+	echo "NVR_EUFY_BRIDGE_USERNAME: ${NVR_EUFY_BRIDGE_USERNAME:-NOT SET}"
+	echo "NVR_EUFY_BRIDGE_PASSWORD: ${NVR_EUFY_BRIDGE_PASSWORD:+SET (hidden)}"
 	echo ""
 	echo "TROUBLESHOOTING:"
 	echo "1. Verify AWS credentials are configured"
 	echo "2. Check that EUFY_CAMERAS secret exists in AWS Secrets Manager"
-	echo "3. Ensure secret contains: EUFY_BRIDGE_USERNAME and EUFY_BRIDGE_PASSWORD"
+	echo "3. Ensure secret contains: NVR_EUFY_BRIDGE_USERNAME and NVR_EUFY_BRIDGE_PASSWORD"
 	echo ""
 	exit 1
 fi
 
 log_success "Credentials loaded successfully"
-echo "  Username: $EUFY_BRIDGE_USERNAME"
+echo "  Username: $NVR_EUFY_BRIDGE_USERNAME"
 echo "  Password: ******** (hidden)"
 echo ""
 
@@ -157,8 +157,8 @@ populate_config() {
 	# Build JSON config with stationIPAddresses
 	# jq will create the stationIPAddresses object from the serial:ip pairs
 	jq -n \
-		--arg user "$EUFY_BRIDGE_USERNAME" \
-		--arg pass "$EUFY_BRIDGE_PASSWORD" \
+		--arg user "$NVR_EUFY_BRIDGE_USERNAME" \
+		--arg pass "$NVR_EUFY_BRIDGE_PASSWORD" \
 		--arg coun "$COUNTRY" \
 		--arg lang "$LANGUAGE" \
 		--arg trust "$TRUSTED_DEVICE_NAME" \

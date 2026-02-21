@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Install Certificate - MOBIUS.NVR</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/mobius.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/mobius.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/cert-install.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="cert-install-page">
+    <div class="cert-install-container">
+        <div class="cert-install-panel">
+
+            <!-- Header -->
+            <div class="cert-header">
+                <div class="cert-logo">
+                    <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="MOBIUS.NVR" class="cert-logo-img">
+                    <h1>MOBIUS.NVR</h1>
+                </div>
+                <h2><i class="fas fa-shield-alt"></i> Secure Your Connection</h2>
+                <p class="cert-subtitle">
+                    Install the NVR certificate authority on this device to remove
+                    browser security warnings permanently.
+                </p>
+            </div>
+
+            {% if not ca_available %}
+            <!-- CA not generated yet -->
+            <div class="cert-error">
+                <i class="fas fa-exclamation-triangle"></i>
+                <p>
+                    The CA certificate has not been generated yet.<br>
+                    Run <code>./0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh</code> on the server,
+                    then restart the NVR.
+                </p>
+            </div>
+
+            {% else %}
+            <!-- Platform cards — JS will highlight the detected one -->
+            <div class="platform-cards" id="platformCards">
+
+                <!-- iOS -->
+                <div class="platform-card" data-platform="ios">
+                    <div class="platform-card-header">
+                        <i class="fab fa-apple"></i>
+                        <span>iPhone / iPad</span>
+                        <span class="detected-badge" id="badge-ios">Detected</span>
+                    </div>
+                    <div class="platform-card-body">
+                        <a href="/install-cert/mobileconfig" class="btn btn-primary cert-download-btn">
+                            <i class="fas fa-download"></i> Install Profile
+                        </a>
+                        <div class="platform-steps">
+                            <div class="step">
+                                <span class="step-num">1</span>
+                                <span>Tap <strong>Install Profile</strong> above</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">2</span>
+                                <span>When prompted, tap <strong>Allow</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">3</span>
+                                <span>Go to <strong>Settings &rarr; General &rarr; VPN & Device Management</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">4</span>
+                                <span>Tap the <strong>Home NVR</strong> profile &rarr; <strong>Install</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">5</span>
+                                <span>Go to <strong>Settings &rarr; General &rarr; About &rarr; Certificate Trust Settings</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">6</span>
+                                <span>Enable full trust for <strong>NVR Local CA</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- macOS -->
+                <div class="platform-card" data-platform="macos">
+                    <div class="platform-card-header">
+                        <i class="fab fa-apple"></i>
+                        <span>macOS</span>
+                        <span class="detected-badge" id="badge-macos">Detected</span>
+                    </div>
+                    <div class="platform-card-body">
+                        <a href="/install-cert/download" class="btn btn-primary cert-download-btn">
+                            <i class="fas fa-download"></i> Download Certificate
+                        </a>
+                        <div class="platform-steps">
+                            <div class="step">
+                                <span class="step-num">1</span>
+                                <span>Click <strong>Download Certificate</strong> above</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">2</span>
+                                <span>Double-click the downloaded <code>.crt</code> file</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">3</span>
+                                <span>Keychain Access opens &mdash; add to <strong>System</strong> keychain</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">4</span>
+                                <span>Double-click the cert in Keychain &rarr; <strong>Trust</strong> &rarr; set to <strong>Always Trust</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Windows -->
+                <div class="platform-card" data-platform="windows">
+                    <div class="platform-card-header">
+                        <i class="fab fa-windows"></i>
+                        <span>Windows</span>
+                        <span class="detected-badge" id="badge-windows">Detected</span>
+                    </div>
+                    <div class="platform-card-body">
+                        <a href="/install-cert/download" class="btn btn-primary cert-download-btn">
+                            <i class="fas fa-download"></i> Download Certificate
+                        </a>
+                        <div class="platform-steps">
+                            <div class="step">
+                                <span class="step-num">1</span>
+                                <span>Click <strong>Download Certificate</strong> above</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">2</span>
+                                <span>Double-click the downloaded <code>.crt</code> file</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">3</span>
+                                <span>Click <strong>Install Certificate</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">4</span>
+                                <span>Select <strong>Local Machine</strong> &rarr; Next</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">5</span>
+                                <span>Choose <strong>Place all certificates in the following store</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">6</span>
+                                <span>Browse &rarr; <strong>Trusted Root Certification Authorities</strong> &rarr; OK &rarr; Finish</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Linux -->
+                <div class="platform-card" data-platform="linux">
+                    <div class="platform-card-header">
+                        <i class="fab fa-linux"></i>
+                        <span>Linux</span>
+                        <span class="detected-badge" id="badge-linux">Detected</span>
+                    </div>
+                    <div class="platform-card-body">
+                        <a href="/install-cert/download" class="btn btn-primary cert-download-btn">
+                            <i class="fas fa-download"></i> Download Certificate
+                        </a>
+                        <div class="platform-steps">
+                            <div class="step">
+                                <span class="step-num">1</span>
+                                <span>Click <strong>Download Certificate</strong> above</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">2</span>
+                                <span>Copy to trust store:</span>
+                            </div>
+                            <div class="step-code">
+                                <code>sudo cp NVR_Local_CA.crt /usr/local/share/ca-certificates/</code>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">3</span>
+                                <span>Update certificates:</span>
+                            </div>
+                            <div class="step-code">
+                                <code>sudo update-ca-certificates</code>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">4</span>
+                                <span><strong>Chrome/Chromium</strong> also needs:</span>
+                            </div>
+                            <div class="step-code">
+                                <code>certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "NVR Local CA" -i NVR_Local_CA.crt</code>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">5</span>
+                                <span><strong>Firefox</strong>: Settings &rarr; Privacy &rarr; Certificates &rarr; Import &rarr; select the .crt &rarr; check "Trust to identify websites"</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Android -->
+                <div class="platform-card" data-platform="android">
+                    <div class="platform-card-header">
+                        <i class="fab fa-android"></i>
+                        <span>Android</span>
+                        <span class="detected-badge" id="badge-android">Detected</span>
+                    </div>
+                    <div class="platform-card-body">
+                        <a href="/install-cert/download" class="btn btn-primary cert-download-btn">
+                            <i class="fas fa-download"></i> Download Certificate
+                        </a>
+                        <div class="platform-steps">
+                            <div class="step">
+                                <span class="step-num">1</span>
+                                <span>Tap <strong>Download Certificate</strong> above</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">2</span>
+                                <span>Open the downloaded file (or go to <strong>Settings &rarr; Security &rarr; Install from storage</strong>)</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">3</span>
+                                <span>Name it <strong>NVR Local CA</strong></span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">4</span>
+                                <span>Select <strong>CA certificate</strong> when asked for credential use</span>
+                            </div>
+                            <div class="step">
+                                <span class="step-num">5</span>
+                                <span>Tap <strong>Install anyway</strong> on the warning prompt</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Certificate fingerprint for verification -->
+            {% if fingerprint %}
+            <div class="cert-fingerprint">
+                <h3><i class="fas fa-fingerprint"></i> Certificate Fingerprint (SHA-256)</h3>
+                <code class="fingerprint-value">{{ fingerprint }}</code>
+                <p class="fingerprint-note">
+                    Compare this with the fingerprint shown during OS installation
+                    to verify you're installing the correct certificate.
+                </p>
+                {% if expiry %}
+                <p class="fingerprint-note">CA expires: {{ expiry }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- Back link -->
+            <div class="cert-footer">
+                <a href="/" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to NVR
+                </a>
+            </div>
+
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/cert-install.js') }}"></script>
+</body>
+</html>

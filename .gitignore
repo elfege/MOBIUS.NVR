@@ -28,7 +28,7 @@ persistent.json
 persistent.json.backup_2
 bootstrap.json
 tree.md
-neolink
+# neolink
 
 # Deprecated/unused scripts
 eufy_bridge.sh
@@ -46,6 +46,7 @@ claude_rules.md
 CLAUDE.md
 *claude*
 chat.md
+chat*.md
 
 # -----------------------------------------------------------------------------
 # Security - certificates and environment
@@ -203,3 +204,6 @@ Thumbs.db
 # VPN related
 # -----------------------------------------------------------------------------
 *vpn*
+
+
+retrieved_files_post_catastrophic_loss_of_feb_15_2026/

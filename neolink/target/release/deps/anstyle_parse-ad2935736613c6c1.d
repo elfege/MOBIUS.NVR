@@ -1,0 +1,11 @@
+/home/elfege/0_NVR/neolink/target/release/deps/anstyle_parse-ad2935736613c6c1.d: /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/lib.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/params.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/mod.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/definitions.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/table.rs
+
+/home/elfege/0_NVR/neolink/target/release/deps/libanstyle_parse-ad2935736613c6c1.rlib: /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/lib.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/params.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/mod.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/definitions.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/table.rs
+
+/home/elfege/0_NVR/neolink/target/release/deps/libanstyle_parse-ad2935736613c6c1.rmeta: /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/lib.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/params.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/mod.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/definitions.rs /home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/table.rs
+
+/home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/lib.rs:
+/home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/params.rs:
+/home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/mod.rs:
+/home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/definitions.rs:
+/home/elfege/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.3/src/state/table.rs:

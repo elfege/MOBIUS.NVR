@@ -16161,3 +16161,102 @@ Reconcile DB operation exposed cascading failures:
 
 ---
 
+
+---
+
+## Session: February 8-16, 2026 — Stream Type Preferences + Stability Fixes
+
+**Branch:** `stream_type_preferences_FEB_08_2026_a` (merged to main: 1bfa087)
+
+**📊 Full Timeline:** See [SESSION_TIMELINE_FEB_08_16_2026.md](SESSION_TIMELINE_FEB_08_16_2026.md) for comprehensive chronological breakdown.
+
+### Summary
+
+**Major Features:**
+1. **Per-User Stream Type Preferences** — Live switching between WebRTC/HLS/LL-HLS/MJPEG/NEOLINK without page reload
+2. **Phase 1 Stream Stability Fixes** — FFmpeg→MediaMTX race condition, UI/backend coordination, watchdog timing
+3. **Monitor Standby Detection** — Page Visibility API with hypnotic standby overlay, automatic stream teardown/reload
+4. **Storage Stats Bug Fix** — Fixed overlay FS issue from atomistic docker mounts
+5. **Disaster Recovery** — Docker image recovery (Feb 9 files from Feb 13 build), git recovery, TLS cert auto-generation
+
+**Commits:**
+- `9df1b90` - Backend stream preference API
+- `6c9daf6` - Frontend loader + live switch + RULE 9 update
+- `7993e31` - Stream type UI + fullscreen fix
+- `61d667b` - MediaMTX path validation
+- `0707529` - Docker mounts simplification (storage fix)
+- `fc9f926` - Storage migration workaround removal
+- `8957510` - FFmpeg→MediaMTX publisher readiness check
+- `4f23f70` - UI/backend recovery coordination
+- `278d6a2` - Watchdog cooldown + manual restart fix
+- `75a719c` - Handoff Phase 1 documentation
+- `7c49a2c` - Monitor standby with Page Visibility API
+- `f2bdba1` - TLS cert auto-generation in start.sh
+- `b294074` - Docker recovery documentation
+- `d677826` - Cameras.json restoration notes
+- `74b40c5` - CLAUDE.md initial copy (superseded)
+- `abde82e` - CLAUDE.md v1.0 (adapted from dDMSC 2.2)
+- `1bfa087` - Session timeline document
+
+### Disaster Recovery (February 15, 2026)
+
+**Incident:** Server host wiped by autonomous Claude testing remover.sh. Sync cascade overwrote dellserver at 14:19pm.
+
+**Recovery Actions:**
+1. Git recovery via `git init` + force checkout from remote
+2. Docker image extraction — found Feb 9 snapshot in `0_nvr-nvr:latest` image (built Feb 13)
+3. Recovered 21MB (1,332 files) including cameras.json with FFmpeg 7.x fixes
+4. TLS cert auto-generation added to prevent future MediaMTX crashes
+5. Cameras.json restored from Feb 9 (11 days newer than Jan 29 disaster version)
+
+**Lessons Learned:**
+- Docker images serve as unintentional backups
+- Gitignored config files need separate backup strategy
+- Autonomous operations with `rm -rf` + globs = catastrophic risk
+- TLS cert auto-generation prevents container crash loops
+
+### Technical Improvements
+
+**Stream Stability (Phase 1 — UNTESTED):**
+- Publisher readiness check: polls MediaMTX `/v3/paths/list` until `ready: true` (15s timeout)
+- UI/backend coordination: `onUnhealthy` checks backend state before scheduling restart
+- Reduced watchdog cooldown: 30s → 10s
+- Manual restart: clears cooldown + waits for publisher readiness
+- Expected: 90% reduction in UI health monitor interventions, reliable manual restart
+
+**Monitor Standby:**
+- 3s grace period prevents false triggers
+- Tears down all streams, health monitors, WebSocket connections
+- Hypnotic standby overlay: 5 concentric rings, pulsing cyan eye, floating particles
+- On wake: "RELOADING STREAMS" with sped-up green animation, page reload after 1.8s
+- Power savings: ~15-30 Mbps + CPU/GPU freed when tab hidden
+
+**CLAUDE.md Evolution:**
+- Version 1.0 adapted from dDMSC 2.2 template (19KB)
+- Comprehensive numbered rules, NVR-specific architecture
+- Removed: Flyway, PostgREST-only, NTCIP, Jira, dotstream team
+- Added: Section 5 (NVR-Specific Architecture), streaming troubleshooting, container services
+
+### Key Files Modified
+
+- `app.py` — Stream preference endpoints, MediaMTX path validation, restart with publisher readiness
+- `services/camera_state_tracker.py` — `wait_for_publisher_ready()`, reduced STARTING timeout
+- `streaming/stream_manager.py` — Publisher readiness in stream start/restart
+- `services/stream_watchdog.py` — Reduced cooldown, `clear_cooldown()` method
+- `static/js/streaming/stream.js` — Preference loader, live switch, backend state check, visibility manager
+- `static/js/streaming/camera-state-monitor.js` — `isBackendHandling()` method
+- `static/js/streaming/visibility-manager.js` — NEW: Page Visibility API wrapper
+- `static/css/components/standby-overlay.css` — NEW: Hypnotic standby animation
+- `start.sh` — TLS cert auto-generation
+- `docker-compose.yml` — Simplified mounts (10 → 2)
+- `services/recording/storage_migration.py` — Removed overlay FS workaround
+- `CLAUDE.md` — NEW: Comprehensive NVR-specific instructions
+
+### TODO for Next Session
+
+- [ ] Test Phase 1 stream stability fixes (requires `docker compose restart`)
+- [ ] Decide on recursive `docs/docs/docs/...` deletions (intentional cleanup or disaster artifact?)
+- [ ] Monitor for Entrance door RTSP null exceptions
+- [ ] Verify app responds (was HTTP 000 with cameras.json issues)
+- [ ] Investigate segment buffer failures (HALLWAY, Office Desk) — pre-alarm recording broken
+

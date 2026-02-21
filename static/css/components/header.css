@@ -73,6 +73,74 @@
     filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.3));
 }
 
+/* Logo button — wraps the logo image, clickable to open TILES overlay */
+.navbar-logo-link {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    transition: background 0.2s ease;
+}
+.navbar-logo-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================================================
+   TILES OVERLAY MODAL — loads TILES dashboard in an iframe
+   ============================================================================ */
+.tiles-overlay-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+}
+
+.tiles-overlay-content {
+    position: relative;
+    width: 95vw;
+    height: 95vh;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+    background: #1a1a2e;
+}
+
+.tiles-overlay-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.tiles-overlay-close {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    z-index: 10001;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease;
+}
+.tiles-overlay-close:hover {
+    background: rgba(220, 50, 50, 0.8);
+}
+
 /* ============================================================================
    RIGHT-SIDE ACTIONS
    ============================================================================ */

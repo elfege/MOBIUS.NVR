@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MOBIUS.NVR</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/mobius.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/mobius.png') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/recording-modal.css') }}">
@@ -82,9 +84,11 @@
             <!-- Populated by JavaScript -->
         </div>
 
-        <!-- Center logo -->
+        <!-- Center logo — click opens TILES dashboard in overlay modal -->
         <div class="navbar-logo-section">
-            <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="MOBIUS.NVR" class="navbar-logo">
+            <button id="tiles-overlay-btn" class="navbar-logo-link" title="Open TILES Dashboard">
+                <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="MOBIUS.NVR" class="navbar-logo">
+            </button>
         </div>
 
         <!-- Right-side actions -->
@@ -891,6 +895,60 @@
         }, 60 * 60 * 1000)
     </script>
 
+    <!-- TILES Dashboard Overlay Modal
+         Loads the TILES app UI in an iframe covering 95% of the viewport.
+         Triggered by clicking the MOBIUS logo in the navbar. -->
+    <div id="tiles-overlay-modal" class="tiles-overlay-modal" style="display:none;">
+        <div class="tiles-overlay-content">
+            <button id="tiles-overlay-close" class="tiles-overlay-close" title="Close TILES">&times;</button>
+            <iframe id="tiles-overlay-iframe" class="tiles-overlay-iframe" src="about:blank"
+                    allow="autoplay; camera; microphone; fullscreen"></iframe>
+        </div>
+    </div>
+
+    <script>
+        // TILES overlay modal — loads TILES app in an iframe when MOBIUS logo is clicked
+        (function() {
+            const tilesBtn = document.getElementById('tiles-overlay-btn');
+            const modal = document.getElementById('tiles-overlay-modal');
+            const iframe = document.getElementById('tiles-overlay-iframe');
+            const closeBtn = document.getElementById('tiles-overlay-close');
+            // TILES runs on the same host, default HTTPS port (443)
+            const tilesUrl = 'https://' + window.location.hostname + '/';
+
+            if (!tilesBtn || !modal || !iframe || !closeBtn) return;
+
+            tilesBtn.addEventListener('click', function() {
+                // Load TILES only on first open (or if iframe was cleared)
+                if (iframe.src === 'about:blank' || !iframe.src.includes(window.location.hostname)) {
+                    iframe.src = tilesUrl;
+                }
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';  // Prevent background scroll
+            });
+
+            closeBtn.addEventListener('click', function() {
+                modal.style.display = 'none';
+                document.body.style.overflow = '';
+            });
+
+            // Close on click outside the iframe content area
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.style.display = 'none';
+                    document.body.style.overflow = '';
+                }
+            });
+
+            // Close on Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && modal.style.display === 'flex') {
+                    modal.style.display = 'none';
+                    document.body.style.overflow = '';
+                }
+            });
+        })();
+    </script>
 
 </body>
 

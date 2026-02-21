@@ -1,0 +1,1 @@
+{"rustc":16285725380928457773,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[11395979602760657318,"build_script_build",false,15924749391053502701]],"local":[{"RerunIfChanged":{"output":"release/build/num-rational-060a9293b9e77cb0/output","paths":["build.rs"]}}],"rustflags":["--cfg","tokio_unstable"],"config":0,"compile_kind":0}

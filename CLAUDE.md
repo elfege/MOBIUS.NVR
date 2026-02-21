@@ -1,445 +1,24 @@
 # Claude Code Instructions for NVR Project
 
-## 1. Session Management
+## RULE 0: CRITICAL - At the start of EVERY message you write, verify
 
-### 1.1 Startup Checklist
-
-At the start of EVERY message, verify:
-
-- **1.1.1** Context compaction? (phrase: "from a previous conversation that ran out of context") → if yes, follow 1.2
-- **1.1.2** Have I read this file (`CLAUDE.md`)? Never assume you know enough: always re-read it. You often violate rules. Be paranoïd.
-- **1.1.3** Have I read `~/0_CLAUDE_IC/user_profile_elfege.md` — persistent user profile
-- **1.1.4** Am I referencing rule numbers when making decisions?
-
-#### 1.1.5 Core Rules Summary (NEVER forget)
-
-**1.1.5.1** Rules and Constraints
-
-| Rule | Constraint                                                                     |
-|------|--------------------------------------------------------------------------------|
-| 2.1  | Commit early/often. Never merge broken code to main.                           |
-| 4.1  | NEVER modify code you haven't read first.                                      |
-| 11.1 | NEVER run ./start.sh or ./deploy.sh (AWS MFA hangs).                           |
-| 3.1  | Update docs/README_handoff.md after EVERY file modification.                   |
-| 7.1  | One hypothesis at a time, verify before next step.                             |
-| 10.1 | Always use camera serial numbers, never display names as primary identifiers.  |
-
-**1.1.5.2** when editing/creating a markdown table keep things aligned as I can't always read in rendered mode
-
-### 1.2 Context Compaction Protocol
-
-When phrase "from a previous conversation that ran out of context" appears:
-
-- **1.2.1** Immediately commit and push any uncommitted changes
-- **1.2.2** Create new branch with next suffix (_b, _c, etc.)
-- **1.2.3** Update `docs/README_handoff.md`: note compaction timestamp, summarize accomplished/pending
-- **1.2.4** Continue work on new branch
-
-NOTE: Intentional overlap with 1.1 and 2.1 — redundancy ensures critical actions during context transitions.
+1. Have I checked if context compaction occurred? (phrase: "from a previous conversation that ran out of context")
+2. If yes → Did I commit/push current work, create new branch with next suffix (_b,_c), update docs/README_handoff.md noting the compaction?
+3. Have I read `/home/elfege/0_NVR/CLAUDE.md` for project-specific instructions?
+4. Have I read: `docs/nvr_engineering_architecture.html`?
+5. Read `~/0_CLAUDE_IC/user_profile_elfege.md` — persistent user profile (background, preferences, communication style). Never make the user re-explain his history.
+6. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
 
 ---
 
-## 2. Git & Version Control
+## Project & User Context
 
-### 2.1 Branch Naming & Workflow
-
-#### 2.1.1 Branch Naming
-
-Format: `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
-
-Use `_b`, `_c` suffixes for continued work after completing one significant aspect of the work plan.
-
-#### 2.1.2 `main` Branch Rules
-
-- **2.1.2.1** Never make code changes, nor documents edits directly on `main`
-- **2.1.2.2** Checkout to feature branches for each task involving code changes
-- **2.1.2.3** Once a feature branch is committed (often due to compaction), push it, then create a new branch from it with the next suffix
-- **2.1.2.4** No `checkout main` without prior testing (by Claude AND the user) or if the user says: "Wrap up" => Then execute Rule 2.3.
-- **2.1.2.5** Any `checkout main` requires merging the last feature branch and `git push origin main`
-- **2.1.2.6** NEVER execute `git pull` without express user permission
-
-#### 2.1.3 Tracked vs Untracked
-
-`docs/README_project_history.md` is tracked. `docs/README_handoff.md` is **UNTRACKED** (in `.gitignore`) — NEVER add it back to git. `CLAUDE.md` is **UNTRACKED** (in `.gitignore`) — NEVER add it back to git or mention it in commits.
-
-### 2.2 Feature Branch Lifecycle
-
-- **2.2.1** A feature is NOT complete until the user has tested and confirmed it works
-- **2.2.2** If testing reveals issues, do NOT merge to main. Instead:
-  - **2.2.2.1** Commit current state on the feature branch
-  - **2.2.2.2** Push the feature branch
-  - **2.2.2.3** Create a new branch from it with the next suffix (_b, _c, etc.)
-  - **2.2.2.4** Fix issues on the new branch
-  - **2.2.2.5** Repeat until the feature passes testing
-- **2.2.3** Only merge to `main` when fully complete and verified
-- **2.2.4** Unfinished or broken work NEVER touches `main`
-
-### 2.3 Merge to Main
-
-After the user confirms the feature works:
-
-- **2.3.1** Commit with detailed message and push the feature branch to remote
-- **2.3.2** Ask user permission to checkout `main`
-- **2.3.3** Once permitted, checkout `main`, merge last feature branch, push origin main
-- **2.3.4** Checkout into a new branch per 2.1.1 — unless final wrap-up
-- **2.3.5** Port `docs/README_handoff.md` contents into `docs/README_project_history.md`
-- **2.3.6** Archive handoff to `docs/history/handoffs/[branch_name_dir]/README_handoff_[timestamp].md`
-- **2.3.7** Wipe original handoff preserving structure and unchecked TODO items
-- **2.3.8** Edit `docs/README_handoff.md` with pointers to `docs/README_project_history.md` for smooth transition
-- **2.3.9** Update technical documentation in `docs/` (nvr_engineering_architecture.html, README.md if relevant)
-
-### 2.4 Commit Messages
-
-- **2.4.1** Professional, descriptive messages only
-- **2.4.2** NO Anthropic attribution ("Co-Authored-By: Claude...", "Generated with Claude Code")
-- **2.4.3** NO emojis or icons
-- **2.4.4** DO NOT mention CLAUDE.md in commits (it's in .gitignore)
-
----
-
-## 3. Documentation
-
-### 3.1 Session Tracking
-
-#### 3.1.1 After Every File Modification
-
-Update `docs/README_handoff.md` with:
-
-- **3.1.1.1** File changed, what was done, why
-- **3.1.1.2** Timestamps: `date + time (EST)` — 24h format
-- **3.1.1.3** Verify system time with `date` command (Claude Code clock drift is common)
-- **3.1.1.4** Update session end-times when adding entries (e.g., `(12:30-13:15)` → `(12:30-14:00)`)
-
-#### 3.1.2 When Task Is Complete
-
-- **3.1.2.1** Port to `docs/README_project_history.md`
-- **3.1.2.2** After user confirms, clear completed session from handoff
-- **3.1.2.3** Keep TODO list at end of both files (even when wiping handoff)
-- **3.1.2.4** TODO list in `docs/README_project_history.md` must never be re-edited, just completed
-
-### 3.2 Project Context & Locations
-
-#### 3.2.1 Read at Conversation Start
-
-- **3.2.1.1** `/home/elfege/0_NVR/CLAUDE.md` — these instructions (override all defaults)
-- **3.2.1.2** `docs/README_handoff.md` — recent session history
-- **3.2.1.3** `~/0_CLAUDE_IC/user_profile_elfege.md` — persistent user profile (background, intellectual style, communication preferences). Never make the user re-explain his history.
-
-#### 3.2.2 Document Locations
-
-**3.2.2.1** Names and relative paths
-
-| Document            | Location                                                  |
-|---------------------|-----------------------------------------------------------|
-| Project history     | `docs/README_project_history.md`                          |
-| Session handoff     | `docs/README_handoff.md`                                  |
-| Chat logs           | `docs/chat.md`                                            |
-| Engineering arch    | `docs/nvr_engineering_architecture.html`                  |
-| User profile        | `~/0_CLAUDE_IC/user_profile_elfege.md`                    |
-
-**3.2.2.2** when editing/creating a markdown table keep things aligned as I can't always read in rendered mode
-
-**3.2.2.3** CRITICAL - Documentation File Location Rule:
-
-- ALL documentation files MUST be in `/home/elfege/0_NVR/docs/` directory
-- NEVER create or update documentation in `/home/elfege/` root directory
-- If you find duplicate docs in home root, consult user before merging/deleting
-- Common mistake: Creating `~/README_handoff.md` instead of `~/0_NVR/docs/README_handoff.md`
-
-### 3.3 Technical Documentation Updates
-
-When making significant code changes, update:
-
-- **3.3.1** `docs/nvr_engineering_architecture.html` — components, data flow, streaming architecture
-- **3.3.2** `README.md` — if significant architecture/functionality changes
-- **3.3.3** Update "Last Updated" dates when modifying documentation files
-
-### 3.4 File Path References
-
-When referencing code locations in chat:
-
-- **3.4.1** Use markdown link syntax: `[filename.py:42](filename.py#L42)`
-- **3.4.2** Make file references clickable for VSCode navigation
-- **3.4.3** Never use backticks for file paths unless in code blocks
-
----
-
-## 4. Code Practices
-
-### 4.1 Read Before Write
-
-**NEVER propose changes to code you haven't read.**
-
-- **4.1.1** Always read files before modifying them
-- **4.1.2** Check current structure/design/architecture
-- **4.1.3** Don't assume or guess — read first
-- **4.1.4** Check for existing abstractions, classes, variables, or configuration before hardcoding
-
-### 4.2 Incremental Work
-
-- **4.2.1** Break complex tasks into discrete steps
-- **4.2.2** Use TodoWrite to track progress AND update todos in handoff documentation
-- **4.2.3** Mark todos completed immediately after each step
-- **4.2.4** Maintain TODO list at end of both handoff and history files
-
-### 4.3 Code Style
-
-- **4.3.1** Extensive inline comments
-- **4.3.2** Docstrings for every class, method, function
-- **4.3.3** Professional engineering tone (no emojis unless requested)
-
----
-
-## 5. NVR-Specific Architecture
-
-### 5.1 Camera Configuration
-
-#### 5.1.1 Camera IDs
-
-- **5.1.1.1** **ALWAYS** use serial numbers as primary keys (e.g., `T8416P0023352DA9`)
-- **5.1.1.2** **NEVER** use display names (e.g., "Living Room") as primary identifiers
-- **5.1.1.3** Display names acceptable as supplementary metadata only
-
-#### 5.1.2 Camera Credentials Access
-
-For RTSP or connectivity tests:
-
-```bash
-export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credentials"
-```
-
-**Important:**
-- All REOLINK cameras use `api-user` (REOLINK_API_USERNAME/PASSWORD)
-- Credentials loaded from AWS Secrets Manager
-- MUST set `AWS_PROFILE=personal` to avoid interactive prompts (which hang Claude Code)
-
-#### 5.1.3 Config Files
-
-- **5.1.3.1** `config/cameras.json` — primary camera configuration (gitignored, contains credentials)
-- **5.1.3.2** `config/recording_settings.json` — recording settings per camera
-- **5.1.3.3** `config/go2rtc.yaml` — go2rtc configuration
-- **5.1.3.4** Backup config files before major changes (these are NOT tracked in git)
-
-### 5.2 Streaming Architecture
-
-#### 5.2.1 MediaMTX as Central Hub
-
-- **5.2.1.1** Budget cameras (SV3C, Eufy) support ONE RTSP connection only
-- **5.2.1.2** All consumers tap MediaMTX, not cameras directly
-- **5.2.1.3** EXCEPTION: MJPEG connects directly to camera HTTP snapshots
-- **5.2.1.4** LL_HLS publishes to MediaMTX (enables RTSP re-export)
-
-#### 5.2.2 Stream Types
-
-| Type      | Latency | Use Case                          |
-|-----------|---------|-----------------------------------|
-| WebRTC    | <1s     | Real-time viewing (future)        |
-| LL-HLS    | 2-4s    | Primary streaming method          |
-| HLS       | 6-10s   | Fallback for compatibility        |
-| MJPEG     | <1s     | Direct camera snapshot sequence   |
-
-#### 5.2.3 MediaMTX API Access
-
-- **5.2.3.1** HTTP API: `http://nvr-packager:9997` (inside Docker network)
-- **5.2.3.2** RTSP server: `rtsp://nvr-packager:8554`
-- **5.2.3.3** HLS server: `http://nvr-packager:8888`
-- **5.2.3.4** WebRTC server: `http://nvr-packager:8889`
-
-### 5.3 Recording System
-
-#### 5.3.1 Recording Types
-
-- **Continuous:** Rolling buffer on disk (e.g., 7 days)
-- **Motion-triggered:** Saved indefinitely, indexed by camera/timestamp
-- **Manual:** User-initiated recordings
-- **Pre-alarm buffer:** Segment buffer for motion events (future enhancement)
-
-#### 5.3.2 Storage Paths
-
-**Recent recordings (SSD):**
-- `/mnt/sdc/NVR_Recent/motion`
-- `/mnt/sdc/NVR_Recent/continuous`
-- `/mnt/sdc/NVR_Recent/snapshots`
-- `/mnt/sdc/NVR_Recent/manual`
-- `/mnt/sdc/NVR_Recent/buffer`
-
-**Long-term storage (HDD):**
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion`
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous`
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual`
-- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots`
-
----
-
-## 6. Security & Safety
-
-### 6.1 Code Security
-
-- **6.1.1** Avoid OWASP Top 10 vulnerabilities (command injection, XSS, SQL injection, etc.)
-- **6.1.2** If insecure code written, fix immediately AND inform user
-- **6.1.3** Validate/sanitize at system boundaries only (user input, external APIs) — trust internal code
-- **6.1.4** Never hardcode credentials — use AWS Secrets Manager or environment variables
-
-### 6.2 Camera Stream Security
-
-- **6.2.1** All RTSP streams require authentication
-- **6.2.2** TLS certificates required for WebRTC (auto-generated if missing via start.sh)
-- **6.2.3** User authentication required for web UI access
-- **6.2.4** Row-level security (RLS) in PostgreSQL enforces user access to cameras
-
----
-
-## 7. Debugging
-
-### 7.1 Hypothetico-Deductive Method
-
-- **7.1.1** Formulate ONE specific hypothesis (edge case: multiple hypotheses OK when they form mutual refutations)
-- **7.1.2** Apply 4.1 (read files first if hypothesis involves code)
-- **7.1.3** Execute verification commands/tests directly
-- **7.1.4** Wait for results before next hypothesis
-- **7.1.5** Move step-by-step at human-followable pace — only accelerate when explicitly authorized
-
-### 7.2 Streaming Troubleshooting
-
-Common issues and checks:
-
-- **7.2.1** Stream won't load → Check MediaMTX publisher ready (`/v3/paths/list` API)
-- **7.2.2** Black screen → Check FFmpeg process alive, check camera RTSP credentials
-- **7.2.3** Freezing → Check network bandwidth, check segment buffer failures
-- **7.2.4** Manual restart doesn't work → Check watchdog cooldown, check publisher readiness
-
----
-
-## 8. Testing & Deployment
-
-### 8.1 Pre-Commit Verification
-
-Before each commit, verify:
-
-- **8.1.1** No syntax errors in modified files
-- **8.1.2** No hardcoded credentials or sensitive data
-- **8.1.3** Logging statements appropriate (not excessive DEBUG)
-- **8.1.4** Comments and documentation updated
-- **8.1.5** Imports/dependencies available
-- **8.1.6** File permissions correct (especially scripts)
-
-### 8.2 Test Before Deploy
-
-- **8.2.1** Verify application starts without errors
-- **8.2.2** Check logs for warnings or errors
-- **8.2.3** Test affected functionality manually if possible
-- **8.2.4** Document testing performed in commit message
-
-#### 8.2.5 `--no-verify` Allowed ONLY For
-
-- **8.2.5.1** Documentation-only changes (*.md files)
-- **8.2.5.2** Config/comment changes with no logic impact
-- **8.2.5.3** WIP commits on feature branches (not merging to main)
-
-#### 8.2.6 `--no-verify` NEVER Allowed For
-
-- **8.2.6.1** Merging to `main`
-- **8.2.6.2** Changes to *.py files
-- **8.2.6.3** Stream management or camera handler changes
-- **8.2.6.4** Production pushes
-
----
-
-## 9. Communication
-
-### 9.1 Truth First
-
-- **9.1.1** We are engineers. Truth first, even when blunt.
-- **9.1.2** NEVER say "You're correct" then immediately contradict
-- **9.1.3** If you disagree, state it directly without apologetic preambles
-- **9.1.4** Technical accuracy trumps social niceties
-- **9.1.5** Proactively suggest better approaches when you see an opportunity
-
-### 9.2 Missing Files — Ask, Don't Guess
-
-- **9.2.1** If file is missing or empty: stop and ask user
-- **9.2.2** Don't create placeholder content
-- **9.2.3** Don't assume structure
-
----
-
-## 10. Teaching Sessions
-
-**Whenever user asks to teach them and/or NOT give them the solution:**
-
-- **10.1** Check that there isn't already a relevant `docs/teachings/README_teaching_session_*` file that could be completed
-- **10.2** Create a dedicated linked entry title as `### [Teaching session: + brief descriptive title](path)` at the end of `docs/README_project_history.md`
-- **10.3** Create a new file: `docs/teachings/README_teaching_session_$(date +%m_%d_%Y).md`
-- **10.4** Organize `docs/teachings/` into specific subdirectories (e.g., `docs/teachings/WEBRTC/`, `docs/teachings/STREAMING/`)
-- **10.5** Keep all teaching files indexed: `tree docs/teachings/ > docs/teachings/catalog.txt`
-
-**For significant new implementations (even without explicit teaching request):**
-
-- **10.6** Create a teaching document explaining the "why" and "how"
-- **10.7** Learning project = document the learning
-
----
-
-## 11. Infrastructure & Container Management
-
-### 11.1 Container Commands — Restricted
-
-**Container operations:**
-
-```bash
-source ~/.bash_aliases
-restartnvr  # Simple restart (docker compose restart)
-startnvr    # Full restart with credential reload (./start.sh)
-```
-
-**Permission levels:**
-
-- **11.1.1** **`docker compose restart` / `docker compose restart <service>`**: **ALLOWED**
-  - Claude can run these directly to reload services after code changes
-  - Note: Restarts processes but does NOT recreate containers
-  - Python code changes reflected via volume mounts
-
-- **11.1.2** **`./start.sh` and `./deploy.sh`**: **FORBIDDEN**
-  - **Rationale:** These scripts pull AWS credentials via `aws secretsmanager` with profile `personal`. The AWS CLI prompts for MFA interactively, which hangs in Claude Code's non-interactive environment.
-  - When full container recreation needed (new deps, image changes), note it and user will run manually.
-
-**When code changes require restart:**
-
-- **11.1.3** Run `docker compose restart <service>` if change only affects running code
-- **11.1.4** If full recreation needed, note: "Requires `./start.sh` (new deps/image changes)"
-- **11.1.5** Document in handoff that restart was performed or is pending
-
-### 11.2 Container Services
-
-| Service       | Purpose                                     |
-|---------------|---------------------------------------------|
-| nvr           | Main Flask app (API, stream manager)        |
-| nvr-packager  | MediaMTX (streaming hub)                    |
-| nvr-go2rtc    | go2rtc (WebRTC, fallback streaming)         |
-| nvr-edge      | nginx (reverse proxy, SSL termination)      |
-| nvr-postgrest | PostgREST (database API gateway)            |
-| nvr-db        | PostgreSQL (recordings, users, camera state)|
-
----
-
-## 12. System Environment
-
-### 12.1 Server Specifications
-
-**Host:** Dell PowerEdge R730xd (dellserver)
-
-- **CPU:** 2x Intel Xeon E5-2690 v4 @ 2.60GHz (56 logical cores, 28 physical)
-- **RAM:** 128GB
-- **OS:** Ubuntu 24.04.3 LTS (WSL IP: 192.168.10.20)
-- **Kernel:** Linux 6.8.0-85-generic
-
-### 12.2 Project Purpose
+**Project Purpose:**
 
 - Personal learning project serving as training for professional work
 - Part of portfolio demonstrating engineering capabilities
-- Multi-camera NVR system supporting: Eufy, Reolink, UniFi, Amcrest, SV3C
 
-### 12.3 User Background (Elfege)
+**User Background (Elfege):**
 
 - Philosophy Ph.D. (Epistemology, Logic, Classical/Modern/Contemporary Philosophy)
 - Software Engineer since 2022 (see elfege.com/pdf/resume)
@@ -450,29 +29,399 @@ startnvr    # Full restart with credential reload (./start.sh)
 
 ---
 
-## Reference: System Overview
+## Server Specifications
 
-**NVR System** — Multi-camera Network Video Recorder with motion detection, live streaming, and recording management.
+**Host:** Dell PowerEdge R730xd (dellserver)
 
-**Repository:** https://github.com/elfege/NVR.git
-
-**Stack:** Python Flask, MediaMTX, go2rtc, PostgreSQL, PostgREST, FFmpeg, nginx
-
-**Camera Types:** Eufy, Reolink (Baichuan), UniFi Protect, Amcrest, SV3C
-
-**Streaming:** LL-HLS (primary), HLS (fallback), MJPEG (direct), WebRTC (future)
-
-**Motion Detection:** Reolink Baichuan, ONVIF PullPoint, FFmpeg scene detection
-
-**Recording Types:** Motion-triggered, continuous, manual, pre-alarm buffer
+- **CPU:** 2x Intel Xeon E5-2690 v4 @ 2.60GHz (56 logical cores, 28 physical)
+- **RAM:** 128GB
+- **OS:** Ubuntu 24.04.3 LTS (WSL IP: 192.168.10.20)
+- **Kernel:** Linux 6.8.0-85-generic
 
 ---
 
-**Version:** 1.0 (adapted from dDMSC 2.2)
-**Last Updated:** 2026-02-15 (EST)
-**System:** NVR — Network Video Recorder System
-**Location:** /home/elfege/0_NVR
-**Repository:** https://github.com/elfege/NVR.git
+## NVR System Technical Overview
+
+**Project Purpose:**
+Multi-camera NVR (Network Video Recorder) system supporting:
+
+**Camera Types:**
+
+- Eufy, Reolink, UniFi, Amcrest, SV3C `[update this list if relevant]`
+
+**Streaming Architecture:**
+
+- LL-HLS via MediaMTX (primary)
+- Traditional HLS
+- MJPEG
+- `[update this if relevant]`
+
+**Motion Detection:**
+
+- Reolink Baichuan
+- ONVIF PullPoint
+- FFmpeg scene detection
+- `[update this if relevant]`
+
+**Recording Types:**
+
+- Motion-triggered
+- Continuous
+- Manual
+- `[update this if relevant]`
+
+**Recording Paths:**
+
+*RECENT RECORDINGS:*
+
+- `/mnt/sdc/NVR_Recent/motion:/recordings/motion`
+- `/mnt/sdc/NVR_Recent/continuous:/recordings/continuous`
+- `/mnt/sdc/NVR_Recent/snapshots:/recordings/snapshots`
+- `/mnt/sdc/NVR_Recent/manual:/recordings/manual`
+- `/mnt/sdc/NVR_Recent/buffer:/recordings/buffer`
+
+*LONG TERM STORAGE:*
+
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/motion:/recordings/STORAGE/motion`
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous:/recordings/STORAGE/continuous`
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual:/recordings/STORAGE/manual`
+- `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots:/recordings/STORAGE/snapshots`
+
+**Engineering Documentation:**
+
+- See: `docs/nvr_engineering_architecture.html` `[prompt to update this document when relevant]`
+
+---
+
+## Core Workflow Rules
+
+### RULE 1: Git Workflow - Commit Early and Often
+
+**Branch naming:** `[description_with_underscores]_[MONTH]_[DAY]_[YEAR]_[a,b,c...]`
+
+- Use `_b`, `_c` suffixes for continued work after completing one significant aspect of the work plan.
+
+- Master branch name: `main`
+   - Never make code changes directly on `main`.
+   - Checkout to feature branches for each task involving code changes.
+   - Once a feature branch is committed (often due to compaction), it must be pushed, then a new branch created from it named [SAME_NAME]_[next_letter: _b, _c, _d, etc.]
+   - No `checkout main` without prior testing (by Claude AND by the user).
+   - Any `checkout main` requires merging the last feature branch and `git push origin main`.
+   - NEVER execute `git pull` without express request or permission from the user.
+
+**Iterative development stays on feature branches:**
+
+- A feature is NOT complete until the user has tested and confirmed it works.
+- If testing reveals issues, do NOT merge to main. Instead:
+  - Commit the current state on the feature branch.
+  - Push the feature branch.
+  - Create a new branch from it with the next suffix (_b, _c, etc.).
+  - Fix the issues on the new branch.
+  - Repeat until the feature passes testing.
+- Only merge to `main` when the feature is fully complete and verified.
+- Unfinished or broken work NEVER touches `main`.
+
+**Once a feature is complete AND tested:**
+
+- After the user confirms the feature works:
+  - Commit with detailed message and push the feature branch to remote.
+  - Enquire user permission to check back out to `main`.
+  - Once permission is given, check back out to `main`.
+  - Make a copy of modified untracked files into `/tmp` (includes `CLAUDE.md`, `docs/README_handoff.md`, + any other returned by `git status`).
+  - Merge the last feature branch into `main`.
+  - Restore untracked files from `/tmp`.
+  - Push to remote origin main.
+  - Create new branch as described above (unless final wrap-up).
+  - Port `docs/README_handoff.md` contents to `docs/README_project_history.md`.
+  - Archive `docs/README_handoff.md` to `docs/history/handoffs/[branch_name_dir]/README_handoff_[timestamp].md` and wipe original while preserving essential structure.
+  - Edit `docs/README_handoff.md` with pointers to `docs/README_project_history.md` for smooth context transition.
+  - Update `docs/nvr_engineering_architecture.html` and `README.md` if relevant.
+
+**CRITICAL - Commit Message Rules:**
+
+- DO NOT include Anthropic attribution lines
+- DO NOT add "🤖 Generated with [Claude Code]"
+- DO NOT add "Co-Authored-By: Claude..." signatures
+- Use professional, descriptive commit messages only (no icons, emojis, etc.)
+
+### RULE 2: Documentation - Track Everything
+
+**Update docs/README_handoff.md after EVERY file modification:**
+
+- Record: file changed, what was done, why
+- Include timestamps: `date + time (EST)` - 24h format
+- Verify system time with `date` command before recording timestamps (internal clock drift is common)
+- Update session end-times when adding new entries (e.g., `(12:30-13:15)` → `(12:30-14:00)`)
+- Don't forget RULE 1 regarding archiving. 
+
+**When task is complete:**
+
+- Update `docs/README_project_history.md` with completed work from handoff
+- After user confirms satisfaction, clear the completed session from handoff file
+- Keep todo list at end of both handoff and history files (even when wiping handoff)
+- Maintain todo list at end of both README_handoff.md and README_project_history.md files at all times
+
+### RULE 3: Teaching Sessions
+
+**Whenever user asks to teach them and/or NOT give them the solution:**
+
+- Check that there isn't already a relevant `docs/teachings/README_teaching_session_*` file that could be completed
+- Create a dedicated linked entry title as `### [Teaching session: + brief descriptive title](path)` at the end of `docs/README_project_history.md`
+- Create a new file: `docs/teachings/README_teaching_session_$(date +%m_%d_%Y).md`
+- Feel free to reorganize `docs/teachings/` into specific and thematic subdirectories such as `docs/teachings/WEBRTC/...`
+- Keep all existing past teaching files indexed into `docs/teachings/catalog.txt` using `tree docs/teachings/ > docs/teachings/catalog.txt`
+
+**For significant new implementations (even without explicit teaching request):**
+
+- Create a teaching document explaining the "why" and "how"
+- This builds a knowledge base for future reference
+- Learning project = document the learning
+
+### RULE 4: Read Before You Write
+
+**NEVER propose changes to code you haven't read:**
+
+- Always read files before modifying them
+- Check current structure/design/architecture
+- Don't assume or guess - read first
+- Check for existing abstractions, variables, or configuration before hardcoding values
+
+### RULE 5: Project Context - Load on Start
+
+**Always read at conversation start:**
+
+- `/home/elfege/0_NVR/CLAUDE.md` - Project-specific instructions (overrides all defaults)
+- `docs/README_handoff.md` - Recent session history (read last N lines first)
+
+**Re-read CLAUDE.md periodically:**
+
+- Rules evolve with experience - check for user updates regularly
+- Project-specific instructions ALWAYS override system defaults
+
+**Documentation locations:**
+
+- Project history: `docs/README_project_history.md`
+- Session handoff buffer: `docs/README_handoff.md`
+- Chat logs (for recovery): `docs/chat.md`
+- Engineering documentation: `docs/nvr_engineering_architecture.html`
+
+**CRITICAL - Documentation File Location Rule:**
+
+- ALL documentation files MUST be in `/home/elfege/0_NVR/docs/` directory
+- NEVER create or update documentation in `/home/elfege/` root directory
+- If you find duplicate docs in home root, consult user before merging/deleting
+- Common mistake: Creating `~/README_handoff.md` instead of `~/0_NVR/docs/README_handoff.md`
+
+**Update engineering documentation:**
+
+- `docs/nvr_engineering_architecture.html` requires updates on significant architecture changes
+- This is the public portfolio window for the project - keep it current
+
+### RULE 6: Assessment Before Action
+
+**Before writing code:**
+
+- Read relevant files
+- Assess the change scope
+- User can toggle auto-approval mode - respect current permission model
+
+### RULE 7: One Step at a Time
+
+**For complex tasks:**
+
+- Break into discrete steps
+- Use TodoWrite to track progress AND update todos in handoff documentation
+- Mark todos completed immediately after each step (don't wait to mark multiple todos complete together)
+
+---
+
+## Debugging Rules
+
+### RULE 8: Hypothetico-Deductive Reasoning ONLY
+
+**When debugging or troubleshooting:**
+
+1. Preferably formulate ONE specific hypothesis (edge cases: multiple hypotheses acceptable when they form mutual refutations - e.g., "if H1 then not H2")
+2. Apply RULE 4 (read files first if hypothesis involves code)
+3. Execute verification commands/tests directly (you have the capability)
+4. Wait for results before next hypothesis
+5. CRITICAL: Move step-by-step at human-followable pace
+   - User needs to understand each action
+   - Going too fast leads to errors and lost context
+   - Only accelerate when explicitly authorized ("lazy mode")
+
+### RULE 8.5: Direct Communication - Truth First
+
+**Engineering discussions require honesty:**
+
+- We are engineers here, not a salon. Truth first, even when blunt.
+- NEVER say "You're correct" and then immediately contradict with opposing conclusion
+- Hypocritical politeness breaks diagnostic logic entirely
+- If you disagree, state it directly without apologetic preambles
+- Technical accuracy trumps social niceties!!!
+
+---
+
+## Project-Specific Rules
+
+### RULE 9: Container Restart Protocol
+
+**Container operations:**
+
+```bash
+source ~/.bash_aliases
+restartnvr  # Simple restart (docker compose restart) - does NOT reload code
+startnvr    # Full restart with credential reload (./start.sh)
+```
+
+**Permission rules:**
+
+- **ALL container restarts**: **STRICTLY FORBIDDEN** - Claude must NEVER run `docker compose restart`, `./start.sh`, `restartnvr`, or `startnvr`. Simply note that the user needs to restart and move on.
+
+**CRITICAL - Why `docker compose restart` doesn't work for code changes:**
+
+- Python keeps loaded modules in memory after process starts
+- `docker compose restart` only restarts the process - it does NOT reload Python code
+- Volume binds are irrelevant - the issue is Python's module caching, not file sync
+- **For ANY Python/Flask code changes to take effect, user MUST run `./start.sh`**
+
+**When code changes require restart:**
+
+1. Note in your response: "Backend changes require container restart. Please run `./start.sh`"
+2. Continue with other work - don't wait
+3. Document in handoff that restart is pending
+
+**Additional notes:**
+
+- Container recreation REQUIRES `./start.sh` for proper loading of credentials for cameras
+- AWS uses profile name: 'personal'
+- `./start.sh` involves AWS credential retrieval which hangs in Claude Code environment
+
+### RULE 10: Camera IDs - Always Use Serial Numbers
+
+**In config files:**
+
+- Use serial numbers as primary keys (e.g., `T8416P0023352DA9`)
+- Never use display names (e.g., "Living Room") as primary identifiers
+- NOTE: Display names acceptable as supplementary metadata (future enhancement for recording_settings.json UI updates)
+
+### RULE 11: MediaMTX Architecture - Tap, Don't Connect
+
+**Streaming source priority:**
+
+- Budget cameras (SV3C, Eufy) support ONE RTSP connection only
+- All consumers tap MediaMTX, not cameras directly (EXCEPTION: MJPEG connects directly)
+- LL_HLS publishes to MediaMTX (enables RTSP re-export)
+- NOTE: Future enhancement needed - WebRTC for further latency optimization
+
+### RULE 12: Code Style - Extensive Documentation
+
+**All code (backend, frontend, and bash scripts):**
+
+- Extensive inline comments
+- Docstrings for every class, method, function
+- Professional engineering tone (no emojis unless requested)
+
+### RULE 12.5: Camera Credentials Access
+
+**For RTSP or other connectivity tests:**
+
+```bash
+source ~/.bash_utils
+get_cameras_credentials
+```
+
+**Important notes:**
+
+- All REOLINK cameras use the `api-user` user (REOLINK_API_USERNAME/PASSWORD)
+- Credentials are loaded from AWS Secrets Manager via the `startnvr` command
+- **CRITICAL**: When using .bash_utils functions, you MUST set `export AWS_PROFILE=personal` to avoid interactive prompts:
+
+  ```bash
+  export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credentials"
+  ```
+
+- Interactive prompts will hang in background bash processes - Claude Code cannot interact with them
+
+---
+
+## Context Management Rules
+
+### RULE 13: On Context Compaction
+
+**When phrase "from a previous conversation that ran out of context" appears:**
+
+1. Immediately commit and push any uncommitted changes
+2. Create new branch with next suffix (\_b, \_c, etc.)
+3. Update `docs/README_handoff.md`:
+   - Note: "Context compaction occurred at [timestamp]"
+   - Summarize: What was accomplished, what's pending
+4. Continue work on new branch
+
+NOTE: Steps overlap with RULE 0 and RULE 1 intentionally - redundancy ensures critical actions during context transitions
+
+### RULE 14: File Path References
+
+**When referencing code locations:**
+
+- Use markdown link syntax: `[filename.ts:42](src/filename.ts#L42)`
+- Make file references clickable for VSCode navigation
+- Never use backticks for file paths unless in code blocks
+- NOTE: Autoformat handles line breaks and code fencing - maintain proper markdown structure
+
+---
+
+## Quality Control Rules
+
+### RULE 15: Missing Files - Ask, Don't Guess
+
+**If file is missing or empty:**
+
+- Stop and ask user
+- Don't create placeholder content
+- Don't assume structure
+
+### RULE 16: Security - No Common Vulnerabilities
+
+**When writing code:**
+
+- Avoid writing code vulnerable to: command injection, XSS, SQL injection, OWASP Top 10 vulnerabilities
+- If insecure code written, fix immediately AND inform user
+- Only validate/sanitize data at system boundaries (user input, external APIs) - trust internal code and framework guarantees
+
+---
+
+## Meta-Suggestions for Rule Effectiveness
+
+**What works well for Claude Code:**
+
+1. **Explicit trigger conditions** - Rules tied to specific actions (e.g., "after EVERY file modification") are easier to follow than general principles
+
+2. **Rule numbers for accountability** - Numbered rules allow self-reference in responses (e.g., "Following RULE 1, I'm committing this change...")
+
+3. **Critical flags** - "CRITICAL" markers help prioritize conflicting instructions
+
+4. **Verification checklists** - RULE 0's checklist format forces pre-flight checks before each response
+
+5. **Specific over general** - "Use serial numbers, not display names" is clearer than "Use appropriate identifiers"
+
+**What could be improved:**
+
+- **Consolidation** - Some rules overlap (RULE 3 and RULE 5 both say "read first")
+- **Frequency** - Consider: Should I re-read CLAUDE.md every N messages? After cada tool use?
+- **Conflict resolution** - What if project rules conflict with system defaults? (Current: project rules win, but not explicit)
+
+**Format suggestions:**
+
+- Current numbered RULE format works well for Claude Code
+- Categorization (Core Workflow, Debugging, etc.) helps navigate
+- Critical rules should bubble to top (RULE 0 concept)
+- Consider: Priority levels (P0/P1/P2) for conflict resolution?
+
+**Open question for user:**
+Should I re-read `/home/elfege/0_NVR/CLAUDE.md` at regular intervals (every 10 messages? every tool use?) or only at conversation start? This might help prevent drift from project-specific instructions.
+
+Every message... It's that simple.
 
 ---
 
@@ -492,3 +441,126 @@ startnvr    # Full restart with credential reload (./start.sh)
 > Authorized by Elfege Leylavergne, February 1, 2026.
 >
 > *"It is called: growing."*
+
+---
+
+## RULE 17: Intercom
+
+### 17.1 Instance Identity
+
+- **17.1.1** Instance ID: `office-nvr`
+- **17.1.2** Intercom canonical location: `server:~/0_CLAUDE_IC/intercom.md`
+- **17.1.3** Read access: `ssh server cat ~/0_CLAUDE_IC/intercom.md`
+- **17.1.4** Write access: append via `ssh server` (see intercom header for message format)
+
+### 17.2 Protocol
+
+- **17.2.1** Read intercom at session start via SSH to server
+- **17.2.2** ACK any PENDING messages targeted at `office-nvr`
+- **17.2.3** Set RESOLVED when action complete
+- **17.2.4** When making changes that affect other machines, post a message
+- **17.2.5** See intercom file header for full protocol (status flow, pruning rules)
+
+### 17.3 Document Locations
+
+| Document         | Location                                              |
+|------------------|-------------------------------------------------------|
+| Project history  | `~/README_project_history_$(hostname).md`             |
+| Session handoff  | `~/README_handoff.md`                                 |
+| Intercom         | `server:~/0_CLAUDE_IC/intercom.md` (canonical, on server) |
+| User profile     | `server:~/0_CLAUDE_IC/user_profile_elfege.md`         |
+
+---
+
+## RULE 18: CLAUDE.md Registry & Standardization
+
+### 18.1 Registry
+
+- **18.1.1** A complete catalog of all CLAUDE.md files exists at `server:~/0_CLAUDE_IC/CLAUDE.md.registry.md`
+- **18.1.2** Read access: `ssh server cat ~/0_CLAUDE_IC/CLAUDE.md.registry.md`
+- **18.1.3** When creating, moving, or deleting a CLAUDE.md file, update the registry via `ssh server`
+- **18.1.4** Check registry at session start to stay aware of the full ecosystem
+
+### 18.2 Standard Rules
+
+- **18.2.1** All common rules are defined in `server:~/0_CLAUDE_IC/CLAUDE.md.standard.md`
+- **18.2.2** Read access: `ssh server cat ~/0_CLAUDE_IC/CLAUDE.md.standard.md`
+- **18.2.3** When a standard rule is updated, propagate the change to ALL CLAUDE.md files listed in the registry
+- **18.2.4** Project-specific rules come AFTER standard rules and may extend but never contradict them
+
+---
+
+## RULE 19: Shell Utilities Available to All Instances
+
+*These files are synced across all machines (officewsl, server, dellserver, laptopwsl) via 0_SYNC. Source them to access shared functions, aliases, and environment variables.*
+
+### 19.1 Files Overview
+
+| File | Path | Purpose | How to source |
+|------|------|---------|---------------|
+| `.bash_utils` | `~/.bash_utils` | 6000+ line function library — SSH, AWS, secrets, spinners, backups, project helpers | `. ~/.bash_utils --no-exec` (load without auto-exec) |
+| `.bash_aliases` | `~/.bash_aliases` | Shell aliases — SSH connections, Docker, project shortcuts, log viewers | Sourced automatically by `.bashrc` |
+| `custom-env.sh` | `/etc/profile.d/custom-env.sh` | Global env variables — paths, host IPs, platform flags, source-of-truth constants | Sourced automatically at login; or `. /etc/profile.d/custom-env.sh --no-exec` |
+| `.env.colors` | `~/.env.colors` | ANSI color codes and emoji constants (`$RED`, `$GREEN`, `$CHECKED`, `$FAILED`, etc.) | `. ~/.env.colors` |
+| `logger.sh` | `~/logger.sh` | Logging framework — `log()`, `start_spinner()`, `stop_spinner()`, FD management | `. ~/logger.sh --no-exec` |
+
+### 19.2 Key Functions in `.bash_utils`
+
+**AWS & Secrets:**
+- `pull_aws_secrets <secret_name> [profile]` — Pull a specific secret from AWS Secrets Manager
+- `pull_nvr_secrets` — Pull all NVR secrets (cameras + database) from AWS
+- `get_cameras_credentials` — Load all camera RTSP credentials from AWS
+- `list_aws_secrets` — List all secrets in AWS Secrets Manager
+- `update_aws_secret_field <secret_name> <key> <value>` — Update a single field in a secret
+- `verify_aws_credentials` — Check current AWS auth status
+
+**SSH & Remote:**
+- `test_connection <host>` / `test_ssh_connection <host>` — Test SSH connectivity
+- `ssh_socket_start` / `ssh_socket_stop` / `ssh_with_socket` — Persistent SSH socket management
+- `rsync_with_socket` — rsync using SSH socket for speed
+
+**Project Navigation:**
+- `goto <dir> [host]` — Navigate to project directory (local or remote)
+- `restartnvr [soft]` — Restart NVR container (soft=restart, hard=down+start.sh)
+- `copytonvr <file> [dest]` — Copy file into running NVR container
+- `logsnvr_func [container...] [tail] [clear_interval]` — Stream NVR Docker logs with filtering
+
+**System & Display:**
+- `start_spinner [max_wait] [message]` / `stop_spinner` — Terminal spinner for long operations
+- `activate_venv` — Activate Python venv in current project
+- `backup_file <path>` / `restore_from_backup <path>` — File backup/restore with timestamps
+- `is_wsl` / `is_dev_machine` / `is_ohvd_system` — Platform detection booleans
+
+### 19.3 Key Aliases in `.bash_aliases`
+
+**NVR:**
+- `startnvr` — Full NVR restart with credential reload (`./start.sh`)
+- `stopnvr` — Stop NVR container
+- `logsnvr` — Stream NVR container logs
+- `nvrbash` — Shell into NVR container
+
+**Docker/Projects:**
+- `startddmsc` / `restartddmsc` / `logddmsc` — dDMSC dev stack
+- `starttiles` / `restarttiles` — TILES project
+
+**SSH shortcuts:**
+- `office` / `server` / `dellserver` / `laptop` — Direct SSH aliases
+
+**AWS:**
+- `ssologin` — AWS SSO login
+- `ecrlogin` / `ecrlist` — ECR Docker registry operations
+
+### 19.4 Key Variables in `custom-env.sh`
+
+- `$SCRIPTS` — `~/0_SCRIPTS` (sync scripts directory)
+- `$LOG_DIR` / `$LOG_FILE` — `~/0_LOGS/log.log`
+- `$HOST_IP` — Auto-detected host IP address
+- `$INTERACTIVE` — `1` if running in interactive shell, `0` otherwise
+- `$PAUSE_FILE` — `~/0_SCRIPTS/0_SYNC/pause_sync.txt` (controls sync pause)
+
+### 19.5 Usage Notes for Claude Code
+
+- **19.5.1** Always source with `--no-exec` flag when loading `.bash_utils` or `logger.sh` to prevent auto-execution of startup routines
+- **19.5.2** For AWS operations: `export AWS_PROFILE=personal` BEFORE calling any `pull_*` or `get_*` functions to avoid interactive SSO prompts that hang in non-interactive Claude sessions
+- **19.5.3** Color variables (`$RED`, `$GREEN`, `$NC`, etc.) require `. ~/.env.colors`
+- **19.5.4** These files are the **canonical source of truth** for shared infrastructure. When writing new scripts, use existing functions rather than reimplementing

@@ -1,6 +1,6 @@
 /**
  * Camera Settings Modal
- * Location: ~/0_NVR/static/js/modals/camera-settings-modal.js
+ * Location: ~/0_MOBIUS.NVR/static/js/modals/camera-settings-modal.js
  * Orchestrates recording settings UI
  */
 
@@ -123,8 +123,8 @@ export class CameraSettingsModal {
             // Load settings from backend
             const settings = await this.controller.getSettings(cameraId);
             
-            // Generate and insert form
-            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType, this.streamType);
+            // Generate and insert form (pass cameraName for the rename field)
+            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType, this.streamType, cameraName);
             this.$modalBody.html(formHtml);
             
             // Attach form events

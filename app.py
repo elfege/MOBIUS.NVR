@@ -1769,6 +1769,61 @@ def api_camera_detail(camera_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/camera/<camera_serial>/name', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_camera_rename(camera_serial):
+    """
+    Rename a camera. Updates the name in the database and cameras.json.
+
+    Request body: {"name": "New Camera Name"}
+
+    Returns:
+        200: {"success": true, "serial": "...", "name": "..."}
+        400: Missing or invalid name
+        404: Camera not found
+        500: Update failed
+    """
+    try:
+        data = request.get_json()
+        if not data or 'name' not in data:
+            return jsonify({'error': 'Missing "name" field in request body'}), 400
+
+        new_name = str(data['name']).strip()
+        if not new_name:
+            return jsonify({'error': 'Camera name cannot be empty'}), 400
+
+        if len(new_name) > 255:
+            return jsonify({'error': 'Camera name must be 255 characters or fewer'}), 400
+
+        # Verify camera exists
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'error': f'Camera not found: {camera_serial}'}), 404
+
+        old_name = camera.get('name', camera_serial)
+
+        # Update via CameraRepository (handles DB + JSON + in-memory cache)
+        success = camera_repo.update_camera_setting(camera_serial, 'name', new_name)
+
+        if not success:
+            return jsonify({'error': 'Failed to update camera name'}), 500
+
+        logger.info(f"Camera renamed: {camera_serial} '{old_name}' -> '{new_name}'")
+
+        return jsonify({
+            'success': True,
+            'serial': camera_serial,
+            'name': new_name,
+            'previous_name': old_name
+        })
+
+    except Exception as e:
+        logger.error(f"Error renaming camera {camera_serial}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 # ===== Streaming Configuration Routes =====
 
 @app.route('/api/config/streaming')
@@ -4120,17 +4175,29 @@ def api_ptz_move(camera_serial, direction):
                 message = f'Camera moved {direction} via CGI' if success else 'Movement failed'
 
         # Eufy uses bridge (no ONVIF support)
+        # move_camera() returns (success, message) and handles auto-restart internally
         elif camera_type == 'eufy':
             print(f"[EUFY PTZ] Request: camera={camera_serial}, direction={direction}")
-            print(f"[EUFY PTZ] Bridge status: eufy_bridge={eufy_bridge is not None}, is_running={eufy_bridge.is_running() if eufy_bridge else 'N/A'}")
-            if eufy_bridge and eufy_bridge.is_running():
-                print(f"[EUFY PTZ] Dispatching to bridge.move_camera()")
-                success = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
-                print(f"[EUFY PTZ] Result: success={success}")
-                message = f'Camera moved {direction}' if success else 'Movement failed'
-            else:
-                print(f"[EUFY PTZ] Bridge not running - returning 503")
-                return jsonify({'success': False, 'error': 'Eufy bridge not running. Check /eufy-auth'}), 503
+            if not eufy_bridge:
+                return jsonify({'success': False, 'error': 'Eufy bridge not initialized'}), 503
+
+            # move_camera handles is_running check, auto-restart, and retry internally
+            bridge_status = eufy_bridge.get_status()
+            print(f"[EUFY PTZ] Bridge status: {bridge_status}")
+            success, message = eufy_bridge.move_camera(camera_serial, direction, camera_repo)
+            print(f"[EUFY PTZ] Result: success={success}, message={message}")
+
+            if not success:
+                # Return 503 with the detailed error from the bridge
+                _total_time = _time.time() - _ptz_start
+                print(f"[APP.PY] PTZ request TOTAL: {_total_time*1000:.0f}ms")
+                return jsonify({
+                    'success': False,
+                    'camera': camera_serial,
+                    'direction': direction,
+                    'error': message,
+                    'bridge_status': bridge_status
+                }), 503
 
         else:
             return jsonify({'success': False, 'error': f'PTZ not supported for camera type: {camera_type}'}), 400
@@ -4228,24 +4295,25 @@ def api_ptz_goto_preset(camera_serial, preset_token):
 
         camera_type = camera.get('type')
 
-        # Handle Eufy cameras via bridge
+        # Handle Eufy cameras via bridge (handles auto-restart internally)
         if camera_type == 'eufy':
-            if not eufy_bridge or not eufy_bridge.is_running():
-                return jsonify({'success': False, 'error': 'Eufy bridge not running'}), 503
+            if not eufy_bridge:
+                return jsonify({'success': False, 'error': 'Eufy bridge not initialized'}), 503
 
-            # Convert preset_token to int (Eufy uses 0-3)
             try:
                 preset_index = int(preset_token)
             except ValueError:
                 return jsonify({'success': False, 'error': 'Invalid preset token for Eufy'}), 400
 
-            success = eufy_bridge.goto_preset(camera_serial, preset_index)
+            success, message = eufy_bridge.goto_preset(camera_serial, preset_index)
+            status_code = 200 if success else 503
             return jsonify({
                 'success': success,
                 'camera': camera_serial,
                 'preset': preset_token,
-                'message': 'Preset command sent' if success else 'Preset command failed'
-            })
+                'message': message,
+                'error': message if not success else None
+            }), status_code
 
         # Only Amcrest, Reolink, and SV3C support ONVIF/Baichuan presets
         if camera_type not in ['amcrest', 'reolink', 'sv3c']:
@@ -4297,12 +4365,11 @@ def api_ptz_set_preset(camera_serial):
 
         camera_type = camera.get('type')
 
-        # Handle Eufy cameras via bridge
+        # Handle Eufy cameras via bridge (handles auto-restart internally)
         if camera_type == 'eufy':
-            if not eufy_bridge or not eufy_bridge.is_running():
-                return jsonify({'success': False, 'error': 'Eufy bridge not running'}), 503
+            if not eufy_bridge:
+                return jsonify({'success': False, 'error': 'Eufy bridge not initialized'}), 503
 
-            # Eufy requires preset index (0-3)
             if preset_index is None:
                 return jsonify({'success': False, 'error': 'Preset index required for Eufy (0-3)'}), 400
 
@@ -4311,13 +4378,15 @@ def api_ptz_set_preset(camera_serial):
             except ValueError:
                 return jsonify({'success': False, 'error': 'Invalid preset index'}), 400
 
-            success = eufy_bridge.save_preset(camera_serial, preset_index)
+            success, message = eufy_bridge.save_preset(camera_serial, preset_index)
+            status_code = 200 if success else 503
             return jsonify({
                 'success': success,
                 'camera': camera_serial,
                 'preset_index': preset_index,
-                'message': 'Preset saved' if success else 'Failed to save preset'
-            })
+                'message': message,
+                'error': message if not success else None
+            }), status_code
 
         # For ONVIF cameras, preset name is required
         if not preset_name:
@@ -4362,23 +4431,25 @@ def api_ptz_delete_preset(camera_serial, preset_token):
 
         camera_type = camera.get('type')
 
-        # Handle Eufy cameras via bridge
+        # Handle Eufy cameras via bridge (handles auto-restart internally)
         if camera_type == 'eufy':
-            if not eufy_bridge or not eufy_bridge.is_running():
-                return jsonify({'success': False, 'error': 'Eufy bridge not running'}), 503
+            if not eufy_bridge:
+                return jsonify({'success': False, 'error': 'Eufy bridge not initialized'}), 503
 
             try:
                 preset_index = int(preset_token)
             except ValueError:
                 return jsonify({'success': False, 'error': 'Invalid preset token for Eufy'}), 400
 
-            success = eufy_bridge.delete_preset(camera_serial, preset_index)
+            success, message = eufy_bridge.delete_preset(camera_serial, preset_index)
+            status_code = 200 if success else 503
             return jsonify({
                 'success': success,
                 'camera': camera_serial,
                 'preset': preset_token,
-                'message': 'Preset deleted' if success else 'Failed to delete preset'
-            })
+                'message': message,
+                'error': message if not success else None
+            }), status_code
 
         # Other camera types don't support delete via this endpoint
         return jsonify({'success': False, 'error': 'Delete preset not supported for this camera type'}), 400

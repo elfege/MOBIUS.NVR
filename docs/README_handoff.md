@@ -364,3 +364,40 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 **Verification required:** User must run `./start.sh` to test all credentials load correctly.
 
 ---
+
+### Camera Rename Feature (Feb 28, 16:15-16:25 EST)
+
+**Branch:** `camera_rename_ui_FEB_28_2026_a`
+
+**Goal:** Allow renaming cameras from the UI settings modal. Updates DB + cameras.json.
+
+**Files Modified:**
+
+34. **`app.py`** (16:18 EST) — New `PUT /api/camera/<serial>/name` endpoint
+    - Validates name (non-empty, max 255 chars)
+    - Uses `camera_repo.update_camera_setting(serial, 'name', value)` (updates DB + JSON + cache)
+    - Logs old name -> new name transition
+    - Returns success with serial, new name, previous name
+
+35. **`static/js/forms/recording-settings-form.js`** (16:20 EST) — Camera Info section at top of form
+    - New "Camera Info" section with editable name field + Rename button
+    - Read-only serial number field below it
+    - `handleRename()` method: calls PUT endpoint, updates modal title + stream tile
+    - Enter key in name field triggers rename
+    - Inline status messages (success/error/no-change)
+    - `generateForm()` signature extended with `cameraName` parameter
+
+36. **`static/js/modals/camera-settings-modal.js`** (16:22 EST)
+    - Passes `cameraName` to `generateForm()` call
+
+37. **`templates/streams.html`** (16:23 EST)
+    - Modal header changed: "Recording Settings" -> "Camera Settings" (with cog icon)
+
+38. **Intercom MSG-150** posted to `office-network` — context for SonicWall lease naming workflow
+
+**Requires:** Container restart (`./start.sh`) for backend changes to take effect.
+
+**TODO (Phase 2):**
+- [ ] Rename camera on device itself via vendor API (Baichuan for Reolink, ONVIF for others)
+
+---

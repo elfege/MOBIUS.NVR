@@ -1,6 +1,6 @@
 /**
  * Recording Settings Form Handler
- * Location: ~/0_NVR/static/js/forms/recording-settings-form.js
+ * Location: ~/0_MOBIUS.NVR/static/js/forms/recording-settings-form.js
  * Handles form generation, validation, and submission
  */
 
@@ -21,9 +21,10 @@ export class RecordingSettingsForm {
      * @param {string} streamType - Stream type (LL_HLS, MJPEG, etc.)
      * @returns {string} - Form HTML
      */
-    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null) {
+    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null, cameraName = '') {
         this.currentCameraId = cameraId;
         this.currentSettings = settings;
+        this.currentCameraName = cameraName;
 
         const hasOnvif = cameraCapabilities.includes('ONVIF');
         const isReolink = cameraType && cameraType.toLowerCase() === 'reolink';
@@ -31,10 +32,42 @@ export class RecordingSettingsForm {
         // Determine recording source based on stream type (not user-configurable)
         const resolvedRecordingSource = this._resolveRecordingSource(streamType);
         this.resolvedRecordingSource = resolvedRecordingSource;
-        
+
+        // Escape name for HTML attribute
+        const escapedName = (cameraName || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
         return `
             <form id="recording-settings-form" class="recording-settings-form">
-                
+
+                <!-- Camera Info Section -->
+                <div class="recording-form-section">
+                    <h4><i class="fas fa-tag"></i> Camera Info</h4>
+                    <div class="recording-form-group">
+                        <label for="camera-name">Display Name</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text"
+                                   id="camera-name"
+                                   name="camera_name"
+                                   value="${escapedName}"
+                                   maxlength="255"
+                                   placeholder="Enter camera name"
+                                   style="flex: 1;">
+                            <button type="button" id="rename-camera-btn"
+                                    class="recording-btn recording-btn-secondary"
+                                    style="white-space: nowrap; padding: 8px 14px;">
+                                <i class="fas fa-pencil-alt"></i> Rename
+                            </button>
+                        </div>
+                        <span class="form-description">Name shown in UI, saved to database and config</span>
+                        <div id="rename-status" style="display: none; margin-top: 6px;"></div>
+                    </div>
+                    <div class="recording-form-group">
+                        <label>Serial Number</label>
+                        <input type="text" value="${cameraId}" disabled
+                               style="opacity: 0.6; cursor: not-allowed;">
+                    </div>
+                </div>
+
                 <!-- Motion Recording Section -->
                 <div class="recording-form-section">
                     <h4><i class="fas fa-running"></i> Motion Recording</h4>
@@ -370,6 +403,19 @@ export class RecordingSettingsForm {
             $('#pre-buffer').prop('disabled', !$(this).is(':checked'));
         });
 
+        // Handle camera rename button
+        $('#rename-camera-btn').on('click', async () => {
+            await this.handleRename();
+        });
+
+        // Also allow Enter key in name field to trigger rename
+        $('#camera-name').on('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await this.handleRename();
+            }
+        });
+
         // Load power cycle settings asynchronously
         if (this._powerCycleCameraId) {
             this.loadPowerCycleSettings(this._powerCycleCameraId);
@@ -414,6 +460,67 @@ export class RecordingSettingsForm {
             console.error('Form submission error:', error);
             this.showAlert('error', error.message);
             submitBtn.prop('disabled', false).html(originalHtml);
+        }
+    }
+
+    /**
+     * Handle camera rename via dedicated API endpoint.
+     * Updates name in database, cameras.json, and refreshes the UI.
+     */
+    async handleRename() {
+        const newName = $('#camera-name').val().trim();
+        const $btn = $('#rename-camera-btn');
+        const $status = $('#rename-status');
+        const originalBtnHtml = $btn.html();
+
+        if (!newName) {
+            $status.show().html(
+                '<span style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> Name cannot be empty</span>'
+            );
+            return;
+        }
+
+        if (newName === this.currentCameraName) {
+            $status.show().html(
+                '<span style="color: #f39c12;"><i class="fas fa-info-circle"></i> Name unchanged</span>'
+            );
+            setTimeout(() => $status.fadeOut(300), 2000);
+            return;
+        }
+
+        try {
+            $btn.prop('disabled', true).html('<span class="recording-loading" style="width: 14px; height: 14px; border-width: 2px;"></span>');
+            $status.hide();
+
+            const response = await axios.put(`/api/camera/${this.currentCameraId}/name`, {
+                name: newName
+            });
+
+            if (response.data.success) {
+                this.currentCameraName = newName;
+
+                // Update modal title
+                $('#modal-camera-name').text(newName);
+
+                // Update the stream tile data attribute and visible name
+                const $streamItem = $(`.stream-item[data-camera-serial="${this.currentCameraId}"]`);
+                $streamItem.data('camera-name', newName);
+                $streamItem.attr('data-camera-name', newName);
+                $streamItem.find('.camera-name').text(newName);
+
+                $status.show().html(
+                    `<span style="color: #27ae60;"><i class="fas fa-check-circle"></i> Renamed to "${newName}"</span>`
+                );
+                setTimeout(() => $status.fadeOut(300), 3000);
+            }
+        } catch (error) {
+            const msg = error.response?.data?.error || error.message;
+            $status.show().html(
+                `<span style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> ${msg}</span>`
+            );
+            console.error('Rename failed:', error);
+        } finally {
+            $btn.prop('disabled', false).html(originalBtnHtml);
         }
     }
 

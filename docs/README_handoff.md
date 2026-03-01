@@ -399,5 +399,97 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 
 **TODO (Phase 2):**
 - [ ] Rename camera on device itself via vendor API (Baichuan for Reolink, ONVIF for others)
+- [ ] "Add a Camera" UI — form + POST endpoint + MediaMTX path setup
 
 ---
+
+### Eufy PTZ Self-Healing & Error Reporting (Feb 28, 20:00-21:50 EST)
+
+**Branch:** `env_var_nvr_prefix_FEB_20_2026_a`
+
+**Root Cause:** Eufy PTZ was broken because `eufy-security-server` (Node.js on port 3000) crashed due to P2P session key expiration after 2 days uptime (decryption errors, `ERROR_COMMAND_TIMEOUT`). The shell wrapper (`eufy_bridge.sh`) stayed alive, so `is_running()` returned True. Result: PTZ moves hit `ConnectionRefusedError` on port 3000 but returned only "Movement failed" with no explanation.
+
+**Two Problems Fixed:**
+1. **No self-healing** — bridge crashes required manual `./start.sh`
+2. **No useful error info** — users saw "Movement failed" with no details
+
+**Files Modified:**
+
+39. **`services/eufy/eufy_bridge.py`** (20:30-21:30 EST) — **Major rewrite** (+437/-104 lines)
+    - Added `BridgeCrashedError` and `BridgeAuthRequiredError` exception classes
+    - `is_running()` now checks actual TCP port 3000 via socket, not just `process.poll()`
+    - New methods: `_mark_bridge_dead(reason)`, `_check_port_alive()`, `restart()`, `get_status()`, `_run_bridge_command()`
+    - `restart()` is thread-safe with Lock and 30s cooldown between attempts
+    - `_monitor_bridge()` continues monitoring after ready event (previously broke out of loop)
+    - `move_camera()` returns `(success, message)` tuple with auto-restart-on-crash
+    - `_run_bridge_command()` DRY helper for preset methods with same pattern
+    - `goto_preset()`, `save_preset()`, `delete_preset()` all return `(success, message)` tuples
+
+40. **`app.py`** (20:45 EST) — 4 Eufy PTZ endpoints updated
+    - PTZ move, goto_preset, save_preset, delete_preset all use `success, message = ...` tuple unpacking
+    - Returns 503 with detailed error message + `bridge_status` dict on failure
+    - Removed pre-check `if not eufy_bridge.is_running()` — methods handle this internally now
+    - **Note:** These changes were included in prior commit 38596be
+
+41. **`services/eufy/eufy_bridge.sh`** (21:00 EST) — Auto-restart loop
+    - Replaced single `execute_bridge` call with `while true` restart loop
+    - Exponential backoff: 10s → 20s → 40s → 80s → 120s (capped at MAX_RESTART_DELAY=120)
+    - Re-populates config on each restart (picks up credential changes)
+    - Kills stale processes before each restart attempt
+
+**All syntax checks passed:** `py_compile` for Python, `bash -n` for shell script.
+
+**Requires:** Container restart (`./start.sh`) to load new Python code.
+
+**Testing plan after restart:**
+- [ ] PTZ move on Eufy camera — should work or show detailed error
+- [ ] Kill eufy-security-server manually → verify auto-restart kicks in
+- [ ] Verify 503 errors include meaningful message in UI
+- [ ] Check `eufy_bridge.sh` restart loop in docker logs
+
+---
+
+## Next Session TODO
+
+**Immediate:**
+- [ ] Restart container (`./start.sh`) and test Eufy PTZ self-healing
+- [ ] Test camera rename feature
+
+**Testing Required (DB Migration):**
+- [ ] Test stream type switching: select MJPEG in UI -> backend serves MJPEG
+- [ ] Test per-user preferences: user A sets WebRTC, verify backend uses it
+- [ ] Test force-sync: `POST /api/cameras/force-sync` resets from JSON
+- [ ] Test fallback: stop PostgREST -> verify app still works from JSON
+- [ ] 24-hour stability test
+
+**Testing Required (Previous):**
+- [ ] Phase 1 stream stability fixes (still untested from Feb 14)
+- [ ] Manual restart button: works within 10-15 seconds
+- [ ] Monitor for Entrance door RTSP null exceptions
+
+**Cleanup:**
+- [ ] Decide on recursive `docs/docs/docs/...` deletions
+- [ ] Commit or revert `.gitignore` changes
+
+**Pending (Phase 2 -- Code Quality):**
+- [ ] Centralize 30+ hardcoded timeouts to config/timeouts.yaml
+- [ ] Centralize hardcoded MediaMTX addresses to config/services.yaml
+- [ ] Remove commented-out code from MJPEG service files
+- [ ] Fix bare except clauses in talkback_transcoder.py
+
+**Pending (Phase 3 -- Refactoring):**
+- [ ] Extract MJPEG handler base class (reduce ~300 lines duplication)
+- [ ] Fix circular import architecture
+- [ ] Add camera state audit trail (90-day retention)
+
+**Pending (Other):**
+- [ ] file_operations_log cleanup: 98M rows (34GB) needs retention/pruning policy
+- [ ] VACUUM ANALYZE on recordings table (never been vacuumed)
+- [ ] Security: Implement stricter RLS policies (currently permissive)
+- [ ] Security: Investigate container encryption (secrets are cleartext in container env)
+- [ ] WebRTC HD/SD fallback -- falls back too fast, doesn't retry HD
+- [ ] Add snapshot feature in fullscreen mode
+- [ ] Investigate segment buffer failures -- pre-alarm recording broken
+- [ ] Warm restart sub-service (`restart_warm.sh`)
+- [ ] Rename camera on device itself via vendor API (Baichuan for Reolink, ONVIF for others)
+- [ ] "Add a Camera" UI — form + POST endpoint + MediaMTX path setup

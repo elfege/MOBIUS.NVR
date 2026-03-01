@@ -125,8 +125,23 @@ class CameraStateTracker:
         self._mediamtx_api_url = mediamtx_api_url
         self._poll_thread: Optional[threading.Thread] = None
         self._running = False
+        self._socketio = None  # Set via set_socketio() for push-based state updates
 
         logger.info("CameraStateTracker initialized")
+
+    def set_socketio(self, socketio):
+        """
+        Set SocketIO instance for push-based state change notifications.
+
+        When set, state changes are emitted as 'camera_state_changed' events
+        on the /stream_events namespace, eliminating the need for frontend
+        polling of /api/camera/state/<id>.
+
+        Args:
+            socketio: Flask-SocketIO instance
+        """
+        self._socketio = socketio
+        logger.info("CameraStateTracker: SocketIO push notifications enabled")
 
 
     def start(self):
@@ -626,10 +641,13 @@ class CameraStateTracker:
 
     def _trigger_callbacks(self, camera_id: str, state: CameraState):
         """
-        Invoke all registered callbacks for camera state changes.
+        Invoke all registered callbacks for camera state changes and push via SocketIO.
 
         Callbacks are executed in registration order. Exceptions in callbacks
         are caught and logged to prevent one failing callback from blocking others.
+
+        When SocketIO is configured, emits 'camera_state_changed' event on the
+        /stream_events namespace for real-time frontend updates without polling.
 
         Args:
             camera_id: Camera that changed state
@@ -645,6 +663,22 @@ class CameraStateTracker:
                     f"Callback error for {camera_id}: {e}",
                     exc_info=True
                 )
+
+        # Push state change to frontend via SocketIO (eliminates polling)
+        if self._socketio:
+            try:
+                self._socketio.emit('camera_state_changed', {
+                    'camera_id': camera_id,
+                    'availability': state.availability.value,
+                    'publisher_active': state.publisher_active,
+                    'failure_count': state.failure_count,
+                    'backoff_seconds': state.backoff_seconds,
+                    'next_retry': state.next_retry.isoformat() if state.next_retry else None,
+                    'error_message': state.error_message,
+                    'last_seen': state.last_seen.isoformat() if state.last_seen else None,
+                }, namespace='/stream_events')
+            except Exception as e:
+                logger.debug(f"SocketIO emit error for {camera_id}: {e}")
 
 
     def _create_default_state(self, camera_id: str) -> CameraState:

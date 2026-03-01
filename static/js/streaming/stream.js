@@ -807,8 +807,15 @@ export class MultiStreamManager {
                 return;
             }
 
-            // Don't expand if already in fullscreen
             const $streamItem = $(e.currentTarget);
+
+            // Don't toggle expand/collapse while PTZ is active — rapid PTZ clicks
+            // would otherwise cause accidental modal exit
+            if ($streamItem.find('.stream-ptz-toggle-btn').hasClass('ptz-active')) {
+                return;
+            }
+
+            // Don't expand if already in fullscreen
             if ($streamItem.hasClass('css-fullscreen')) {
                 return;
             }

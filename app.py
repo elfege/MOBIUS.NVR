@@ -634,6 +634,7 @@ except Exception as e:
 # ===== Start Camera State Tracker =====
 try:
     print("\n📡 Starting Camera State Tracker...")
+    camera_state_tracker.set_socketio(socketio)
     camera_state_tracker.start()
     print("✅ Camera State Tracker started (polling MediaMTX API every 5s)")
 except Exception as e:
@@ -889,8 +890,12 @@ class PTZControlForm(FlaskForm):
 
 # ===== Authentication Helper Functions =====
 
-# PostgREST connection URL
+# PostgREST connection URL and persistent session (connection pooling)
+# Using requests.Session() keeps TCP connections alive between calls,
+# eliminating per-request TCP handshake overhead (~1-3ms per call on Docker network)
 POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
+_postgrest_session = requests.Session()
+_postgrest_session.headers.update({'Content-Type': 'application/json'})
 
 def _create_user_session(user_id, ip_address, user_agent):
     """
@@ -902,7 +907,7 @@ def _create_user_session(user_id, ip_address, user_agent):
         user_agent (str): Client User-Agent string
     """
     try:
-        requests.post(
+        _postgrest_session.post(
             f"{POSTGREST_URL}/user_sessions",
             json={
                 'user_id': user_id,
@@ -910,7 +915,6 @@ def _create_user_session(user_id, ip_address, user_agent):
                 'user_agent': user_agent,
                 'is_active': True
             },
-            headers={'Content-Type': 'application/json'},
             timeout=5
         )
     except requests.RequestException as e:
@@ -924,11 +928,11 @@ def _deactivate_user_session(user_id):
         user_id (int): User ID
     """
     try:
-        requests.patch(
+        _postgrest_session.patch(
             f"{POSTGREST_URL}/user_sessions",
             params={'user_id': f'eq.{user_id}', 'is_active': 'eq.true'},
             json={'is_active': False},
-            headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+            headers={'Prefer': 'return=minimal'},
             timeout=5
         )
     except requests.RequestException as e:
@@ -1025,7 +1029,7 @@ def change_password():
 
     # Update database using authenticated user context
     try:
-        response = requests.patch(
+        response = _postgrest_session.patch(
             f"{POSTGREST_URL}/users",
             params={'id': f'eq.{current_user.id}'},
             json={
@@ -1033,7 +1037,6 @@ def change_password():
                 'must_change_password': False
             },
             headers={
-                'Content-Type': 'application/json',
                 'Prefer': 'return=minimal'
                 # TODO: Set RLS context headers here when implementing stricter policies
             },
@@ -1064,7 +1067,7 @@ def api_get_users():
         return jsonify({'error': 'Admin access required'}), 403
 
     try:
-        response = requests.get(
+        response = _postgrest_session.get(
             f"{POSTGREST_URL}/users",
             params={'select': 'id,username,role,created_at'},
             timeout=5
@@ -1107,7 +1110,7 @@ def api_create_user():
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
         # Create user in database
-        response = requests.post(
+        response = _postgrest_session.post(
             f"{POSTGREST_URL}/users",
             json={
                 'username': username,
@@ -1115,7 +1118,7 @@ def api_create_user():
                 'role': role,
                 'must_change_password': must_change_password
             },
-            headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+            headers={'Prefer': 'return=representation'},
             timeout=5
         )
 
@@ -1173,11 +1176,11 @@ def api_update_user(user_id):
             return jsonify({'error': 'No fields to update'}), 400
 
         # Update user in database
-        response = requests.patch(
+        response = _postgrest_session.patch(
             f"{POSTGREST_URL}/users",
             params={'id': f'eq.{user_id}'},
             json=update_data,
-            headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+            headers={'Prefer': 'return=representation'},
             timeout=5
         )
 
@@ -1215,7 +1218,7 @@ def api_delete_user(user_id):
 
     try:
         # Delete user from database
-        response = requests.delete(
+        response = _postgrest_session.delete(
             f"{POSTGREST_URL}/users",
             params={'id': f'eq.{user_id}'},
             headers={'Prefer': 'return=minimal'},
@@ -1256,7 +1259,7 @@ def api_reset_user_password(user_id):
             return jsonify({'error': 'Password must be at least 8 characters'}), 400
 
         # Get current password hash from database
-        user_response = requests.get(
+        user_response = _postgrest_session.get(
             f"{POSTGREST_URL}/users",
             params={'id': f'eq.{user_id}', 'select': 'password_hash'},
             timeout=5
@@ -1275,14 +1278,14 @@ def api_reset_user_password(user_id):
         new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
         # Update password and set must_change_password flag
-        response = requests.patch(
+        response = _postgrest_session.patch(
             f"{POSTGREST_URL}/users",
             params={'id': f'eq.{user_id}'},
             json={
                 'password_hash': new_password_hash,
                 'must_change_password': True
             },
-            headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+            headers={'Prefer': 'return=minimal'},
             timeout=5
         )
 
@@ -1310,7 +1313,7 @@ def api_get_user_camera_access(user_id):
         return jsonify({'error': 'Admin access required'}), 403
 
     try:
-        response = requests.get(
+        response = _postgrest_session.get(
             f"{POSTGREST_URL}/user_camera_access",
             params={'user_id': f'eq.{user_id}', 'select': 'camera_serial,allowed'},
             timeout=5
@@ -1343,7 +1346,7 @@ def api_set_user_camera_access(user_id):
         cameras = data.get('cameras', [])
 
         # Delete existing access rules for this user
-        requests.delete(
+        _postgrest_session.delete(
             f"{POSTGREST_URL}/user_camera_access",
             params={'user_id': f'eq.{user_id}'},
             headers={'Prefer': 'return=minimal'},
@@ -1361,10 +1364,10 @@ def api_set_user_camera_access(user_id):
                 }
                 for c in allowed_cameras
             ]
-            response = requests.post(
+            response = _postgrest_session.post(
                 f"{POSTGREST_URL}/user_camera_access",
                 json=rows,
-                headers={'Content-Type': 'application/json', 'Prefer': 'return=minimal'},
+                headers={'Prefer': 'return=minimal'},
                 timeout=5
             )
 
@@ -1393,7 +1396,7 @@ def api_get_my_camera_access():
         return jsonify({'all_access': True, 'cameras': []})
 
     try:
-        response = requests.get(
+        response = _postgrest_session.get(
             f"{POSTGREST_URL}/user_camera_access",
             params={'user_id': f'eq.{current_user.id}', 'select': 'camera_serial,allowed'},
             timeout=5
@@ -1424,7 +1427,7 @@ def api_get_my_preferences():
     Returns defaults if no preferences saved yet.
     """
     try:
-        response = requests.get(
+        response = _postgrest_session.get(
             f"{POSTGREST_URL}/user_preferences",
             params={
                 'user_id': f'eq.{current_user.id}',
@@ -1465,12 +1468,11 @@ def api_put_my_preferences():
 
     try:
         # Upsert: use Prefer: resolution=merge-duplicates with the unique constraint on user_id
-        response = requests.post(
+        response = _postgrest_session.post(
             f"{POSTGREST_URL}/user_preferences",
             json=payload,
             headers={
                 'Prefer': 'resolution=merge-duplicates,return=representation',
-                'Content-Type': 'application/json'
             },
             timeout=5
         )
@@ -1502,7 +1504,7 @@ def api_get_stream_preferences():
     where the user has set a preference.
     """
     try:
-        response = requests.get(
+        response = _postgrest_session.get(
             f"{POSTGREST_URL}/user_camera_preferences",
             params={
                 'user_id': f'eq.{current_user.id}',
@@ -1539,7 +1541,7 @@ def api_put_stream_preference(camera_serial):
         return jsonify({'error': f'Invalid stream type. Must be one of: {", ".join(sorted(VALID_STREAM_TYPES))}'}), 400
 
     try:
-        response = requests.post(
+        response = _postgrest_session.post(
             f"{POSTGREST_URL}/user_camera_preferences",
             json={
                 'user_id': current_user.id,
@@ -1548,7 +1550,6 @@ def api_put_stream_preference(camera_serial):
             },
             headers={
                 'Prefer': 'resolution=merge-duplicates,return=representation',
-                'Content-Type': 'application/json'
             },
             timeout=5
         )
@@ -1634,7 +1635,7 @@ def _get_allowed_camera_serials(user):
         return None  # No restriction
 
     try:
-        response = requests.get(
+        response = _postgrest_session.get(
             f"{POSTGREST_URL}/user_camera_access",
             params={'user_id': f'eq.{user.id}', 'select': 'camera_serial,allowed'},
             timeout=5
@@ -2194,20 +2195,32 @@ def api_stream_restart(camera_serial):
                 'camera_serial': camera_serial
             }), 500
 
-        # Step 3: Wait for MediaMTX publisher to be ready
-        # This ensures the UI gets a working stream URL, not a 404
-        import time
-        publisher_ready = camera_state_tracker.wait_for_publisher_ready(
-            camera_serial, timeout=15
-        )
-
-        if not publisher_ready:
-            logger.warning(
-                f"[RESTART] Stream started but publisher not confirmed ready "
-                f"for {camera_name} (FFmpeg may still be connecting to camera)"
+        # Step 3: Return immediately — publisher readiness notified via SocketIO
+        # Previously this blocked for up to 15 seconds waiting for MediaMTX.
+        # Now we spawn a background thread that waits and emits stream_restarted
+        # via the existing SocketIO infrastructure when the publisher is ready.
+        def _wait_and_notify():
+            ready = camera_state_tracker.wait_for_publisher_ready(
+                camera_serial, timeout=15
             )
+            if ready:
+                camera_state_tracker.register_success(camera_serial)
+            else:
+                logger.warning(
+                    f"[RESTART] Publisher not confirmed ready for {camera_name} "
+                    f"(FFmpeg may still be connecting to camera)"
+                )
+            # Broadcast stream_restarted so frontend HLS.js refreshes
+            if stream_watchdog:
+                stream_watchdog._broadcast_stream_restarted(camera_serial)
 
-        logger.info(f"[RESTART] Stream restarted for {camera_name}: {stream_url} (publisher_ready: {publisher_ready})")
+        Thread(
+            target=_wait_and_notify,
+            daemon=True,
+            name=f"restart-notify-{camera_serial}"
+        ).start()
+
+        logger.info(f"[RESTART] Stream restart initiated for {camera_name}: {stream_url}")
 
         return jsonify({
             'success': True,
@@ -2215,8 +2228,8 @@ def api_stream_restart(camera_serial):
             'camera_name': camera_name,
             'stream_url': stream_url,
             'was_running': was_running,
-            'publisher_ready': publisher_ready,
-            'message': f'Stream restarted for {camera_name}'
+            'publisher_ready': False,  # Will be notified via SocketIO
+            'message': f'Stream restart initiated for {camera_name} — publisher readiness via WebSocket'
         })
 
     except Exception as e:
@@ -2308,6 +2321,48 @@ def api_camera_state(camera_id):
             'error': str(e),
             'camera_id': camera_id
         }), 500
+
+@app.route('/api/camera/states')
+@login_required
+def api_camera_states_batch():
+    """
+    Batch camera state for all tracked cameras — replaces N+1 per-camera polling.
+
+    Returns all camera states in a single response, eliminating the need for
+    the frontend to poll /api/camera/state/<id> individually per camera.
+    With 20 cameras, this reduces state polling from 20 requests/cycle to 1.
+
+    Returns:
+        JSON with states dict keyed by camera_id
+    """
+    try:
+        states = {}
+        with camera_state_tracker._lock:
+            for camera_id, state in camera_state_tracker._states.items():
+                camera = camera_repo.get_camera(camera_id)
+                camera_stream_type = camera.get('stream_type', 'LL_HLS') if camera else 'LL_HLS'
+                is_mjpeg = camera_stream_type == 'MJPEG'
+
+                states[camera_id] = {
+                    'camera_id': camera_id,
+                    'stream_type': camera_stream_type,
+                    'availability': state.availability.value,
+                    'publisher_active': state.publisher_active,
+                    'ffmpeg_process_alive': state.publisher_active if not is_mjpeg else False,
+                    'last_seen': state.last_seen.isoformat() if state.last_seen else None,
+                    'failure_count': state.failure_count,
+                    'next_retry': state.next_retry.isoformat() if state.next_retry else None,
+                    'backoff_seconds': state.backoff_seconds,
+                    'error_message': state.error_message,
+                    'can_retry': camera_state_tracker.can_retry(camera_id),
+                }
+
+        return jsonify({'success': True, 'states': states})
+
+    except Exception as e:
+        logger.error(f"Error getting batch camera states: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/streams')
 @login_required
@@ -4476,12 +4531,9 @@ def api_ptz_get_latency(client_uuid, camera_serial):
         JSON with avg_latency_ms and sample_count
     """
     try:
-        import requests
-        postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
-
         # Query PostgREST for this client/camera pair
-        response = requests.get(
-            f"{postgrest_url}/ptz_client_latency",
+        response = _postgrest_session.get(
+            f"{POSTGREST_URL}/ptz_client_latency",
             params={
                 'client_uuid': f'eq.{client_uuid}',
                 'camera_serial': f'eq.{camera_serial}'
@@ -4539,7 +4591,6 @@ def api_ptz_update_latency(client_uuid, camera_serial):
         JSON with updated avg_latency_ms and sample_count
     """
     try:
-        import requests
         import json
 
         data = request.get_json()
@@ -4548,11 +4599,9 @@ def api_ptz_update_latency(client_uuid, camera_serial):
         if observed_latency is None:
             return jsonify({'success': False, 'error': 'observed_latency_ms required'}), 400
 
-        postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
-
         # First, try to get existing record
-        get_response = requests.get(
-            f"{postgrest_url}/ptz_client_latency",
+        get_response = _postgrest_session.get(
+            f"{POSTGREST_URL}/ptz_client_latency",
             params={
                 'client_uuid': f'eq.{client_uuid}',
                 'camera_serial': f'eq.{camera_serial}'
@@ -4589,8 +4638,8 @@ def api_ptz_update_latency(client_uuid, camera_serial):
 
         if existing:
             # Update existing record
-            update_response = requests.patch(
-                f"{postgrest_url}/ptz_client_latency",
+            update_response = _postgrest_session.patch(
+                f"{POSTGREST_URL}/ptz_client_latency",
                 params={
                     'client_uuid': f'eq.{client_uuid}',
                     'camera_serial': f'eq.{camera_serial}'
@@ -4600,16 +4649,16 @@ def api_ptz_update_latency(client_uuid, camera_serial):
                     'samples': samples,
                     'sample_count': len(samples)
                 },
-                headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+                headers={'Prefer': 'return=representation'},
                 timeout=5
             )
             success = update_response.status_code in [200, 204]
         else:
             # Insert new record
-            insert_response = requests.post(
-                f"{postgrest_url}/ptz_client_latency",
+            insert_response = _postgrest_session.post(
+                f"{POSTGREST_URL}/ptz_client_latency",
                 json=record_data,
-                headers={'Content-Type': 'application/json', 'Prefer': 'return=representation'},
+                headers={'Prefer': 'return=representation'},
                 timeout=5
             )
             success = insert_response.status_code in [200, 201]

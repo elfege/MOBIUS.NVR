@@ -449,9 +449,63 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 
 ---
 
+### Performance Refactoring (Feb 28, 19:00-20:00 EST)
+
+**Branch:** `camera_rename_ui_FEB_28_2026_a` (continued)
+
+**Problem:** App unresponsive — investigation revealed ~1,930 HTTP requests/minute from a single browser tab, static files served through Flask, 15-second blocking request handlers, and no push-based state updates.
+
+**Files Modified:**
+
+42. **`nginx/nginx.conf`** (19:05 EST) — Phase 1: Static file serving via nginx
+    - Added `/static/` location block in HTTPS server (serves from nginx, not Flask)
+    - Updated HTTP `/static/` block to also serve directly
+    - `expires 1h`, `Cache-Control: public, immutable`, `sendfile on`
+
+43. **`docker-compose.yml`** (19:05 EST) — Phase 1
+    - Added `./static:/usr/share/nginx/static:ro` volume to nvr-edge container
+
+44. **`app.py`** (19:10-19:40 EST) — Phases 2-4
+    - New `GET /api/camera/states` batch endpoint (returns all camera states in one call)
+    - Wired `camera_state_tracker.set_socketio(socketio)` at init
+    - `api_stream_restart()` now non-blocking: returns immediately, notifies via SocketIO
+    - Added `_postgrest_session = requests.Session()` for PostgREST connection pooling
+    - Replaced 20+ `requests.get/post/patch/delete(POSTGREST_URL/...)` with `_postgrest_session.xxx()`
+
+45. **`services/camera_state_tracker.py`** (19:15 EST) — Phase 2B
+    - Added `set_socketio()` method
+    - `_trigger_callbacks()` now emits `camera_state_changed` event on `/stream_events` namespace
+
+46. **`static/js/streaming/camera-state-monitor.js`** (19:20 EST) — Phase 2: Complete rewrite
+    - Replaced N+1 per-camera polling with SocketIO push + 30-second batch fallback
+    - 120 req/min → 2 req/min max
+
+47. **`static/js/streaming/snapshot-stream.js`** (19:35 EST) — Phase 5A: Visibility gating
+    - Added IntersectionObserver to pause polling for off-screen cameras
+    - 100px rootMargin for pre-fetching as cameras scroll into view
+    - ~1200 req/min → ~300 req/min (only visible cameras poll)
+
+**Intercom MSG-149** posted — warned ALL instances about NVR refactoring in progress.
+
+**Impact Summary:**
+- Static files: 71+ per page load removed from Gunicorn → served by nginx
+- Camera state: 120 req/min → 2 req/min (SocketIO push + batch fallback)
+- Stream restart: 15-second block → instant response + async notification
+- PostgREST: ~50-70ms TCP overhead eliminated per interaction cycle
+- Snapshots: ~1200 req/min → ~300 req/min (visibility gating)
+- **Total: ~1930 req/min → ~700 req/min estimated**
+
+**Requires:** Container restart (`./start.sh`) + nginx container rebuild for static volume mount.
+
+---
+
 ## Next Session TODO
 
 **Immediate:**
+- [ ] Restart container (`./start.sh`) and test performance refactoring
+- [ ] Verify static files have Cache-Control headers: `curl -I https://host:8444/static/js/stream.js`
+- [ ] Test SocketIO camera state push (browser dev tools → Network → WS tab)
+- [ ] Test non-blocking stream restart (should return instantly)
 - [ ] Restart container (`./start.sh`) and test Eufy PTZ self-healing
 - [ ] Test camera rename feature
 

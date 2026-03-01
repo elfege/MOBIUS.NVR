@@ -1,17 +1,11 @@
 /**
- * Camera State Monitor - Polls CameraStateTracker API and updates UI
+ * Camera State Monitor - Uses SocketIO push + batch fallback for camera state
  *
- * Fetches detailed camera state information from /api/camera/state/<camera_id>
- * and updates stream status indicators with:
- * - Availability (ONLINE, STARTING, OFFLINE, DEGRADED)
- * - Publisher status (MediaMTX active/inactive)
- * - FFmpeg process status (alive/dead)
- * - Backoff timer (retry countdown)
+ * Primary: Listens for 'camera_state_changed' events via SocketIO (instant, zero polling)
+ * Fallback: Batch polls /api/camera/states every 30 seconds (one request for all cameras)
  *
- * This helps users distinguish between:
- * - UI problems (browser/network issues)
- * - Backend problems (FFmpeg/MediaMTX issues)
- * - Camera hardware problems (offline cameras)
+ * This replaces the previous N+1 polling pattern that made one HTTP request per camera
+ * every 10 seconds (20 cameras = 120 requests/minute → now 2 requests/minute max).
  */
 
 export class CameraStateMonitor {
@@ -21,11 +15,13 @@ export class CameraStateMonitor {
      *                                     Called with (cameraId, $streamItem, previousState, newState)
      */
     constructor(opts = {}) {
-        this.pollInterval = 10000; // Poll every 10 seconds
-        this.timers = new Map(); // Track polling timers per camera
+        this.fallbackInterval = 30000; // Batch poll every 30 seconds (fallback only)
+        this.fallbackTimer = null;
         this.isRunning = false;
         this.previousStates = new Map(); // Track previous state per camera for transition detection
         this.onRecovery = opts.onRecovery || null; // Callback for recovery events
+        this.cameraElements = new Map(); // Map camera_id → $streamItem
+        this.socketConnected = false;
     }
 
     /**
@@ -37,17 +33,26 @@ export class CameraStateMonitor {
             return;
         }
 
-        console.log('[CameraState] Starting camera state monitor');
+        console.log('[CameraState] Starting camera state monitor (SocketIO push + batch fallback)');
         this.isRunning = true;
 
-        // Find all stream items and start monitoring each
+        // Build camera element map for fast lookups
         $('.stream-item').each((index, element) => {
             const $streamItem = $(element);
             const cameraId = $streamItem.data('camera-serial');
             if (cameraId) {
-                this.monitorCamera(cameraId, $streamItem);
+                this.cameraElements.set(cameraId, $streamItem);
             }
         });
+
+        // Subscribe to SocketIO push events (primary real-time source)
+        this._setupSocketIO();
+
+        // Initial batch poll (populates all states immediately)
+        this._batchPoll();
+
+        // Schedule fallback batch polling (catches missed SocketIO events)
+        this._scheduleFallbackPoll();
     }
 
     /**
@@ -57,51 +62,96 @@ export class CameraStateMonitor {
         console.log('[CameraState] Stopping camera state monitor');
         this.isRunning = false;
 
-        // Clear all polling timers
-        for (const [cameraId, timer] of this.timers.entries()) {
-            clearTimeout(timer);
-            console.log(`[CameraState] Stopped monitoring ${cameraId}`);
+        if (this.fallbackTimer) {
+            clearTimeout(this.fallbackTimer);
+            this.fallbackTimer = null;
         }
-        this.timers.clear();
     }
 
     /**
-     * Monitor a specific camera
-     * @param {string} cameraId - Camera serial number
-     * @param {jQuery} $streamItem - Stream item element
+     * Subscribe to SocketIO camera_state_changed events on /stream_events namespace.
+     * The /stream_events namespace is already connected by the stream manager.
      */
-    monitorCamera(cameraId, $streamItem) {
-        // Initial poll
-        this.pollCameraState(cameraId, $streamItem);
+    _setupSocketIO() {
+        // Check if io is available (Socket.IO client library)
+        if (typeof io === 'undefined') {
+            console.warn('[CameraState] Socket.IO not available, using batch polling only');
+            return;
+        }
 
-        // Schedule next poll
-        const timer = setTimeout(() => {
-            if (this.isRunning) {
-                this.monitorCamera(cameraId, $streamItem);
+        // Connect to /stream_events namespace (may already be connected by stream.js)
+        // Use the existing global socket if available, otherwise create one
+        if (window._streamEventsSocket) {
+            this._socket = window._streamEventsSocket;
+        } else {
+            this._socket = io('/stream_events', {
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: Infinity
+            });
+            window._streamEventsSocket = this._socket;
+        }
+
+        this._socket.on('camera_state_changed', (data) => {
+            const cameraId = data.camera_id;
+            const $streamItem = this.cameraElements.get(cameraId);
+
+            if ($streamItem) {
+                // Merge into the response shape expected by updateUI
+                const stateData = {
+                    success: true,
+                    ...data
+                };
+                this.updateUI(cameraId, $streamItem, stateData);
             }
-        }, this.pollInterval);
+        });
 
-        this.timers.set(cameraId, timer);
+        this._socket.on('connect', () => {
+            this.socketConnected = true;
+            console.log('[CameraState] SocketIO connected — real-time push active');
+        });
+
+        this._socket.on('disconnect', () => {
+            this.socketConnected = false;
+            console.log('[CameraState] SocketIO disconnected — falling back to batch polling');
+        });
     }
 
     /**
-     * Poll camera state from API and update UI
-     * @param {string} cameraId - Camera serial number
-     * @param {jQuery} $streamItem - Stream item element
+     * Batch poll all camera states in a single HTTP request.
+     * Used as initial load and fallback when SocketIO is disconnected.
      */
-    async pollCameraState(cameraId, $streamItem) {
+    async _batchPoll() {
         try {
-            const response = await fetch(`/api/camera/state/${cameraId}`);
+            const response = await fetch('/api/camera/states');
             const data = await response.json();
 
-            if (data.success) {
-                this.updateUI(cameraId, $streamItem, data);
-            } else {
-                console.warn(`[CameraState] ${cameraId}: API error - ${data.error}`);
+            if (data.success && data.states) {
+                for (const [cameraId, state] of Object.entries(data.states)) {
+                    const $streamItem = this.cameraElements.get(cameraId);
+                    if ($streamItem) {
+                        this.updateUI(cameraId, $streamItem, { success: true, ...state });
+                    }
+                }
             }
         } catch (error) {
-            console.error(`[CameraState] ${cameraId}: Failed to poll state`, error);
+            console.error('[CameraState] Batch poll failed:', error);
         }
+    }
+
+    /**
+     * Schedule next fallback batch poll
+     */
+    _scheduleFallbackPoll() {
+        if (!this.isRunning) return;
+
+        this.fallbackTimer = setTimeout(() => {
+            if (this.isRunning) {
+                this._batchPoll();
+                this._scheduleFallbackPoll();
+            }
+        }, this.fallbackInterval);
     }
 
     /**

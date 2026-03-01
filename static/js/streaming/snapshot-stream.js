@@ -6,6 +6,11 @@
  * at a configurable interval. Much lighter on resources and more reliable
  * on iOS Safari than multipart MJPEG streams.
  *
+ * Visibility Gating (IntersectionObserver):
+ * Only polls snapshots for cameras currently visible in the viewport.
+ * Off-screen cameras are paused automatically, reducing server load from
+ * ~1200 req/min (20 cameras x 1/sec) to ~300 req/min (4-6 visible cameras).
+ *
  * Benefits over MJPEG:
  * - Single HTTP request per snapshot (no long-lived connections)
  * - Works reliably on iOS Safari (no multipart parsing issues)
@@ -17,6 +22,71 @@ export class SnapshotStreamManager {
     constructor() {
         this.activeStreams = new Map();
         this.defaultIntervalMs = 1000;  // 1 second between snapshots
+        this._observer = null;
+        this._initVisibilityObserver();
+    }
+
+    /**
+     * Initialize IntersectionObserver for viewport-based visibility gating.
+     * Cameras scrolled off-screen have their polling paused automatically.
+     */
+    _initVisibilityObserver() {
+        if (typeof IntersectionObserver === 'undefined') {
+            console.warn('[Snapshot] IntersectionObserver not available — all cameras will poll continuously');
+            return;
+        }
+
+        this._observer = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                const cameraId = entry.target.dataset?.cameraSerial ||
+                                 entry.target.closest('[data-camera-serial]')?.dataset?.cameraSerial;
+                if (!cameraId) continue;
+
+                const stream = this.activeStreams.get(cameraId);
+                if (!stream) continue;
+
+                if (entry.isIntersecting && stream.paused) {
+                    this._resumePolling(cameraId, stream);
+                } else if (!entry.isIntersecting && !stream.paused) {
+                    this._pausePolling(cameraId, stream);
+                }
+            }
+        }, {
+            // Trigger when any part of the camera tile enters/exits the viewport
+            // Add 100px margin so polling starts just before the camera scrolls into view
+            rootMargin: '100px',
+            threshold: 0
+        });
+    }
+
+    /**
+     * Pause snapshot polling for an off-screen camera
+     */
+    _pausePolling(cameraId, stream) {
+        if (stream.timerId) {
+            clearInterval(stream.timerId);
+            stream.timerId = null;
+        }
+        stream.paused = true;
+        console.log(`[Snapshot] ${cameraId}: Paused (off-screen)`);
+    }
+
+    /**
+     * Resume snapshot polling for a camera that scrolled back into view
+     */
+    _resumePolling(cameraId, stream) {
+        stream.paused = false;
+
+        // Load one snapshot immediately for instant visual feedback
+        const $element = $(stream.element);
+        this.loadSnapshot(cameraId, $element, stream.url);
+
+        // Restart polling interval
+        stream.timerId = setInterval(() => {
+            this.loadSnapshot(cameraId, $element, stream.url);
+        }, stream.intervalMs);
+
+        console.log(`[Snapshot] ${cameraId}: Resumed (visible)`);
     }
 
     /**
@@ -36,7 +106,7 @@ export class SnapshotStreamManager {
             this.stopStream(cameraId);
         }
 
-// Universal snap endpoint - works for all camera types
+        // Universal snap endpoint - works for all camera types
         // Backend checks reolink, unifi, mediaserver frame buffers automatically
         const snapshotUrl = `/api/snap/${cameraId}`;
 
@@ -70,26 +140,13 @@ export class SnapshotStreamManager {
 
         // Create polling timer
         const $element = $(streamElement);
-        let consecutiveErrors = 0;
-        const maxErrors = 5;
 
         // Load first snapshot immediately
         this.loadSnapshot(cameraId, $element, snapshotUrl);
 
         // Start polling interval
         const timerId = setInterval(() => {
-            this.loadSnapshot(cameraId, $element, snapshotUrl)
-                .then(() => {
-                    consecutiveErrors = 0;  // Reset on success
-                })
-                .catch(() => {
-                    consecutiveErrors++;
-                    if (consecutiveErrors >= maxErrors) {
-                        console.warn(`[Snapshot] ${cameraId}: ${maxErrors} consecutive errors, pausing`);
-                        // Don't stop completely - just slow down polling
-                        // The health monitor will handle recovery
-                    }
-                });
+            this.loadSnapshot(cameraId, $element, snapshotUrl);
         }, interval);
 
         // Store stream info
@@ -98,8 +155,15 @@ export class SnapshotStreamManager {
             url: snapshotUrl,
             timerId: timerId,
             intervalMs: interval,
-            startTime: Date.now()
+            startTime: Date.now(),
+            paused: false
         });
+
+        // Observe the stream element's container for viewport visibility
+        if (this._observer) {
+            const observeTarget = streamItem || streamElement;
+            this._observer.observe(observeTarget);
+        }
 
         console.log(`[Snapshot] ${cameraId}: Polling started`);
         return true;
@@ -150,6 +214,14 @@ export class SnapshotStreamManager {
             if (stream.timerId) {
                 clearInterval(stream.timerId);
             }
+
+            // Stop observing visibility
+            if (this._observer && stream.element) {
+                const streamItem = document.querySelector(`[data-camera-serial="${cameraId}"]`);
+                const observeTarget = streamItem || stream.element;
+                this._observer.unobserve(observeTarget);
+            }
+
             this.activeStreams.delete(cameraId);
             console.log(`[Snapshot] ${cameraId}: Polling stopped`);
             return true;
@@ -192,12 +264,15 @@ export class SnapshotStreamManager {
                 clearInterval(stream.timerId);
             }
 
-            // Start new timer with updated interval
+            // Start new timer with updated interval (only if not paused)
             const $element = $(stream.element);
             stream.intervalMs = intervalMs;
-            stream.timerId = setInterval(() => {
-                this.loadSnapshot(cameraId, $element, stream.url);
-            }, intervalMs);
+
+            if (!stream.paused) {
+                stream.timerId = setInterval(() => {
+                    this.loadSnapshot(cameraId, $element, stream.url);
+                }, intervalMs);
+            }
 
             console.log(`[Snapshot] ${cameraId}: Interval updated to ${intervalMs}ms`);
             return true;

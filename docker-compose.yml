@@ -56,11 +56,12 @@ services:
       - nvr
     ports:
       - "8081:80"  # HTTP -> 301 to HTTPS (edge only) # Internal nginx listens on 80, exposed as 8080
-      - "8443:443"  # HTTPS + HTTP/2 (edge only)
+      - "8444:443"  # HTTPS + HTTP/2 (edge only)
     volumes:
       - ./certs/dev:/etc/nginx/certs:ro
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/502.html:/usr/share/nginx/html/502.html:ro
+      - ./static:/usr/share/nginx/static:ro
     networks:
       - nvr-net
 
@@ -159,7 +160,7 @@ services:
 
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/api/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -283,4 +284,5 @@ services:
 
 networks:
   nvr-net:
-    driver: bridge
+    external: true
+    name: 0_mobiusnvr_nvr-net

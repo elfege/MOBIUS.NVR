@@ -16,7 +16,7 @@
 #   4. Network access to Eufy cloud servers (for initial auth only)
 #
 # AUTHENTICATION:
-#   - Handled via browser: https://localhost:8443/eufy-auth
+#   - Handled via browser: https://localhost:8444/eufy-auth
 #   - Calls eufy_bridge_login.sh when authentication required
 #   - Uses Flask API for code submission
 #
@@ -298,7 +298,7 @@ execute_bridge() {
 }
 
 echo "============================================================================"
-echo "STEP 4: CLEANUP & START"
+echo "STEP 4: CLEANUP & START (with auto-restart)"
 echo "============================================================================"
 echo ""
 echo "Killing any existing eufy-security-server processes..."
@@ -314,4 +314,53 @@ echo ""
 echo ""
 
 populate_config
-execute_bridge
+
+# ============================================================================
+# AUTO-RESTART LOOP
+# ============================================================================
+# The eufy-security-server commonly crashes due to P2P session key expiration
+# or cloud auth token expiry. This loop automatically restarts the server
+# with exponential backoff (10s -> 20s -> 40s -> max 120s).
+#
+# On each restart, the server will attempt to re-authenticate using cached
+# tokens. If re-auth requires human interaction (captcha/2FA), the login
+# handler will be triggered automatically.
+# ============================================================================
+
+MAX_RESTART_DELAY=120
+restart_delay=10
+restart_count=0
+
+while true; do
+	restart_count=$((restart_count + 1))
+
+	if [[ $restart_count -eq 1 ]]; then
+		log_info "Starting eufy-security-server (initial start)..."
+	else
+		log_warn "Restarting eufy-security-server (attempt #${restart_count}, after ${restart_delay}s cooldown)..."
+	fi
+
+	# Run the bridge (blocks until server exits)
+	execute_bridge
+	exit_code=$?
+
+	log_error "eufy-security-server exited (code: ${exit_code})"
+	log_info "Common cause: P2P session key expiration or cloud auth token expiry"
+	log_info "Will auto-restart in ${restart_delay} seconds..."
+
+	# Wait before restarting (exponential backoff)
+	sleep "$restart_delay"
+
+	# Exponential backoff: 10 -> 20 -> 40 -> 80 -> 120 (capped)
+	restart_delay=$((restart_delay * 2))
+	if [[ $restart_delay -gt $MAX_RESTART_DELAY ]]; then
+		restart_delay=$MAX_RESTART_DELAY
+	fi
+
+	# Clean up before restart
+	pkill -f eufy-security-server 2>/dev/null || true
+	sleep 1
+
+	# Re-populate config in case credentials changed
+	populate_config
+done

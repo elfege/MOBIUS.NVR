@@ -3,30 +3,83 @@
 #
 # Eufy Bridge Management Class
 #
+# Manages the eufy-security-ws WebSocket server process and provides
+# PTZ control, preset management, and P2P livestream support for Eufy cameras.
+#
+# Self-healing: When the eufy-security-server crashes (common due to P2P
+# session key expiration), the bridge auto-detects via ConnectionRefusedError
+# on port 3000, marks itself dead, attempts one automatic restart, and
+# reports meaningful errors to callers if recovery fails.
+#
 import asyncio
 import json
+import socket
 import websockets
 import traceback
 import subprocess
 import signal
 import time
 import os
-from threading import Thread, Event
+from threading import Thread, Event, Lock
 import logging
 
 logger = logging.getLogger(__name__)
 
+
+class BridgeCrashedError(Exception):
+    """Raised when the eufy-security-server process is detected as dead.
+
+    The WebSocket server on port 3000 is not accepting connections.
+    This typically happens when P2P session keys expire and the server
+    crashes with decryption errors.
+    """
+    pass
+
+
+class BridgeAuthRequiredError(Exception):
+    """Raised when the bridge needs re-authentication (captcha/2FA).
+
+    The server started but Eufy cloud requires human interaction
+    to complete login (captcha image, 2FA code, etc.).
+    """
+    pass
+
+
 class EufyBridge:
-    """Manages the Eufy WebSocket bridge process and PTZ commands"""
-    
+    """Manages the Eufy WebSocket bridge process and PTZ commands.
+
+    Architecture:
+        Python (this class) -> WebSocket -> eufy-security-ws (Node.js) -> Eufy Cloud/P2P
+
+    The eufy-security-server binary runs as a subprocess managed by eufy_bridge.sh.
+    PTZ commands are sent via WebSocket to localhost:3000. The bridge requires
+    Eufy cloud authentication for P2P session establishment, even though the
+    actual PTZ commands travel over the local P2P connection.
+
+    Self-healing:
+        When a PTZ command fails with ConnectionRefusedError (port 3000 dead),
+        the bridge attempts one automatic restart. If the restart succeeds
+        (cached auth tokens still valid), the PTZ command is retried. If the
+        restart fails (auth expired, captcha required), a clear error is returned
+        directing the user to /eufy-auth.
+    """
+
+    # Maximum number of automatic restart attempts before giving up
+    MAX_AUTO_RESTARTS = 1
+    # Cooldown between restart attempts (seconds)
+    RESTART_COOLDOWN = 10
+
     def __init__(self, port=3000):
         self.port = port
         self.bridge_url = f"ws://127.0.0.1:{port}"
         self.process = None
         self.ready_event = Event()
         self._running = False
+        self._restart_lock = Lock()
+        self._last_restart_attempt = 0
+        self._crash_reason = None  # Store why the bridge died
         self.script_path = "./services/eufy/eufy_bridge.sh"
-        
+
         # PTZ direction mapping (from eufy-security-client PanTiltDirection enum)
         # ROTATE360=0, LEFT=1, RIGHT=2, UP=3, DOWN=4
         # NOTE: There is NO stop command - cameras auto-stop after movement
@@ -93,41 +146,174 @@ class EufyBridge:
             return False
     
     def stop(self):
-        """Stop the Eufy bridge process"""
+        """Stop the Eufy bridge process and clean up all state."""
         if self.process:
             self.process.terminate()
             self.process = None
-        
+
         self._running = False
         self.ready_event.clear()
-    
+        self._crash_reason = None
+
+    def _mark_bridge_dead(self, reason):
+        """Mark the bridge as dead with a specific reason.
+
+        Called when we detect the eufy-security-server has crashed
+        (e.g., ConnectionRefusedError on port 3000). Updates internal state
+        so that is_running() returns False and subsequent callers get
+        the 503 "bridge not running" response instead of misleading
+        "Movement failed".
+
+        Args:
+            reason: Human-readable crash reason (logged and returned to callers)
+        """
+        self._running = False
+        self.ready_event.clear()
+        self._crash_reason = reason
+        logger.error(f"[EUFY BRIDGE] Bridge marked DEAD: {reason}")
+        print(f"[EUFY BRIDGE] Bridge marked DEAD: {reason}")
+
+    def _check_port_alive(self):
+        """Lightweight check: is the WebSocket server actually listening on its port?
+
+        Returns:
+            bool: True if port 3000 accepts TCP connections, False otherwise.
+        """
+        try:
+            with socket.create_connection(("127.0.0.1", self.port), timeout=1):
+                return True
+        except (ConnectionRefusedError, OSError):
+            return False
+
     def is_running(self):
-        """Check if bridge process is running"""
-        return self._running and (self.process is not None) and (self.process.poll() is None)
-    
+        """Check if bridge process is running AND the WebSocket server is alive.
+
+        This checks both the subprocess wrapper AND the actual TCP port.
+        The shell wrapper (eufy_bridge.sh) can remain alive after the
+        inner eufy-security-server Node.js process crashes, so checking
+        process.poll() alone is insufficient.
+        """
+        if not (self._running and self.process is not None and self.process.poll() is None):
+            return False
+
+        # The subprocess wrapper is alive, but is the actual server listening?
+        if not self._check_port_alive():
+            self._mark_bridge_dead(
+                "eufy-security-server crashed (port 3000 not responding). "
+                "Common cause: P2P session key expiration."
+            )
+            return False
+
+        return True
+
     def is_ready(self):
-        """Check if bridge is ready to accept commands"""
+        """Check if bridge is ready to accept commands."""
         return self.ready_event.is_set()
-    
-    
+
+    def restart(self):
+        """Attempt to restart the bridge after a crash.
+
+        Thread-safe: uses a lock to prevent concurrent restart attempts.
+        Respects RESTART_COOLDOWN to avoid restart storms.
+
+        Returns:
+            bool: True if the bridge restarted and is ready for commands.
+        """
+        with self._restart_lock:
+            now = time.time()
+            if now - self._last_restart_attempt < self.RESTART_COOLDOWN:
+                remaining = self.RESTART_COOLDOWN - (now - self._last_restart_attempt)
+                print(f"[EUFY BRIDGE] Restart cooldown active ({remaining:.0f}s remaining)")
+                return False
+
+            self._last_restart_attempt = now
+            print("[EUFY BRIDGE] Attempting automatic restart...")
+            logger.info("[EUFY BRIDGE] Attempting automatic restart after crash")
+
+            # Kill the old process tree
+            self.stop()
+            time.sleep(1)
+
+            # Try to start fresh
+            started = self.start()
+            if not started:
+                print("[EUFY BRIDGE] Restart failed: process did not start")
+                return False
+
+            # Wait for the server to become ready (up to 30s)
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                if self.is_ready():
+                    print("[EUFY BRIDGE] Restart successful - bridge is ready")
+                    logger.info("[EUFY BRIDGE] Restart successful")
+                    self._crash_reason = None
+                    return True
+                time.sleep(1)
+
+            print("[EUFY BRIDGE] Restart failed: server started but never became ready "
+                  "(likely needs re-authentication at /eufy-auth)")
+            self._crash_reason = (
+                "Bridge restarted but authentication failed. "
+                "Visit /eufy-auth to re-authenticate."
+            )
+            return False
+
+    def get_status(self):
+        """Get detailed bridge status for diagnostics.
+
+        Returns:
+            dict: Status info including running state, crash reason, port check.
+        """
+        port_alive = self._check_port_alive()
+        process_alive = self.process is not None and self.process.poll() is None
+        return {
+            'running': self._running,
+            'ready': self.ready_event.is_set(),
+            'process_alive': process_alive,
+            'port_alive': port_alive,
+            'crash_reason': self._crash_reason,
+            'port': self.port,
+        }
+
     def _monitor_bridge(self):
-        """Monitor bridge output for readiness"""
+        """Monitor bridge output for readiness and ongoing health.
+
+        Runs in a daemon thread. Two phases:
+        1. Wait for "server listening" line to set ready_event
+        2. Continue reading output to detect process death
+        """
         if not self.process:
             return
-            
+
+        ready_detected = False
         try:
             for line in iter(self.process.stdout.readline, ''):
-                if "Eufy Security server listening" in line or "server listening" in line:
-                    self.ready_event.set()
-                    break
-                # Fix: Add null check before calling poll()
-                elif self.process and self.process.poll() is not None:
-                    self._running = False  # Mark as not running when process exits
-                    break
+                # Phase 1: Detect server readiness
+                if not ready_detected:
+                    if "Eufy Security server listening" in line or "server listening" in line:
+                        self.ready_event.set()
+                        ready_detected = True
+                        print("[EUFY BRIDGE MONITOR] Server is ready and listening")
+
+                # Check if process exited while we were reading
+                if self.process and self.process.poll() is not None:
+                    self._mark_bridge_dead(
+                        f"Bridge process exited (code {self.process.returncode})"
+                    )
+                    return
+
+            # readline returned '' — stdout closed, process is dead
+            if self.process and self.process.poll() is not None:
+                self._mark_bridge_dead(
+                    f"Bridge process exited (code {self.process.returncode})"
+                )
+            else:
+                self._mark_bridge_dead("Bridge output stream closed unexpectedly")
+
         except Exception as e:
-            print(f"Error monitoring bridge: {e}")
+            print(f"[EUFY BRIDGE MONITOR] Error: {e}")
             traceback.print_exc()
-            self._running = False  # Ensure we mark as not running on error
+            self._mark_bridge_dead(f"Monitor thread error: {e}")
     
     async def _wait_for_ready(self, timeout=30):
         """Wait for bridge to be ready"""
@@ -263,22 +449,29 @@ class EufyBridge:
         return None
 
     async def _execute_ptz_command(self, camera_serial, direction):
-        """Execute PTZ command - Eufy cameras auto-stop, no explicit stop needed"""
+        """Execute PTZ command via WebSocket to eufy-security-ws.
+
+        Eufy cameras auto-stop after movement — no explicit stop needed.
+
+        Raises:
+            BridgeCrashedError: If WebSocket connection to port 3000 is refused
+                (server process has crashed).
+        """
         print(f"[EUFY PTZ CMD] Starting: serial={camera_serial}, direction={direction}")
 
         if not self.is_ready():
             print(f"[EUFY PTZ CMD] ERROR: Bridge not ready!")
-            raise Exception("Bridge not ready")
+            raise BridgeCrashedError("Bridge not ready — server may have crashed")
 
-        # 'stop' command from frontend - Eufy doesn't support this, cameras auto-stop
+        # 'stop' command from frontend — Eufy doesn't support this, cameras auto-stop
         if direction == 'stop':
-            print(f"[EUFY PTZ CMD] Stop command ignored - Eufy cameras auto-stop")
+            print(f"[EUFY PTZ CMD] Stop command ignored — Eufy cameras auto-stop")
             return True
 
         direction_code = self.directions.get(direction)
         if direction_code is None:
             print(f"[EUFY PTZ CMD] ERROR: Invalid direction: {direction}")
-            raise Exception(f"Invalid direction: {direction}")
+            raise ValueError(f"Invalid direction: {direction}")
 
         print(f"[EUFY PTZ CMD] Direction code: {direction_code}, connecting to {self.bridge_url}")
 
@@ -320,35 +513,62 @@ class EufyBridge:
                     print(f"[EUFY PTZ CMD] PTZ command failed: {error}")
                     return False
 
-                # Eufy cameras auto-stop after movement - no explicit stop needed
+                # Eufy cameras auto-stop after movement — no explicit stop needed
                 print(f"[EUFY PTZ CMD] PTZ command completed successfully (camera will auto-stop)")
                 return True
+
+        except (ConnectionRefusedError, OSError) as e:
+            # Server process is dead — port 3000 not listening
+            self._mark_bridge_dead(
+                f"Connection refused on port {self.port}: eufy-security-server has crashed. "
+                f"Likely cause: P2P session key expiration or cloud auth failure."
+            )
+            raise BridgeCrashedError(self._crash_reason) from e
 
         except Exception as e:
             print(f"[EUFY PTZ CMD] Exception: {e}")
             logger.error(f"PTZ command error: {e}")
+            # Check if this is a wrapped ConnectionRefusedError
+            if "Connect call failed" in str(e) or "Connection refused" in str(e):
+                self._mark_bridge_dead(
+                    f"Connection refused on port {self.port}: eufy-security-server has crashed."
+                )
+                raise BridgeCrashedError(self._crash_reason) from e
             return False
 
     def move_camera(self, camera_serial, direction, device_manager=None):
-        """Public method to move camera with improved control.
+        """Move an Eufy camera with self-healing on bridge crash.
 
-        Note: Direction correction is now handled in the frontend via the
+        If the bridge has crashed (ConnectionRefusedError on port 3000),
+        this method will:
+        1. Mark the bridge as dead
+        2. Attempt one automatic restart
+        3. Retry the PTZ command if restart succeeds
+        4. Return a meaningful error message if recovery fails
+
+        Direction correction is handled in the frontend via the
         'Rev. Pan' and 'Rev. Tilt' checkboxes (ptz-controller.js applyReversal).
-        The legacy _correct_direction method is kept but no longer called to
-        avoid double-correction issues.
+
+        Returns:
+            tuple: (success: bool, message: str)
+                - success=True, message="Camera moved {direction}"
+                - success=False, message="<detailed error explanation>"
         """
         print(f"[EUFY BRIDGE] move_camera called: serial={camera_serial}, direction={direction}")
 
         if not self.is_running():
-            print(f"[EUFY BRIDGE] ERROR: Bridge not running!")
-            raise Exception("Bridge not running")
+            crash_info = self._crash_reason or "Bridge process is not running"
+            print(f"[EUFY BRIDGE] Bridge not running: {crash_info}")
 
-        # Direction correction now handled in frontend (ptz-controller.js applyReversal)
-        # to avoid double-correction when both image_mirrored and reversed_pan are set
+            # Attempt auto-restart
+            print("[EUFY BRIDGE] Attempting auto-restart...")
+            if self.restart():
+                print("[EUFY BRIDGE] Auto-restart succeeded, retrying PTZ command")
+            else:
+                return (False, f"Eufy bridge crashed and auto-restart failed. "
+                               f"Reason: {crash_info}. Visit /eufy-auth to re-authenticate.")
 
         try:
-            # Run async command in event loop
-            print(f"[EUFY BRIDGE] Creating event loop for PTZ command...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
@@ -356,22 +576,52 @@ class EufyBridge:
                     self._execute_ptz_command(camera_serial, direction)
                 )
                 print(f"[EUFY BRIDGE] PTZ command result: {result}")
-                return result
+                if result:
+                    return (True, f"Camera moved {direction}")
+                else:
+                    return (False, "PTZ command was sent but camera did not confirm movement")
             finally:
                 loop.close()
+
+        except BridgeCrashedError as e:
+            # Server just crashed during this command — try one restart
+            print(f"[EUFY BRIDGE] Bridge crashed during PTZ: {e}")
+            if self.restart():
+                # Restart succeeded — retry the command once
+                print("[EUFY BRIDGE] Restart succeeded, retrying PTZ command...")
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        result = loop.run_until_complete(
+                            self._execute_ptz_command(camera_serial, direction)
+                        )
+                        if result:
+                            return (True, f"Camera moved {direction} (after bridge restart)")
+                        else:
+                            return (False, "PTZ command failed after bridge restart")
+                    finally:
+                        loop.close()
+                except BridgeCrashedError:
+                    return (False, "Eufy bridge crashed again after restart. "
+                                   "Authentication may have expired. Visit /eufy-auth.")
+                except Exception as retry_err:
+                    return (False, f"PTZ retry failed after restart: {retry_err}")
+            else:
+                return (False, f"Eufy bridge crashed and auto-restart failed. "
+                               f"Visit /eufy-auth to re-authenticate.")
 
         except Exception as e:
             print(f"[EUFY BRIDGE] Move camera error: {e}")
             logger.error(f"Move camera error: {e}")
-            return False
+            return (False, f"PTZ error: {e}")
             
     # =========================================================================
     # PTZ Preset Methods
     # =========================================================================
 
     async def _execute_preset_command(self, camera_serial, command, preset_index):
-        """
-        Execute PTZ preset command via WebSocket bridge.
+        """Execute PTZ preset command via WebSocket bridge.
 
         Args:
             camera_serial: Camera serial number (e.g., T8416P0023352DA9)
@@ -380,17 +630,19 @@ class EufyBridge:
 
         Returns:
             bool: True if command succeeded
+
+        Raises:
+            BridgeCrashedError: If WebSocket connection is refused.
         """
         print(f"[EUFY PRESET] Starting: serial={camera_serial}, cmd={command}, preset={preset_index}")
 
         if not self.is_ready():
             print(f"[EUFY PRESET] ERROR: Bridge not ready!")
-            raise Exception("Bridge not ready")
+            raise BridgeCrashedError("Bridge not ready — server may have crashed")
 
         if not (0 <= preset_index < self.PRESET_SLOTS):
             raise ValueError(f"Invalid preset index: {preset_index}. Must be 0-{self.PRESET_SLOTS - 1}")
 
-        # Map command names to eufy-security-ws commands
         command_map = {
             'goto': 'device.preset_position',
             'save': 'device.save_preset_position',
@@ -407,7 +659,6 @@ class EufyBridge:
             async with websockets.connect(self.bridge_url, open_timeout=5) as ws:
                 print(f"[EUFY PRESET] WebSocket connected")
 
-                # Set API schema version
                 await ws.send(json.dumps({
                     "messageId": "schema",
                     "command": "set_api_schema",
@@ -416,7 +667,6 @@ class EufyBridge:
                 schema_result = await self._wait_for_message(ws, "schema")
                 print(f"[EUFY PRESET] Schema response: {schema_result}")
 
-                # Start listening
                 await ws.send(json.dumps({
                     "messageId": "start",
                     "command": "start_listening"
@@ -424,7 +674,6 @@ class EufyBridge:
                 listen_result = await self._wait_for_message(ws, "start")
                 print(f"[EUFY PRESET] Listen response: {listen_result}")
 
-                # Send preset command
                 cmd = {
                     "messageId": f"preset_{command}",
                     "command": ws_command,
@@ -444,97 +693,132 @@ class EufyBridge:
                 print(f"[EUFY PRESET] Command completed successfully")
                 return True
 
+        except (ConnectionRefusedError, OSError) as e:
+            self._mark_bridge_dead(
+                f"Connection refused on port {self.port}: eufy-security-server has crashed."
+            )
+            raise BridgeCrashedError(self._crash_reason) from e
+
         except Exception as e:
             print(f"[EUFY PRESET] Exception: {e}")
             logger.error(f"Preset command error: {e}")
+            if "Connect call failed" in str(e) or "Connection refused" in str(e):
+                self._mark_bridge_dead(
+                    f"Connection refused on port {self.port}: eufy-security-server has crashed."
+                )
+                raise BridgeCrashedError(self._crash_reason) from e
             return False
+
+    def _run_bridge_command(self, command_name, async_fn, *args):
+        """Helper: run an async bridge command with auto-restart on crash.
+
+        Handles the common pattern: check running -> run async -> catch crash -> restart -> retry.
+
+        Args:
+            command_name: Human-readable name for logging (e.g., "goto_preset")
+            async_fn: Async coroutine function to call
+            *args: Arguments to pass to async_fn
+
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        print(f"[EUFY BRIDGE] {command_name} called")
+
+        if not self.is_running():
+            crash_info = self._crash_reason or "Bridge process is not running"
+            print(f"[EUFY BRIDGE] Bridge not running for {command_name}: {crash_info}")
+            if self.restart():
+                print(f"[EUFY BRIDGE] Auto-restart succeeded for {command_name}")
+            else:
+                return (False, f"Eufy bridge crashed and auto-restart failed. "
+                               f"Reason: {crash_info}. Visit /eufy-auth to re-authenticate.")
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(async_fn(*args))
+                if result:
+                    return (True, f"{command_name} succeeded")
+                else:
+                    return (False, f"{command_name} command was sent but not confirmed")
+            finally:
+                loop.close()
+
+        except BridgeCrashedError:
+            print(f"[EUFY BRIDGE] Bridge crashed during {command_name}")
+            if self.restart():
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        result = loop.run_until_complete(async_fn(*args))
+                        if result:
+                            return (True, f"{command_name} succeeded (after bridge restart)")
+                        else:
+                            return (False, f"{command_name} failed after bridge restart")
+                    finally:
+                        loop.close()
+                except BridgeCrashedError:
+                    return (False, "Eufy bridge crashed again after restart. "
+                                   "Visit /eufy-auth to re-authenticate.")
+                except Exception as retry_err:
+                    return (False, f"{command_name} retry failed: {retry_err}")
+            else:
+                return (False, f"Eufy bridge crashed and auto-restart failed. "
+                               f"Visit /eufy-auth to re-authenticate.")
+
+        except Exception as e:
+            logger.error(f"{command_name} error: {e}")
+            return (False, f"{command_name} error: {e}")
 
     def goto_preset(self, camera_serial, preset_index):
-        """
-        Move camera to a saved preset position.
+        """Move camera to a saved preset position.
 
         Args:
             camera_serial: Camera serial number
             preset_index: Preset slot (0-3)
 
         Returns:
-            bool: True if command succeeded
+            tuple: (success: bool, message: str)
         """
-        print(f"[EUFY BRIDGE] goto_preset: serial={camera_serial}, preset={preset_index}")
-
-        if not self.is_running():
-            raise Exception("Bridge not running")
-
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    self._execute_preset_command(camera_serial, 'goto', preset_index)
-                )
-            finally:
-                loop.close()
-        except Exception as e:
-            logger.error(f"goto_preset error: {e}")
-            return False
+        return self._run_bridge_command(
+            "goto_preset",
+            self._execute_preset_command,
+            camera_serial, 'goto', preset_index
+        )
 
     def save_preset(self, camera_serial, preset_index):
-        """
-        Save current camera position as a preset.
+        """Save current camera position as a preset.
 
         Args:
             camera_serial: Camera serial number
             preset_index: Preset slot (0-3)
 
         Returns:
-            bool: True if command succeeded
+            tuple: (success: bool, message: str)
         """
-        print(f"[EUFY BRIDGE] save_preset: serial={camera_serial}, preset={preset_index}")
-
-        if not self.is_running():
-            raise Exception("Bridge not running")
-
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    self._execute_preset_command(camera_serial, 'save', preset_index)
-                )
-            finally:
-                loop.close()
-        except Exception as e:
-            logger.error(f"save_preset error: {e}")
-            return False
+        return self._run_bridge_command(
+            "save_preset",
+            self._execute_preset_command,
+            camera_serial, 'save', preset_index
+        )
 
     def delete_preset(self, camera_serial, preset_index):
-        """
-        Delete a preset position.
+        """Delete a preset position.
 
         Args:
             camera_serial: Camera serial number
             preset_index: Preset slot (0-3)
 
         Returns:
-            bool: True if command succeeded
+            tuple: (success: bool, message: str)
         """
-        print(f"[EUFY BRIDGE] delete_preset: serial={camera_serial}, preset={preset_index}")
-
-        if not self.is_running():
-            raise Exception("Bridge not running")
-
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(
-                    self._execute_preset_command(camera_serial, 'delete', preset_index)
-                )
-            finally:
-                loop.close()
-        except Exception as e:
-            logger.error(f"delete_preset error: {e}")
-            return False
+        return self._run_bridge_command(
+            "delete_preset",
+            self._execute_preset_command,
+            camera_serial, 'delete', preset_index
+        )
 
     def get_presets(self, camera_serial):
         """

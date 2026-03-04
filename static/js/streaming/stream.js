@@ -649,9 +649,20 @@ export class MultiStreamManager {
             const streamType = $streamItem.data('stream-type');
             const videoElement = $streamItem.find('.stream-video')[0];
 
-            // MJPEG streams don't support restart (stateless)
+            // MJPEG streams are stateless (no backend FFmpeg process to restart).
+            // Instead of doing nothing, refresh the MJPEG image connection.
             if (streamType === 'MJPEG') {
-                console.log(`[Restart] ${cameraId}: MJPEG streams do not support restart`);
+                console.log(`[Restart] ${cameraId}: MJPEG is stateless, refreshing stream`);
+                this.setStreamStatus($streamItem, 'loading', 'Refreshing...');
+                if (this.mjpegManager) {
+                    this.mjpegManager.stopStream(cameraId);
+                    const imgEl = $streamItem.find('img.mjpeg-stream')[0];
+                    if (imgEl) {
+                        const quality = $streamItem.hasClass('hd-mode') ? 'main' : 'sub';
+                        await this.mjpegManager.startStream(cameraId, imgEl, quality);
+                        this.setStreamStatus($streamItem, 'live', 'Live');
+                    }
+                }
                 return;
             }
 
@@ -1974,14 +1985,51 @@ export class MultiStreamManager {
                 if (checkResp.ok) {
                     const pathStatus = await checkResp.json();
                     if (!pathStatus.ready) {
-                        console.warn(`[SwitchType] MediaMTX path not ready for ${cameraSerial}: ${pathStatus.message}`);
-                        const cameraName = $streamItem.data('camera-name') || cameraSerial;
-                        this._showStreamTypeToast(cameraName, pathStatus.message, 'error');
-                        // Revert the active button in the selector row
-                        const $row = $streamItem.find('.stream-type-row');
-                        $row.find('.stream-type-option').removeClass('active');
-                        $row.find(`.stream-type-option[data-type="${oldStreamType}"]`).addClass('active');
-                        return;
+                        // If switching FROM MJPEG, the path likely doesn't exist yet.
+                        // MJPEG cameras bypass MediaMTX entirely, so no path was created at startup.
+                        // Create one on demand and start the FFmpeg publisher.
+                        if (oldStreamType === 'MJPEG') {
+                            console.log(`[SwitchType] MJPEG → ${newStreamType}: creating MediaMTX path on demand`);
+                            const cameraName = $streamItem.data('camera-name') || cameraSerial;
+                            this._showStreamTypeToast(cameraName, 'Preparing stream path...', 'info');
+
+                            try {
+                                const createResp = await fetch(`/api/mediamtx/create-path/${cameraSerial}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' }
+                                });
+
+                                if (!createResp.ok) {
+                                    const err = await createResp.json().catch(() => ({}));
+                                    throw new Error(err.error || `HTTP ${createResp.status}`);
+                                }
+
+                                const createResult = await createResp.json();
+                                console.log(`[SwitchType] MediaMTX paths created:`, createResult.paths_created);
+
+                                // Wait for FFmpeg to establish connection with MediaMTX
+                                this._showStreamTypeToast(cameraName, 'Starting stream publisher...', 'info');
+                                await new Promise(r => setTimeout(r, 5000));
+                            } catch (createErr) {
+                                console.error(`[SwitchType] Failed to create MediaMTX path:`, createErr);
+                                const cameraName = $streamItem.data('camera-name') || cameraSerial;
+                                this._showStreamTypeToast(cameraName,
+                                    `Could not prepare stream: ${createErr.message}`, 'error');
+                                const $row = $streamItem.find('.stream-type-row');
+                                $row.find('.stream-type-option').removeClass('active');
+                                $row.find(`.stream-type-option[data-type="${oldStreamType}"]`).addClass('active');
+                                return;
+                            }
+                        } else {
+                            // Not switching from MJPEG — path should exist but isn't ready
+                            console.warn(`[SwitchType] MediaMTX path not ready for ${cameraSerial}: ${pathStatus.message}`);
+                            const cameraName = $streamItem.data('camera-name') || cameraSerial;
+                            this._showStreamTypeToast(cameraName, pathStatus.message, 'error');
+                            const $row = $streamItem.find('.stream-type-row');
+                            $row.find('.stream-type-option').removeClass('active');
+                            $row.find(`.stream-type-option[data-type="${oldStreamType}"]`).addClass('active');
+                            return;
+                        }
                     }
                 }
             } catch (err) {

@@ -1625,6 +1625,72 @@ def api_mediamtx_path_status(camera_serial):
         })
 
 
+@app.route('/api/mediamtx/create-path/<camera_serial>', methods=['POST'])
+@csrf.exempt
+@login_required
+def api_mediamtx_create_path(camera_serial):
+    """Dynamically create MediaMTX paths for a camera and start the FFmpeg publisher.
+
+    Used when switching stream type from MJPEG to a MediaMTX-based type
+    (WebRTC, HLS, LL_HLS). MJPEG cameras don't have MediaMTX paths by default
+    because they connect directly to camera endpoints. This endpoint creates both
+    sub and main paths on demand and starts FFmpeg to publish into them.
+
+    Returns:
+        {success: bool, paths_created: list, stream_url: str, message: str}
+    """
+    try:
+        camera = camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+        path_name = camera.get('packager_path') or camera_serial
+        paths_to_create = [path_name, f"{path_name}_main"]
+        created = []
+
+        for p in paths_to_create:
+            try:
+                resp = requests.post(
+                    f'http://nvr-packager:9997/v3/config/paths/add/{p}',
+                    json={'source': 'publisher'},
+                    auth=('nvr-api', ''),
+                    timeout=5
+                )
+                if resp.status_code in (200, 201):
+                    created.append(p)
+                    logger.info(f"[MEDIAMTX] Created path: {p}")
+                elif resp.status_code == 409:
+                    # Path already exists — treat as success
+                    created.append(p)
+                    logger.info(f"[MEDIAMTX] Path {p} already exists")
+                else:
+                    logger.warning(f"[MEDIAMTX] Failed to create path {p}: "
+                                   f"{resp.status_code} {resp.text}")
+            except requests.RequestException as e:
+                logger.error(f"[MEDIAMTX] Error creating path {p}: {e}")
+
+        if len(created) < 2:
+            return jsonify({
+                'success': False,
+                'paths_created': created,
+                'error': 'Failed to create all required MediaMTX paths'
+            }), 500
+
+        # Start FFmpeg publisher for this camera (sub stream — dual-output publishes both)
+        stream_url = stream_manager.start_stream(camera_serial, resolution='sub')
+
+        return jsonify({
+            'success': True,
+            'paths_created': created,
+            'stream_url': stream_url,
+            'message': f'MediaMTX paths created and FFmpeg publisher started for {path_name}'
+        })
+
+    except Exception as e:
+        logger.error(f"[MEDIAMTX] Error creating paths for {camera_serial}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 def _get_allowed_camera_serials(user):
     """
     Get set of allowed camera serials for a user.

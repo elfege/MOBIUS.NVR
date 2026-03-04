@@ -1,6 +1,6 @@
 /**
  * Talkback Manager
- * Location: ~/0_NVR/static/js/streaming/talkback-manager.js
+ * Location: ~/0_MOBIUS.NVR/static/js/streaming/talkback-manager.js
  *
  * Handles two-way audio (talkback) functionality for cameras.
  * Uses getUserMedia for microphone capture and WebSocket for audio transmission.

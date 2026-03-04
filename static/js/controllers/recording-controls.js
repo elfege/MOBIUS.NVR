@@ -1,6 +1,6 @@
 /**
  * Manual Recording Controls
- * Location: ~/0_NVR/static/js/controllers/recording-controls.js
+ * Location: ~/0_MOBIUS.NVR/static/js/controllers/recording-controls.js
  * Handles manual start/stop recording buttons on camera tiles
  */
 

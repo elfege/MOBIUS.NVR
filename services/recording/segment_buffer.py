@@ -1,6 +1,6 @@
 """
 Segment Buffer Service
-Location: ~/0_NVR/services/recording/segment_buffer.py
+Location: ~/0_MOBIUS.NVR/services/recording/segment_buffer.py
 
 Maintains rolling video segment buffers for pre-detection recording.
 Uses FFmpeg segment muxer to continuously capture short video segments

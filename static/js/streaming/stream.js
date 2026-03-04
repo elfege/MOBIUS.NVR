@@ -3070,17 +3070,6 @@ export class MultiStreamManager {
             localStorage.setItem('fullscreenCameraSerial', cameraId);
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
-            // Add transparent click-capture overlay for reliable exit on frozen streams.
-            // When a video decoder is stuck, click events on buttons can be delayed or lost.
-            // This overlay sits above the video (z-index: 10000) but below buttons (10001),
-            // so tapping anywhere except a button will exit fullscreen.
-            const $exitOverlay = $('<div class="fullscreen-exit-overlay"></div>');
-            $exitOverlay.on('click', () => {
-                console.log('[Fullscreen] Exit overlay clicked - force exiting');
-                this.forceExitFullscreen();
-            });
-            $streamItem.append($exitOverlay);
-
             // iOS SNAPSHOT or portable MJPEG: Switch to HLS for fullscreen
             // In grid view, iOS uses snapshots and other portables use MJPEG for lighter resource usage.
             // In fullscreen, we want HLS for audio support and better quality.
@@ -3278,7 +3267,6 @@ export class MultiStreamManager {
         }
 
         // STEP 1: Immediate UI exit - happens synchronously, no async ops
-        $('.fullscreen-exit-overlay').remove();
         $fullscreenItem.removeClass('css-fullscreen');
         localStorage.removeItem('fullscreenCameraSerial');
         console.log('[Fullscreen] CSS fullscreen class removed - UI exited immediately');
@@ -3549,9 +3537,6 @@ export class MultiStreamManager {
      */
     forceExitFullscreen() {
         console.log('[Fullscreen] FORCE EXIT - bypassing stream operations');
-
-        // Remove the click-capture overlay (prevents leaked elements)
-        $('.fullscreen-exit-overlay').remove();
 
         // Immediately remove fullscreen class from ALL stream items (safety)
         $('.stream-item.css-fullscreen').removeClass('css-fullscreen');

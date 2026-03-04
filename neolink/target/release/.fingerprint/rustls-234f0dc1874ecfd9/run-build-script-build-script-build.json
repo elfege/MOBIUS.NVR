@@ -1,1 +1,0 @@
-{"rustc":16285725380928457773,"features":"","declared_features":"","target":0,"profile":0,"path":0,"deps":[[507245148068099358,"build_script_build",false,12390359980556894411],[3872001584490591948,"build_script_build",false,14721742283022000227]],"local":[{"Precalculated":"0.22.3"}],"rustflags":["--cfg","tokio_unstable"],"config":0,"compile_kind":0}

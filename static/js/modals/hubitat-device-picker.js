@@ -1,6 +1,6 @@
 /**
  * Hubitat Device Picker Modal
- * Location: ~/0_NVR/static/js/modals/hubitat-device-picker.js
+ * Location: ~/0_MOBIUS.NVR/static/js/modals/hubitat-device-picker.js
  *
  * Provides UI for selecting Hubitat smart plug devices to associate with cameras.
  * Features smart matching based on camera name similarity.

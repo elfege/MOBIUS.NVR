@@ -1,6 +1,6 @@
 """
 ONVIF Event Listener - Motion Detection
-Location: ~/0_NVR/services/onvif/onvif_event_listener.py
+Location: ~/0_MOBIUS.NVR/services/onvif/onvif_event_listener.py
 
 Subscribes to ONVIF motion detection events and triggers recordings.
 """

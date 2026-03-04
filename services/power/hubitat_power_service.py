@@ -502,7 +502,7 @@ class HubitatPowerService:
         Returns:
             True if successful, False otherwise
         """
-        # Hubitat Maker API uses GET for commands (confirmed from 0_TILES project)
+        # Hubitat Maker API uses GET for commands (confirmed from 0_MOBIUS.TILES project)
         url = (
             f"http://{self._hub_ip}/apps/api/{self._app_number}/"
             f"devices/{device_id}/{command}?access_token={self._api_token}"

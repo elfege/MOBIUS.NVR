@@ -17,7 +17,7 @@ echo "  Unified NVR - Container Shutdown"
 echo "=========================================="
 echo ""
 
-cd ~/0_NVR
+cd ~/0_MOBIUS.NVR
 
 echo "Stopping unified-nvr container..."
 docker compose down
@@ -26,7 +26,7 @@ docker compose down
 echo "Cleaning streams directory..."
 
 # Check if streams directory exists and has content
-if [ -d ~/0_NVR/streams ] && [ "$(ls -A ~/0_NVR/streams)" ]; then
+if [ -d ~/0_MOBIUS.NVR/streams ] && [ "$(ls -A ~/0_MOBIUS.NVR/streams)" ]; then
 	# Use rsync with empty dir (fastest for directories with thousands of files)
 	# This is more efficient than rm -rf for large file counts because:
 	# - rsync uses optimized directory traversal
@@ -36,7 +36,7 @@ if [ -d ~/0_NVR/streams ] && [ "$(ls -A ~/0_NVR/streams)" ]; then
 	mkdir -p ~/empty_dir
 
 	# Recursively sync empty directory, deleting everything in target
-	rsync -a --delete ~/empty_dir/ ~/0_NVR/streams/
+	rsync -a --delete ~/empty_dir/ ~/0_MOBIUS.NVR/streams/
 
 	# Clean up temporary directory
 	rmdir ~/empty_dir

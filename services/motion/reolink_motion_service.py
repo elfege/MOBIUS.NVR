@@ -1,6 +1,6 @@
 """
 Reolink Motion Detection Service
-Location: ~/0_NVR/services/motion/reolink_motion_service.py
+Location: ~/0_MOBIUS.NVR/services/motion/reolink_motion_service.py
 
 Uses native Baichuan TCP push protocol for real-time motion events.
 Async event loop runs in background thread, similar to FFmpegMotionDetector pattern.

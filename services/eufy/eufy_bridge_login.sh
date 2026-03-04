@@ -15,7 +15,7 @@
 #   1. Monitors bridge output for captcha/2FA events
 #   2. Decodes captcha images to PNG
 #   3. Saves to /app/static/eufy_captcha.png
-#   4. Opens browser to https://localhost:8443/eufy-auth
+#   4. Opens browser to https://localhost:8444/eufy-auth
 #   5. Waits for authentication completion
 #
 # RETURNS:
@@ -49,7 +49,7 @@ if [[ -z "${SERVER_IP}" ]] || [[ "${SERVER_IP}" =~ ^172\. ]] || [[ "${SERVER_IP}
     SERVER_IP="192.168.10.20"
 fi
 
-FLASK_URL="${FLASK_URL:-https://${SERVER_IP}:8443}"
+FLASK_URL="${FLASK_URL:-https://${SERVER_IP}:8444}"
 AUTH_TIMEOUT="${2:-300}"  # 5 minutes default
 POLL_INTERVAL=2
 STATIC_DIR="/app/static"

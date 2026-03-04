@@ -4435,13 +4435,18 @@ def api_ptz_set_preset(camera_serial):
 
             success, message = eufy_bridge.save_preset(camera_serial, preset_index)
             status_code = 200 if success else 503
-            return jsonify({
+            response = {
                 'success': success,
                 'camera': camera_serial,
                 'preset_index': preset_index,
                 'message': message,
                 'error': message if not success else None
-            }), status_code
+            }
+            if not success:
+                # Include diagnostic info so frontend can offer retry
+                response['retry_available'] = True
+                response['bridge_status'] = eufy_bridge.get_status()
+            return jsonify(response), status_code
 
         # For ONVIF cameras, preset name is required
         if not preset_name:

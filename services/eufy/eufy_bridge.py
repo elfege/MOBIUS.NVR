@@ -65,9 +65,11 @@ class EufyBridge:
     """
 
     # Maximum number of automatic restart attempts before giving up
-    MAX_AUTO_RESTARTS = 1
+    MAX_AUTO_RESTARTS = 2
     # Cooldown between restart attempts (seconds)
     RESTART_COOLDOWN = 10
+    # Interval between keepalive health checks (seconds) — prevents P2P session expiry
+    KEEPALIVE_INTERVAL = 1800  # 30 minutes
 
     def __init__(self, port=3000):
         self.port = port
@@ -138,6 +140,11 @@ class EufyBridge:
             # Start monitoring thread
             monitor_thread = Thread(target=self._monitor_bridge, daemon=True)
             monitor_thread.start()
+
+            # Start keepalive thread to prevent P2P session expiration
+            keepalive_thread = Thread(target=self._keepalive_loop, daemon=True,
+                                     name="eufy-keepalive")
+            keepalive_thread.start()
 
             return True
             
@@ -314,7 +321,41 @@ class EufyBridge:
             print(f"[EUFY BRIDGE MONITOR] Error: {e}")
             traceback.print_exc()
             self._mark_bridge_dead(f"Monitor thread error: {e}")
-    
+
+    def _keepalive_loop(self):
+        """Periodic health check to prevent P2P session key expiration.
+
+        The eufy-security-server P2P sessions can expire after extended inactivity.
+        This thread pings the port every KEEPALIVE_INTERVAL seconds and proactively
+        restarts the bridge if it's found dead — before any user action fails.
+        """
+        print(f"[EUFY BRIDGE KEEPALIVE] Started (interval: {self.KEEPALIVE_INTERVAL}s)")
+        while self._running:
+            # Sleep in small increments so we can exit quickly on stop()
+            for _ in range(self.KEEPALIVE_INTERVAL):
+                if not self._running:
+                    return
+                time.sleep(1)
+
+            if not self._running:
+                return
+
+            try:
+                if not self._check_port_alive():
+                    logger.warning("[EUFY BRIDGE KEEPALIVE] Port check failed, attempting restart")
+                    print("[EUFY BRIDGE KEEPALIVE] Port check failed, attempting restart")
+                    self._mark_bridge_dead("Keepalive detected port 3000 not responding")
+                    if self.restart():
+                        print("[EUFY BRIDGE KEEPALIVE] Proactive restart succeeded")
+                        logger.info("[EUFY BRIDGE KEEPALIVE] Proactive restart succeeded")
+                    else:
+                        print("[EUFY BRIDGE KEEPALIVE] Proactive restart failed")
+                        logger.error("[EUFY BRIDGE KEEPALIVE] Proactive restart failed")
+                else:
+                    print("[EUFY BRIDGE KEEPALIVE] Bridge healthy (port 3000 responding)")
+            except Exception as e:
+                logger.error(f"[EUFY BRIDGE KEEPALIVE] Error: {e}")
+
     async def _wait_for_ready(self, timeout=30):
         """Wait for bridge to be ready"""
         for _ in range(timeout):
@@ -712,7 +753,11 @@ class EufyBridge:
     def _run_bridge_command(self, command_name, async_fn, *args):
         """Helper: run an async bridge command with auto-restart on crash.
 
-        Handles the common pattern: check running -> run async -> catch crash -> restart -> retry.
+        Handles the common pattern:
+            check running -> run async -> catch crash -> restart with backoff -> retry
+
+        Retries up to MAX_AUTO_RESTARTS times with increasing wait between attempts
+        (5s, 10s, ...). Each retry restarts the bridge first, then re-executes the command.
 
         Args:
             command_name: Human-readable name for logging (e.g., "goto_preset")
@@ -724,6 +769,7 @@ class EufyBridge:
         """
         print(f"[EUFY BRIDGE] {command_name} called")
 
+        # Pre-flight: if bridge is down, try to restart before executing
         if not self.is_running():
             crash_info = self._crash_reason or "Bridge process is not running"
             print(f"[EUFY BRIDGE] Bridge not running for {command_name}: {crash_info}")
@@ -733,6 +779,7 @@ class EufyBridge:
                 return (False, f"Eufy bridge crashed and auto-restart failed. "
                                f"Reason: {crash_info}. Visit /eufy-auth to re-authenticate.")
 
+        # Execute the command
         try:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -746,27 +793,40 @@ class EufyBridge:
                 loop.close()
 
         except BridgeCrashedError:
+            # Bridge crashed mid-command — retry with backoff
             print(f"[EUFY BRIDGE] Bridge crashed during {command_name}")
-            if self.restart():
+            for attempt in range(self.MAX_AUTO_RESTARTS):
+                wait_time = (attempt + 1) * 5  # 5s, 10s
+                print(f"[EUFY BRIDGE] Restart attempt {attempt + 1}/{self.MAX_AUTO_RESTARTS} "
+                      f"(waiting {wait_time}s)")
+                time.sleep(wait_time)
+
+                if not self.restart():
+                    print(f"[EUFY BRIDGE] Restart attempt {attempt + 1} failed")
+                    continue
+
+                # Restart succeeded — retry the command
                 try:
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
                         result = loop.run_until_complete(async_fn(*args))
                         if result:
-                            return (True, f"{command_name} succeeded (after bridge restart)")
+                            return (True, f"{command_name} succeeded "
+                                         f"(after restart attempt {attempt + 1})")
                         else:
-                            return (False, f"{command_name} failed after bridge restart")
+                            return (False, f"{command_name} failed after restart")
                     finally:
                         loop.close()
                 except BridgeCrashedError:
-                    return (False, "Eufy bridge crashed again after restart. "
-                                   "Visit /eufy-auth to re-authenticate.")
+                    print(f"[EUFY BRIDGE] Bridge crashed again on attempt {attempt + 1}")
+                    continue
                 except Exception as retry_err:
                     return (False, f"{command_name} retry failed: {retry_err}")
-            else:
-                return (False, f"Eufy bridge crashed and auto-restart failed. "
-                               f"Visit /eufy-auth to re-authenticate.")
+
+            # All retry attempts exhausted
+            return (False, f"Eufy bridge crashed and {self.MAX_AUTO_RESTARTS} restart "
+                           f"attempts failed. Visit /eufy-auth to re-authenticate.")
 
         except Exception as e:
             logger.error(f"{command_name} error: {e}")

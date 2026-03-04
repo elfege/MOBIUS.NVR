@@ -1423,10 +1423,35 @@ export class PTZController {
             }
         } catch (error) {
             console.error('[PTZ] Error saving preset:', error);
-            // Show more detailed error message
             const errorMsg = error.responseJSON?.error || error.statusText || error.message || 'Unknown error';
-            console.error('[PTZ] Error details:', errorMsg, 'Status:', error.status);
-            this.showFeedback(`Error saving preset: ${errorMsg}`, 'error');
+            const retryAvailable = error.responseJSON?.retry_available;
+            console.error('[PTZ] Error details:', errorMsg, 'Status:', error.status,
+                          'Retry available:', retryAvailable);
+
+            if (retryAvailable) {
+                // Bridge error with retry possibility — show error with retry button
+                const retryId = `ptz-retry-${Date.now()}`;
+                this.showFeedback(
+                    `Bridge error: ${errorMsg} ` +
+                    `<button id="${retryId}" style="margin-left:8px;padding:2px 10px;` +
+                    `border-radius:4px;border:1px solid #fff;background:rgba(255,255,255,0.2);` +
+                    `color:#fff;cursor:pointer;">Retry</button>`,
+                    'error', 10000
+                );
+                // Attach retry handler after DOM update
+                setTimeout(() => {
+                    const btn = document.getElementById(retryId);
+                    if (btn) {
+                        btn.addEventListener('click', () => {
+                            btn.disabled = true;
+                            btn.textContent = 'Retrying...';
+                            this.savePreset(serial, presetName, overwriteToken, cameraType);
+                        });
+                    }
+                }, 50);
+            } else {
+                this.showFeedback(`Error saving preset: ${errorMsg}`, 'error');
+            }
             return false;
         }
     }

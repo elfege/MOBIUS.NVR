@@ -28,7 +28,7 @@ persistent.json
 persistent.json.backup_2
 bootstrap.json
 tree.md
-# neolink
+neolink/target/
 
 # Deprecated/unused scripts
 eufy_bridge.sh

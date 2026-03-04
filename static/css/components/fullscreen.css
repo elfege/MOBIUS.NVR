@@ -32,22 +32,6 @@
     left: 0 !important;
 }
 
-/* Transparent click-capture overlay for reliable fullscreen exit.
-   When a video decoder is stuck on a frozen frame, button click events can be
-   delayed or lost. This overlay covers the entire viewport above the video
-   (z-index: 10000) but below all buttons (z-index: 10001), so tapping anywhere
-   except a button triggers a force-exit from fullscreen. */
-.stream-item.css-fullscreen .fullscreen-exit-overlay {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: 10000 !important;
-    cursor: pointer;
-    background: transparent;
-}
-
 /* Close button for CSS fullscreen */
 .stream-item.css-fullscreen .stream-fullscreen-btn {
     position: absolute !important;

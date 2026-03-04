@@ -47,7 +47,7 @@ fi
 
 # export credentials
 set -a
-. ~/0_NVR/.env
+. ~/0_MOBIUS.NVR/.env
 # start_spinner 20 "$BLUE Exporting Secrets..."
 pull_nvr_secrets # >/dev/null
 
@@ -56,29 +56,29 @@ export NVR_LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
 stop_spinner
 set +a
 
-if [[ -f ~/0_NVR/scripts/update_mediamtx_paths.sh && -f ~/0_NVR/packager/mediamtx.yml ]]; then
+if [[ -f ~/0_MOBIUS.NVR/scripts/update_mediamtx_paths.sh && -f ~/0_MOBIUS.NVR/packager/mediamtx.yml ]]; then
 	start_spinner 20 "$CYAN Appending packager/mediamtx.yml"
-	~/0_NVR/scripts/update_mediamtx_paths.sh >/dev/null
+	~/0_MOBIUS.NVR/scripts/update_mediamtx_paths.sh >/dev/null
 	stop_spinner
 fi
 
-if [[ -f ~/0_NVR/scripts/update_neolink_config.sh && -f ~/0_NVR/config/neolink.toml ]]; then
+if [[ -f ~/0_MOBIUS.NVR/scripts/update_neolink_config.sh && -f ~/0_MOBIUS.NVR/config/neolink.toml ]]; then
 	start_spinner 20 "$CYAN Updating config/neolink.toml"
-	~/0_NVR/scripts/update_neolink_config.sh >/dev/null
+	~/0_MOBIUS.NVR/scripts/update_neolink_config.sh >/dev/null
 	stop_spinner
 fi
 
-if [[ -f ~/0_NVR/scripts/update_recording_settings.sh && -f ~/0_NVR/config/recording_settings.json ]]; then
+if [[ -f ~/0_MOBIUS.NVR/scripts/update_recording_settings.sh && -f ~/0_MOBIUS.NVR/config/recording_settings.json ]]; then
 	start_spinner 20 "$CYAN Syncing recording_settings.json with cameras"
-	~/0_NVR/scripts/update_recording_settings.sh >/dev/null
+	~/0_MOBIUS.NVR/scripts/update_recording_settings.sh >/dev/null
 	stop_spinner
 fi
 
 # Ensure recording paths have proper permissions (UID 1000 for container appuser)
-if [[ -f ~/0_NVR/ensure_recording_paths.sh ]]; then
+if [[ -f ~/0_MOBIUS.NVR/ensure_recording_paths.sh ]]; then
 	echo ""
 	echo "Ensuring recording path permissions..."
-	~/0_NVR/ensure_recording_paths.sh >/dev/null 
+	~/0_MOBIUS.NVR/ensure_recording_paths.sh >/dev/null 
 fi
 
 # Ensure TLS certs exist (MediaMTX + nginx need them)
@@ -87,9 +87,13 @@ fi
 if [ ! -f certs/dev/fullchain.pem ] || [ ! -f certs/dev/privkey.pem ]; then
 	echo ""
 	echo "TLS certs missing — generating CA-signed certs..."
-	~/0_NVR/0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh
+	~/0_MOBIUS.NVR/0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh
 	echo -e "${GREEN}✓ TLS certs generated${NC}"
 fi
+
+# Ensure the external network exists (shared with proxy and other MOBIUS stacks)
+docker network inspect 0_mobiusnvr_nvr-net >/dev/null 2>&1 || \
+    docker network create 0_mobiusnvr_nvr-net
 
 # Start the container
 echo ""
@@ -128,7 +132,7 @@ if docker ps | grep -q unified-nvr; then
 		echo -e "${YELLOW}⚠️  Health check failed - check logs${NC}"
 		echo "Run: docker compose logs -f"
 	fi
-	if curl -kI https://localhost:8443/api/status >/dev/null 2>&1; then
+	if curl -kI https://localhost:8444/api/health >/dev/null 2>&1; then
 		echo -e "${GREEN}✓ HTTPS Health check passed!${NC}"
 	else
 		echo -e "${YELLOW}⚠️  Health check failed - check logs${NC}"

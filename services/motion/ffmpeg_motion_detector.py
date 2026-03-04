@@ -1,6 +1,6 @@
 """
 FFmpeg Motion Detector
-Location: ~/0_NVR/services/motion/ffmpeg_motion_detector.py
+Location: ~/0_MOBIUS.NVR/services/motion/ffmpeg_motion_detector.py
 
 Analyzes video streams for motion using FFmpeg's scene detection filter.
 """

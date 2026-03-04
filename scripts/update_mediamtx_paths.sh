@@ -10,7 +10,7 @@ set -e
 
 SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]}")"
 cd "$SCRIPT_DIR"
-PROJECT_ROOT=~/0_NVR
+PROJECT_ROOT=~/0_MOBIUS.NVR
 
 . ~/.env.colors
 

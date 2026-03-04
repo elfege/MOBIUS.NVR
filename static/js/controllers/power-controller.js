@@ -1,6 +1,6 @@
 /**
  * Power Controller
- * Location: ~/0_NVR/static/js/controllers/power-controller.js
+ * Location: ~/0_MOBIUS.NVR/static/js/controllers/power-controller.js
  *
  * Handles power button clicks in stream controls.
  * - For hubitat: Opens device picker if no device configured, otherwise triggers power cycle

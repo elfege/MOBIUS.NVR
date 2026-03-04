@@ -136,10 +136,6 @@ writeTimeout: 10m # Very long timeout - let writeQueueSize handle buffering inst
 writeQueueSize: 8192 # Large write queue to absorb unconsumed main stream (allows ~8 seconds of buffering at 2Mbps)
 
 paths:
-  68d49398005cf203e400043f:
-    source: publisher
-  68d49398005cf203e400043f_main:
-    source: publisher
   T8416P0023352DA9:
     source: publisher
   T8416P0023352DA9_main:
@@ -160,6 +156,14 @@ paths:
     source: publisher
   T8416P6024350412_main:
     source: publisher
+  T8441P122428038A:
+    source: publisher
+  T8441P122428038A_main:
+    source: publisher
+  95270000YPTKLLD6:
+    source: publisher
+  95270000YPTKLLD6_main:
+    source: publisher
   T8419P0024110C6A:
     source: publisher
   T8419P0024110C6A_main:
@@ -168,9 +172,9 @@ paths:
     source: publisher
   T8441P12242302AC_main:
     source: publisher
-  T8441P122428038A:
+  95270001CSO4BPDZ:
     source: publisher
-  T8441P122428038A_main:
+  95270001CSO4BPDZ_main:
     source: publisher
   T821451024233587:
     source: publisher
@@ -184,15 +188,11 @@ paths:
     source: publisher
   C6F0SgZ0N0PoL2_main:
     source: publisher
-  95270001CSO4BPDZ:
-    source: publisher
-  95270001CSO4BPDZ_main:
-    source: publisher
   AMC043145A67EFBF79:
     source: publisher
   AMC043145A67EFBF79_main:
     source: publisher
-  95270000YPTKLLD6:
+  68d49398005cf203e400043f:
     source: publisher
-  95270000YPTKLLD6_main:
+  68d49398005cf203e400043f_main:
     source: publisher

@@ -5,7 +5,7 @@
 #
 # Purpose: Auto-generate config/neolink.toml from cameras.json
 # Usage: Called by start.sh or run manually: ./generate_neolink_config.sh
-# Location: ~/0_NVR/0_MAINTENANCE_SCRIPTS/generate_neolink_config.sh
+# Location: ~/0_MOBIUS.NVR/0_MAINTENANCE_SCRIPTS/generate_neolink_config.sh
 #
 # This script:
 # 1. Reads config/cameras.json

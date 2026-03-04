@@ -1,6 +1,6 @@
 /**
  * Timeline Playback Modal
- * Location: ~/0_NVR/static/js/modals/timeline-playback-modal.js
+ * Location: ~/0_MOBIUS.NVR/static/js/modals/timeline-playback-modal.js
  * Version: 2026-01-27-v4 (download files feature)
  *
  * Provides timeline visualization of recordings with:

@@ -13,7 +13,7 @@ set -e  # Exit on error
 LOG_LEVEL="warning"
 
 # Configuration
-PROJECT_DIR="/home/elfege/0_NVR"
+PROJECT_DIR="/home/elfege/0_MOBIUS.NVR"
 VENV_DIR="$PROJECT_DIR/venv"
 WORKERS=12
 HOST="0.0.0.0"

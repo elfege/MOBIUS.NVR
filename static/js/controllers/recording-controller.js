@@ -1,6 +1,6 @@
 /**
  * Recording Controller - API Client
- * Location: ~/0_NVR/static/js/controllers/recording-controller.js
+ * Location: ~/0_MOBIUS.NVR/static/js/controllers/recording-controller.js
  * Handles all recording-related API calls
  */
 

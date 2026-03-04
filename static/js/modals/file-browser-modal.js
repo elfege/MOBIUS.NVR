@@ -1,6 +1,6 @@
 /**
  * File Browser Modal
- * Location: ~/0_NVR/static/js/modals/file-browser-modal.js
+ * Location: ~/0_MOBIUS.NVR/static/js/modals/file-browser-modal.js
  * Version: 2026-01-27-v4 (fixed download URL encoding for special characters)
  *
  * Provides file browsing for alternate recording sources:

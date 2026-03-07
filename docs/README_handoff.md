@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 04, 2026 01:00 EST*
+*Last updated: March 07, 2026 00:45 EST*
 
 **Branch:** `stream_switch_mjpeg_fix_MAR_04_2026_a` (latest of 3 issue branches)
 
@@ -553,6 +553,64 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 **Context compaction occurred.** All 5 phases of performance refactoring were complete and verified (syntax checks passed). Committed as `f1e8b31` on branch `camera_rename_ui_FEB_28_2026_a` and pushed to remote.
 
 **Status at compaction:** Implementation complete, awaiting container restart for testing.
+
+---
+
+### Session: March 07, 2026 (00:00-00:45 EST)
+
+#### DB Tables Missing — presence + file_operations_log (00:10 EST)
+
+**Root cause:** After power loss, DB data directory survived intact so `init-db.sql` was NOT re-run on restart. Two tables added in later migrations were absent from the live DB despite being in the consolidated `init-db.sql`.
+
+**Missing tables:** `presence`, `file_operations_log`
+
+**Fix:** Applied both table definitions directly via `docker exec nvr-postgres psql`. Sent `SIGUSR1` to `nvr-postgrest` to reload schema cache. Flood of `relation "public.presence" does not exist` errors in postgres logs immediately stopped.
+
+52. **Live DB hotfix** (00:12 EST) — no file change, direct psql
+    - `CREATE TABLE presence` + indexes + RLS policy + GRANT + seed rows (Elfege, Jessica)
+    - `CREATE TABLE file_operations_log` + 5 indexes + RLS policy + GRANT
+    - `docker kill --signal=SIGUSR1 nvr-postgrest` — schema reload confirmed
+
+#### Favicon Update — the_eye.png (00:20 EST)
+
+53. **`static/images/the_eye.png`** (00:20 EST) — Cropped in-place
+    - Original: 1536×1024 landscape
+    - Saturation-based eye detection (threshold=50) → core region: 546×540
+    - Cropped to 654×654 square (10% padding, centered on eye centroid at ~x=753, y=479)
+    - Saved back to same path
+
+54. **7 HTML templates** (00:22 EST) — `sed -i` batch replace
+    - `images/mobius.nvr.png` → `images/the_eye.png` in all favicon/apple-touch-icon links
+    - Files: `streams.html`, `reloading.html`, `cert_install.html`, `error.html`, `login.html`, `change_password.html`, `eufy_auth.html`
+    - **Requires container restart** for Flask to serve updated templates
+
+#### Camera Network Outage Assessment (00:30 EST)
+
+**User reported:** "many cameras offline signal lost"
+
+**Assessment:** Network-level hardware failure, not NVR code.
+
+| IP | Camera | Status |
+|---|---|---|
+| 192.168.10.121 | MEBO | DOWN |
+| 192.168.10.181 | HALLWAY | DOWN |
+| 192.168.10.183 | Hot Tub | DOWN |
+| 192.168.10.184 | Terrace Shed | DOWN |
+| 192.168.10.186 | Living_REOLINK | DOWN |
+| 192.168.10.187 | Former CAM STAIRS | DOWN |
+
+13 of 19 cameras remain reachable and operational. The 6 down cameras span `.121` and `.181-.187` range — likely same PoE switch or AP group. NVR will auto-recover when network comes back.
+
+#### Commits Pushed This Session
+
+| Commit | Description |
+|---|---|
+| `e95fd79` | Rename 0_NVR→0_MOBIUS.NVR in docs + favicon update |
+| `c5f8d10` | Post-power-loss internet/AWS wait guard in start.sh |
+| `37852ed` | Engineering architecture doc → March 6, 2026 (Levels 10-13) |
+| `04cc343` | CLAUDE.md Rule 17-20 + handoff + package-lock |
+
+**Intercom:** MSG-178 posted to ALL.
 
 ---
 

@@ -7,7 +7,7 @@
 -- When adding new tables or altering existing ones, update this file
 -- AND create a migration file in psql/migrations/ for existing deployments.
 --
--- Last updated: March 6, 2026 (consolidated migrations 001-011)
+-- Last updated: March 7, 2026 (consolidated migrations 001-013)
 -- =============================================================================
 
 -- =============================================================================
@@ -303,6 +303,10 @@ CREATE TABLE user_preferences (
     user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
     hidden_cameras JSONB DEFAULT '[]'::jsonb,
     hd_cameras JSONB DEFAULT '[]'::jsonb,
+    -- Video fit mode default: 'cover' (crop edges, no deform) or 'fill' (stretch, no crop)
+    default_video_fit VARCHAR(10) NOT NULL DEFAULT 'cover' CHECK (default_video_fit IN ('cover', 'fill')),
+    -- Pinned camera: auto-expands on load, backdrop click blocked while set
+    pinned_camera VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -348,6 +352,8 @@ CREATE TABLE cameras (
     power_supply_device_id INTEGER,
     extra_config JSONB DEFAULT '{}'::jsonb,
     notes TEXT DEFAULT '',
+    -- Per-camera video fit override: 'cover'|'fill'|NULL (NULL = use user default)
+    video_fit_mode VARCHAR(10) DEFAULT NULL CHECK (video_fit_mode IN ('cover', 'fill')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -440,5 +446,7 @@ CREATE POLICY "Allow all" ON camera_state FOR ALL TO nvr_anon USING (true) WITH 
 -- Tables created: recordings, motion_events, ptz_client_latency, ptz_presets,
 --   presence, file_operations_log, users, user_sessions, user_camera_preferences,
 --   user_camera_access, user_preferences, cameras, camera_state
+-- Columns added (012-013): cameras.video_fit_mode, user_preferences.default_video_fit,
+--   user_preferences.pinned_camera
 -- Default accounts: admin/admin (must change), view/view
 -- =============================================================================

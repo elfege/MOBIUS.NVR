@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NVR System - Engineering Architecture (Updated January 26, 2026)</title>
+    <title>NVR System - Engineering Architecture (Updated March 6, 2026)</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
         body {
@@ -196,7 +196,7 @@
         <h1>Unified NVR System - Engineering Architecture</h1>
         
         <div class="critical-note">
-            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, recording, and <strong>two-way audio (talkback)</strong> across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, snapshot polling, and Neolink (Baichuan) protocols. Features include <strong>playback volume control</strong> with per-camera persistence and <strong>go2rtc integration</strong> for ONVIF AudioBackChannel. Mobile-optimized with iOS snapshot polling and Android MJPEG for grid view. <em>Last updated: January 26, 2026.</em>
+            <strong>System Overview:</strong> The Unified NVR is a multi-vendor Network Video Recorder built with Flask backend, ES6+jQuery frontend, and Docker containerization. It provides unified streaming, PTZ control, motion detection, recording, and <strong>two-way audio (talkback)</strong> across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras via WebRTC (~200ms), LL-HLS (~2s), HLS, MJPEG, snapshot polling, and Neolink (Baichuan) protocols. Features include <strong>playback volume control</strong> with per-camera persistence and <strong>go2rtc integration</strong> for ONVIF AudioBackChannel. Mobile-optimized with iOS snapshot polling and Android MJPEG for grid view. Features added Feb–Mar 2026: <strong>multi-user authentication</strong> (bcrypt + PostgreSQL sessions), <strong>DB-first camera config</strong> (cameras table replaces cameras.json at runtime), <strong>camera rename</strong> from UI, <strong>nginx static file serving</strong>, <strong>SocketIO push</strong> for camera state, <strong>Eufy bridge self-healing</strong> (auto-restart, keepalive), <strong>external REST API</strong> for TILES integration (Bearer token auth), <strong>MJPEG→WebRTC path creation</strong> on-demand, and <strong>fullscreen exit fix</strong> on frozen streams. <em>Last updated: March 6, 2026.</em>
         </div>
 
         <div class="key-metrics">
@@ -319,7 +319,7 @@
             <div class="mermaid">
                 graph TB
                     subgraph Init["Application Initialization (app.py)"]
-                        A[Flask App] --> B[CameraRepository<br/>./config/cameras.json]
+                        A[Flask App] --> B[CameraRepository<br/>DB-first + JSON fallback]
                         A --> C[StreamManager]
                         A --> D[RecordingService]
                         A --> E[SnapshotService]
@@ -380,7 +380,7 @@
         <div class="architecture-note">
             <h3>Component Responsibilities</h3>
             <ul>
-                <li><strong>CameraRepository:</strong> Loads and manages camera configurations from <code>cameras.json</code>, provides filtering by type/capability</li>
+                <li><strong>CameraRepository:</strong> DB-first camera config loading (PostgreSQL <code>cameras</code> table via PostgREST) with JSON fallback. Provides filtering by type/capability, per-user stream type resolution via <code>get_effective_stream_type()</code>. <code>cameras.json</code> used only for initial seeding and admin reset.</li>
                 <li><strong>StreamManager:</strong> Orchestrates FFmpeg processes with dual-output (sub/main), manages stream lifecycle, implements watchdog restarts</li>
                 <li><strong>Credential Providers:</strong> Fetch credentials from AWS Secrets Manager per vendor (Eufy, Reolink, UniFi, Amcrest, SV3C)</li>
                 <li><strong>Stream Handlers:</strong> Build RTSP URLs, FFmpeg parameters using Strategy Pattern; SV3C added Dec 2025</li>
@@ -1202,6 +1202,73 @@ sequenceDiagram
             </tr>
         </table>
 
+
+        <!-- LEVEL 10: USER AUTHENTICATION -->
+        <h2>Level 10: User Authentication &amp; Multi-User System (Feb 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>Authentication Architecture:</strong> bcrypt-based password authentication with PostgreSQL session storage. Role-based access (admin/user). Sessions are indefinite until logout. No JWT — Flask signed cookies with server-side session tracking.</p>
+            <ul>
+                <li><strong>Password Hashing:</strong> bcrypt via Python <code>bcrypt</code> library (cost factor 12)</li>
+                <li><strong>Session Storage:</strong> <code>user_sessions</code> table — UUID session IDs, IP address, user agent, last_activity timestamp</li>
+                <li><strong>Roles:</strong> <code>admin</code> (full access, user management) and <code>user</code> (camera access, no admin)</li>
+                <li><strong>First Login:</strong> <code>must_change_password = true</code> forces password change before accessing NVR</li>
+                <li><strong>Per-User Camera Preferences:</strong> <code>user_camera_preferences</code> table stores preferred stream type per camera per user. Resolved at stream start via <code>get_effective_stream_type(serial, user_id)</code> (user pref &gt; camera default)</li>
+                <li><strong>Camera Visibility:</strong> <code>user_camera_access</code> table — if no rows for a user, they see all cameras; rows restrict to allowed list</li>
+                <li><strong>Default Accounts:</strong> admin/admin (must change), view/view — created by <code>psql/init-db.sql</code> on fresh DB init</li>
+            </ul>
+        </div>
+
+        <!-- LEVEL 11: DATABASE CAMERA CONFIGURATION -->
+        <h2>Level 11: Database Camera Configuration (Feb 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>DB-First Architecture:</strong> Camera configuration migrated from static <code>cameras.json</code> to PostgreSQL <code>cameras</code> table. CameraRepository uses DB as runtime source of truth with JSON as fallback and reset source.</p>
+            <ul>
+                <li><strong>Loading Priority:</strong> PostgreSQL (via PostgREST) → JSON fallback → error</li>
+                <li><strong>Auto-Sync:</strong> <code>services/camera_config_sync.py</code> runs at startup — detects new cameras in JSON not in DB and inserts them; cameras in DB but not JSON are logged (not deleted)</li>
+                <li><strong>Write Path:</strong> All camera config writes go to DB + JSON backup simultaneously via <code>update_camera_setting()</code></li>
+                <li><strong>Interface Unchanged:</strong> All 14+ consuming services use CameraRepository unchanged — DB migration was transparent</li>
+                <li><strong>Camera Rename:</strong> <code>PUT /api/camera/&lt;serial&gt;/name</code> — updates DB + JSON + in-memory cache atomically</li>
+                <li><strong>Admin Endpoints:</strong> <code>POST /api/cameras/force-sync</code> (reset from JSON), <code>GET /api/cameras/data-source</code> (check current source)</li>
+                <li><strong>Vendor Configs:</strong> unifi.json, eufy.json, reolink.json, amcrest.json remain as JSON (static infra config, not per-camera runtime)</li>
+            </ul>
+        </div>
+
+        <!-- LEVEL 12: PERFORMANCE ARCHITECTURE -->
+        <h2>Level 12: Performance Architecture (Feb 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>HTTP Request Reduction:</strong> Five-phase refactor reduced browser→server HTTP traffic from ~1930 req/min to ~700 req/min per browser tab.</p>
+            <ul>
+                <li><strong>Phase 1 — nginx Static Files:</strong> <code>nginx/nginx.conf</code> serves <code>/static/</code> directly with 1h cache + <code>Cache-Control: public, immutable</code>. Removes 71+ per-page-load requests from Gunicorn/Flask.</li>
+                <li><strong>Phase 2 — SocketIO Camera State Push:</strong> <code>camera_state_tracker.py</code> emits <code>camera_state_changed</code> events on <code>/stream_events</code> namespace. <code>camera-state-monitor.js</code> subscribes and falls back to 30s batch polling. Reduced 120 req/min → 2 req/min.</li>
+                <li><strong>Phase 3 — Non-Blocking Stream Restart:</strong> <code>/api/stream/restart/&lt;serial&gt;</code> returns immediately (202), notifies completion via SocketIO. Eliminates 15-second blocking requests.</li>
+                <li><strong>Phase 4 — PostgREST Connection Pooling:</strong> <code>_postgrest_session = requests.Session()</code> in app.py. Reuses TCP connections across all PostgREST interactions, eliminating ~50-70ms overhead per cycle.</li>
+                <li><strong>Phase 5 — Snapshot Visibility Gating:</strong> <code>snapshot-stream.js</code> uses IntersectionObserver — pauses polling for off-screen cameras (100px rootMargin for pre-fetch). Reduced ~1200 → ~300 req/min for snapshot cameras.</li>
+            </ul>
+        </div>
+
+        <!-- LEVEL 13: EXTERNAL API -->
+        <h2>Level 13: External REST API / TILES Integration (Feb 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>External API:</strong> Flask Blueprint (<code>services/external_api_routes.py</code>) exposes NVR camera data and stream URLs to external services (TILES home automation dashboard).</p>
+            <ul>
+                <li><strong>Authentication:</strong> Bearer token via <code>NVR_API_TOKEN</code> env var (stored in AWS Secrets Manager). Dev fallback: LAN-only IP check with warning log.</li>
+                <li><strong>Endpoints:</strong>
+                    <ul>
+                        <li><code>GET /api/external/cameras</code> — list all cameras with capabilities (including <code>has_audio</code>)</li>
+                        <li><code>GET /api/external/stream-url/&lt;serial&gt;</code> — get current stream URL for a camera</li>
+                        <li><code>GET /api/external/snapshot/&lt;serial&gt;</code> — get latest snapshot</li>
+                        <li><code>GET /api/external/status</code> — NVR health status</li>
+                    </ul>
+                </li>
+                <li><strong>CORS:</strong> Configured to allow <code>Authorization</code> header from TILES origin</li>
+                <li><strong>Token Retrieval for TILES:</strong> <code>NVR_API_TOKEN</code> is in AWS Secrets Manager <code>NVR-Secrets</code> — pulled via <code>pull_nvr_secrets()</code></li>
+            </ul>
+        </div>
+
         <!-- SUMMARY -->
         <h2>Architecture Summary</h2>
 
@@ -1249,7 +1316,9 @@ sequenceDiagram
                 <li><strong>Vendor Handlers:</strong> <code>streaming/handlers/{eufy,reolink,unifi,amcrest,sv3c}_stream_handler.py</code></li>
                 <li><strong>Credential Providers:</strong> <code>services/credentials/{eufy,reolink,unifi,amcrest,sv3c}_credential_provider.py</code></li>
                 <li><strong>FFmpeg Config:</strong> <code>streaming/ffmpeg_params.py</code></li>
-                <li><strong>Camera Config:</strong> <code>config/cameras.json</code></li>
+                <li><strong>Camera Config (runtime):</strong> PostgreSQL <code>cameras</code> table (seeded from <code>config/cameras.json</code>)</li>
+                <li><strong>Camera Config (source/reset):</strong> <code>config/cameras.json</code></li>
+                <li><strong>Camera Config Sync:</strong> <code>services/camera_config_sync.py</code> — auto-seeds DB from JSON on startup</li>
                 <li><strong>Recording Config:</strong> <code>config/recording_settings.json</code></li>
                 <li><strong>go2rtc Config:</strong> <code>config/go2rtc.yaml</code></li>
                 <li><strong>Talkback Transcoder:</strong> <code>services/talkback_transcoder.py</code></li>
@@ -1258,13 +1327,18 @@ sequenceDiagram
                 <li><strong>Storage Manager:</strong> <code>services/recording/storage_manager.py</code></li>
                 <li><strong>Motion Detection:</strong> <code>services/motion/ffmpeg_motion_detector.py</code>, <code>services/onvif/onvif_event_listener.py</code></li>
                 <li><strong>ONVIF PTZ:</strong> <code>services/onvif/onvif_ptz_handler.py</code></li>
+                <li><strong>Eufy Bridge:</strong> <code>services/eufy/eufy_bridge.py</code> — self-healing P2P bridge (auto-restart, keepalive, BridgeCrashedError)</li>
                 <li><strong>Power Services:</strong> <code>services/power/hubitat_power_service.py</code>, <code>services/power/unifi_poe_service.py</code></li>
                 <li><strong>Power Controller:</strong> <code>static/js/controllers/power-controller.js</code></li>
+                <li><strong>External API:</strong> <code>services/external_api_routes.py</code> — REST API for TILES integration (Bearer token auth)</li>
+                <li><strong>Camera State Tracker:</strong> <code>services/camera_state_tracker.py</code> — emits SocketIO push events on state change</li>
                 <li><strong>Neolink Config:</strong> <code>config/neolink.toml</code></li>
-                <li><strong>Frontend Streaming:</strong> <code>static/js/streaming/*.js</code> (includes snapshot-stream.js for iOS)</li>
-                <li><strong>Frontend Controllers:</strong> <code>static/js/controllers/*.js</code></li>
+                <li><strong>Frontend Streaming:</strong> <code>static/js/streaming/*.js</code> (stream.js, webrtc-stream.js, hls-stream.js, snapshot-stream.js, camera-state-monitor.js)</li>
+                <li><strong>Frontend Controllers:</strong> <code>static/js/controllers/*.js</code> (includes ptz-controller.js with Eufy retry UI)</li>
                 <li><strong>Templates:</strong> <code>templates/streams.html</code></li>
-                <li><strong>Database Schema:</strong> <code>psql/init-db.sql</code></li>
+                <li><strong>Database Schema:</strong> <code>psql/init-db.sql</code> — consolidated, all 13 tables (recordings, motion_events, users, cameras, etc.)</li>
+                <li><strong>DB Migrations:</strong> <code>psql/migrations/001–011_*.sql</code> — apply to existing deployments only</li>
+                <li><strong>nginx Config:</strong> <code>nginx/nginx.conf</code> — serves <code>/static/</code> directly (bypasses Flask/Gunicorn)</li>
             </ul>
         </div>
 
@@ -1283,6 +1357,13 @@ sequenceDiagram
                 <li><strong>Jan 19, 2026:</strong> WebRTC audio restoration - AAC→Opus transcoding for all cameras (WebRTC requires Opus, MediaMTX skips AAC), fixed ffmpeg_params.py main stream hardcoded -c:a copy, user-stopped stream tracking (localStorage prevents watchdog auto-restart), .gitignore fix for config/cameras.json tracking</li>
                 <li><strong>Jan 22-25, 2026:</strong> PTZ reversal settings for upside-down cameras, PTZ double-action bug fix, PTZ Home/Recalibration buttons, Eufy bridge direction mapping fix, timeline playback timestamp fix, Hubitat power service (auto power-cycle), UniFi POE power service, device picker modal, power button in stream controls, WebRTC fullscreen quality recovery</li>
                 <li><strong>Jan 26, 2026:</strong> Power cycle safety (opt-in requirement + 24h configurable cooldown), FFmpeg params null/none handling fix, SV3C RTSP stability (15s timeouts, reconnect options), playback volume slider with localStorage persistence, SV3C direct HTTP snapshots for /api/snap, config sanitization pre-commit hook (auto-generates example files)</li>
+                <li><strong>Feb 7, 2026:</strong> Multi-user authentication system — bcrypt password hashing, PostgreSQL users/sessions tables, role-based access (admin/user), forced password change on first login, per-user camera stream type preferences</li>
+                <li><strong>Feb 19, 2026:</strong> DB-first camera configuration (Option B migration) — cameras table in PostgreSQL, CameraRepository now DB-first with JSON fallback, auto-sync on startup, per-user stream type override via get_effective_stream_type(), 19 cameras migrated</li>
+                <li><strong>Feb 20, 2026:</strong> External REST API for TILES integration (services/external_api_routes.py) — Bearer token auth, /api/external/cameras, /api/external/stream-url, CORS configured; NVR_ env var namespace migration (all custom vars prefixed NVR_); Eufy bridge double-prefix bug fix</li>
+                <li><strong>Feb 28, 2026:</strong> Camera rename from UI (PUT /api/camera/&lt;serial&gt;/name, updates DB + JSON + cache); Performance refactoring — nginx serves /static/ (71+ assets off Gunicorn), SocketIO push for camera state (120→2 req/min), non-blocking stream restart, PostgREST connection pooling, IntersectionObserver for off-screen snapshot gating (~1930→~700 req/min total)</li>
+                <li><strong>Feb 28, 2026:</strong> Eufy bridge self-healing — BridgeCrashedError/BridgeAuthRequiredError exception classes, TCP port check in is_running(), thread-safe auto-restart with 30s cooldown, eufy_bridge.sh while-true restart loop with exponential backoff; PTZ endpoints return (success, message) tuples with bridge_status on failure</li>
+                <li><strong>Mar 4, 2026:</strong> Issue fixes — (1) Fullscreen exit on frozen streams: forceExitFullscreen() synchronous path + 2s watchdog on debounce flag; (2) Eufy preset retry: _run_bridge_command() retry loop + _keepalive_loop() 30min ping + UI "Retry" button on 503; (3) MJPEG→WebRTC switching: POST /api/mediamtx/create-path/&lt;serial&gt; endpoint + Phase 0 path creation in switchStreamType()</li>
+                <li><strong>Mar 6, 2026:</strong> Repo housekeeping — git remote push URL fixed (NVR.git→MOBIUS.NVR.git), neolink/target/ untracked (1454 build artifacts removed), project rename completed (0_NVR→0_MOBIUS.NVR across all files); init-db.sql consolidated (all 13 tables, was missing migrations 005-011); start.sh internet/AWS wait loop for post-power-loss resilience</li>
             </ul>
         </div>
 

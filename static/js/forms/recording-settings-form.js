@@ -21,7 +21,7 @@ export class RecordingSettingsForm {
      * @param {string} streamType - Stream type (LL_HLS, MJPEG, etc.)
      * @returns {string} - Form HTML
      */
-    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null, cameraName = '') {
+    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null, cameraName = '', videoFitMode = null) {
         this.currentCameraId = cameraId;
         this.currentSettings = settings;
         this.currentCameraName = cameraName;
@@ -65,6 +65,35 @@ export class RecordingSettingsForm {
                         <label>Serial Number</label>
                         <input type="text" value="${cameraId}" disabled
                                style="opacity: 0.6; cursor: not-allowed;">
+                    </div>
+                </div>
+
+                <!-- Display Settings Section -->
+                <div class="recording-form-section">
+                    <h4><i class="fas fa-tv"></i> Display Settings</h4>
+                    <div class="recording-form-group">
+                        <label>Video Fit Mode (this camera)</label>
+                        <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
+                            <label class="setting-toggle" style="margin: 0;">
+                                <input type="checkbox" id="video-fit-camera-toggle"
+                                       ${videoFitMode === 'fill' ? 'checked' : ''}>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span id="video-fit-camera-label" style="color: #ccc; font-size: 13px;">
+                                ${videoFitMode === 'fill' ? 'Fill (stretch, no crop)' : 'Cover (crop edges, no deform)'}
+                            </span>
+                        </div>
+                        <span class="form-description" style="margin-top: 8px; display: block;">
+                            <strong>Off (Cover):</strong> Fills tile, crops edges — no image deformation.<br>
+                            <strong>On (Fill):</strong> Stretches to fit — no crop, may deform if camera aspect differs.<br>
+                            Set to blank to use your account default (see Settings panel).
+                        </span>
+                        <button type="button" id="clear-video-fit-btn"
+                                class="recording-btn recording-btn-secondary"
+                                style="margin-top: 8px; font-size: 12px; padding: 5px 10px;">
+                            <i class="fas fa-times-circle"></i> Clear override (use default)
+                        </button>
+                        <div id="video-fit-status" style="display: none; margin-top: 6px;"></div>
                     </div>
                 </div>
 
@@ -384,6 +413,7 @@ export class RecordingSettingsForm {
      */
     attachEvents(onSave, onCancel) {
         this.onSaveCallback = onSave;
+        const self = this;  // Closure reference for nested handlers
 
         const form = $('#recording-settings-form');
 
@@ -414,6 +444,21 @@ export class RecordingSettingsForm {
                 e.preventDefault();
                 await this.handleRename();
             }
+        });
+
+        // Handle per-camera video fit toggle
+        $('#video-fit-camera-toggle').on('change', async function() {
+            const isFill = $(this).is(':checked');
+            const fit = isFill ? 'fill' : 'cover';
+            $('#video-fit-camera-label').text(isFill ? 'Fill (stretch, no crop)' : 'Cover (crop edges, no deform)');
+            await self._saveVideoFit(fit);
+        });
+
+        // Clear per-camera video fit override
+        $('#clear-video-fit-btn').on('click', async () => {
+            await self._saveVideoFit(null);
+            $('#video-fit-camera-toggle').prop('checked', false);
+            $('#video-fit-camera-label').text('Cover (crop edges, no deform)  — using account default');
         });
 
         // Load power cycle settings asynchronously
@@ -683,6 +728,35 @@ export class RecordingSettingsForm {
      * Called after form is rendered to populate power settings asynchronously
      * @param {string} cameraId - Camera ID
      */
+    /**
+     * Save per-camera video fit mode override.
+     * @param {'cover'|'fill'|null} fit - null clears the override (falls back to user default)
+     */
+    async _saveVideoFit(fit) {
+        const $status = $('#video-fit-status');
+        $status.show().html('<span style="color: #aaa;"><i class="fas fa-spinner fa-spin"></i> Saving...</span>');
+        try {
+            const resp = await fetch(`/api/camera/${this.currentCameraId}/display`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_fit_mode: fit })
+            });
+            if (resp.ok) {
+                $status.html('<span style="color: #4caf50;"><i class="fas fa-check"></i> Saved</span>');
+                // Apply immediately to the tile without page reload
+                const $tile = $(`.stream-item[data-camera-serial="${this.currentCameraId}"]`);
+                const effectiveFit = fit || window.VIDEO_FIT_DEFAULT || 'cover';
+                $tile.attr('data-video-fit', fit || '');
+                $tile.find('.stream-video').css('object-fit', effectiveFit);
+            } else {
+                $status.html('<span style="color: #f44336;"><i class="fas fa-exclamation-circle"></i> Failed to save</span>');
+            }
+        } catch (e) {
+            $status.html('<span style="color: #f44336;"><i class="fas fa-exclamation-circle"></i> Error: ' + e.message + '</span>');
+        }
+        setTimeout(() => $status.fadeOut(), 2500);
+    }
+
     async loadPowerCycleSettings(cameraId) {
         try {
             const response = await axios.get(`/api/cameras/${cameraId}/power_supply`);

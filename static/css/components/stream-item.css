@@ -22,8 +22,9 @@
        for double-tap zoom, making single taps fire immediately */
     touch-action: manipulation;
 
-    /* Fallback aspect ratio if JavaScript doesn't set it */
-    aspect-ratio: 16 / 9;
+    /* Fallback aspect ratio if JavaScript doesn't set it.
+       13/8 = 1.625 — consecutive Fibonacci numbers, close to the golden ratio φ ≈ 1.618 */
+    aspect-ratio: 13 / 8;
 
     /* Make sure the item fills its grid cell */
     width: 100%;

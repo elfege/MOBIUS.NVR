@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MOBIUS.NVR</title>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/mobius.nvr.png') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/mobius.nvr.png') }}">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/the_eye.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/the_eye.png') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/recording-modal.css') }}">
@@ -19,6 +19,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/camera-selector.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/user-management.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/standby-overlay.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-reload-overlay.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/tile-arrange.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -97,6 +99,11 @@
             <button id="camera-selector-btn" class="navbar-action-btn" title="Filter cameras">
                 <i class="fas fa-filter"></i>
                 <span id="camera-count-label">All</span>
+            </button>
+
+            <!-- Arrange tiles button -->
+            <button id="arrange-tiles-btn" class="navbar-action-btn" title="Rearrange tiles (or long-press any tile)">
+                <i class="fas fa-th"></i>
             </button>
 
             <!-- Settings gear -->
@@ -260,7 +267,8 @@
         <div class="stream-item" data-camera-serial="{{ serial }}" data-camera-name="{{ info.name }}"
             data-camera-type="{{ info.type }}" data-stream-type="{{ info.stream_type }}"
             data-mjpeg-source="{{ info.get('mjpeg_source', '') }}"
-            data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}">
+            data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}"
+            data-video-fit="{{ info.get('video_fit_mode') or '' }}">
 
             {% if info.stream_type == 'MJPEG' or info.stream_type == 'mjpeg_proxy' %}
 
@@ -301,6 +309,35 @@
                 <div class="signal-lost-text">Signal Lost</div>
                 <!-- <div class="signal-lost-subtext">Using snapshot fallback</div> -->
             </div>
+            <!-- Stream Reload Overlay — shown during client refresh or backend FFmpeg restart.
+                 Reuses the standby animation motif (concentric spinning rings) but scoped
+                 to this tile only. JS controls .active and .waking classes. -->
+            <div class="stream-reload-overlay">
+                <div class="sro-particles">
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                    <div class="sro-particle"></div>
+                </div>
+                <div class="sro-rings">
+                    <div class="sro-ring"></div>
+                    <div class="sro-ring"></div>
+                    <div class="sro-ring"></div>
+                    <div class="sro-ring"></div>
+                    <div class="sro-ring"></div>
+                    <div class="sro-eye"></div>
+                </div>
+                <div class="sro-message">
+                    <div class="sro-title">Refreshing Stream</div>
+                    <div class="sro-subtitle">Client-side reconnect</div>
+                    <div class="sro-log"></div>
+                </div>
+            </div>
+
             <!-- HD Mode badge - shown when stream is in main (HD) quality -->
             <div class="stream-hd-badge">HD</div>
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
@@ -879,6 +916,8 @@
     <script src="{{ url_for('static', filename='js/modals/user-management-modal.js') }}"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <!-- SortableJS: touch-friendly drag-and-drop for tile rearrange -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.3/Sortable.min.js"></script>
     <script id="ui-health" type="application/json">
         {{ ui_health|tojson }}
     </script>
@@ -893,6 +932,14 @@
         setTimeout(() => {
             window.location.reload()
         }, 60 * 60 * 1000)
+    </script>
+
+    <!-- Arrange Tiles button — wires navbar button to TileArrangeManager -->
+    <script type="module">
+        import { tileArrangeManager } from "{{ url_for('static', filename='js/streaming/tile-arrange-manager.js') }}";
+        document.getElementById('arrange-tiles-btn').addEventListener('click', () => {
+            tileArrangeManager.toggle();
+        });
     </script>
 
     <!-- TILES Dashboard Overlay Modal
@@ -949,6 +996,9 @@
             });
         })();
     </script>
+
+    <!-- Tile arrange manager (long-press to jiggle and drag-to-rearrange tiles) -->
+    <script type="module" src="{{ url_for('static', filename='js/streaming/tile-arrange-manager.js') }}"></script>
 
 </body>
 

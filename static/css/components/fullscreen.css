@@ -382,3 +382,118 @@
     background: rgba(0, 0, 0, 0.9) !important;
     transform: scale(1.1) !important;
 }
+
+/* =============================================================================
+   HD TOGGLE BUTTON (stream-hd-btn)
+   Only visible in expanded modal and CSS fullscreen views.
+   Allows toggling HD/SD quality without opening the camera selector.
+   ============================================================================= */
+
+/* Base: hidden everywhere in grid mode */
+.stream-hd-btn {
+    display: none;
+    position: absolute;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: white;
+    min-width: 52px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    cursor: pointer;
+    z-index: 26;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.5px;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+/* Show in expanded and fullscreen */
+.stream-item.expanded .stream-hd-btn,
+.stream-item.css-fullscreen .stream-hd-btn {
+    display: flex !important;
+}
+
+/* Active HD state — warm amber matching the HD badge */
+.stream-hd-btn.hd-active {
+    background: rgba(255, 152, 0, 0.8);
+    border-color: rgba(255, 152, 0, 0.9);
+    color: #1a1a1a;
+}
+
+.stream-hd-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+    border-color: rgba(255, 255, 255, 0.45);
+    transform: scale(1.05);
+}
+
+.stream-hd-btn.hd-active:hover {
+    background: rgba(255, 152, 0, 1);
+}
+
+
+/* =============================================================================
+   PIN BUTTON (stream-pin-btn)
+   Pins a camera to always open in expanded modal state on reload.
+   When pinned: backdrop click is blocked, camera auto-expands on page load.
+   ============================================================================= */
+
+/* Base: hidden in grid mode */
+.stream-pin-btn {
+    display: none;
+    position: absolute;
+    bottom: 0.75rem;
+    left: 4.5rem;   /* Offset from HD button (0.75rem + ~52px + 8px gap) */
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.75);
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 26;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.2s ease;
+}
+
+/* Show in expanded and fullscreen */
+.stream-item.expanded .stream-pin-btn,
+.stream-item.css-fullscreen .stream-pin-btn {
+    display: flex !important;
+}
+
+/* Active pinned state — cyan/teal accent (not amber, to distinguish from HD) */
+.stream-pin-btn.pin-active {
+    background: rgba(0, 188, 212, 0.75);
+    border-color: rgba(0, 188, 212, 0.9);
+    color: white;
+    /* Tilt the thumbtack icon when pinned — visual feedback */
+    transform: rotate(-45deg);
+}
+
+.stream-pin-btn:hover {
+    background: rgba(0, 0, 0, 0.85);
+    border-color: rgba(255, 255, 255, 0.45);
+    color: white;
+}
+
+.stream-pin-btn.pin-active:hover {
+    background: rgba(0, 188, 212, 0.95);
+    transform: rotate(-45deg) scale(1.05);
+}
+
+.stream-pin-btn i {
+    font-size: 14px;
+    transition: transform 0.2s ease;
+}

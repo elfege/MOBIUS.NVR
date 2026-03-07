@@ -369,6 +369,26 @@ export class MultiStreamManager {
             this.initIOSPagination();
         }
 
+        // Pre-fetch user preferences to get default_video_fit
+        // Runs in parallel; updates window.VIDEO_FIT_DEFAULT which setupLayout() reads.
+        // If setupLayout() already ran (first call), re-apply fit after fetch resolves.
+        fetch('/api/my-preferences')
+            .then(r => r.json())
+            .then(prefs => {
+                const fit = prefs.default_video_fit || 'cover';
+                if (window.VIDEO_FIT_DEFAULT !== fit) {
+                    window.VIDEO_FIT_DEFAULT = fit;
+                    // Re-apply to any tiles that didn't have a per-camera override
+                    this.$container.find('.stream-item').each((_, item) => {
+                        const $item = $(item);
+                        if (!$item.data('video-fit')) {
+                            $item.find('.stream-video').css('object-fit', fit);
+                        }
+                    });
+                }
+            })
+            .catch(() => { /* non-critical, cover is the safe default */ });
+
         // Pre-fetch streaming config (caches DTLS setting for iOS WebRTC check)
         // This runs in parallel with stream loading so config is ready when needed
         getStreamingConfig().then(config => {
@@ -471,8 +491,17 @@ export class MultiStreamManager {
         this.$container.removeClass('grid-1 grid-2 grid-3 grid-4 grid-5').addClass(`grid-${cols}`);
 
 
-        // Set aspect ratio for each stream
-        $streamItems.css('aspect-ratio', '16/9');
+        // Set aspect ratio: 13/8 = 1.625 — consecutive Fibonacci numbers, golden ratio approx (φ ≈ 1.618)
+        $streamItems.css('aspect-ratio', '13/8');
+
+        // Apply video fit mode to each tile's media element.
+        // Priority: per-camera data-video-fit attr > user default (window.VIDEO_FIT_DEFAULT) > 'cover'
+        const userDefault = window.VIDEO_FIT_DEFAULT || 'cover';
+        $streamItems.each((_, item) => {
+            const $item = $(item);
+            const fit = $item.data('video-fit') || userDefault;
+            $item.find('.stream-video').css('object-fit', fit);
+        });
     }
 
     setupEventListeners() {
@@ -618,7 +647,15 @@ export class MultiStreamManager {
         // PTZ is now handled exclusively by ptz-controller.js which applies reversal correctly.
         // See: ptz-controller.js:339 for the authoritative mousedown/touchstart handler.
 
-        // Refresh stream handler
+        // Refresh stream handler (client-side reconnect — no backend call)
+        //
+        // Shows the stream-reload-overlay while HLS.js / WebRTC tears down and
+        // reconnects.  Step messages keep the user informed during what would
+        // otherwise be a silent black tile.
+        //
+        // NOTE: Only HLS and WebRTC streams can be force-refreshed here.
+        // Adding other types without this guard would spawn a new RTSP source
+        // while the old RTMP publisher is still running — causing stream conflict.
         this.$container.on('click', '.refresh-stream-btn', (e) => {
             e.stopPropagation();
             const $streamItem = $(e.target).closest('.stream-item');
@@ -626,14 +663,45 @@ export class MultiStreamManager {
             const streamType = $streamItem.data('stream-type');
             const videoElement = $streamItem.find('.stream-video')[0];
 
-            // Only HLS and WebRTC streams can be force-refreshed (for now)
-            // not adding this condition will make the system
-            // create a new rtsp stream while rtmp witll still
-            // be running.
+            // Show overlay immediately so the user gets instant feedback
+            this._showStreamReloadOverlay($streamItem, 'refresh');
+            this._logStreamReloadStep($streamItem, 'Client refresh requested — tearing down current connection...', 'info');
+
             if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
-                this.hlsManager.forceRefreshStream(cameraId, videoElement);
+                this._logStreamReloadStep($streamItem, 'Stopping HLS.js segment fetch...', 'info');
+                this._logStreamReloadStep($streamItem, 'Destroying HLS.js instance and resetting video element...', 'info');
+
+                Promise.resolve(this.hlsManager.forceRefreshStream(cameraId, videoElement))
+                    .then(() => {
+                        this._logStreamReloadStep($streamItem, 'HLS.js instance rebuilt — requesting fresh playlist from MediaMTX...', 'info');
+                        this._logStreamReloadStep($streamItem, 'Waiting for first segment to arrive...', 'info');
+                        this._logStreamReloadStep($streamItem, 'Stream live!', 'success');
+                        this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
+                    })
+                    .catch((err) => {
+                        this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
+                        // Leave error visible for 3 s then dismiss
+                        setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
+                    });
+
             } else if (streamType === 'WEBRTC') {
-                this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                this._logStreamReloadStep($streamItem, 'Closing WebRTC peer connection and ICE candidates...', 'info');
+                this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
+
+                Promise.resolve(this.webrtcManager.forceRefreshStream(cameraId, videoElement))
+                    .then(() => {
+                        this._logStreamReloadStep($streamItem, 'WebRTC peer connection established — stream live!', 'success');
+                        this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
+                    })
+                    .catch((err) => {
+                        this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
+                        setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
+                    });
+
+            } else {
+                // Stream type not supported for client-side refresh
+                this._logStreamReloadStep($streamItem, `Stream type "${streamType}" does not support client-side refresh.`, 'warn');
+                setTimeout(() => this._hideStreamReloadOverlay($streamItem), 2500);
             }
         });
 
@@ -641,7 +709,19 @@ export class MultiStreamManager {
         this.manualRestartInProgress = this.manualRestartInProgress || new Set();
 
         // Restart stream handler (backend FFmpeg restart)
-        // Unlike refresh which just reconnects HLS.js, this kills and restarts FFmpeg
+        //
+        // Unlike refresh (which only reconnects the client-side player), this sends
+        // a POST to /api/stream/restart which kills the running FFmpeg process and
+        // spawns a fresh one.  The camera's RTSP connection is fully re-established.
+        //
+        // Flow:
+        //   1. POST /api/stream/restart → backend kills FFmpeg
+        //   2. Wait ~3 s for FFmpeg to reconnect to the camera and publish to MediaMTX
+        //   3. Reconnect HLS.js / WebRTC with up to 3 retries (2 s apart)
+        //   4. Dismiss overlay with "waking" animation on success
+        //
+        // The reload overlay is shown throughout with step-by-step log messages so
+        // the user knows exactly what is happening during the multi-second wait.
         this.$container.on('click', '.restart-stream-btn', async (e) => {
             e.stopPropagation();
             const $streamItem = $(e.target).closest('.stream-item');
@@ -653,27 +733,40 @@ export class MultiStreamManager {
             // Instead of doing nothing, refresh the MJPEG image connection.
             if (streamType === 'MJPEG') {
                 console.log(`[Restart] ${cameraId}: MJPEG is stateless, refreshing stream`);
+                this._showStreamReloadOverlay($streamItem, 'refresh');
+                this._logStreamReloadStep($streamItem, 'MJPEG is stateless — no FFmpeg process to restart.', 'info');
+                this._logStreamReloadStep($streamItem, 'Dropping current MJPEG image connection...', 'info');
                 this.setStreamStatus($streamItem, 'loading', 'Refreshing...');
                 if (this.mjpegManager) {
                     this.mjpegManager.stopStream(cameraId);
                     const imgEl = $streamItem.find('img.mjpeg-stream')[0];
                     if (imgEl) {
                         const quality = $streamItem.hasClass('hd-mode') ? 'main' : 'sub';
+                        this._logStreamReloadStep($streamItem, `Reconnecting MJPEG stream (quality: ${quality})...`, 'info');
                         await this.mjpegManager.startStream(cameraId, imgEl, quality);
+                        this._logStreamReloadStep($streamItem, 'MJPEG stream reconnected — live!', 'success');
                         this.setStreamStatus($streamItem, 'live', 'Live');
                     }
                 }
+                this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
                 return;
             }
 
-            // Mark this camera as undergoing manual restart
-            // This prevents WebSocket stream_restarted events from interfering
+            // Show overlay immediately — the restart takes several seconds and the
+            // user needs to know something is happening from the first click.
+            this._showStreamReloadOverlay($streamItem, 'restart');
+            this._logStreamReloadStep($streamItem, 'Backend restart requested — preparing to terminate FFmpeg process...', 'info');
+
+            // Mark this camera as undergoing manual restart.
+            // This prevents WebSocket stream_restarted events from triggering
+            // the auto-recovery path and interfering with our controlled flow.
             this.manualRestartInProgress.add(cameraId);
             console.log(`[Restart] ${cameraId}: Initiating backend FFmpeg restart...`);
             this.setStreamStatus($streamItem, 'loading', 'Restarting...');
 
             try {
-                // Call backend restart endpoint
+                // Step 1: Tell backend to kill + respawn FFmpeg
+                this._logStreamReloadStep($streamItem, 'Sending restart signal to backend API...', 'info');
                 const response = await fetch(`/api/stream/restart/${cameraId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -687,48 +780,65 @@ export class MultiStreamManager {
 
                 const result = await response.json();
                 console.log(`[Restart] ${cameraId}: Backend restart successful, stream_url: ${result.stream_url}`);
+                this._logStreamReloadStep($streamItem, 'Backend acknowledged — FFmpeg process terminated.', 'info');
+                this._logStreamReloadStep($streamItem, 'Spawning new FFmpeg instance and connecting to camera RTSP source...', 'info');
 
-                // Wait for FFmpeg to establish MediaMTX publish connection
-                // FFmpeg needs ~2-3 seconds to connect and start publishing
-                console.log(`[Restart] ${cameraId}: Waiting for FFmpeg to establish MediaMTX connection...`);
+                // Step 2: Wait for FFmpeg to establish its connection to the camera
+                // and begin publishing the HLS/WebRTC stream to MediaMTX.
+                // FFmpeg typically needs 2-3 s to negotiate RTSP and start streaming.
+                this._logStreamReloadStep($streamItem, 'Waiting for FFmpeg to publish to MediaMTX (~3 s)...', 'info');
                 await new Promise(r => setTimeout(r, 3000));
 
-                // Reconnect to stream with retry logic
-                // MediaMTX path may not be immediately available after FFmpeg starts
+                // Step 3: Reconnect the client-side player with retry logic.
+                // MediaMTX may not have the path ready immediately after FFmpeg starts,
+                // so we retry up to 3 times with 2 s between attempts.
                 const maxRetries = 3;
                 const retryDelay = 2000;
 
                 for (let attempt = 1; attempt <= maxRetries; attempt++) {
                     try {
+                        this._logStreamReloadStep($streamItem,
+                            `Reconnecting ${streamType} player (attempt ${attempt}/${maxRetries})...`, 'info');
                         console.log(`[Restart] ${cameraId}: Reconnecting (attempt ${attempt}/${maxRetries})...`);
 
                         if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
+                            this._logStreamReloadStep($streamItem, 'Rebuilding HLS.js instance and requesting fresh playlist...', 'info');
                             await this.hlsManager.forceRefreshStream(cameraId, videoElement);
                         } else if (streamType === 'WEBRTC') {
+                            this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
                             await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
                         }
 
-                        // Success - exit retry loop
+                        // Success — exit retry loop
                         break;
                     } catch (retryError) {
                         console.warn(`[Restart] ${cameraId}: Attempt ${attempt} failed: ${retryError.message}`);
                         if (attempt < maxRetries) {
+                            this._logStreamReloadStep($streamItem,
+                                `Attempt ${attempt} failed — MediaMTX path not ready yet. Retrying in ${retryDelay / 1000} s...`, 'warn');
                             console.log(`[Restart] ${cameraId}: Waiting ${retryDelay}ms before retry...`);
                             await new Promise(r => setTimeout(r, retryDelay));
                         } else {
-                            throw retryError; // Final attempt failed, propagate error
+                            throw retryError; // All retries exhausted — propagate to catch block
                         }
                     }
                 }
 
+                // Step 4: All done — animate the overlay out with the "waking" transition
+                this._logStreamReloadStep($streamItem, 'Stream fully restarted — live!', 'success');
                 this.setStreamStatus($streamItem, 'active', '');
                 console.log(`[Restart] ${cameraId}: Stream fully restarted`);
+                this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
 
             } catch (error) {
                 console.error(`[Restart] ${cameraId}: Failed - ${error.message}`);
+                this._logStreamReloadStep($streamItem, `Restart failed: ${error.message}`, 'error');
                 this.setStreamStatus($streamItem, 'error', `Restart failed: ${error.message}`);
+                // Leave error message visible for 4 s then dismiss
+                setTimeout(() => this._hideStreamReloadOverlay($streamItem), 4000);
             } finally {
-                // Clear manual restart flag regardless of success/failure
+                // Clear manual restart flag regardless of success/failure so the
+                // WebSocket recovery path can resume normal operation.
                 this.manualRestartInProgress.delete(cameraId);
                 console.log(`[Restart] ${cameraId}: Manual restart flow completed`);
             }
@@ -827,6 +937,11 @@ export class MultiStreamManager {
 
         // Click on stream item (not buttons) to expand
         this.$container.on('click', '.stream-item', async (e) => {
+            // Don't expand if arrange mode is active — let SortableJS handle the interaction
+            if (this.$container.hasClass('arrange-mode')) {
+                return;
+            }
+
             // Don't expand if clicking on a button, interactive element, or the more menu
             if ($(e.target).closest('button, .ptz-controls, .stream-controls, .stream-more-menu, a, input, select').length) {
                 return;
@@ -2855,6 +2970,87 @@ export class MultiStreamManager {
                 $button.prop('disabled', false);
             }, 1000);
         }
+    }
+
+    // =========================================================================
+    // Stream Reload Overlay helpers
+    //
+    // These power the per-tile animation shown while the user-triggered refresh
+    // or backend restart is in progress.  The overlay reuses the standby-overlay
+    // visual language (concentric spinning rings) but is scoped to a single
+    // stream-item via position:absolute.
+    // =========================================================================
+
+    /**
+     * Show the reload overlay on a single stream tile.
+     *
+     * @param {jQuery} $streamItem - The .stream-item container
+     * @param {'refresh'|'restart'} mode
+     *   'refresh' = client-side HLS.js reconnect (fast, no backend call)
+     *   'restart' = backend FFmpeg kill + respawn (slower, multi-step)
+     */
+    _showStreamReloadOverlay($streamItem, mode) {
+        const labels = {
+            refresh: {
+                title:    'Refreshing Stream',
+                subtitle: 'Client-side HLS.js reconnect'
+            },
+            restart: {
+                title:    'Restarting Stream',
+                subtitle: 'Backend FFmpeg process restart'
+            }
+        };
+        const cfg = labels[mode] || labels.refresh;
+        const $overlay = $streamItem.find('.stream-reload-overlay');
+        $overlay.find('.sro-title').text(cfg.title);
+        $overlay.find('.sro-subtitle').text(cfg.subtitle);
+        $overlay.find('.sro-log').empty();
+        $overlay.removeClass('waking').addClass('active');
+    }
+
+    /**
+     * Hide the reload overlay.
+     *
+     * When waking=true the overlay briefly switches to the green "waking" state
+     * (rings accelerate, eye turns green) before fading out — mirroring how the
+     * full-page standby overlay signals that streams are coming back online.
+     *
+     * @param {jQuery} $streamItem
+     * @param {boolean} [waking=false] - Animate the "stream reconnected" transition
+     */
+    _hideStreamReloadOverlay($streamItem, waking = false) {
+        const $overlay = $streamItem.find('.stream-reload-overlay');
+        if (waking) {
+            $overlay.addClass('waking');
+            setTimeout(() => $overlay.removeClass('active waking'), 1200);
+        } else {
+            $overlay.removeClass('active waking');
+        }
+    }
+
+    /**
+     * Append a timestamped status line to the overlay log.
+     *
+     * Lines animate in (fade + slide) and the log auto-scrolls to the bottom.
+     * Old lines stay visible so the user can see the full history.
+     *
+     * @param {jQuery} $streamItem
+     * @param {string} message - Human-readable description of the current step
+     * @param {'info'|'success'|'warn'|'error'} [type='info'] - Colour coding
+     */
+    _logStreamReloadStep($streamItem, message, type = 'info') {
+        const $log = $streamItem.find('.sro-log');
+        const ts = new Date().toLocaleTimeString('en-US', {
+            hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+        const $line = $(`<div class="sro-log-line sro-log-${type}">` +
+            `<span class="sro-ts">${ts}</span>` +
+            `<span class="sro-text">${message}</span>` +
+            `</div>`);
+        $log.append($line);
+        // Auto-scroll so the latest step is always visible
+        const logEl = $log[0];
+        if (logEl) logEl.scrollTop = logEl.scrollHeight;
     }
 
     /**

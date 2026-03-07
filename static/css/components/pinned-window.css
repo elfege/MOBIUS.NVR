@@ -1,0 +1,194 @@
+/* =============================================================================
+   PINNED WINDOW
+   Floating, draggable, resizable camera window.
+
+   Activated when a camera is both pinned AND switched to HD quality.
+   In this mode the .stream-item is detached from the grid, appended to
+   <body>, and positioned with position:fixed so it floats above everything.
+
+   Multiple floating windows are supported simultaneously.  Once the first
+   window is dragged away from its home position, background streams un-blur
+   and another camera can be tapped and pinned.
+
+   Distinct from the expanded modal (which is a full-screen overlay).
+   ============================================================================= */
+
+
+/* =============================================================================
+   FLOATING WINDOW BASE
+   ============================================================================= */
+
+.stream-item.pinned-window {
+    position: fixed !important;
+    z-index: 8000;
+
+    /* Minimum usable size */
+    min-width: 320px;
+    min-height: 200px;
+
+    border-radius: 12px;
+    overflow: hidden;
+
+    /* Override grid-area / aspect-ratio that apply in normal grid layout */
+    grid-column: unset !important;
+    grid-row:    unset !important;
+    aspect-ratio: unset !important;
+
+    /* Suppress arrange-mode jiggle */
+    animation: none !important;
+
+    /* Smooth shadow transition; position/size set via inline style (no CSS transition) */
+    transition: box-shadow 0.2s ease;
+
+    box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.75),
+        0 0 0 1.5px rgba(255, 183, 0, 0.4);
+}
+
+/* Amber ring while at home position — signals background is blurred */
+.stream-item.pinned-window.pw-at-home {
+    box-shadow:
+        0 24px 64px rgba(0, 0, 0, 0.75),
+        0 0 0 2px rgba(255, 183, 0, 0.75);
+}
+
+/* Elevated shadow + grabbing cursor while dragging */
+.stream-item.pinned-window.pw-dragging {
+    box-shadow:
+        0 40px 100px rgba(0, 0, 0, 0.85),
+        0 0 0 2px rgba(255, 183, 0, 0.7);
+    cursor: grabbing !important;
+}
+
+/* Suppress the normal stream-item hover scale inside floating windows */
+.stream-item.pinned-window:hover {
+    transform: none !important;
+}
+
+
+/* =============================================================================
+   TITLE BAR — drag handle + camera label + close button
+   ============================================================================= */
+
+.pinned-window-titlebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 38px;
+    z-index: 200;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px 0 12px;
+    gap: 8px;
+
+    /* Fade out downward so the video content shows through */
+    background: linear-gradient(
+        180deg,
+        rgba(0, 0, 0, 0.78) 0%,
+        rgba(0, 0, 0, 0.0)  100%
+    );
+
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.pinned-window-titlebar:active {
+    cursor: grabbing;
+}
+
+.pinned-window-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.92);
+    letter-spacing: 0.3px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    pointer-events: none; /* title is not interactive — titlebar handles drag */
+}
+
+/* Circular close button in the title bar */
+.pinned-window-close-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pinned-window-close-btn:hover {
+    background: rgba(239, 68, 68, 0.85);
+    color: #fff;
+}
+
+
+/* =============================================================================
+   RESIZE HANDLE — bottom-right corner (SE direction)
+   ============================================================================= */
+
+.pinned-window-resize-handle {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 26px;
+    height: 26px;
+    z-index: 200;
+    cursor: se-resize;
+
+    /* Three diagonal grip lines — similar to macOS resize corner */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cline x1='5' y1='15' x2='15' y2='5' stroke='rgba(255,183,0,0.55)' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='9' y1='15' x2='15' y2='9' stroke='rgba(255,183,0,0.55)' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='13' y1='15' x2='15' y2='13' stroke='rgba(255,183,0,0.55)' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.pinned-window-resize-handle:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cline x1='5' y1='15' x2='15' y2='5' stroke='rgba(255,183,0,0.9)' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='9' y1='15' x2='15' y2='9' stroke='rgba(255,183,0,0.9)' stroke-width='1.5' stroke-linecap='round'/%3E%3Cline x1='13' y1='15' x2='15' y2='13' stroke='rgba(255,183,0,0.9)' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+
+
+/* =============================================================================
+   BACKGROUND STATE
+   Applied to #streams-container while any pinned window is at its home position.
+   Lifts automatically once all windows have been dragged away.
+   ============================================================================= */
+
+/* Blur + dim background tiles */
+.streams-container.has-pinned-at-home .stream-item:not(.pinned-window) {
+    filter: blur(3px) brightness(0.45);
+    pointer-events: none;
+    transition: filter 0.35s ease, opacity 0.35s ease;
+}
+
+/* Smooth unblur when class is removed */
+.streams-container .stream-item:not(.pinned-window) {
+    transition: filter 0.35s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+
+/* =============================================================================
+   PINNED WINDOW — INNER VIDEO/IMG FILL
+   The video or img inside a floating window should fill the window area.
+   ============================================================================= */
+
+.stream-item.pinned-window .stream-video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    position: absolute;
+    top: 0;
+    left: 0;
+}

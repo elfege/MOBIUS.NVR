@@ -24,6 +24,7 @@ import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
 import { SnapshotStreamManager } from './snapshot-stream.js';
 import { talkbackManager } from './talkback-manager.js';
 import { VisibilityManager } from './visibility-manager.js';
+import { pinnedWindowManager } from './pinned-window-manager.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
@@ -394,12 +395,29 @@ export class MultiStreamManager {
                     localStorage.removeItem('pinnedCamera');
                 }
 
+                // Merge DB window positions into pinnedWindowManager (DB is authoritative)
+                if (prefs.pinned_windows && typeof prefs.pinned_windows === 'object') {
+                    pinnedWindowManager.mergeFromDB(prefs.pinned_windows);
+                }
+
                 // Auto-expand pinned camera after streams have had time to start
                 // (2s delay — streams may still be loading on first render)
                 if (pinnedFromDB) {
                     setTimeout(async () => {
                         const $tile = this.$container.find(`.stream-item[data-camera-serial="${pinnedFromDB}"]`);
-                        if ($tile.length && !$tile.hasClass('expanded')) {
+                        if (!$tile.length || $tile.hasClass('expanded') || pinnedWindowManager.isActive(pinnedFromDB)) return;
+
+                        // If camera is also HD, open as floating window; otherwise expand as modal
+                        const isHD = (() => {
+                            try {
+                                return (JSON.parse(localStorage.getItem('hdCameras') || '[]')).includes(pinnedFromDB);
+                            } catch { return false; }
+                        })();
+
+                        if (isHD) {
+                            console.log(`[Pin] Auto-activating floating window for pinned+HD camera: ${pinnedFromDB}`);
+                            pinnedWindowManager.activate(pinnedFromDB, $tile);
+                        } else {
                             console.log(`[Pin] Auto-expanding pinned camera: ${pinnedFromDB}`);
                             await this.expandCamera($tile);
                         }
@@ -981,6 +999,12 @@ export class MultiStreamManager {
 
             // Toggle expanded state
             if ($streamItem.hasClass('expanded')) {
+                // Block collapse if this camera is pinned — must unpin first
+                const serial = $streamItem.data('camera-serial');
+                if (serial && serial === localStorage.getItem('pinnedCamera')) {
+                    console.log(`[Expanded] Collapse blocked — camera ${serial} is pinned`);
+                    return;
+                }
                 this.collapseExpandedCamera();
             } else {
                 await this.expandCamera($streamItem);
@@ -1038,6 +1062,19 @@ export class MultiStreamManager {
             // Fire quality-change event — stream.js handles the actual restart
             $streamItem.trigger('camera-selector:quality-change', { quality: newQuality });
             console.log(`[HD] ${serial}: switched to ${newQuality}`);
+
+            // Floating window activation: if camera is also pinned, HD on = float, HD off = return to grid
+            const isPinned = localStorage.getItem('pinnedCamera') === serial;
+            if (isPinned) {
+                if (!isHD) {
+                    // Switched TO HD while pinned → activate floating window
+                    pinnedWindowManager.activate(serial, $streamItem);
+                } else if (pinnedWindowManager.isActive(serial)) {
+                    // Switched BACK to SD while floating → return to grid then expand as normal modal
+                    pinnedWindowManager.deactivate(serial);
+                    await this.expandCamera($streamItem);
+                }
+            }
         });
 
         // Pin toggle button (visible in expanded + fullscreen views)
@@ -1056,6 +1093,11 @@ export class MultiStreamManager {
                 $btn.attr('title', 'Pin: keep this camera in expanded view across reloads');
                 localStorage.removeItem('pinnedCamera');
                 this._savePinnedCamera(null);
+                // Deactivate floating window if active; return to normal expanded modal
+                if (pinnedWindowManager.isActive(serial)) {
+                    pinnedWindowManager.deactivate(serial);
+                    await this.expandCamera($streamItem);
+                }
                 console.log(`[Pin] ${serial}: unpinned`);
             } else {
                 // Unpin any previously pinned camera first
@@ -1065,7 +1107,49 @@ export class MultiStreamManager {
                 $btn.attr('title', 'Pinned — click to unpin (backdrop click disabled while pinned)');
                 localStorage.setItem('pinnedCamera', serial);
                 this._savePinnedCamera(serial);
+                // If camera is already HD, activate floating window immediately
+                const isHD = $streamItem.find('.stream-hd-btn').hasClass('hd-active');
+                if (isHD) {
+                    pinnedWindowManager.activate(serial, $streamItem);
+                }
                 console.log(`[Pin] ${serial}: pinned`);
+            }
+        });
+
+        // ============================================================================
+        // PINNED WINDOW CLOSE EVENT
+        // Fired by PinnedWindowManager when the × button is clicked on a floating window.
+        // Handles unpin + SD quality switch on the stream.js side.
+        // ============================================================================
+
+        $(document).on('pinned-window:close', async (e, { serial }) => {
+            console.log(`[PinnedWindow] Close event received for ${serial}`);
+
+            // Clear pin state
+            localStorage.removeItem('pinnedCamera');
+            this._savePinnedCamera(null);
+
+            const $tile = this.$container.find(`.stream-item[data-camera-serial="${serial}"]`);
+            $tile.find('.stream-pin-btn')
+                .removeClass('pin-active')
+                .attr('title', 'Pin: keep this camera in expanded view across reloads');
+
+            // Switch to SD directly (avoid re-triggering pin check in HD click handler)
+            const $hdBtn = $tile.find('.stream-hd-btn');
+            if ($hdBtn.hasClass('hd-active')) {
+                $hdBtn.removeClass('hd-active').find('.hd-btn-label').text('SD');
+                try {
+                    const stored = localStorage.getItem('hdCameras');
+                    let hdList = stored ? JSON.parse(stored) : [];
+                    hdList = hdList.filter(s => s !== serial);
+                    localStorage.setItem('hdCameras', JSON.stringify(hdList));
+                    fetch('/api/my-preferences', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ hd_cameras: hdList })
+                    }).catch(() => {});
+                } catch { /* non-critical */ }
+                $tile.trigger('camera-selector:quality-change', { quality: 'sub' });
             }
         });
 

@@ -127,6 +127,32 @@ sleep 10
 # Check container status
 if docker ps | grep -q unified-nvr; then
 	echo -e "${GREEN}✓ Container is running!${NC}"
+
+	# ── Run pending DB migrations ─────────────────────────────────────────────
+	# All migration files use IF NOT EXISTS guards — safe to run on every start.
+	# New columns/tables are applied automatically; existing ones are skipped.
+	echo ""
+	echo "Running DB migrations..."
+	_migration_dir="$(dirname "$SCRIPT_R_PATH")/psql/migrations"
+	_migration_ok=0
+	_migration_fail=0
+	for _mig in $(ls "$_migration_dir"/*.sql 2>/dev/null | sort); do
+		_mig_name="$(basename "$_mig")"
+		if docker exec -i nvr-db psql -U nvr_api -d nvr < "$_mig" >/dev/null 2>&1; then
+			echo -e "  ${GREEN}✓${NC} $_mig_name"
+			(( _migration_ok++ ))
+		else
+			echo -e "  ${RED}✗${NC} $_mig_name — check logs: docker logs nvr-db"
+			(( _migration_fail++ ))
+		fi
+	done
+	if [[ $_migration_fail -eq 0 ]]; then
+		echo -e "${GREEN}✓ Migrations complete ($_migration_ok files)${NC}"
+	else
+		echo -e "${YELLOW}⚠️  $_migration_fail migration(s) failed — DB may be incomplete${NC}"
+	fi
+	# ─────────────────────────────────────────────────────────────────────────
+
 	# AFTER container is running
 	echo ""
 	echo "Access the NVR at:"

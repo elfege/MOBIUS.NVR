@@ -81,7 +81,7 @@ Key design patterns:
 
 1. **Clone and configure:**
    ```bash
-   cd ~/0_NVR
+   cd ~/0_MOBIUS.NVR
    cp config/cameras.json.example config/cameras.json
    # Edit cameras.json with your camera details
    ```
@@ -105,7 +105,7 @@ Key design patterns:
 ## Directory Structure
 
 ```
-0_NVR/
+0_MOBIUS.NVR/
 ├── app.py                      # Flask application entry point
 ├── config/
 │   ├── cameras.json            # Camera configurations

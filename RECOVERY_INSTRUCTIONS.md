@@ -1,4 +1,4 @@
-# RECOVERY INSTRUCTIONS - dellserver:~/0_NVR
+# RECOVERY INSTRUCTIONS - dellserver:~/0_MOBIUS.NVR
 
 **Last updated:** 2026-02-15 15:55 EST
 
@@ -10,7 +10,7 @@
 1. **Early morning**: `server` host wiped by autonomous Claude testing remover.sh
 2. **12:31pm**: `server` partially restored from `officewsl`, but `.git` excluded
 3. **14:19-14:20pm**: `sync_wsl.sh` ran on `dellserver`, saw server's files as "newer" (timestamp 12:31)
-4. **14:19-14:20pm**: **ENTIRE `~/0_NVR` on dellserver overwritten** by server's incomplete state
+4. **14:19-14:20pm**: **ENTIRE `~/0_MOBIUS.NVR` on dellserver overwritten** by server's incomplete state
 5. **15:40pm**: `.git` directory restored from officewsl by recovery Claude
 
 **Current State (as of 15:55pm):**
@@ -55,10 +55,10 @@ Check for uncommitted work that existed BEFORE 14:19pm but is now missing:
 
 ```bash
 # Check if officewsl has more recent commits
-ssh officewsl "cd ~/0_NVR && git log --all --oneline -20"
+ssh officewsl "cd ~/0_MOBIUS.NVR && git log --all --oneline -20"
 
 # Compare working directory
-rsync -avn --exclude='.git' officewsl:~/0_NVR/ ~/0_NVR/ | grep '^>'
+rsync -avn --exclude='.git' officewsl:~/0_MOBIUS.NVR/ ~/0_MOBIUS.NVR/ | grep '^>'
 ```
 
 ### Step 2: Check for Lost Uncommitted Work
@@ -67,7 +67,7 @@ rsync -avn --exclude='.git' officewsl:~/0_NVR/ ~/0_NVR/ | grep '^>'
 
 Possible recovery sources:
 1. **IDE auto-save**: Check VSCode workspace state, local history
-2. **Backup system**: Check `/mnt/THE_BIG_DRIVE/________MAIN_LINUX_BACKUP/dellserver/current/0_NVR/`
+2. **Backup system**: Check `/mnt/THE_BIG_DRIVE/________MAIN_LINUX_BACKUP/dellserver/current/0_MOBIUS.NVR/`
    - Note: Backup of dellserver failed (only 17G transferred), may be incomplete
 3. **Git reflog**: `git reflog` to find any commits you made locally but didn't push
 4. **Chat history**: Review VSCode chat logs for code snippets
@@ -76,7 +76,7 @@ Possible recovery sources:
 
 Check that these files exist and are current:
 ```bash
-cd ~/0_NVR
+cd ~/0_MOBIUS.NVR
 
 # Backend
 ls -lh app.py
@@ -97,7 +97,7 @@ ls -lh packager/cameras.json
 ### Step 4: Test Container Build
 
 ```bash
-cd ~/0_NVR
+cd ~/0_MOBIUS.NVR
 docker compose down
 docker compose build
 docker compose up -d

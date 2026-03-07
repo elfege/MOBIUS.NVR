@@ -1442,10 +1442,10 @@ def api_get_my_preferences():
                 return jsonify(rows[0])
 
         # No preferences saved yet - return defaults
-        return jsonify({'hidden_cameras': [], 'hd_cameras': []})
+        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover'})
     except requests.RequestException as e:
         logger.error(f"Error fetching user preferences: {e}")
-        return jsonify({'hidden_cameras': [], 'hd_cameras': []})
+        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover'})
 
 
 @app.route('/api/my-preferences', methods=['PUT'])
@@ -1465,6 +1465,10 @@ def api_put_my_preferences():
         payload['hidden_cameras'] = data['hidden_cameras']
     if 'hd_cameras' in data:
         payload['hd_cameras'] = data['hd_cameras']
+    if 'default_video_fit' in data:
+        if data['default_video_fit'] not in ('cover', 'fill'):
+            return jsonify({'error': 'default_video_fit must be "cover" or "fill"'}), 400
+        payload['default_video_fit'] = data['default_video_fit']
 
     try:
         # Upsert: use Prefer: resolution=merge-duplicates with the unique constraint on user_id
@@ -1487,6 +1491,108 @@ def api_put_my_preferences():
             return jsonify({'error': 'Failed to save preferences'}), 500
     except requests.RequestException as e:
         logger.error(f"Error saving user preferences: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/camera/<camera_serial>/display', methods=['GET'])
+@csrf.exempt
+@login_required
+def api_get_camera_display(camera_serial):
+    """
+    Get per-camera display settings (currently: video_fit_mode).
+    Returns {'video_fit_mode': 'cover'|'fill'|None} — None means use user default.
+    """
+    try:
+        response = _postgrest_session.get(
+            f"{POSTGREST_URL}/cameras",
+            params={
+                'serial': f'eq.{camera_serial}',
+                'select': 'serial,video_fit_mode'
+            },
+            timeout=5
+        )
+        if response.status_code == 200:
+            rows = response.json()
+            if rows:
+                return jsonify({'video_fit_mode': rows[0].get('video_fit_mode')})
+        return jsonify({'video_fit_mode': None})
+    except requests.RequestException as e:
+        logger.error(f"Error fetching camera display settings for {camera_serial}: {e}")
+        return jsonify({'video_fit_mode': None})
+
+
+@app.route('/api/camera/<camera_serial>/display', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_put_camera_display(camera_serial):
+    """
+    Set per-camera video fit mode.
+    Body: { "video_fit_mode": "cover" | "fill" | null }
+    null clears the override — camera falls back to user default.
+    """
+    data = request.get_json()
+    if data is None:
+        return jsonify({'error': 'No data provided'}), 400
+
+    fit = data.get('video_fit_mode')
+    if fit is not None and fit not in ('cover', 'fill'):
+        return jsonify({'error': 'video_fit_mode must be "cover", "fill", or null'}), 400
+
+    try:
+        response = _postgrest_session.patch(
+            f"{POSTGREST_URL}/cameras",
+            params={'serial': f'eq.{camera_serial}'},
+            json={'video_fit_mode': fit},
+            timeout=5
+        )
+        if response.status_code in (200, 204):
+            return jsonify({'status': 'saved', 'video_fit_mode': fit})
+        logger.error(f"Failed to save camera display setting: {response.status_code} {response.text}")
+        return jsonify({'error': 'Failed to save'}), 500
+    except requests.RequestException as e:
+        logger.error(f"Error saving camera display setting for {camera_serial}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/my-camera-order', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_put_camera_order():
+    """
+    Save the user's preferred camera tile order.
+    Body: { "order": ["serial1", "serial2", ...] }
+    Upserts display_order values into user_camera_preferences for each serial.
+    """
+    data = request.get_json()
+    if not data or 'order' not in data:
+        return jsonify({'error': 'order array is required'}), 400
+
+    order = data['order']
+    if not isinstance(order, list):
+        return jsonify({'error': 'order must be an array of camera serials'}), 400
+
+    try:
+        # Upsert one row per camera with its new display_order index
+        rows = [
+            {
+                'user_id': current_user.id,
+                'camera_serial': serial,
+                'display_order': idx
+            }
+            for idx, serial in enumerate(order)
+        ]
+        response = _postgrest_session.post(
+            f"{POSTGREST_URL}/user_camera_preferences",
+            json=rows,
+            headers={'Prefer': 'resolution=merge-duplicates'},
+            timeout=5
+        )
+        if response.status_code in (200, 201):
+            return jsonify({'status': 'saved', 'count': len(rows)})
+        logger.error(f"Failed to save camera order: {response.status_code} {response.text}")
+        return jsonify({'error': 'Failed to save order'}), 500
+    except requests.RequestException as e:
+        logger.error(f"Error saving camera order: {e}")
         return jsonify({'error': str(e)}), 500
 
 

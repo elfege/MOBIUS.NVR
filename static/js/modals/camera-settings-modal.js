@@ -120,11 +120,15 @@ export class CameraSettingsModal {
         this.$modal.fadeIn(200);
         
         try {
-            // Load settings from backend
-            const settings = await this.controller.getSettings(cameraId);
-            
+            // Load recording settings and display settings in parallel
+            const [settings, displayResp] = await Promise.all([
+                this.controller.getSettings(cameraId),
+                fetch(`/api/camera/${cameraId}/display`).then(r => r.json()).catch(() => ({ video_fit_mode: null }))
+            ]);
+            const videoFitMode = displayResp.video_fit_mode || null;
+
             // Generate and insert form (pass cameraName for the rename field)
-            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType, this.streamType, cameraName);
+            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType, this.streamType, cameraName, videoFitMode);
             this.$modalBody.html(formHtml);
             
             // Attach form events

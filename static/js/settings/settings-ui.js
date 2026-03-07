@@ -164,6 +164,29 @@ export class SettingsUI {
             window.location.reload();
         });
 
+        // Global video fit mode toggle (cover vs fill)
+        // 'cover' = fill tile, may crop edges (no deformation, slight edge loss)
+        // 'fill'  = stretch to fill exactly (no loss, image may deform)
+        this.$content.on('change', '#video-fit-toggle', (e) => {
+            const isFill = $(e.currentTarget).is(':checked');
+            const fit = isFill ? 'fill' : 'cover';
+            console.log('[SettingsUI] Video fit changed:', fit);
+            window.VIDEO_FIT_DEFAULT = fit;
+            // Persist to DB via preferences API
+            fetch('/api/my-preferences', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ default_video_fit: fit })
+            }).catch(err => console.warn('[SettingsUI] Failed to save video fit preference:', err));
+            // Apply immediately to all tiles that have no per-camera override
+            $('.stream-item').each((_, item) => {
+                const $item = $(item);
+                if (!$item.data('video-fit')) {
+                    $item.find('.stream-video').css('object-fit', fit);
+                }
+            });
+        });
+
         // Quiet Status Messages toggle
         // When enabled, hides verbose status messages (Refreshing, Degraded, Recovered, etc.)
         // Only shows important statuses: Starting, Connecting, Live, Failed, Error
@@ -436,6 +459,28 @@ export class SettingsUI {
         </div>
         ` : ''}
 
+        <!-- Video Fit Mode Setting -->
+        <div class="setting-row">
+            <div class="setting-top">
+                <div class="setting-label">
+                    <i class="fas fa-expand-arrows-alt"></i>
+                    Video Fit Mode
+                </div>
+                <div class="setting-control">
+                    <label class="setting-toggle">
+                        <input type="checkbox" id="video-fit-toggle"
+                               ${this.isVideoFitFill() ? 'checked' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            <div class="setting-description">
+                <strong>Off (Cover):</strong> Fills tile, crops edges — no image deformation, slight edge loss.<br>
+                <strong>On (Fill):</strong> Stretches to fit tile exactly — no cropping, image may deform if camera aspect differs.<br>
+                This is your default. Individual cameras can override it in their settings.
+            </div>
+        </div>
+
         <!-- Quiet Status Messages Setting -->
         <div class="setting-row">
             <div class="setting-top">
@@ -565,6 +610,15 @@ export class SettingsUI {
      */
     isForceWebRTCGridEnabled() {
         return localStorage.getItem('forceWebRTCGrid') === 'true';
+    }
+
+    /**
+     * Check if video fit mode is 'fill' (stretch) vs 'cover' (crop).
+     * 'fill' = no loss but may deform. 'cover' = no deform but may crop edges.
+     * Default is 'cover' (unchecked).
+     */
+    isVideoFitFill() {
+        return (window.VIDEO_FIT_DEFAULT || 'cover') === 'fill';
     }
 
     /**

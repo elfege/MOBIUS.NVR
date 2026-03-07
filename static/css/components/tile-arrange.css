@@ -1,0 +1,191 @@
+/* =============================================================================
+   TILE ARRANGE MODE
+   iOS-inspired long-press drag-to-rearrange for camera tiles.
+
+   Design differences from iOS:
+   - Jiggle uses asymmetric easing (not uniform iOS wobble)
+   - Done pill sits bottom-center (iOS uses top-right)
+   - Drag handle is a 6-dot badge top-left (iOS has no handle, full-tile lift)
+   - No delete badge
+   ============================================================================= */
+
+
+/* =============================================================================
+   JIGGLE KEYFRAME — asymmetric to feel distinct from iOS
+   ============================================================================= */
+
+@keyframes tile-jiggle {
+    0%   { transform: rotate(0deg)   scale(1.00); }
+    15%  { transform: rotate(-1.6deg) scale(1.01); }
+    30%  { transform: rotate(0deg)   scale(1.00); }
+    45%  { transform: rotate(1.4deg)  scale(1.01); }
+    60%  { transform: rotate(0deg)   scale(1.00); }
+    75%  { transform: rotate(-0.8deg) scale(1.00); }
+    90%  { transform: rotate(0.4deg)  scale(1.00); }
+    100% { transform: rotate(0deg)   scale(1.00); }
+}
+
+
+/* =============================================================================
+   ARRANGE MODE CONTAINER
+   ============================================================================= */
+
+/* When arrange mode is active, add a subtle ring around the grid area */
+.streams-container.arrange-mode {
+    outline: 2px solid rgba(255, 183, 0, 0.35);
+    outline-offset: -2px;
+    border-radius: 4px;
+}
+
+/* All tiles jiggle in arrange mode */
+.streams-container.arrange-mode .stream-item {
+    animation: tile-jiggle 0.75s ease-in-out infinite;
+    cursor: grab;
+    /* Stagger start times so tiles don't all move in lockstep */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* Stagger jiggle start times per position to avoid uniform sync */
+.streams-container.arrange-mode .stream-item:nth-child(2n)   { animation-delay: 0.08s; }
+.streams-container.arrange-mode .stream-item:nth-child(3n)   { animation-delay: 0.16s; }
+.streams-container.arrange-mode .stream-item:nth-child(4n)   { animation-delay: 0.04s; }
+.streams-container.arrange-mode .stream-item:nth-child(5n)   { animation-delay: 0.20s; }
+.streams-container.arrange-mode .stream-item:nth-child(6n)   { animation-delay: 0.12s; }
+.streams-container.arrange-mode .stream-item:nth-child(7n)   { animation-delay: 0.24s; }
+
+/* Pause jiggle while a tile is being actively sorted */
+.streams-container.sorting-active .stream-item {
+    animation-play-state: paused;
+}
+
+/* The tile being dragged — lift and brighten */
+.streams-container.arrange-mode .stream-item.tile-sort-chosen {
+    animation-play-state: paused;
+    cursor: grabbing;
+    opacity: 0.95;
+    transform: scale(1.04) rotate(0deg) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 183, 0, 0.6);
+    z-index: 1000;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+/* The ghost placeholder at the drop target — a muted outline */
+.streams-container.arrange-mode .stream-item.tile-sort-ghost {
+    opacity: 0.2;
+    background: rgba(255, 183, 0, 0.12);
+    border: 2px dashed rgba(255, 183, 0, 0.5);
+    animation: none !important;
+}
+
+/* The drag element (mirror clone SortableJS moves around — rarely needed
+   with ghostClass but kept for safety) */
+.tile-sort-drag {
+    opacity: 0.85;
+}
+
+
+/* =============================================================================
+   DRAG HANDLE BADGE (top-left corner, shown in arrange mode)
+   ============================================================================= */
+
+/* A 6-dot grid icon that appears when arrange mode is active.
+   Signals "this is draggable" without covering the stream content. */
+.stream-item::before {
+    content: '';
+    /* Six-dot grid encoded as an SVG data URI — distinct from any iOS element */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Ccircle cx='4' cy='4' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='8' cy='4' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='12' cy='4' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='4' cy='8' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='8' cy='8' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='12' cy='8' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='4' cy='12' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='8' cy='12' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3Ccircle cx='12' cy='12' r='1.5' fill='rgba(255,255,255,0.85)'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 28px;
+    height: 28px;
+    background-color: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 6px;
+    z-index: 30;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+/* Show handle only in arrange mode */
+.streams-container.arrange-mode .stream-item::before {
+    opacity: 1;
+    pointer-events: none;  /* SortableJS handles the drag, handle is just visual */
+}
+
+/* Hide handle on the chosen (lifted) tile */
+.streams-container.arrange-mode .stream-item.tile-sort-chosen::before {
+    opacity: 0;
+}
+
+
+/* =============================================================================
+   DONE BUTTON — bottom-center pill
+   ============================================================================= */
+
+.tile-arrange-done-btn {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+
+    /* Pill shape */
+    padding: 12px 36px;
+    border-radius: 999px;
+
+    /* Amber/warm tone — distinct from iOS blue Done button */
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #1a1a1a;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(245, 158, 11, 0.4);
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.tile-arrange-done-btn:hover {
+    transform: translateX(-50%) scale(1.05);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(245, 158, 11, 0.5);
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+}
+
+.tile-arrange-done-btn:active {
+    transform: translateX(-50%) scale(0.97);
+}
+
+.tile-arrange-done-btn i {
+    font-size: 14px;
+}
+
+
+/* =============================================================================
+   ARRANGE MODE — DISABLE HOVER EFFECTS ON TILES
+   Prevents the normal hover:scale that conflicts with drag interactions
+   ============================================================================= */
+
+.streams-container.arrange-mode .stream-item:hover {
+    transform: none;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Except the chosen (dragged) tile keeps its lifted look */
+.streams-container.arrange-mode .stream-item.tile-sort-chosen:hover {
+    transform: scale(1.04) rotate(0deg) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 183, 0, 0.6);
+}

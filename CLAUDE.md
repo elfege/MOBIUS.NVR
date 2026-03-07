@@ -4,7 +4,7 @@
 
 1. Have I checked if context compaction occurred? (phrase: "from a previous conversation that ran out of context")
 2. If yes → Did I commit/push current work, create new branch with next suffix (_b,_c), update docs/README_handoff.md noting the compaction?
-3. Have I read `/home/elfege/0_NVR/CLAUDE.md` for project-specific instructions?
+3. Have I read `/home/elfege/0_MOBIUS.NVR/CLAUDE.md` for project-specific instructions?
 4. Have I read: `docs/nvr_engineering_architecture.html`?
 5. Read `~/0_CLAUDE_IC/user_profile_elfege.md` — persistent user profile (background, preferences, communication style). Never make the user re-explain his history.
 6. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
@@ -111,6 +111,7 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 
 **Iterative development stays on feature branches:**
 
+- A deploy is NOT done until the user has tested and confirmed the feature works. Do not mark tasks complete or move on to merge/cleanup until the user explicitly confirms success.
 - A feature is NOT complete until the user has tested and confirmed it works.
 - If testing reveals issues, do NOT merge to main. Instead:
   - Commit the current state on the feature branch.
@@ -190,7 +191,7 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 
 **Always read at conversation start:**
 
-- `/home/elfege/0_NVR/CLAUDE.md` - Project-specific instructions (overrides all defaults)
+- `/home/elfege/0_MOBIUS.NVR/CLAUDE.md` - Project-specific instructions (overrides all defaults)
 - `docs/README_handoff.md` - Recent session history (read last N lines first)
 
 **Re-read CLAUDE.md periodically:**
@@ -207,10 +208,10 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 
 **CRITICAL - Documentation File Location Rule:**
 
-- ALL documentation files MUST be in `/home/elfege/0_NVR/docs/` directory
+- ALL documentation files MUST be in `/home/elfege/0_MOBIUS.NVR/docs/` directory
 - NEVER create or update documentation in `/home/elfege/` root directory
 - If you find duplicate docs in home root, consult user before merging/deleting
-- Common mistake: Creating `~/README_handoff.md` instead of `~/0_NVR/docs/README_handoff.md`
+- Common mistake: Creating `~/README_handoff.md` instead of `~/0_MOBIUS.NVR/docs/README_handoff.md`
 
 **Update engineering documentation:**
 
@@ -290,6 +291,11 @@ startnvr    # Full restart with credential reload (./start.sh)
 1. Note in your response: "Backend changes require container restart. Please run `./start.sh`"
 2. Continue with other work - don't wait
 3. Document in handoff that restart is pending
+
+**Build/Deploy aliases:**
+
+- `deploy` alias = `./deploy.sh --no-cache --prune` — full Docker image rebuild (cache cleared, dangling images pruned). This is a LOCAL rebuild, NOT a production deployment.
+- `startnvr` = `./start.sh` — starts containers with credential reload from AWS
 
 **Additional notes:**
 
@@ -419,7 +425,7 @@ NOTE: Steps overlap with RULE 0 and RULE 1 intentionally - redundancy ensures cr
 - Consider: Priority levels (P0/P1/P2) for conflict resolution?
 
 **Open question for user:**
-Should I re-read `/home/elfege/0_NVR/CLAUDE.md` at regular intervals (every 10 messages? every tool use?) or only at conversation start? This might help prevent drift from project-specific instructions.
+Should I re-read `/home/elfege/0_MOBIUS.NVR/CLAUDE.md` at regular intervals (every 10 messages? every tool use?) or only at conversation start? This might help prevent drift from project-specific instructions.
 
 Every message... It's that simple.
 
@@ -564,3 +570,31 @@ Every message... It's that simple.
 - **19.5.2** For AWS operations: `export AWS_PROFILE=personal` BEFORE calling any `pull_*` or `get_*` functions to avoid interactive SSO prompts that hang in non-interactive Claude sessions
 - **19.5.3** Color variables (`$RED`, `$GREEN`, `$NC`, etc.) require `. ~/.env.colors`
 - **19.5.4** These files are the **canonical source of truth** for shared infrastructure. When writing new scripts, use existing functions rather than reimplementing
+
+---
+
+## RULE 20: Intercom Hook (Auto-Check on Every Message)
+
+### 20.1 Overview
+- A `UserPromptSubmit` hook automatically checks the intercom on every user message
+- Hook script: `~/0_CLAUDE_IC/hooks/intercom_check.sh`
+- State file: `~/.claude/intercom_last_seen_${INSTANCE_ID}` (tracks last MSG number seen)
+- Registered in `~/.claude/settings.json` under `hooks.UserPromptSubmit`
+
+### 20.2 How It Works
+1. User sends a message → Claude Code fires `UserPromptSubmit` hook
+2. Hook SSHes to server, gets latest MSG number from intercom.md
+3. Compares against last-seen number in state file
+4. If new messages exist: fetches them, filters for `To: office-nvr` or `To: ALL`
+5. Relevant messages are injected into Claude's context via stdout (appears as `<intercom-update>`)
+6. Silent (no output, no delay) when nothing new
+
+### 20.3 Background Watchers Deprecated
+- **DO NOT** use `while true` bash polling loops for intercom monitoring
+- They have a ~10-minute timeout in Claude Code and fail silently
+- The hook replaces them entirely
+
+### 20.4 Maintenance
+- When adding new projects, update the `ID_MAP` in `~/0_CLAUDE_IC/hooks/intercom_check.sh`
+- Canonical copy on server: `server:~/0_CLAUDE_IC/hooks/intercom_check.sh`
+- After updating, copy to all machines and post intercom notification

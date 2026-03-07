@@ -340,6 +340,18 @@
 
             <!-- HD Mode badge - shown when stream is in main (HD) quality -->
             <div class="stream-hd-badge">HD</div>
+            {% if info.stream_type in ['HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'] %}
+            <!-- HD toggle button - visible in expanded modal and fullscreen views -->
+            <button class="stream-hd-btn" aria-label="Toggle HD quality" title="Toggle HD/SD quality"
+                    data-camera-serial="{{ serial }}">
+                <span class="hd-btn-label">SD</span>
+            </button>
+            {% endif %}
+            <!-- Pin button - visible in expanded/fullscreen; pins camera to always open in modal mode -->
+            <button class="stream-pin-btn" aria-label="Pin camera in modal" title="Pin: keep this camera in expanded view across reloads"
+                    data-camera-serial="{{ serial }}">
+                <i class="fas fa-thumbtack"></i>
+            </button>
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
                 <i class="fas fa-expand"></i>
             </button>

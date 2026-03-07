@@ -15,17 +15,66 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: February 19, 2026 13:35 EST*
+*Last updated: March 04, 2026 01:00 EST*
 
-**Branch:** `db_camera_config_migration_FEB_19_2026_a`
+**Branch:** `stream_switch_mjpeg_fix_MAR_04_2026_a` (latest of 3 issue branches)
 
-**Previous Session (Feb 16):** iPad WebRTC fix, database migration proposal (3 options), user chose Option B.
+**Previous Session (Feb 19):** Database camera config migration (Option B), CameraRepository DB-first loading.
 
-**Previous Branch:** `ipad_grid_force_webrtc_fix_FEB_16_2026_a` (iPad fix + proposal doc)
+**Previous Branch:** `db_camera_config_migration_FEB_19_2026_a`
 
 ---
 
-## Current Session: February 19, 2026 (10:00 EST) -> Ongoing
+## Current Session: March 04, 2026 (00:14 - 01:00 EST)
+
+### Issues 1-3 from `docs/ISSUES_March_4_2026.md`
+
+User filed 7 issues; this session addressed the top 3 by priority.
+
+#### Issue 1: Fullscreen close button unresponsive on frozen streams
+
+**Branch:** `fullscreen_exit_frozen_fix_MAR_04_2026_a` (pushed)
+
+**Files Modified:**
+
+1. `static/js/streaming/stream.js` (00:30 EST)
+   - Changed fullscreen exit from async `closeFullscreen()` to synchronous `forceExitFullscreen()`
+   - Added 2-second watchdog on `_fullscreenProcessing` debounce flag
+   - NOTE: Click-capture overlay was added then reverted — conflicted with PTZ controls (same z-index 10000)
+2. `static/css/components/fullscreen.css` (00:30 EST)
+   - Overlay CSS added then reverted (same commit sequence)
+
+#### Issue 2: Eufy PTZ preset overwriting fails (503)
+
+**Branch:** `eufy_preset_retry_MAR_04_2026_a` (pushed)
+
+**Files Modified:**
+
+1. `services/eufy/eufy_bridge.py` (00:45 EST)
+   - `_run_bridge_command()`: retry loop with backoff (up to 2 attempts, 5s/10s waits)
+   - New `_keepalive_loop()`: pings port 3000 every 30 min, proactive restart on failure
+   - `MAX_AUTO_RESTARTS` increased from 1 to 2
+   - Keepalive thread started in `start()`
+2. `app.py` (00:45 EST)
+   - Preset save 503 response now includes `retry_available: true` + `bridge_status`
+3. `static/js/controllers/ptz-controller.js` (00:45 EST)
+   - Error handler shows inline "Retry" button when `retry_available` is true
+
+#### Issue 3: Stream type switching broken (MJPEG → WebRTC)
+
+**Branch:** `stream_switch_mjpeg_fix_MAR_04_2026_a` (pushed)
+
+**Files Modified:**
+
+1. `app.py` (01:00 EST)
+   - New endpoint: `POST /api/mediamtx/create-path/<serial>` — creates sub+main MediaMTX paths via v3 API, starts FFmpeg publisher
+2. `static/js/streaming/stream.js` (01:00 EST)
+   - `switchStreamType()` Phase 0: when switching from MJPEG and no path exists, calls create-path endpoint instead of failing
+   - MJPEG restart button now refreshes the stream (stop+start) instead of silently returning
+
+---
+
+## Previous Session: February 19, 2026 (10:00 EST) -> Ongoing
 
 ### Option B: Full Database Camera Configuration Migration
 
@@ -499,15 +548,73 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 
 ---
 
+### Context Compaction #4 (Feb 28, 22:23 EST)
+
+**Context compaction occurred.** All 5 phases of performance refactoring were complete and verified (syntax checks passed). Committed as `f1e8b31` on branch `camera_rename_ui_FEB_28_2026_a` and pushed to remote.
+
+**Status at compaction:** Implementation complete, awaiting container restart for testing.
+
+---
+
+### Recovery Session: March 04, 2026 (01:15-01:45 EST)
+
+**Context:** VSCode crashed mid-session, lost conversation. Recovered from git state + plan file + handoff.
+
+**Repo housekeeping:**
+
+48. **Git remote URL fix** (01:20 EST)
+    - Push URL was `github.com/elfege/NVR.git` (old name), fetch was `MOBIUS.NVR.git`
+    - Fixed: `git remote set-url --push origin .../MOBIUS.NVR.git`
+    - GitHub was 301-redirecting, but this was a ticking time bomb
+
+49. **`.gitignore` fix + neolink untrack** (01:25 EST) — commit `5b30e14`
+    - Line 31 was `# neolink` (commented out) → changed to `neolink/target/`
+    - `git rm --cached -r neolink/target/` — removed 1454 build artifacts from tracking
+
+50. **Project rename completion** (01:30 EST) — commit `87d8030`
+    - 29 files had `0_NVR` → `0_MOBIUS.NVR` path/comment updates sitting unstaged since directory rename
+    - These were never committed after the pre-rename snapshot (`7e2bf18`)
+    - Also added `LICENSE` file (MIT)
+
+51. **Container restart** (01:31 EST)
+    - Ran `./start.sh` with `AWS_PROFILE=personal` — non-interactive
+    - All containers up: unified-nvr (healthy), postgres, postgrest, packager, edge, go2rtc, neolink
+    - Both HTTP and HTTPS health checks passed
+    - 30 MediaMTX paths created, 28 ready (2 offline cameras: T821451024233587, XCPTP369388MNVTG)
+    - Eufy bridge port 3000 alive
+
+**Issues 1-3 verification:**
+
+| Issue | Code in container | Infrastructure | Status |
+|-------|------------------|----------------|--------|
+| 1 (fullscreen exit) | Yes | N/A | Already passed in prior session |
+| 2 (Eufy preset retry) | Yes — retry loop, keepalive, BridgeCrashedError all loaded | Bridge alive, port 3000 open | Needs UI test: save preset on T8419P0024110C6A |
+| 3 (MJPEG→WebRTC switch) | Yes — create-path endpoint registered | All cameras have MediaMTX paths | Needs UI test: switch camera to MJPEG first, then back |
+
+**Note:** No cameras currently configured as MJPEG, so Issue 3's path-creation flow can't be auto-tested. The code path and endpoint are in place but need manual UI testing.
+
+**User permissions granted for this session (lost in crash, re-stated):**
+- Rule 9 override: Claude can restart containers
+- Can run `./start.sh`, `deploy.sh --no-cache --prune`, or manual docker compose with AWS creds
+- Full bash execution without prompting
+- No PowerShell/Chrome remote testing (may have caused the VSCode crash)
+
+---
+
 ## Next Session TODO
 
-**Immediate:**
-- [ ] Restart container (`./start.sh`) and test performance refactoring
-- [ ] Verify static files have Cache-Control headers: `curl -I https://host:8444/static/js/stream.js`
-- [ ] Test SocketIO camera state push (browser dev tools → Network → WS tab)
-- [ ] Test non-blocking stream restart (should return instantly)
-- [ ] Restart container (`./start.sh`) and test Eufy PTZ self-healing
+**Immediate (User must test in UI):**
+- [ ] Test Issue 2: Save/overwrite preset on Eufy KITCHEN OFFICE (T8419P0024110C6A)
+- [ ] Test Issue 3: Switch a camera to MJPEG, then switch back to WebRTC — verify create-path works
+- [ ] Test performance refactoring: verify static Cache-Control, SocketIO push, non-blocking restart
+- [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
 - [ ] Test camera rename feature
+
+**Issues 4-7 (from `docs/ISSUES_March_4_2026.md`):**
+- [ ] Issue 4: Mobile UI overhaul (iPhone/iPad) — needs planning session
+- [ ] Issue 5: Older iPad stream stalling — likely related to Issues 6+7
+- [ ] Issue 6: Frozen stream diagnostics — per-camera logging, virtual terminal, DB log tables
+- [ ] Issue 7: Device capability assessment — fingerprinting, adaptive quality, ML learning
 
 **Testing Required (DB Migration):**
 - [ ] Test stream type switching: select MJPEG in UI -> backend serves MJPEG
@@ -522,8 +629,10 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 - [ ] Monitor for Entrance door RTSP null exceptions
 
 **Cleanup:**
+- [x] Fix `.gitignore` neolink entry (done 01:25 EST)
+- [x] Commit project rename files (done 01:30 EST)
+- [x] Fix git remote push URL (done 01:20 EST)
 - [ ] Decide on recursive `docs/docs/docs/...` deletions
-- [ ] Commit or revert `.gitignore` changes
 
 **Pending (Phase 2 -- Code Quality):**
 - [ ] Centralize 30+ hardcoded timeouts to config/timeouts.yaml

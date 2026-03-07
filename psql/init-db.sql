@@ -7,7 +7,7 @@
 -- When adding new tables or altering existing ones, update this file
 -- AND create a migration file in psql/migrations/ for existing deployments.
 --
--- Last updated: March 7, 2026 (consolidated migrations 001-013)
+-- Last updated: March 7, 2026 (consolidated migrations 001-014)
 -- =============================================================================
 
 -- =============================================================================
@@ -307,6 +307,8 @@ CREATE TABLE user_preferences (
     default_video_fit VARCHAR(10) NOT NULL DEFAULT 'cover' CHECK (default_video_fit IN ('cover', 'fill')),
     -- Pinned camera: auto-expands on load, backdrop click blocked while set
     pinned_camera VARCHAR(255) DEFAULT NULL,
+    -- Floating window positions/sizes for pinned+HD cameras { serial: {x,y,w,h} }
+    pinned_windows JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -446,7 +448,7 @@ CREATE POLICY "Allow all" ON camera_state FOR ALL TO nvr_anon USING (true) WITH 
 -- Tables created: recordings, motion_events, ptz_client_latency, ptz_presets,
 --   presence, file_operations_log, users, user_sessions, user_camera_preferences,
 --   user_camera_access, user_preferences, cameras, camera_state
--- Columns added (012-013): cameras.video_fit_mode, user_preferences.default_video_fit,
---   user_preferences.pinned_camera
+-- Columns added (012-014): cameras.video_fit_mode, user_preferences.default_video_fit,
+--   user_preferences.pinned_camera, user_preferences.pinned_windows
 -- Default accounts: admin/admin (must change), view/view
 -- =============================================================================

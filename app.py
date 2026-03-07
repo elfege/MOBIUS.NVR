@@ -1431,7 +1431,7 @@ def api_get_my_preferences():
             f"{POSTGREST_URL}/user_preferences",
             params={
                 'user_id': f'eq.{current_user.id}',
-                'select': 'hidden_cameras,hd_cameras,default_video_fit,pinned_camera'
+                'select': 'hidden_cameras,hd_cameras,default_video_fit,pinned_camera,pinned_windows'
             },
             timeout=5
         )
@@ -1442,10 +1442,10 @@ def api_get_my_preferences():
                 return jsonify(rows[0])
 
         # No preferences saved yet - return defaults
-        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None})
+        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None, 'pinned_windows': {}})
     except requests.RequestException as e:
         logger.error(f"Error fetching user preferences: {e}")
-        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None})
+        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None, 'pinned_windows': {}})
 
 
 @app.route('/api/my-preferences', methods=['PUT'])
@@ -1473,6 +1473,10 @@ def api_put_my_preferences():
         # Accept string serial or null to clear the pin
         val = data['pinned_camera']
         payload['pinned_camera'] = val if isinstance(val, str) else None
+    if 'pinned_windows' in data:
+        # Accept dict mapping serial → {x, y, w, h} window position/size
+        val = data['pinned_windows']
+        payload['pinned_windows'] = val if isinstance(val, dict) else {}
 
     try:
         # Upsert: use Prefer: resolution=merge-duplicates with the unique constraint on user_id

@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/standby-overlay.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-reload-overlay.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/tile-arrange.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/pinned-window.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -1011,6 +1012,9 @@
 
     <!-- Tile arrange manager (long-press to jiggle and drag-to-rearrange tiles) -->
     <script type="module" src="{{ url_for('static', filename='js/streaming/tile-arrange-manager.js') }}"></script>
+
+    <!-- Pinned window manager (HD + pin → floating draggable window) -->
+    <script type="module" src="{{ url_for('static', filename='js/streaming/pinned-window-manager.js') }}"></script>
 
 </body>
 

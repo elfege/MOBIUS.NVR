@@ -369,16 +369,15 @@ export class MultiStreamManager {
             this.initIOSPagination();
         }
 
-        // Pre-fetch user preferences to get default_video_fit
-        // Runs in parallel; updates window.VIDEO_FIT_DEFAULT which setupLayout() reads.
-        // If setupLayout() already ran (first call), re-apply fit after fetch resolves.
+        // Pre-fetch user preferences to get default_video_fit and pinned_camera.
+        // Runs in parallel with stream loading.
         fetch('/api/my-preferences')
             .then(r => r.json())
             .then(prefs => {
+                // --- Video fit default ---
                 const fit = prefs.default_video_fit || 'cover';
                 if (window.VIDEO_FIT_DEFAULT !== fit) {
                     window.VIDEO_FIT_DEFAULT = fit;
-                    // Re-apply to any tiles that didn't have a per-camera override
                     this.$container.find('.stream-item').each((_, item) => {
                         const $item = $(item);
                         if (!$item.data('video-fit')) {
@@ -386,8 +385,28 @@ export class MultiStreamManager {
                         }
                     });
                 }
+
+                // --- Pinned camera: sync localStorage from DB (DB is source of truth) ---
+                const pinnedFromDB = prefs.pinned_camera || null;
+                if (pinnedFromDB) {
+                    localStorage.setItem('pinnedCamera', pinnedFromDB);
+                } else {
+                    localStorage.removeItem('pinnedCamera');
+                }
+
+                // Auto-expand pinned camera after streams have had time to start
+                // (2s delay — streams may still be loading on first render)
+                if (pinnedFromDB) {
+                    setTimeout(async () => {
+                        const $tile = this.$container.find(`.stream-item[data-camera-serial="${pinnedFromDB}"]`);
+                        if ($tile.length && !$tile.hasClass('expanded')) {
+                            console.log(`[Pin] Auto-expanding pinned camera: ${pinnedFromDB}`);
+                            await this.expandCamera($tile);
+                        }
+                    }, 2000);
+                }
             })
-            .catch(() => { /* non-critical, cover is the safe default */ });
+            .catch(() => { /* non-critical */ });
 
         // Pre-fetch streaming config (caches DTLS setting for iOS WebRTC check)
         // This runs in parallel with stream loading so config is ready when needed
@@ -968,9 +987,86 @@ export class MultiStreamManager {
             }
         });
 
-        // Click backdrop to collapse expanded camera
+        // Click backdrop to collapse expanded camera — blocked if current camera is pinned
         $('#expanded-backdrop').on('click', () => {
+            const $expanded = $('.stream-item.expanded');
+            const serial = $expanded.data('camera-serial');
+            if (serial && serial === localStorage.getItem('pinnedCamera')) {
+                // Pinned camera: backdrop click does nothing; must unpin first
+                console.log(`[Expanded] Backdrop blocked — camera ${serial} is pinned`);
+                return;
+            }
             this.collapseExpandedCamera();
+        });
+
+        // HD toggle button (visible in expanded + fullscreen views)
+        // Toggles between main (HD) and sub (SD) quality using the existing
+        // camera-selector:quality-change event pipeline.
+        this.$container.on('click', '.stream-hd-btn', async (e) => {
+            e.stopPropagation();
+            const $btn = $(e.currentTarget);
+            const $streamItem = $btn.closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+            const isHD = $btn.hasClass('hd-active');
+            const newQuality = isHD ? 'sub' : 'main';
+
+            // Toggle button visual state
+            $btn.toggleClass('hd-active', !isHD);
+            $btn.find('.hd-btn-label').text(!isHD ? 'HD' : 'SD');
+
+            // Persist to localStorage (same key as camera-selector-controller)
+            try {
+                const stored = localStorage.getItem('hdCameras');
+                let hdList = stored ? JSON.parse(stored) : [];
+                if (!isHD) {
+                    if (!hdList.includes(serial)) hdList.push(serial);
+                } else {
+                    hdList = hdList.filter(s => s !== serial);
+                }
+                localStorage.setItem('hdCameras', JSON.stringify(hdList));
+
+                // Persist to DB via /api/my-preferences
+                fetch('/api/my-preferences', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hd_cameras: hdList })
+                }).catch(err => console.warn('[HD] Failed to save HD preference:', err));
+            } catch (err) {
+                console.warn('[HD] localStorage error:', err);
+            }
+
+            // Fire quality-change event — stream.js handles the actual restart
+            $streamItem.trigger('camera-selector:quality-change', { quality: newQuality });
+            console.log(`[HD] ${serial}: switched to ${newQuality}`);
+        });
+
+        // Pin toggle button (visible in expanded + fullscreen views)
+        // Persists as localStorage 'pinnedCamera' + DB 'pinned_camera'.
+        // When pinned: camera auto-expands on reload, backdrop click blocked.
+        this.$container.on('click', '.stream-pin-btn', async (e) => {
+            e.stopPropagation();
+            const $btn = $(e.currentTarget);
+            const $streamItem = $btn.closest('.stream-item');
+            const serial = $streamItem.data('camera-serial');
+            const isPinned = $btn.hasClass('pin-active');
+
+            if (isPinned) {
+                // Unpin
+                $btn.removeClass('pin-active');
+                $btn.attr('title', 'Pin: keep this camera in expanded view across reloads');
+                localStorage.removeItem('pinnedCamera');
+                this._savePinnedCamera(null);
+                console.log(`[Pin] ${serial}: unpinned`);
+            } else {
+                // Unpin any previously pinned camera first
+                this.$container.find('.stream-pin-btn.pin-active').removeClass('pin-active');
+                // Pin this one
+                $btn.addClass('pin-active');
+                $btn.attr('title', 'Pinned — click to unpin (backdrop click disabled while pinned)');
+                localStorage.setItem('pinnedCamera', serial);
+                this._savePinnedCamera(serial);
+                console.log(`[Pin] ${serial}: pinned`);
+            }
         });
 
         // ============================================================================
@@ -3006,6 +3102,11 @@ export class MultiStreamManager {
         $overlay.find('.sro-subtitle').text(cfg.subtitle);
         $overlay.find('.sro-log').empty();
         $overlay.removeClass('waking').addClass('active');
+
+        // Reset the message queue timestamp so the first log fires immediately.
+        // Subsequent synchronous _logStreamReloadStep calls are staggered by
+        // SRO_LOG_STEP_MS so the user can read each line as it appears.
+        $streamItem[0]._sroNextLogAt = Date.now();
     }
 
     /**
@@ -3031,26 +3132,45 @@ export class MultiStreamManager {
     /**
      * Append a timestamped status line to the overlay log.
      *
+     * Calls are queued so that even synchronous bursts of log messages appear
+     * one at a time with a SRO_LOG_STEP_MS gap between them, giving the user
+     * time to read each line.  The queue is reset by _showStreamReloadOverlay.
+     *
      * Lines animate in (fade + slide) and the log auto-scrolls to the bottom.
-     * Old lines stay visible so the user can see the full history.
      *
      * @param {jQuery} $streamItem
      * @param {string} message - Human-readable description of the current step
      * @param {'info'|'success'|'warn'|'error'} [type='info'] - Colour coding
      */
     _logStreamReloadStep($streamItem, message, type = 'info') {
-        const $log = $streamItem.find('.sro-log');
-        const ts = new Date().toLocaleTimeString('en-US', {
-            hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
-        });
-        const $line = $(`<div class="sro-log-line sro-log-${type}">` +
-            `<span class="sro-ts">${ts}</span>` +
-            `<span class="sro-text">${message}</span>` +
-            `</div>`);
-        $log.append($line);
-        // Auto-scroll so the latest step is always visible
-        const logEl = $log[0];
-        if (logEl) logEl.scrollTop = logEl.scrollHeight;
+        // Milliseconds between consecutive log lines — slow enough to read,
+        // fast enough not to frustrate.
+        const SRO_LOG_STEP_MS = 700;
+
+        const el = $streamItem[0];
+        const now = Date.now();
+
+        // Calculate how far in the future this message should appear
+        const fireAt = Math.max(now, el._sroNextLogAt ?? now);
+        const delay  = fireAt - now;
+
+        // Advance the queue pointer for the next caller
+        el._sroNextLogAt = fireAt + SRO_LOG_STEP_MS;
+
+        setTimeout(() => {
+            const $log = $streamItem.find('.sro-log');
+            const ts = new Date().toLocaleTimeString('en-US', {
+                hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+            });
+            const $line = $(`<div class="sro-log-line sro-log-${type}">` +
+                `<span class="sro-ts">${ts}</span>` +
+                `<span class="sro-text">${message}</span>` +
+                `</div>`);
+            $log.append($line);
+            // Auto-scroll so the latest step is always visible
+            const logEl = $log[0];
+            if (logEl) logEl.scrollTop = logEl.scrollHeight;
+        }, delay);
     }
 
     /**
@@ -3821,6 +3941,19 @@ export class MultiStreamManager {
      * Shows all control buttons for easy access
      * @param {jQuery} $streamItem - The stream item to expand
      */
+    /**
+     * Persist the pinned camera serial to the server (user_preferences.pinned_camera).
+     * Also updates localStorage (already done by caller before this is invoked).
+     * @param {string|null} serial - Camera serial to pin, or null to clear
+     */
+    _savePinnedCamera(serial) {
+        fetch('/api/my-preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pinned_camera: serial })
+        }).catch(err => console.warn('[Pin] Failed to save pinned camera preference:', err));
+    }
+
     async expandCamera($streamItem) {
         // First exit fullscreen if active (mutual exclusivity with fullscreen mode)
         const $fullscreenItem = $('.stream-item.css-fullscreen');
@@ -3840,6 +3973,30 @@ export class MultiStreamManager {
 
         // Add expanded class to stream item
         $streamItem.addClass('expanded');
+
+        // Sync HD button visual state from localStorage
+        try {
+            const hdList = JSON.parse(localStorage.getItem('hdCameras') || '[]');
+            const $hdBtn = $streamItem.find('.stream-hd-btn');
+            if (hdList.includes(cameraId)) {
+                $hdBtn.addClass('hd-active');
+                $hdBtn.find('.hd-btn-label').text('HD');
+            } else {
+                $hdBtn.removeClass('hd-active');
+                $hdBtn.find('.hd-btn-label').text('SD');
+            }
+        } catch (e) { /* non-critical */ }
+
+        // Sync pin button visual state from localStorage
+        const pinnedSerial = localStorage.getItem('pinnedCamera');
+        const $pinBtn = $streamItem.find('.stream-pin-btn');
+        if (pinnedSerial === cameraId) {
+            $pinBtn.addClass('pin-active');
+            $pinBtn.attr('title', 'Pinned — click to unpin (backdrop click disabled while pinned)');
+        } else {
+            $pinBtn.removeClass('pin-active');
+            $pinBtn.attr('title', 'Pin: keep this camera in expanded view across reloads');
+        }
 
         // Prevent body scroll while modal is open
         $('body').css('overflow', 'hidden');

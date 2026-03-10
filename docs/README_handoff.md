@@ -17,7 +17,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 *Last updated: March 09, 2026 22:09 EDT*
 
-**Branch:** `stream_switch_mjpeg_fix_MAR_04_2026_a` (latest of 3 issue branches)
+**Branch:** `ptz_baichuan_E1_MAR_09_2026_a` (new branch — Baichuan E1 PTZ investigation)
 
 **Previous Session (Feb 19):** Database camera config migration (Option B), CameraRepository DB-first loading.
 

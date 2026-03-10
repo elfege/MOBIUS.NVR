@@ -62,7 +62,10 @@ class BaichuanPTZHandler:
     def _get_credential_provider(cls) -> ReolinkCredentialProvider:
         """Get or create credential provider instance."""
         if cls._credential_provider is None:
-            cls._credential_provider = ReolinkCredentialProvider(use_api_credentials=True)
+            # PTZ requires admin credentials — api-user lacks PTZ permission on E1 and
+            # other budget Reolink cameras (returns HTTP 400 on PtzCtrl command).
+            # use_api_credentials=False → NVR_REOLINK_USERNAME/PASSWORD (admin)
+            cls._credential_provider = ReolinkCredentialProvider(use_api_credentials=False)
         return cls._credential_provider
 
     @classmethod

@@ -233,9 +233,9 @@ export class MultiStreamManager {
 
                     // For WebRTC streams that are still black, use poll-based as secondary fallback
                     // This catches the case where WebSocket notified too early and fallback also failed
-                    if (streamType === 'WEBRTC' && videoElement &&
+                    if ((streamType === 'WEBRTC' || streamType === 'GO2RTC') && videoElement &&
                         (videoElement.readyState < 2 || videoElement.videoWidth === 0)) {
-                        console.log(`[Recovery] ${cameraId}: Poll-based secondary recovery for black WebRTC stream (${previousState} → ${newState})`);
+                        console.log(`[Recovery] ${cameraId}: Poll-based secondary recovery for black ${streamType} stream (${previousState} → ${newState})`);
                         this.handleBackendRecovery(cameraId, $streamItem);
                         return;
                     }
@@ -744,6 +744,21 @@ export class MultiStreamManager {
                         setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
                     });
 
+            } else if (streamType === 'GO2RTC') {
+                this._logStreamReloadStep($streamItem, 'Closing go2rtc WebRTC connection...', 'info');
+                this._logStreamReloadStep($streamItem, 'Reconnecting via go2rtc API...', 'info');
+
+                this.webrtcManager.stopStream(cameraId);
+                Promise.resolve(this.webrtcManager.startGo2rtcStream(cameraId, videoElement))
+                    .then(() => {
+                        this._logStreamReloadStep($streamItem, 'go2rtc WebRTC stream live!', 'success');
+                        this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
+                    })
+                    .catch((err) => {
+                        this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
+                        setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
+                    });
+
             } else {
                 // Stream type not supported for client-side refresh
                 this._logStreamReloadStep($streamItem, `Stream type "${streamType}" does not support client-side refresh.`, 'warn');
@@ -853,6 +868,10 @@ export class MultiStreamManager {
                         } else if (streamType === 'WEBRTC') {
                             this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
                             await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                        } else if (streamType === 'GO2RTC') {
+                            this._logStreamReloadStep($streamItem, 'Reconnecting via go2rtc WebRTC API...', 'info');
+                            this.webrtcManager.stopStream(cameraId);
+                            await this.webrtcManager.startGo2rtcStream(cameraId, videoElement);
                         }
 
                         // Success — exit retry loop
@@ -2306,7 +2325,7 @@ export class MultiStreamManager {
         }
 
         // Phase 0b: Check MediaMTX path availability for non-MJPEG types
-        // MJPEG connects directly to camera, all others need MediaMTX
+        // MJPEG connects directly to camera, GO2RTC uses go2rtc container, rest need MediaMTX
         const mediamtxTypes = ['WEBRTC', 'HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS'];
         if (mediamtxTypes.includes(newStreamType)) {
             try {
@@ -2413,6 +2432,12 @@ export class MultiStreamManager {
                 videoEl = $streamItem.find('video')[0];
                 if (videoEl) {
                     await this.webrtcManager.startStream(cameraSerial, videoEl, quality);
+                }
+            } else if (newStreamType === 'GO2RTC') {
+                // go2rtc WebRTC: bypasses FFmpeg + MediaMTX for low-latency Neolink streams
+                videoEl = $streamItem.find('video')[0];
+                if (videoEl) {
+                    await this.webrtcManager.startGo2rtcStream(cameraSerial, videoEl);
                 }
             } else {
                 // HLS, LL_HLS, NEOLINK, NEOLINK_LL_HLS — all go through HLS manager
@@ -2658,6 +2683,11 @@ export class MultiStreamManager {
                     success = await this.webrtcManager.startStream(cameraId, streamElement, quality);
                     console.log(`[Stream] WebRTC started for ${cameraId} with quality: ${quality}`);
                 }
+            } else if (streamType === 'GO2RTC') {
+                // go2rtc WebRTC: Neolink -> go2rtc -> WebRTC (bypasses FFmpeg + MediaMTX)
+                // Fixes ~12s latency from Neolink's broken DTS=0 timestamps
+                success = await this.webrtcManager.startGo2rtcStream(cameraId, streamElement);
+                console.log(`[Stream] go2rtc WebRTC started for ${cameraId}`);
             } else {
                 throw new Error(`Unknown stream type: ${streamType}`);
             }
@@ -2699,7 +2729,7 @@ export class MultiStreamManager {
 
             // For HLS/LL_HLS/WEBRTC streams, show "Connecting..." instead of "Failed"
             // These streams have retry logic and may still succeed
-            const isRetryableStream = ['HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS', 'WEBRTC'].includes(streamType);
+            const isRetryableStream = ['HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS', 'WEBRTC', 'GO2RTC'].includes(streamType);
             if (isRetryableStream) {
                 this.setStreamStatus($streamItem, 'loading', 'Connecting...');
                 this.updateStreamButtons($streamItem, true);  // Keep buttons enabled for retry
@@ -2752,7 +2782,8 @@ export class MultiStreamManager {
                 success = await this.hlsManager.stopStream(cameraId);
             } else if (streamType === 'RTMP') {
                 success = this.flvManager.stopStream(cameraId);
-            } else if (streamType === 'WEBRTC') {
+            } else if (streamType === 'WEBRTC' || streamType === 'GO2RTC') {
+                // Both MediaMTX WebRTC and go2rtc WebRTC use same stopStream()
                 success = this.webrtcManager.stopStream(cameraId);
             }
 
@@ -2853,9 +2884,12 @@ export class MultiStreamManager {
                 await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
             } else if (streamType === 'WEBRTC') {
                 await this.restartWebRTCStream(cameraId, videoElement);
+            } else if (streamType === 'GO2RTC') {
+                // go2rtc restart: stop then re-establish WebRTC via go2rtc API
+                this.webrtcManager.stopStream(cameraId);
+                await new Promise(r => setTimeout(r, 500));
+                await this.webrtcManager.startGo2rtcStream(cameraId, videoElement);
             }
-
-
 
             // Success: update status and reattach health
             this.setStreamStatus($streamItem, 'live', 'Live');
@@ -2920,26 +2954,32 @@ export class MultiStreamManager {
                 await new Promise(r => setTimeout(r, 1000)); // Brief delay for backend to stabilize
                 this.hlsManager.forceRefreshStream(cameraId, videoElement);
                 console.log(`[Recovery] ${cameraId}: HLS refresh triggered`);
-            } else if (streamType === 'WEBRTC') {
+            } else if (streamType === 'WEBRTC' || streamType === 'GO2RTC') {
                 // IMPORTANT: For WebRTC, call forceRefreshStream IMMEDIATELY without delay
                 // The 1-second delay was causing T8416P0023352DA9 to fail while manual refresh worked
                 // Manual refresh button calls forceRefreshStream directly - we should too
-                console.log(`[Recovery] ${cameraId}: Using WebRTC forceRefreshStream (same as manual refresh - NO delay)`);
-                this.setStreamStatus($streamItem, 'loading', 'Refreshing WebRTC...');
-                this.webrtcManager.forceRefreshStream(cameraId, videoElement);
-                console.log(`[Recovery] ${cameraId}: WebRTC refresh triggered`);
+                console.log(`[Recovery] ${cameraId}: Using ${streamType} forceRefreshStream (same as manual refresh - NO delay)`);
+                this.setStreamStatus($streamItem, 'loading', `Refreshing ${streamType}...`);
+                if (streamType === 'GO2RTC') {
+                    // go2rtc: stop then restart via go2rtc API
+                    this.webrtcManager.stopStream(cameraId);
+                    await this.webrtcManager.startGo2rtcStream(cameraId, videoElement);
+                } else {
+                    this.webrtcManager.forceRefreshStream(cameraId, videoElement);
+                }
+                console.log(`[Recovery] ${cameraId}: ${streamType} refresh triggered`);
 
                 // FALLBACK: If video is still black after 5 seconds, trigger refresh button click directly
                 // This is the "nuclear option" - directly clicking the button that we know works
                 setTimeout(() => {
                     if (videoElement && (videoElement.readyState < 2 || videoElement.videoWidth === 0)) {
-                        console.log(`[Recovery] ${cameraId}: WebRTC still black after 5s - triggering refresh button click directly`);
+                        console.log(`[Recovery] ${cameraId}: ${streamType} still black after 5s - triggering refresh button click directly`);
                         const $refreshBtn = $streamItem.find('.refresh-stream-btn');
                         if ($refreshBtn.length) {
                             $refreshBtn.trigger('click');
                         }
                     } else {
-                        console.log(`[Recovery] ${cameraId}: WebRTC recovered successfully (readyState=${videoElement?.readyState}, videoWidth=${videoElement?.videoWidth})`);
+                        console.log(`[Recovery] ${cameraId}: ${streamType} recovered successfully (readyState=${videoElement?.readyState}, videoWidth=${videoElement?.videoWidth})`);
                     }
                 }, 5000);
             } else {
@@ -3050,7 +3090,7 @@ export class MultiStreamManager {
             el._healthDetach = this.health.attachRTMP(cameraId, el, flv);
         } else if (streamType === 'MJPEG' || streamType === 'mjpeg_proxy') {
             el._healthDetach = this.health.attachMjpeg(cameraId, el);
-        } else if (streamType === 'WEBRTC') {
+        } else if (streamType === 'WEBRTC' || streamType === 'GO2RTC') {
             const pc = this.webrtcManager?.activeStreams?.get?.(cameraId)?.pc || null;
             el._healthDetach = this.health.attachWebRTC(cameraId, el, pc);
         }
@@ -3611,6 +3651,13 @@ export class MultiStreamManager {
                 return; // Don't process other stream type switches
             }
 
+            // GO2RTC: already native resolution (no sub/main split) - just enter fullscreen as-is
+            if (streamType === 'GO2RTC') {
+                console.log(`[Fullscreen] ${cameraId}: GO2RTC already at native resolution, entering fullscreen`);
+                $streamItem.data('switched-to-main', false);
+                return;
+            }
+
             // For LL_HLS/NEOLINK/WEBRTC cameras: Switch to main stream (high-res)
             // The backend dual-output FFmpeg provides both sub and main streams
             // User can choose between HLS and WebRTC for fullscreen via Settings
@@ -3706,11 +3753,11 @@ export class MultiStreamManager {
 
                     this.pausedStreams.push({ id, type: 'SNAPSHOT', cameraType: $item.data('camera-type') });
                 }
-                // Pause WebRTC by closing the peer connection (will reconnect on resume)
-                else if (itemStreamType === 'WEBRTC') {
+                // Pause WebRTC/GO2RTC by closing the peer connection (will reconnect on resume)
+                else if (itemStreamType === 'WEBRTC' || itemStreamType === 'GO2RTC') {
                     const stream = this.webrtcManager.activeStreams.get(id);
                     if (stream && videoEl) {
-                        console.log(`[Fullscreen] Pausing WebRTC stream: ${id}`);
+                        console.log(`[Fullscreen] Pausing ${itemStreamType} stream: ${id}`);
                         // Store the stream type before stopping
                         videoEl._webrtcStreamType = stream.type || 'sub';
                         this.webrtcManager.stopStream(id);
@@ -3721,7 +3768,7 @@ export class MultiStreamManager {
                             delete videoEl._healthDetach;
                         }
 
-                        this.pausedStreams.push({ id, type: 'WEBRTC' });
+                        this.pausedStreams.push({ id, type: itemStreamType });
                     }
                 }
             }
@@ -3998,6 +4045,18 @@ export class MultiStreamManager {
                         this.attachHealthMonitor(stream.id, $item, itemStreamType);
                     } catch (e) {
                         console.error(`[Fullscreen] Failed to resume WebRTC stream ${stream.id}:`, e);
+                    }
+                }
+            }
+            else if (stream.type === 'GO2RTC') {
+                if (videoEl) {
+                    console.log(`[Fullscreen] Resuming go2rtc stream: ${stream.id}`);
+                    delete videoEl._webrtcStreamType;
+                    try {
+                        await this.webrtcManager.startGo2rtcStream(stream.id, videoEl);
+                        this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                    } catch (e) {
+                        console.error(`[Fullscreen] Failed to resume go2rtc stream ${stream.id}:`, e);
                     }
                 }
             }
@@ -4682,6 +4741,10 @@ export class MultiStreamManager {
                 await this.hlsManager.startStream(cameraId, videoEl, quality);
             } else if (videoEl && streamType === 'WEBRTC') {
                 await this.webrtcManager.startStream(cameraId, videoEl, quality);
+            } else if (videoEl && streamType === 'GO2RTC') {
+                // go2rtc serves native resolution only (no sub/main split)
+                // Quality toggle has no effect — just restart the same stream
+                await this.webrtcManager.startGo2rtcStream(cameraId, videoEl);
             }
 
             this.setStreamStatus($streamItem, 'live', quality === 'main' ? 'HD' : 'Live');

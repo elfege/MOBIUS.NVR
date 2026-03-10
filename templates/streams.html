@@ -373,7 +373,7 @@
             <div class="stream-hd-badge">HD</div>
             <!-- Bottom-left control bar: latency badge (injected by JS) + HD + pin -->
             <div class="stream-bottom-bar">
-                {% if info.stream_type in ['HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'] %}
+                {% if info.stream_type in ['HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS', 'GO2RTC'] %}
                 <button class="stream-hd-btn" aria-label="Toggle HD quality" title="Toggle HD/SD quality"
                         data-camera-serial="{{ serial }}">
                     <span class="hd-btn-label">SD</span>
@@ -528,6 +528,9 @@
                     {% if info.type == 'reolink' %}
                     <button class="stream-type-option" data-type="NEOLINK">Neolink</button>
                     <button class="stream-type-option" data-type="NEOLINK_LL_HLS">Neo-LLHLS</button>
+                    {% endif %}
+                    {% if info.stream_type == 'NEOLINK' or info.stream_type == 'NEOLINK_LL_HLS' or info.stream_type == 'GO2RTC' %}
+                    <button class="stream-type-option" data-type="GO2RTC" title="Low-latency via go2rtc (bypasses FFmpeg+MediaMTX)">go2rtc</button>
                     {% endif %}
                 </div>
             </div>

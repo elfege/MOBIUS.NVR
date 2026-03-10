@@ -98,6 +98,13 @@ export class TileArrangeManager {
             if (this.arrangeMode) return;
             const tile = e.target.closest('.stream-item');
             if (!tile) return;
+            // Arrange mode is grid-only: block in fullscreen, expanded modal,
+            // or when any PTZ panel is currently open (ptz-active class on toggle btn).
+            // PTZ operations require held touch — without this guard a long pan
+            // triggers arrange mode after 500 ms.
+            if (document.querySelector('.stream-item.css-fullscreen, .stream-item.expanded')) return;
+            if (document.querySelector('.stream-ptz-toggle-btn.ptz-active')) return;
+            if (e.target.closest('button, a, input, select, .ptz-controls, .stream-controls, .stream-more-menu')) return;
 
             this._pressMoved = false;
             this._longPressTimer = setTimeout(() => {
@@ -126,6 +133,12 @@ export class TileArrangeManager {
             if (e.button !== 0) return;  // Left button only
             const tile = e.target.closest('.stream-item');
             if (!tile) return;
+            // Arrange mode is grid-only: block in fullscreen, expanded modal,
+            // or when any PTZ panel is open (held mouse on a direction button
+            // reaches 500 ms and would otherwise trigger arrange mode).
+            if (document.querySelector('.stream-item.css-fullscreen, .stream-item.expanded')) return;
+            if (document.querySelector('.stream-ptz-toggle-btn.ptz-active')) return;
+            if (e.target.closest('button, a, input, select, .ptz-controls, .stream-controls, .stream-more-menu')) return;
 
             this._pressMoved = false;
             this._longPressTimer = setTimeout(() => {
@@ -311,6 +324,19 @@ export class TileArrangeManager {
             this.exitArrangeMode(true);
         } else {
             this.enterArrangeMode();
+        }
+    }
+
+    /**
+     * Silently exit arrange mode without saving.
+     * Called by stream.js whenever the view transitions out of the grid
+     * (entering fullscreen or expanded modal) so arrange mode cannot
+     * persist in a state where it has no meaning.
+     */
+    deactivate() {
+        if (this.arrangeMode) {
+            console.log('[TileArrange] Deactivated by view transition (fullscreen/expanded)');
+            this.exitArrangeMode(false);
         }
     }
 }

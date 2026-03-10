@@ -13,6 +13,8 @@ export class CameraStateMonitor {
      * @param {object} opts - Configuration options
      * @param {function} opts.onRecovery - Callback when camera recovers (degraded/offline → online)
      *                                     Called with (cameraId, $streamItem, previousState, newState)
+     * @param {function} opts.onDegraded - Callback when camera transitions to degraded or offline
+     *                                     Called with (cameraId, $streamItem, previousState, newState)
      */
     constructor(opts = {}) {
         this.fallbackInterval = 30000; // Batch poll every 30 seconds (fallback only)
@@ -20,6 +22,7 @@ export class CameraStateMonitor {
         this.isRunning = false;
         this.previousStates = new Map(); // Track previous state per camera for transition detection
         this.onRecovery = opts.onRecovery || null; // Callback for recovery events
+        this.onDegraded = opts.onDegraded || null; // Callback for degraded/offline transitions
         this.cameraElements = new Map(); // Map camera_id → $streamItem
         this.socketConnected = false;
     }
@@ -204,6 +207,21 @@ export class CameraStateMonitor {
                     this.onRecovery(cameraId, $streamItem, previousState, state.availability);
                 } catch (e) {
                     console.error(`[CameraState] ${cameraId}: Error in onRecovery callback`, e);
+                }
+            }
+        }
+
+        // Check for transition INTO degraded/offline (health drop)
+        const isNowUnhealthy = state.availability === 'degraded' || state.availability === 'offline';
+        const wasHealthy = !previousState || previousState === 'online';
+        if (isNowUnhealthy && wasHealthy) {
+            console.log(`[CameraState] ${cameraId}: DEGRADED detected (${previousState} → ${state.availability})`);
+
+            if (this.onDegraded) {
+                try {
+                    this.onDegraded(cameraId, $streamItem, previousState, state.availability);
+                } catch (e) {
+                    console.error(`[CameraState] ${cameraId}: Error in onDegraded callback`, e);
                 }
             }
         }

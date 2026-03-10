@@ -105,7 +105,10 @@ class BaichuanPTZHandler:
 
         try:
             logger.info(f"Connecting to {camera_serial} via Baichuan ({camera_ip})")
-            host = Host(host=camera_ip, username=username, password=password)
+            # bc_only=True: use only the Baichuan protocol on port 9000.
+            # Without this, reolink_aio 0.19+ attempts HTTPS on port 443 first,
+            # which fails on E1/budget cameras that don't expose a web API.
+            host = Host(host=camera_ip, username=username, password=password, bc_only=True)
 
             # Get device info to establish connection
             await host.get_host_data()
@@ -435,8 +438,8 @@ def reboot_camera_baichuan(camera_serial: str, camera_config: Dict) -> Tuple[boo
 
         logger.info(f"Initiating Baichuan reboot for camera {camera_serial} at {host}")
 
-        # Create Host instance
-        api = Host(host, username, password)
+        # Create Host instance (bc_only=True: use Baichuan port 9000, not HTTPS 443)
+        api = Host(host, username, password, bc_only=True)
 
         try:
             # Login first

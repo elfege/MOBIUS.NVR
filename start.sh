@@ -138,11 +138,11 @@ if docker ps | grep -q unified-nvr; then
 	_migration_fail=0
 	for _mig in $(ls "$_migration_dir"/*.sql 2>/dev/null | sort); do
 		_mig_name="$(basename "$_mig")"
-		if docker exec -i nvr-db psql -U nvr_api -d nvr < "$_mig" >/dev/null 2>&1; then
+		if docker exec -i nvr-postgres psql -U nvr_api -d nvr < "$_mig" >/dev/null 2>&1; then
 			echo -e "  ${GREEN}✓${NC} $_mig_name"
 			(( _migration_ok++ ))
 		else
-			echo -e "  ${RED}✗${NC} $_mig_name — check logs: docker logs nvr-db"
+			echo -e "  ${RED}✗${NC} $_mig_name — check logs: docker logs nvr-postgres"
 			(( _migration_fail++ ))
 		fi
 	done

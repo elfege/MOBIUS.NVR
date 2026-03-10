@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 07, 2026 00:45 EST*
+*Last updated: March 09, 2026 22:09 EDT*
 
 **Branch:** `stream_switch_mjpeg_fix_MAR_04_2026_a` (latest of 3 issue branches)
 
@@ -279,6 +279,52 @@ export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credent
     - 95270000YPTKLLD6 (REOLINK Cat Feeders) — Neolink bridge dependency
     - These cameras timeout at 15s, watchdog recovers them eventually
     - User confirmed: "but faster now" (DB migration regression resolved)
+
+---
+
+## Session: March 09, 2026 (21:30–22:09 EDT)
+
+### 55. HLS frozen stream recovery — `static/js/streaming/hls-stream.js` (21:35 EDT)
+
+**Problem:** Streams with lag > 30s (e.g. Cat Feeders showing 338.9s badge) would stay frozen forever.
+
+**Fix:** Extended `_attachLatencyMeter()` with 2-stage auto-recovery:
+- **Stage 1 (10s of lag > 30s):** `forceRefreshStream()` — HLS.js destroy+reinit, zero backend involvement. 120s cooldown prevents loops.
+- **Stage 2 (60s after Stage 1, if still frozen):** `GET /api/camera/state/<id>` — logs backend pipeline state. Frontend never forces backend restart; StreamWatchdog owns that.
+- `cameraId` parameter added to `_attachLatencyMeter(hls, videoEl, cameraId)` and call site updated.
+- Recovery state (`_lagStartMs`, `_frozenUiRestarted`, `_frozenLastRestartMs`, `_frozenPostRestartTimer`) lives on `videoEl` to survive HLS.js reinits.
+
+### 56. Fullscreen exit — grid streams not resuming — `static/js/streaming/stream.js` (21:45 EDT)
+
+**Problem:** Exiting fullscreen via button/ESC left all grid streams paused. Root cause: **two bugs**:
+1. `forceExitFullscreen()` cleared `pausedStreams = []` before deferred `closeFullscreen()` ran
+2. `closeFullscreen()` returned early (`.css-fullscreen` already removed) → resume loop never reached
+
+**Fix:**
+- Extracted resume loop into new `_resumePausedStreams()` async method
+- `closeFullscreen()` early-return path now calls `await this._resumePausedStreams()` before returning
+- Removed `this.pausedStreams = []` from `forceExitFullscreen()`
+
+### 57. Cat Feeders PTZ (95270000YPTKLLD6) — partial fix — `services/ptz/baichuan_ptz_handler.py` (22:00 EDT)
+
+**Root cause 1 — FIXED:** `reolink_aio 0.19.1` defaults to HTTPS port 443 (closed on E1). Added `bc_only=True` to both `Host()` calls in the handler.
+
+**Root cause 2 — UNSOLVED:** PtzCtrl (Baichuan cmd_id 18) returns `error code 1, response code 400` from the camera.
+
+**Investigation findings:**
+- Camera reachable (192.168.10.123 pings, port 9000 open)
+- Baichuan connects OK, `ptz: True`, `ptzType: 3`, full capabilities confirmed
+- `bc_only=True` does NOT populate `_channels` (requires HTTP API) — channel must be manually injected
+- Even with `h._channels = [0]` injected AND `bc_only=True`, PtzCtrl still returns 400
+- Both XML formats (with/without `<channelId>`) tested — both rejected
+
+**Next steps for PTZ:**
+- Try `admin` user credentials instead of `api-user`
+- Check E1 firmware version vs when PTZ last worked
+- Try downgrading `reolink_aio` to previous version
+- Separate issue: T8416P cameras returning 503 on ONVIF presets after restart — likely timing (auto-resolves)
+
+**All changes uncommitted.** Container restart already run by user.
 
 ---
 
@@ -659,14 +705,183 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 
 ---
 
+### Stream Reload Overlay + Favicon (Mar 07, 01:30-02:06 EST)
+
+**Branch:** `stream_switch_mjpeg_fix_MAR_04_2026_a` (unchanged)
+
+52. **`static/images/mobius.nvr.png`** (01:30 EST)
+    - New favicon image added (was untracked)
+
+53. **7 HTML templates** (01:32 EST)
+    - Favicon refs: `images/mobius.png` → `images/mobius.nvr.png`
+
+54. **`static/css/components/stream-reload-overlay.css`** (01:45 EST) — NEW FILE
+    - Per-tile reload animation: scaled-down standby ring motif, `position: absolute`
+    - 5 rings + pulsing eye + ambient particles + step log area
+    - `.waking` state: rings accelerate, eye turns green on success
+    - Log lines staggered 700ms apart, 0.55s fade+slide animation
+
+55. **`templates/streams.html`** (01:46 EST)
+    - CSS `<link>` added; `.stream-reload-overlay` HTML injected in every `.stream-item`
+
+56. **`static/js/streaming/stream.js`** (01:50 EST)
+    - `_showStreamReloadOverlay`, `_hideStreamReloadOverlay`, `_logStreamReloadStep` added
+    - `_logStreamReloadStep` queues messages 700ms apart via `_sroNextLogAt` timestamp
+    - Both reload button handlers updated with step-by-step overlay messages
+    - Success: green waking transition; error: red message stays 3-4s then dismisses
+
+**Status:** Untested — needs `./start.sh` then UI test of both reload buttons.
+
+---
+
+---
+
+### Session: March 09, 2026 (branch: stream_switch_mjpeg_fix_MAR_04_2026_a)
+
+#### 1. Golden Ratio Tiles (aspect-ratio 13/8)
+
+**Files Modified:**
+
+- `static/css/components/stream-item.css` — `aspect-ratio: 16/9` → `13/8` (Fibonacci approximation of φ)
+- `static/js/streaming/stream.js` — `setupLayout()` updated to match
+
+#### 2. Video Fit Mode (per-camera + per-user default)
+
+- New DB columns: `cameras.video_fit_mode`, `user_preferences.default_video_fit`
+- Exposed in settings UI (user default) and per-camera recording settings modal
+- Migration: `psql/migrations/012_add_video_fit_settings.sql` (new)
+
+**Files Modified:** `app.py`, `static/js/settings/settings-ui.js`, `static/js/forms/recording-settings-form.js`, `static/js/modals/camera-settings-modal.js`
+
+#### 3. iOS-style Tile Rearrange (TileArrangeManager)
+
+- Long-press (500ms) on any tile enters arrange mode — all tiles jiggle
+- SortableJS drag-and-drop reorder; amber "Done" pill saves order via `PUT /api/my-camera-order`
+- Arrange mode blocked when: any tile is fullscreen or in expanded modal; target is button/PTZ/controls
+- Entering fullscreen or expanded modal calls `tileArrangeManager.exitArrangeMode(false)` automatically
+- Navbar `#arrange-tiles-btn` wired to `tileArrangeManager.toggle()`
+
+**New Files:** `static/css/components/tile-arrange.css`, `static/js/streaming/tile-arrange-manager.js`
+
+**Files Modified:** `static/js/streaming/stream.js` (import + integration), `templates/streams.html`
+
+#### 4. HD Button in Expanded Modal
+
+- Toggle HD/SD from within the expanded modal view
+- State synced with `hdCameras` localStorage + DB
+
+**Files Modified:** `static/js/streaming/stream.js`
+
+#### 5. Pin Button in Expanded Modal
+
+- Persists a camera to auto-expand on every page reload
+- Backdrop click and internal click are blocked while camera is pinned
+- New DB column: `user_preferences.pinned_camera`; Migration: `psql/migrations/013_add_pinned_camera.sql` (new)
+
+**Files Modified:** `static/js/streaming/stream.js`, `app.py`
+
+#### 6. Floating Pinned Window (HD + Pin = floating window)
+
+- When both HD and pin are active simultaneously, `.stream-item` detaches from the CSS grid and becomes a `position:fixed` draggable + resizable floating window
+- Background streams blur + pause while window is at home position; drag away → blur lifts
+- Multiple pinned windows supported
+- Positions persist to localStorage + DB (`user_preferences.pinned_windows JSONB`); Migration: `psql/migrations/014_add_pinned_windows.sql` (new)
+
+**New Files:** `static/css/components/pinned-window.css`, `static/js/streaming/pinned-window-manager.js`
+
+**Files Modified:** `static/js/streaming/stream.js` (import + PinnedWindowManager integration)
+
+#### 7. Pin Click-Inside-Modal Fix
+
+- Added pin guard to `.stream-item` click handler to prevent clicking inside a pinned modal from collapsing it
+
+**Files Modified:** `static/js/streaming/stream.js`
+
+#### 8. DB Migrations 012–014 + init-db.sql Consolidation
+
+- Migrations 012 (video_fit), 013 (pinned_camera), 014 (pinned_windows) created
+- `psql/init-db.sql` updated to include all three — remains the source of truth for fresh deployments
+
+**New Files:** `psql/migrations/012_add_video_fit_settings.sql`, `psql/migrations/013_add_pinned_camera.sql`, `psql/migrations/014_add_pinned_windows.sql`
+
+**Files Modified:** `psql/init-db.sql`
+
+#### 9. Auto-Run Migrations on start.sh
+
+- `start.sh` now runs all `psql/migrations/*.sql` files in sorted order on every startup
+- `IF NOT EXISTS` guards make the process idempotent; per-file failure reporting
+
+**Files Modified:** `start.sh`
+
+#### Key Files Changed This Session (Summary)
+
+| File | Change |
+|------|--------|
+| `static/css/components/stream-item.css` | Aspect-ratio 16/9 → 13/8 |
+| `static/js/streaming/stream.js` | Layout, HD/pin buttons, arrange mode guards, PinnedWindowManager import |
+| `static/js/streaming/tile-arrange-manager.js` | NEW — iOS-style long-press rearrange |
+| `static/css/components/tile-arrange.css` | NEW — jiggle animation + arrange UI |
+| `static/css/components/pinned-window.css` | NEW — floating window styles |
+| `static/js/streaming/pinned-window-manager.js` | NEW — floating/draggable/resizable pinned window |
+| `static/css/components/fullscreen.css` | Minor guard updates |
+| `static/js/settings/settings-ui.js` | Default video fit mode preference |
+| `static/js/forms/recording-settings-form.js` | Per-camera video fit mode |
+| `static/js/modals/camera-settings-modal.js` | Passes cameraName to generateForm |
+| `app.py` | New endpoints for pin, video_fit, migrations |
+| `templates/streams.html` | TileArrangeManager button, CSS links |
+| `psql/migrations/012_add_video_fit_settings.sql` | NEW |
+| `psql/migrations/013_add_pinned_camera.sql` | NEW |
+| `psql/migrations/014_add_pinned_windows.sql` | NEW |
+| `psql/init-db.sql` | Consolidated migrations 012–014 |
+| `start.sh` | Auto-run all migrations on startup |
+
+#### 10. Arrange Mode Guard Fix (21:30 EST)
+
+**Problem:** Long-press on held PTZ direction buttons triggered arrange mode after 500ms. Also, arrange mode persisted when entering fullscreen or expanded modal.
+
+**Fix (tile-arrange-manager.js):**
+- touchstart + mousedown: bail if any `.css-fullscreen` or `.expanded` tile exists
+- touchstart + mousedown: bail if target is inside `button, a, input, select, .ptz-controls, .stream-controls, .stream-more-menu`
+- touchstart + mousedown: bail if `.stream-ptz-toggle-btn.ptz-active` exists anywhere
+- New `deactivate()` public method (wraps `exitArrangeMode(false)`)
+
+**Fix (stream.js):**
+- Added `import { tileArrangeManager } from './tile-arrange-manager.js'`
+- `expandCamera()`: calls `tileArrangeManager.exitArrangeMode(false)` before opening modal
+- Fullscreen activation: calls `tileArrangeManager.exitArrangeMode(false)` after adding `css-fullscreen`
+
+**Files Modified:** `static/js/streaming/tile-arrange-manager.js`, `static/js/streaming/stream.js`
+
+#### Pending Before Merge to Main
+
+- [ ] User testing of all new features
+- [ ] Run `./start.sh` (auto-applies migrations 012–014 via new auto-run logic)
+- [ ] Hard refresh browser after restart to pick up new JS/CSS
+
+---
+
 ## Next Session TODO
 
-**Immediate (User must test in UI):**
+**Immediate (User must test in UI — March 09 session features):**
+- [ ] Run `./start.sh` to apply migrations 012–014 and load all new code
+- [ ] Hard refresh browser after restart
+- [ ] Test golden ratio tile layout (13/8 aspect ratio — visually verify)
+- [ ] Test video fit mode toggle (per-user default + per-camera override)
+- [ ] Test tile rearrange: long-press → jiggle → drag → Done pill → verify order persists on reload
+- [ ] Test arrange mode guard: confirm long-press blocked in fullscreen and expanded modal
+- [ ] Test HD button in expanded modal (toggle HD/SD from modal)
+- [ ] Test pin button: pin a camera → verify auto-expands on next reload
+- [ ] Test floating pinned window (pin + HD simultaneously → verify draggable/resizable window)
+- [ ] Test multiple pinned windows
+- [ ] Test pinned window position persistence across reload
+
+**Immediate (User must test in UI — prior sessions):**
 - [ ] Test Issue 2: Save/overwrite preset on Eufy KITCHEN OFFICE (T8419P0024110C6A)
 - [ ] Test Issue 3: Switch a camera to MJPEG, then switch back to WebRTC — verify create-path works
 - [ ] Test performance refactoring: verify static Cache-Control, SocketIO push, non-blocking restart
 - [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
 - [ ] Test camera rename feature
+- [ ] Test stream reload overlay animations (stream.js `_showStreamReloadOverlay`)
 
 **Issues 4-7 (from `docs/ISSUES_March_4_2026.md`):**
 - [ ] Issue 4: Mobile UI overhaul (iPhone/iPad) — needs planning session

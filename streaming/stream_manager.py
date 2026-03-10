@@ -256,13 +256,16 @@ class StreamManager:
         return result
 
     # Public API
-    def start_stream(self, camera_serial: str, resolution: str = 'sub') -> Optional[str]:
+    def start_stream(self, camera_serial: str, resolution: str = 'sub', protocol_override: str = None) -> Optional[str]:
         """Start stream asynchronously and return immediately
 
         Args:
             camera_serial: Camera identifier
             resolution: 'sub' for grid view (low-res), 'main' for fullscreen (high-res)
                         Note: This is different from cameras.json 'stream_type' which is protocol (HLS, LL_HLS, etc.)
+            protocol_override: If set, use this protocol instead of the camera's stored stream_type.
+                              Used when switching from MJPEG to a MediaMTX-based type — the camera
+                              config still says MJPEG but we need FFmpeg to start for the new type.
 
         For LL_HLS/NEOLINK cameras with dual-output FFmpeg:
             - A single FFmpeg process publishes BOTH sub and main streams
@@ -271,7 +274,8 @@ class StreamManager:
         """
         # Check camera protocol type first
         camera = self.camera_repo.get_camera(camera_serial)
-        protocol = (camera or {}).get('stream_type', 'HLS').upper()
+        # Use protocol_override when switching from MJPEG to a MediaMTX-based type
+        protocol = protocol_override.upper() if protocol_override else (camera or {}).get('stream_type', 'HLS').upper()
 
         # For LL_HLS/NEOLINK/WEBRTC with dual-output: main stream is always available if sub is running
         # The single FFmpeg process publishes to both /camera and /camera_main
@@ -353,7 +357,7 @@ class StreamManager:
         # Start in background thread - pass stream_key for storage, camera_serial for config
         threading.Thread(
             target=self._start_stream,
-            args=(camera_serial, resolution, stream_key),
+            args=(camera_serial, resolution, stream_key, protocol_override),
             daemon=True
         ).start()
 
@@ -371,13 +375,14 @@ class StreamManager:
         return f"/api/streams/{camera_serial}/playlist.m3u8"
 
     # Private implementation
-    def _start_stream(self, camera_serial: str, resolution: str = 'sub', stream_key: str = None) -> Optional[str]:
+    def _start_stream(self, camera_serial: str, resolution: str = 'sub', stream_key: str = None, protocol_override: str = None) -> Optional[str]:
         """Internal stream start implementation
 
         Args:
             camera_serial: Camera identifier (used for config lookup)
             resolution: 'sub' for grid view, 'main' for fullscreen
             stream_key: Key for active_streams dict (camera_serial or camera_serial_main)
+            protocol_override: If set, use this instead of camera's stored stream_type
         """
         # Default stream_key if not provided (backwards compatibility)
         if stream_key is None:
@@ -435,7 +440,7 @@ class StreamManager:
             #   - Sub output: Scale down from main → 320x240 (transcoded)
             #   - Main output: Passthrough main → native resolution (copy)
             # If we used sub stream as input, passthrough would just copy the sub stream!
-            protocol = camera.get('stream_type', 'HLS').upper()
+            protocol = protocol_override.upper() if protocol_override else camera.get('stream_type', 'HLS').upper()
             ll_cfg = camera.get('ll_hls', {})
             main_cv = (ll_cfg.get('video_main') or {}).get('c:v', '')
             main_is_passthrough = str(main_cv).lower() == 'copy'
@@ -459,8 +464,9 @@ class StreamManager:
             print(f"✅ URL built: {source_url}")
             
             # Protocol branching (RTMP vs HLS)
-            protocol = camera.get('stream_type', 'HLS').upper()
-            
+            # Use protocol_override when switching from MJPEG to a MediaMTX-based type
+            protocol = protocol_override.upper() if protocol_override else camera.get('stream_type', 'HLS').upper()
+
             if protocol == 'MJPEG':
                 logger.info(f"Camera {camera_name} uses MJPEG proxy - no FFmpeg needed")
                 return None  # Don't start FFmpeg

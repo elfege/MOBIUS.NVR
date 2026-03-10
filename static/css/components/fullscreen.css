@@ -69,16 +69,17 @@
     z-index: 10000 !important;
 }
 
-/* Latency badge positioning in CSS fullscreen - bottom left */
+/* Latency badge sizing in fullscreen — larger text for readability.
+   The badge sits inside .stream-bottom-bar (flex row); no absolute overrides needed. */
 .stream-item.css-fullscreen .latency-badge {
-    position: absolute !important;
-    bottom: 20px !important;
-    left: 20px !important;
-    top: auto !important;
-    right: auto !important;
-    z-index: 10000 !important;
     font-size: 16px !important;
     padding: 6px 12px !important;
+}
+
+/* Position the entire bottom bar further from the edge in fullscreen */
+.stream-item.css-fullscreen .stream-bottom-bar {
+    bottom: 1.25rem;
+    left: 1.25rem;
 }
 
 /* PTZ controls in CSS fullscreen - bottom right */
@@ -145,6 +146,13 @@
 .expanded-backdrop.visible {
     opacity: 1;
     visibility: visible;
+}
+
+/* Fully opaque black when a pinned camera is expanded — grid streams are stopped */
+.expanded-backdrop.pinned-lock {
+    background: rgb(0, 0, 0) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
 
 /* Expanded stream item - modal style */
@@ -384,6 +392,29 @@
 }
 
 /* =============================================================================
+   BOTTOM BAR (stream-bottom-bar)
+   Flex container for latency badge + HD button + pin button.
+   Positioned bottom-left in all views; children become visible in
+   expanded/fullscreen via the show rules below.
+   ============================================================================= */
+
+.stream-bottom-bar {
+    position: absolute;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 26;
+    pointer-events: none;   /* pass clicks through to video when children are hidden */
+}
+
+.stream-bottom-bar > * {
+    pointer-events: auto;   /* re-enable clicks on each child */
+}
+
+
+/* =============================================================================
    HD TOGGLE BUTTON (stream-hd-btn)
    Only visible in expanded modal and CSS fullscreen views.
    Allows toggling HD/SD quality without opening the camera selector.
@@ -392,9 +423,6 @@
 /* Base: hidden everywhere in grid mode */
 .stream-hd-btn {
     display: none;
-    position: absolute;
-    bottom: 0.75rem;
-    left: 0.75rem;
     background: rgba(0, 0, 0, 0.65);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -407,7 +435,6 @@
     justify-content: center;
     gap: 4px;
     cursor: pointer;
-    z-index: 26;
     padding: 0 10px;
     font-size: 12px;
     font-weight: 700;
@@ -449,9 +476,6 @@
 /* Base: hidden in grid mode */
 .stream-pin-btn {
     display: none;
-    position: absolute;
-    bottom: 0.75rem;
-    left: 4.5rem;   /* Offset from HD button (0.75rem + ~52px + 8px gap) */
     background: rgba(0, 0, 0, 0.65);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);

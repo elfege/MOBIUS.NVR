@@ -1,0 +1,273 @@
+/* ==========================================================================
+   Stream Reload Overlay — Shown inside a stream-item when the user triggers
+   a client-side refresh (HLS.js reconnect) or backend restart (FFmpeg kill).
+
+   Design mirrors the full-page standby-overlay but is scoped to a single
+   stream tile (position: absolute, fills the parent's relative context).
+   ========================================================================== */
+
+/* ---- Container ---- */
+
+.stream-reload-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 60;          /* above signal-lost (z-index varies) and stream controls */
+    background: rgba(10, 10, 15, 0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    border-radius: inherit; /* match parent .stream-item rounded corners */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    overflow: hidden;
+}
+
+.stream-reload-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+/* ---- Hypnotic ring animation (scaled down from standby-overlay ~280px → ~110px) ---- */
+
+.sro-rings {
+    position: relative;
+    width: 110px;
+    height: 110px;
+    flex-shrink: 0;
+}
+
+.sro-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    transform: translate(-50%, -50%);
+}
+
+/* Ring 1 — outermost, slow */
+.sro-ring:nth-child(1) {
+    width: 104px;
+    height: 104px;
+    border-top-color: rgba(59, 130, 246, 0.5);
+    border-right-color: rgba(59, 130, 246, 0.12);
+    animation: sro-ring-spin 8s linear infinite;
+}
+
+/* Ring 2 */
+.sro-ring:nth-child(2) {
+    width: 84px;
+    height: 84px;
+    border-top-color: rgba(99, 102, 241, 0.5);
+    border-left-color: rgba(99, 102, 241, 0.12);
+    animation: sro-ring-spin 6s linear infinite reverse;
+}
+
+/* Ring 3 */
+.sro-ring:nth-child(3) {
+    width: 64px;
+    height: 64px;
+    border-bottom-color: rgba(139, 92, 246, 0.6);
+    border-right-color: rgba(139, 92, 246, 0.12);
+    animation: sro-ring-spin 4.5s linear infinite;
+}
+
+/* Ring 4 */
+.sro-ring:nth-child(4) {
+    width: 44px;
+    height: 44px;
+    border-top-color: rgba(168, 85, 247, 0.6);
+    border-left-color: rgba(168, 85, 247, 0.15);
+    animation: sro-ring-spin 3s linear infinite reverse;
+}
+
+/* Ring 5 — innermost, fastest */
+.sro-ring:nth-child(5) {
+    width: 24px;
+    height: 24px;
+    border-bottom-color: rgba(192, 132, 252, 0.7);
+    border-right-color: rgba(192, 132, 252, 0.2);
+    animation: sro-ring-spin 2s linear infinite;
+}
+
+/* Center dot — the "eye" / lens aperture */
+.sro-eye {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(192, 132, 252, 0.9) 0%, rgba(59, 130, 246, 0.4) 100%);
+    transform: translate(-50%, -50%);
+    animation: sro-eye-pulse 3s ease-in-out infinite;
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.5), 0 0 28px rgba(139, 92, 246, 0.2);
+}
+
+@keyframes sro-ring-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes sro-eye-pulse {
+    0%, 100% {
+        width: 7px;
+        height: 7px;
+        box-shadow: 0 0 10px rgba(139, 92, 246, 0.5), 0 0 28px rgba(139, 92, 246, 0.2);
+    }
+    50% {
+        width: 10px;
+        height: 10px;
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.7), 0 0 40px rgba(139, 92, 246, 0.3);
+    }
+}
+
+/* ---- "Waking" state — rings speed up, eye turns green (stream reconnected) ---- */
+
+.stream-reload-overlay.waking .sro-ring:nth-child(1) { animation-duration: 1.5s; }
+.stream-reload-overlay.waking .sro-ring:nth-child(2) { animation-duration: 1.2s; }
+.stream-reload-overlay.waking .sro-ring:nth-child(3) { animation-duration: 0.9s; }
+.stream-reload-overlay.waking .sro-ring:nth-child(4) { animation-duration: 0.7s; }
+.stream-reload-overlay.waking .sro-ring:nth-child(5) { animation-duration: 0.5s; }
+
+.stream-reload-overlay.waking .sro-eye {
+    animation: sro-eye-pulse 0.6s ease-in-out infinite;
+    background: radial-gradient(circle, rgba(52, 211, 153, 0.9) 0%, rgba(59, 130, 246, 0.5) 100%);
+    box-shadow: 0 0 16px rgba(52, 211, 153, 0.6), 0 0 40px rgba(52, 211, 153, 0.25);
+}
+
+.stream-reload-overlay.waking .sro-title {
+    color: rgba(52, 211, 153, 0.95);
+}
+
+/* ---- Text messages ---- */
+
+.sro-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.75);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    user-select: none;
+    width: 90%;
+    max-width: 320px;
+}
+
+.sro-title {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    opacity: 0.95;
+    transition: color 0.4s;
+}
+
+.sro-subtitle {
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.45);
+    margin-bottom: 8px;
+}
+
+/* ---- Step-by-step status log ---- */
+
+.sro-log {
+    width: 100%;
+    max-height: 110px;      /* shows ~4-5 lines at new sizes */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 0 4px;
+
+    /* hide scrollbar visually while keeping it functional */
+    scrollbar-width: none;
+}
+
+.sro-log::-webkit-scrollbar { display: none; }
+
+.sro-log-line {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    opacity: 0;
+    animation: sro-line-fadein 0.55s ease forwards;
+}
+
+@keyframes sro-line-fadein {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Timestamp */
+.sro-ts {
+    flex-shrink: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 0.68rem;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Message text */
+.sro-text {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Log line type variants */
+.sro-log-info  .sro-text { color: rgba(147, 197, 253, 0.85); } /* blue  */
+.sro-log-success .sro-text { color: rgba(52, 211, 153, 0.95); }  /* green */
+.sro-log-warn  .sro-text { color: rgba(251, 191, 36, 0.9);  }  /* amber */
+.sro-log-error .sro-text { color: rgba(248, 113, 113, 0.95); } /* red   */
+
+/* ---- Ambient floating particles (contained within the stream tile) ---- */
+
+.sro-particles {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.sro-particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: rgba(139, 92, 246, 0.3);
+    animation: sro-particle-float linear infinite;
+}
+
+.sro-particle:nth-child(1) { left: 12%; animation-duration: 14s; animation-delay:  0s; }
+.sro-particle:nth-child(2) { left: 32%; animation-duration: 18s; animation-delay: -3s; }
+.sro-particle:nth-child(3) { left: 52%; animation-duration: 12s; animation-delay: -6s; }
+.sro-particle:nth-child(4) { left: 72%; animation-duration: 16s; animation-delay: -9s; }
+.sro-particle:nth-child(5) { left: 88%; animation-duration: 20s; animation-delay: -4s; }
+.sro-particle:nth-child(6) { left:  4%; animation-duration: 15s; animation-delay: -8s; }
+.sro-particle:nth-child(7) { left: 44%; animation-duration: 17s; animation-delay: -1s; }
+.sro-particle:nth-child(8) { left: 62%; animation-duration: 13s; animation-delay:-11s; }
+
+@keyframes sro-particle-float {
+    0%   { transform: translateY(100%) scale(0.5); opacity: 0; }
+    10%  { opacity: 0.5; }
+    90%  { opacity: 0.5; }
+    100% { transform: translateY(-10px)  scale(1.1); opacity: 0; }
+}
+
+/* ---- Responsive: very small tiles (< 200px height) — hide log, shrink rings ---- */
+
+@container style(height < 200px) {
+    .sro-log { display: none; }
+    .sro-rings { width: 70px; height: 70px; }
+    .sro-ring:nth-child(1) { width: 66px; height: 66px; }
+    .sro-ring:nth-child(2) { width: 52px; height: 52px; }
+    .sro-ring:nth-child(3) { width: 40px; height: 40px; }
+    .sro-ring:nth-child(4) { width: 28px; height: 28px; }
+    .sro-ring:nth-child(5) { width: 16px; height: 16px; }
+}

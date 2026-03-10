@@ -76,6 +76,14 @@ export class SnapshotStreamManager {
      */
     _resumePolling(cameraId, stream) {
         stream.paused = false;
+        stream.suspended = false;
+        stream.failureCount = 0;
+
+        // Cancel any pending suspension-retry timer (visibility resume takes over)
+        if (stream.retryTimerId) {
+            clearTimeout(stream.retryTimerId);
+            stream.retryTimerId = null;
+        }
 
         // Load one snapshot immediately for instant visual feedback
         const $element = $(stream.element);
@@ -105,6 +113,9 @@ export class SnapshotStreamManager {
         if (this.activeStreams.has(cameraId)) {
             this.stopStream(cameraId);
         }
+
+        // Max consecutive failures before polling is suspended
+        this._maxFailures = this._maxFailures || 5;
 
         // Universal snap endpoint - works for all camera types
         // Backend checks reolink, unifi, mediaserver frame buffers automatically
@@ -156,7 +167,9 @@ export class SnapshotStreamManager {
             timerId: timerId,
             intervalMs: interval,
             startTime: Date.now(),
-            paused: false
+            paused: false,
+            failureCount: 0,     // consecutive load failures
+            suspended: false     // true when failure threshold exceeded
         });
 
         // Observe the stream element's container for viewport visibility
@@ -170,9 +183,13 @@ export class SnapshotStreamManager {
     }
 
     /**
-     * Load a single snapshot into the element
+     * Load a single snapshot into the element.
+     * Tracks consecutive failures — suspends polling after _maxFailures threshold.
+     * Clears the displayed image on suspension so a stale frozen frame is not retained.
      */
     async loadSnapshot(cameraId, $element, snapshotUrl) {
+        const stream = this.activeStreams.get(cameraId);
+
         return new Promise((resolve, reject) => {
             // Cache-bust the URL
             const url = `${snapshotUrl}?t=${Date.now()}`;
@@ -184,25 +201,93 @@ export class SnapshotStreamManager {
                 // Only update if element still exists and stream is active
                 if (this.activeStreams.has(cameraId) && $element[0]) {
                     $element.attr('src', url);
+                    // Success — reset failure counter
+                    if (stream) {
+                        stream.failureCount = 0;
+                        stream.suspended = false;
+                    }
                 }
                 resolve();
             };
 
             img.onerror = () => {
-                console.log(`[Snapshot] ${cameraId}: Failed to load snapshot`);
+                if (stream) {
+                    stream.failureCount = (stream.failureCount || 0) + 1;
+                    const max = this._maxFailures || 5;
+
+                    if (stream.failureCount >= max) {
+                        // Threshold exceeded — suspend polling and clear stale image
+                        console.warn(`[Snapshot] ${cameraId}: ${stream.failureCount} consecutive failures — suspending polling`);
+                        this._suspendPolling(cameraId, stream, $element);
+                    } else {
+                        console.log(`[Snapshot] ${cameraId}: Load failed (${stream.failureCount}/${max})`);
+                    }
+                }
                 reject(new Error('Snapshot load failed'));
             };
 
             // Start loading
             img.src = url;
 
-            // Timeout after 5 seconds
+            // Timeout after 5 seconds — counts as a failure
             setTimeout(() => {
                 if (!img.complete) {
+                    img.onerror && img.onerror();
                     reject(new Error('Snapshot timeout'));
                 }
             }, 5000);
         });
+    }
+
+    /**
+     * Suspend snapshot polling after repeated failures.
+     * Clears the stale image and schedules a single retry after 30 seconds.
+     * If the retry succeeds, normal polling resumes. If it fails, remains suspended.
+     *
+     * @param {string} cameraId
+     * @param {object} stream - stream state object from activeStreams
+     * @param {jQuery} $element - the img element to clear
+     */
+    _suspendPolling(cameraId, stream, $element) {
+        // Stop the polling interval
+        if (stream.timerId) {
+            clearInterval(stream.timerId);
+            stream.timerId = null;
+        }
+        stream.paused = true;
+        stream.suspended = true;
+
+        // Clear the stale frozen frame
+        if ($element && $element[0]) {
+            $element.attr('src', '');
+        }
+
+        // Schedule a single retry after 30 seconds
+        stream.retryTimerId = setTimeout(() => {
+            if (!this.activeStreams.has(cameraId)) return;  // stream was stopped externally
+
+            console.log(`[Snapshot] ${cameraId}: Retry after suspension`);
+            stream.failureCount = 0;
+            stream.paused = false;
+            stream.suspended = false;
+            stream.retryTimerId = null;
+
+            // Attempt one snapshot — if it loads, restart interval
+            this.loadSnapshot(cameraId, $element, stream.url)
+                .then(() => {
+                    // Recovery — restart polling
+                    stream.timerId = setInterval(() => {
+                        this.loadSnapshot(cameraId, $element, stream.url);
+                    }, stream.intervalMs);
+                    console.log(`[Snapshot] ${cameraId}: Recovered — polling resumed`);
+                })
+                .catch(() => {
+                    // Still failing — re-suspend (will schedule another retry via the onerror path)
+                    console.warn(`[Snapshot] ${cameraId}: Still failing after retry — re-suspending`);
+                    stream.failureCount = this._maxFailures;
+                    this._suspendPolling(cameraId, stream, $element);
+                });
+        }, 30_000);
     }
 
     /**
@@ -213,6 +298,10 @@ export class SnapshotStreamManager {
         if (stream) {
             if (stream.timerId) {
                 clearInterval(stream.timerId);
+            }
+            // Cancel any pending suspension-retry timer
+            if (stream.retryTimerId) {
+                clearTimeout(stream.retryTimerId);
             }
 
             // Stop observing visibility

@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/presence-indicators.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/camera-selector.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/user-management.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/device-management.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/standby-overlay.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-reload-overlay.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/tile-arrange.css') }}">
@@ -154,6 +155,10 @@
                 <i class="fas fa-users"></i>
                 <span>Manage Users</span>
             </button>
+            <button class="nav-menu-item" id="menu-manage-devices">
+                <i class="fas fa-laptop"></i>
+                <span>Manage Devices</span>
+            </button>
             {% endif %}
         </div>
 
@@ -257,6 +262,31 @@
         </div>
     </div>
 
+    <!-- Device Management Modal (Admin Only) -->
+    {% if current_user.role == 'admin' %}
+    <div id="device-management-backdrop" class="modal-backdrop" style="display: none;"></div>
+    <div id="device-management-modal" class="modal device-management-modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-laptop"></i> Connected Devices</h3>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <button class="device-refresh-btn" id="device-refresh-btn" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button class="modal-close-btn" id="device-management-close" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="device-list" id="device-list">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Old toggle button removed - navbar is always visible now -->
 
     <!-- Backdrop for expanded camera modal -->
@@ -341,18 +371,19 @@
 
             <!-- HD Mode badge - shown when stream is in main (HD) quality -->
             <div class="stream-hd-badge">HD</div>
-            {% if info.stream_type in ['HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'] %}
-            <!-- HD toggle button - visible in expanded modal and fullscreen views -->
-            <button class="stream-hd-btn" aria-label="Toggle HD quality" title="Toggle HD/SD quality"
-                    data-camera-serial="{{ serial }}">
-                <span class="hd-btn-label">SD</span>
-            </button>
-            {% endif %}
-            <!-- Pin button - visible in expanded/fullscreen; pins camera to always open in modal mode -->
-            <button class="stream-pin-btn" aria-label="Pin camera in modal" title="Pin: keep this camera in expanded view across reloads"
-                    data-camera-serial="{{ serial }}">
-                <i class="fas fa-thumbtack"></i>
-            </button>
+            <!-- Bottom-left control bar: latency badge (injected by JS) + HD + pin -->
+            <div class="stream-bottom-bar">
+                {% if info.stream_type in ['HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'] %}
+                <button class="stream-hd-btn" aria-label="Toggle HD quality" title="Toggle HD/SD quality"
+                        data-camera-serial="{{ serial }}">
+                    <span class="hd-btn-label">SD</span>
+                </button>
+                {% endif %}
+                <button class="stream-pin-btn" aria-label="Pin camera in modal" title="Pin: keep this camera in expanded view across reloads"
+                        data-camera-serial="{{ serial }}">
+                    <i class="fas fa-thumbtack"></i>
+                </button>
+            </div>
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
                 <i class="fas fa-expand"></i>
             </button>
@@ -927,6 +958,9 @@
 
     <!-- User Management (jQuery-based, not ES6 module) -->
     <script src="{{ url_for('static', filename='js/modals/user-management-modal.js') }}"></script>
+
+    <!-- Device Management (jQuery-based, not ES6 module) -->
+    <script src="{{ url_for('static', filename='js/modals/device-management-modal.js') }}"></script>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <!-- SortableJS: touch-friendly drag-and-drop for tile rearrange -->

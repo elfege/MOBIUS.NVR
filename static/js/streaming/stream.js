@@ -1107,6 +1107,9 @@ export class MultiStreamManager {
                     pinnedWindowManager.deactivate(serial);
                     await this.expandCamera($streamItem);
                 }
+                // Lift pinned lock + reload background streams
+                $('#expanded-backdrop').removeClass('pinned-lock');
+                this._reloadBackgroundStreamsAfterPin(serial);
                 console.log(`[Pin] ${serial}: unpinned`);
             } else {
                 // Unpin any previously pinned camera first
@@ -1116,6 +1119,11 @@ export class MultiStreamManager {
                 $btn.attr('title', 'Pinned — click to unpin (backdrop click disabled while pinned)');
                 localStorage.setItem('pinnedCamera', serial);
                 this._savePinnedCamera(serial);
+                // Pinned lock: black backdrop + pause background streams
+                if ($streamItem.hasClass('expanded')) {
+                    $('#expanded-backdrop').addClass('pinned-lock');
+                    this._pauseBackgroundStreamsForPin(serial);
+                }
                 // If camera is already HD, activate floating window immediately
                 const isHD = $streamItem.find('.stream-hd-btn').hasClass('hd-active');
                 if (isHD) {
@@ -2280,7 +2288,24 @@ export class MultiStreamManager {
 
         console.log(`[SwitchType] ${cameraSerial}: ${oldStreamType} → ${newStreamType}`);
 
-        // Phase 0: Check MediaMTX path availability for non-MJPEG types
+        // Phase 0a: Save preference to database FIRST so backend resolves correct type
+        // This must happen before any backend calls that use get_effective_stream_type()
+        try {
+            const prefResp = await fetch(`/api/user/stream-preferences/${cameraSerial}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ preferred_stream_type: newStreamType })
+            });
+            if (!prefResp.ok) {
+                console.warn(`[SwitchType] Failed to save preference early: ${prefResp.status}`);
+            } else {
+                console.log(`[SwitchType] Preference saved: ${newStreamType} for ${cameraSerial}`);
+            }
+        } catch (prefErr) {
+            console.warn('[SwitchType] Error saving preference early:', prefErr);
+        }
+
+        // Phase 0b: Check MediaMTX path availability for non-MJPEG types
         // MJPEG connects directly to camera, all others need MediaMTX
         const mediamtxTypes = ['WEBRTC', 'HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS'];
         if (mediamtxTypes.includes(newStreamType)) {
@@ -2300,7 +2325,8 @@ export class MultiStreamManager {
                             try {
                                 const createResp = await fetch(`/api/mediamtx/create-path/${cameraSerial}`, {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' }
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ target_type: newStreamType })
                                 });
 
                                 if (!createResp.ok) {
@@ -2403,16 +2429,7 @@ export class MultiStreamManager {
             this.setStreamStatus($streamItem, 'error', 'Error');
         }
 
-        // Phase 5: Save preference to database (fire and forget)
-        fetch(`/api/user/stream-preferences/${cameraSerial}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ preferred_stream_type: newStreamType })
-        }).then(resp => {
-            if (!resp.ok) console.warn(`[SwitchType] Failed to save preference: ${resp.status}`);
-        }).catch(err => {
-            console.warn('[SwitchType] Error saving preference:', err);
-        });
+        // Phase 5: Preference already saved in Phase 0a (before stream operations)
     }
 
     /**
@@ -4055,6 +4072,44 @@ export class MultiStreamManager {
         }).catch(err => console.warn('[Pin] Failed to save pinned camera preference:', err));
     }
 
+    /**
+     * Pause all background video streams when a pinned camera is expanded.
+     * The backdrop goes fully black; background streams stop decoding.
+     * @param {string} pinnedSerial - Serial of the pinned (expanded) camera to skip
+     */
+    _pauseBackgroundStreamsForPin(pinnedSerial) {
+        this.$container.find('.stream-item').each((_, el) => {
+            const serial = $(el).data('camera-serial');
+            if (serial === pinnedSerial) return;
+            const video = el.querySelector('video');
+            if (video && !video.paused) {
+                video.pause();
+                $(el).data('pin-paused', true);
+            }
+        });
+        console.log(`[Pin] Background streams paused (locked for ${pinnedSerial})`);
+    }
+
+    /**
+     * Reload background streams that were paused by pin lock.
+     * Calls play() which makes HLS seek to the live edge automatically.
+     * If a stream was frozen too long, the HLS latency meter will handle recovery.
+     * @param {string} pinnedSerial - Serial of the camera that was pinned
+     */
+    _reloadBackgroundStreamsAfterPin(pinnedSerial) {
+        let resumed = 0;
+        this.$container.find('.stream-item').each((_, el) => {
+            if (!$(el).data('pin-paused')) return;
+            const video = el.querySelector('video');
+            if (video) {
+                video.play().catch(() => {});
+                resumed++;
+            }
+            $(el).removeData('pin-paused');
+        });
+        console.log(`[Pin] Background streams resumed (${resumed} restarted after ${pinnedSerial} unlock)`);
+    }
+
     async expandCamera($streamItem) {
         // First exit fullscreen if active (mutual exclusivity with fullscreen mode)
         const $fullscreenItem = $('.stream-item.css-fullscreen');
@@ -4099,9 +4154,13 @@ export class MultiStreamManager {
         if (pinnedSerial === cameraId) {
             $pinBtn.addClass('pin-active');
             $pinBtn.attr('title', 'Pinned — click to unpin (backdrop click disabled while pinned)');
+            // Pinned lock: fully black backdrop + pause all background streams
+            $('#expanded-backdrop').addClass('pinned-lock');
+            this._pauseBackgroundStreamsForPin(cameraId);
         } else {
             $pinBtn.removeClass('pin-active');
             $pinBtn.attr('title', 'Pin: keep this camera in expanded view across reloads');
+            $('#expanded-backdrop').removeClass('pinned-lock');
         }
 
         // Prevent body scroll while modal is open
@@ -4140,14 +4199,21 @@ export class MultiStreamManager {
         // Close mobile more menu if open
         $expandedItem.find('.stream-more-menu').removeClass('menu-visible');
 
-        // Hide backdrop
-        $('#expanded-backdrop').removeClass('visible');
+        // Hide backdrop + lift pinned lock
+        const $backdrop = $('#expanded-backdrop');
+        const wasPinnedLock = $backdrop.hasClass('pinned-lock');
+        $backdrop.removeClass('visible pinned-lock');
 
         // Remove expanded class
         $expandedItem.removeClass('expanded');
 
         // Restore body scroll
         $('body').css('overflow', '');
+
+        // If pinned lock was active, reload background streams
+        if (wasPinnedLock) {
+            this._reloadBackgroundStreamsAfterPin(cameraId);
+        }
     }
 
     /**

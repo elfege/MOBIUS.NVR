@@ -31,9 +31,6 @@ export class WebRTCStreamManager {
         const badge = document.createElement('div');
         badge.className = 'latency-badge webrtc-badge';
         Object.assign(badge.style, {
-            position: 'absolute',
-            left: '8px',
-            bottom: '8px',
             padding: '2px 6px',
             fontSize: '12px',
             lineHeight: '16px',
@@ -42,12 +39,23 @@ export class WebRTCStreamManager {
             borderRadius: '6px',
             fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
             pointerEvents: 'none',
-            zIndex: 2,
+            whiteSpace: 'nowrap',
         });
 
-        const parent = videoEl.parentElement || document.body;
-        parent.style.position = parent.style.position || 'relative';
-        parent.appendChild(badge);
+        // Insert into .stream-bottom-bar flex container (alongside HD + pin buttons).
+        const streamItem = videoEl.closest('.stream-item');
+        const bar = streamItem && streamItem.querySelector('.stream-bottom-bar');
+        if (bar) {
+            bar.prepend(badge);
+        } else {
+            const parent = videoEl.parentElement || document.body;
+            badge.style.position = 'absolute';
+            badge.style.left = '8px';
+            badge.style.bottom = '8px';
+            badge.style.zIndex = '2';
+            parent.style.position = parent.style.position || 'relative';
+            parent.appendChild(badge);
+        }
         videoEl._latencyOverlay = badge;
         return badge;
     }

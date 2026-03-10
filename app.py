@@ -1952,7 +1952,7 @@ def api_put_camera_order():
 
 
 # Valid stream types matching the CHECK constraint in user_camera_preferences table
-VALID_STREAM_TYPES = {'MJPEG', 'HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS'}
+VALID_STREAM_TYPES = {'MJPEG', 'HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS', 'GO2RTC'}
 
 
 @app.route('/api/user/stream-preferences', methods=['GET'])
@@ -2562,6 +2562,20 @@ def api_stream_start(camera_serial):
         # This allows per-user stream type switching to actually work end-to-end
         stream_type = camera_repo.get_effective_stream_type(
             camera_serial, user_id=current_user.id if current_user else None)
+        if stream_type == 'GO2RTC':
+            # GO2RTC streams bypass FFmpeg + MediaMTX entirely.
+            # go2rtc reads from Neolink RTSP directly and serves WebRTC to browser.
+            # No backend stream start needed — go2rtc handles everything on-demand.
+            print(f"[API] {camera_serial} is GO2RTC - no FFmpeg needed (go2rtc reads from Neolink)")
+            return jsonify({
+                'success': True,
+                'camera_serial': camera_serial,
+                'camera_name': camera_name,
+                'stream_type': 'GO2RTC',
+                'protocol': 'go2rtc_webrtc',
+                'message': f'GO2RTC stream for {camera_name} (WebRTC via go2rtc, no FFmpeg)'
+            })
+
         if stream_type == 'MJPEG':
             camera_type = camera.get('type', '').lower()
             print(f"[API] {camera_serial} is MJPEG camera - skipping HLS/RTSP start")

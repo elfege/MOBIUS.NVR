@@ -258,7 +258,7 @@ CREATE TABLE user_camera_preferences (
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     camera_serial VARCHAR(50) NOT NULL,
     preferred_stream_type VARCHAR(20) NOT NULL
-        CHECK (preferred_stream_type IN ('MJPEG', 'HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS')),
+        CHECK (preferred_stream_type IN ('MJPEG', 'HLS', 'LL_HLS', 'WEBRTC', 'NEOLINK', 'NEOLINK_LL_HLS', 'GO2RTC')),
     visible BOOLEAN DEFAULT TRUE,
     display_order INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW(),

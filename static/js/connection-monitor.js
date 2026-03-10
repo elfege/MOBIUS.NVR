@@ -216,6 +216,9 @@ export class ConnectionMonitor {
                     console.log('[ConnectionMonitor] 🎉 Server recovered after', this.failedChecks, 'failed checks');
                 }
                 this.failedChecks = 0;
+
+                // Piggyback device heartbeat on successful health check
+                this._sendDeviceHeartbeat();
             } else if (response.status === 503) {
                 // Server is shutting down - immediate redirect
                 console.warn('[ConnectionMonitor] ⚠️ Server returned 503 - parsing response...');
@@ -426,6 +429,28 @@ export class ConnectionMonitor {
                 console.log('[ConnectionMonitor] Still offline, will retry in 5s');
             }
         }, 5000);
+    }
+
+    /**
+     * Send device heartbeat to update last_seen in the trusted_devices table.
+     * Piggybacks on the health check cycle — fires after each successful health check.
+     * Uses the DeviceTokenManager if available, otherwise reads localStorage directly.
+     * Non-blocking — failures are silently ignored.
+     */
+    _sendDeviceHeartbeat() {
+        const token = (window.deviceTokenManager && window.deviceTokenManager.getToken())
+            || localStorage.getItem('nvr_device_token');
+        if (!token) return;
+
+        // Fire-and-forget — don't await, don't block health check cycle
+        fetch('/api/device/heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_token: token }),
+            signal: AbortSignal.timeout(5000)
+        }).catch(() => {
+            // Silently ignore — heartbeat is non-critical
+        });
     }
 
     /**

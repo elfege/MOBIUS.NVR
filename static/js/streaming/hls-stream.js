@@ -16,9 +16,6 @@ export class HLSStreamManager {
         const badge = document.createElement('div');
         badge.className = 'latency-badge';
         Object.assign(badge.style, {
-            position: 'absolute',
-            left: '8px',
-            bottom: '8px',
             padding: '2px 6px',
             fontSize: '12px',
             lineHeight: '16px',
@@ -27,12 +24,23 @@ export class HLSStreamManager {
             borderRadius: '6px',
             fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
             pointerEvents: 'none',
-            zIndex: 2,
+            whiteSpace: 'nowrap',
         });
-        // container: assume parent .stream-item is position:relative ( markup already uses cards)
-        const parent = videoEl.parentElement || document.body;
-        parent.style.position = parent.style.position || 'relative';
-        parent.appendChild(badge);
+        // Insert into .stream-bottom-bar flex container (sits alongside HD + pin buttons).
+        // Falls back to the stream-item parent if the bar is missing.
+        const streamItem = videoEl.closest('.stream-item');
+        const bar = streamItem && streamItem.querySelector('.stream-bottom-bar');
+        if (bar) {
+            bar.prepend(badge);  // latency badge first (left-most)
+        } else {
+            const parent = videoEl.parentElement || document.body;
+            badge.style.position = 'absolute';
+            badge.style.left = '8px';
+            badge.style.bottom = '8px';
+            badge.style.zIndex = '2';
+            parent.style.position = parent.style.position || 'relative';
+            parent.appendChild(badge);
+        }
         videoEl._latencyOverlay = badge;
         return badge;
     }
@@ -226,6 +234,10 @@ export class HLSStreamManager {
             this.activeStreams.delete(cameraId);
         }
 
+        // Reset first-fragment flag so 'streamlive' fires again on recovery
+        // (without this, the signal-lost overlay stays visible after recovery)
+        videoElement._firstFragReceived = false;
+
         // 2) Restart stream via startStream (handles backend + frontend)
         const result = await this.startStream(cameraId, videoElement, streamType);
 
@@ -383,6 +395,9 @@ export class HLSStreamManager {
                                     videoElement.dispatchEvent(new CustomEvent('streamretrying', {
                                         detail: { cameraId, retry: retries + 1, maxRetries: maxretries }
                                     }));
+                                    // Reset first-fragment flag so 'streamlive' fires
+                                    // and clears the signal-lost overlay on recovery
+                                    videoElement._firstFragReceived = false;
                                     setTimeout(() => {
                                         hls.loadSource(playlistUrl);
                                     }, timeout); // Wait N seconds for FFmpeg to create playlist

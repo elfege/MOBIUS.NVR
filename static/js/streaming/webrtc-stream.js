@@ -459,6 +459,128 @@ export class WebRTCStreamManager {
     }
 
     /**
+     * Start WebRTC stream via go2rtc API (bypasses MediaMTX).
+     *
+     * go2rtc reads from Neolink RTSP and serves WebRTC directly, eliminating
+     * FFmpeg transcoding and MediaMTX HLS segmenting from the path.
+     * This fixes the ~12s latency caused by Neolink's broken DTS=0 timestamps
+     * that FFmpeg can't handle well.
+     *
+     * go2rtc WebRTC API format:
+     *   POST /api/webrtc?src=STREAM_NAME
+     *   Body: SDP offer (application/sdp)
+     *   Response: SDP answer (application/sdp)
+     *
+     * @param {string} cameraId - Camera serial (must match go2rtc.yaml stream name)
+     * @param {HTMLVideoElement} videoElement - Video element to attach stream
+     * @returns {Promise<boolean>} - Resolves true on success
+     */
+    async startGo2rtcStream(cameraId, videoElement) {
+        console.log(`[go2rtc] Starting WebRTC stream for ${cameraId}`);
+
+        try {
+            // go2rtc API endpoint proxied through nginx
+            const go2rtcUrl = `${window.location.origin}/go2rtc/api/webrtc?src=${cameraId}`;
+
+            // Create RTCPeerConnection
+            const pc = new RTCPeerConnection({
+                iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            });
+
+            // Add receive-only transceivers
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+
+            // Handle incoming tracks
+            pc.ontrack = (event) => {
+                console.log(`[go2rtc] ${cameraId}: Received track: ${event.track.kind}`);
+                if (event.track.kind === 'video') {
+                    videoElement.srcObject = event.streams[0];
+                    videoElement.play().catch(err => {
+                        console.warn(`[go2rtc] ${cameraId}: Autoplay prevented:`, err);
+                    });
+                }
+            };
+
+            // Monitor ICE connection state
+            pc.oniceconnectionstatechange = () => {
+                console.log(`[go2rtc] ${cameraId}: ICE state: ${pc.iceConnectionState}`);
+                if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                    if (!videoElement._firstFrameReceived) {
+                        videoElement._firstFrameReceived = true;
+                        console.log(`[go2rtc] ${cameraId}: Stream is live`);
+                        videoElement.dispatchEvent(new CustomEvent('streamlive', { detail: { cameraId } }));
+                    }
+                } else if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+                    console.error(`[go2rtc] ${cameraId}: Connection ${pc.iceConnectionState}`);
+                    videoElement.dispatchEvent(new CustomEvent('streamerror', {
+                        detail: { cameraId, error: `ICE ${pc.iceConnectionState}` }
+                    }));
+                }
+            };
+
+            // Create SDP offer
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            // Wait for ICE gathering
+            await this._waitForIceGathering(pc, 2000);
+
+            // Send offer to go2rtc API using JSON format
+            // go2rtc expects: {"type":"offer","sdp":"v=0\r\n..."}
+            // and returns:    {"type":"answer","sdp":"v=0\r\n..."}
+            console.log(`[go2rtc] ${cameraId}: Sending offer to ${go2rtcUrl}`);
+            const response = await fetch(go2rtcUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'offer',
+                    sdp: pc.localDescription.sdp
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`go2rtc WebRTC request failed: ${response.status} - ${errorText}`);
+            }
+
+            // go2rtc returns JSON with SDP answer
+            const answer = await response.json();
+            await pc.setRemoteDescription({
+                type: 'answer',
+                sdp: answer.sdp
+            });
+
+            // Store stream info (reuse same map as MediaMTX WebRTC)
+            this.activeStreams.set(cameraId, {
+                pc: pc,
+                element: videoElement,
+                type: 'sub',  // go2rtc serves native resolution (no sub/main distinction)
+                startTime: Date.now(),
+                source: 'go2rtc'  // Tag to distinguish from MediaMTX WebRTC
+            });
+
+            // Attach latency meter (green badge, same as MediaMTX WebRTC)
+            this._attachLatencyMeter(pc, videoElement);
+
+            this.retryAttempts.delete(cameraId);
+            console.log(`[go2rtc] ${cameraId}: Stream setup complete, waiting for media`);
+            return true;
+
+        } catch (error) {
+            console.error(`[go2rtc] Failed to start stream for ${cameraId}:`, error);
+
+            // Clean up on failure
+            const stream = this.activeStreams.get(cameraId);
+            if (stream?.pc) {
+                stream.pc.close();
+            }
+            this.activeStreams.delete(cameraId);
+            throw error;
+        }
+    }
+
+    /**
      * Get WebRTC connection statistics for a camera
      */
     async getStats(cameraId) {

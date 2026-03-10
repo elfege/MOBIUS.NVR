@@ -25,6 +25,7 @@ import { SnapshotStreamManager } from './snapshot-stream.js';
 import { talkbackManager } from './talkback-manager.js';
 import { VisibilityManager } from './visibility-manager.js';
 import { pinnedWindowManager } from './pinned-window-manager.js';
+import { tileArrangeManager } from './tile-arrange-manager.js';
 
 /**
  * Detect iOS devices (iPhone, iPad, iPod)
@@ -207,6 +208,14 @@ export class MultiStreamManager {
         // - WebSocket disconnected: callback enabled (10-second polling fallback)
         this.wsRecoveryEnabled = false;  // Track if WebSocket is handling recovery
         this.cameraStateMonitor = new CameraStateMonitor({
+            onDegraded: (cameraId, $streamItem, previousState, newState) => {
+                // When a camera goes offline/degraded, stop snapshot polling immediately.
+                // Prevents stale frozen frames from being retained and stops unnecessary requests.
+                if (this.snapshotManager.isStreamActive(cameraId)) {
+                    console.log(`[CameraState] ${cameraId}: ${newState} — stopping snapshot polling`);
+                    this.snapshotManager.stopStream(cameraId);
+                }
+            },
             onRecovery: (cameraId, $streamItem, previousState, newState) => {
                 // CRITICAL: Skip recovery for user-stopped streams
                 // User explicitly stopped this stream via UI, don't auto-restart
@@ -3516,6 +3525,11 @@ export class MultiStreamManager {
             // Apply CSS fullscreen class IMMEDIATELY
             $streamItem.addClass('css-fullscreen');
             localStorage.setItem('fullscreenCameraSerial', cameraId);
+
+            // Arrange mode is grid-view only — exit it before entering fullscreen
+            if (tileArrangeManager.arrangeMode) {
+                tileArrangeManager.exitArrangeMode(false);
+            }
             console.log('[Fullscreen] CSS fullscreen activated immediately');
 
             // iOS SNAPSHOT or portable MJPEG: Switch to HLS for fullscreen
@@ -3711,6 +3725,10 @@ export class MultiStreamManager {
             console.log('[Fullscreen] No fullscreen stream found');
             // Reset processing flag in case it got stuck
             this._fullscreenProcessing = false;
+            // Still resume paused streams — forceExitFullscreen() removes the css-fullscreen
+            // class before calling us, so $fullscreenItem will be empty but pausedStreams
+            // still needs to be processed.
+            await this._resumePausedStreams();
             return;
         }
 
@@ -3888,88 +3906,88 @@ export class MultiStreamManager {
                 $fullscreenItem.removeData('fullscreen-quality');
             }
 
-            // Resume previously paused streams
-            if (this.pausedStreams && this.pausedStreams.length > 0) {
-                console.log(`[Fullscreen] Resuming ${this.pausedStreams.length} paused streams...`);
-
-                for (const stream of this.pausedStreams) {
-                    const $item = $(`.stream-item[data-camera-serial="${stream.id}"]`);
-                    if (!$item.length) continue;
-
-                    const $video = $item.find('.stream-video');
-                    const videoEl = $video[0];
-                    const itemStreamType = $item.data('stream-type');
-
-                    if (stream.type === 'HLS') {
-                        const hls = this.hlsManager.hlsInstances.get(stream.id);
-                        if (hls && videoEl) {
-                            console.log(`[Fullscreen] Resuming HLS stream: ${stream.id}`);
-                            hls.startLoad(); // Resume fetching segments
-                            videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
-
-                            // Reattach health monitor
-                            this.attachHealthMonitor(stream.id, $item, itemStreamType);
-                        }
-                    }
-                    else if (stream.type === 'RTMP') {
-                        if (videoEl) {
-                            console.log(`[Fullscreen] Resuming RTMP stream: ${stream.id}`);
-                            videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
-
-                            // Reattach health monitor
-                            this.attachHealthMonitor(stream.id, $item, itemStreamType);
-                        }
-                    }
-                    else if (stream.type === 'MJPEG') {
-                        const imgEl = $video[0];
-                        if (imgEl && imgEl._pausedSrc) {
-                            console.log(`[Fullscreen] Resuming MJPEG stream: ${stream.id}`);
-                            imgEl.src = imgEl._pausedSrc; // Restore src to resume fetching
-                            delete imgEl._pausedSrc;
-
-                            // Reattach health monitor
-                            this.attachHealthMonitor(stream.id, $item, itemStreamType);
-                        }
-                    }
-                    else if (stream.type === 'SNAPSHOT') {
-                        // Resume snapshot polling for iOS cameras
-                        const imgEl = $item.find('.stream-snapshot-img')[0] || $video[0];
-                        if (imgEl) {
-                            console.log(`[Fullscreen] Resuming snapshot polling: ${stream.id}`);
-                            try {
-                                await this.snapshotManager.startStream(stream.id, imgEl, stream.cameraType, 1000);
-                                // Reattach health monitor
-                                this.attachHealthMonitor(stream.id, $item, itemStreamType);
-                            } catch (e) {
-                                console.error(`[Fullscreen] Failed to resume snapshot stream ${stream.id}:`, e);
-                            }
-                        }
-                    }
-                    else if (stream.type === 'WEBRTC') {
-                        if (videoEl) {
-                            console.log(`[Fullscreen] Resuming WebRTC stream: ${stream.id}`);
-                            // Reconnect WebRTC (it was fully stopped, not just paused)
-                            const streamSubType = videoEl._webrtcStreamType || 'sub';
-                            delete videoEl._webrtcStreamType;
-
-                            try {
-                                await this.webrtcManager.startStream(stream.id, videoEl, streamSubType);
-                                // Reattach health monitor
-                                this.attachHealthMonitor(stream.id, $item, itemStreamType);
-                            } catch (e) {
-                                console.error(`[Fullscreen] Failed to resume WebRTC stream ${stream.id}:`, e);
-                            }
-                        }
-                    }
-                }
-
-                this.pausedStreams = [];
-                console.log('[Fullscreen] All streams resumed');
-            }
+            await this._resumePausedStreams();
 
         } catch (error) {
             console.error('[Fullscreen] Error closing fullscreen:', error);
         }
+    }
+
+    /**
+     * Resume all streams that were paused when entering fullscreen.
+     *
+     * Extracted from closeFullscreen() so it can be called independently by
+     * forceExitFullscreen(), which removes the css-fullscreen class before
+     * invoking closeFullscreen() — causing closeFullscreen() to take the early
+     * return path (no .css-fullscreen item found) and skip resume without this helper.
+     */
+    async _resumePausedStreams() {
+        if (!this.pausedStreams || this.pausedStreams.length === 0) return;
+
+        console.log(`[Fullscreen] Resuming ${this.pausedStreams.length} paused streams...`);
+
+        for (const stream of this.pausedStreams) {
+            const $item = $(`.stream-item[data-camera-serial="${stream.id}"]`);
+            if (!$item.length) continue;
+
+            const $video = $item.find('.stream-video');
+            const videoEl = $video[0];
+            const itemStreamType = $item.data('stream-type');
+
+            if (stream.type === 'HLS') {
+                const hls = this.hlsManager.hlsInstances.get(stream.id);
+                if (hls && videoEl) {
+                    console.log(`[Fullscreen] Resuming HLS stream: ${stream.id}`);
+                    hls.startLoad();
+                    videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
+                    this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                }
+            }
+            else if (stream.type === 'RTMP') {
+                if (videoEl) {
+                    console.log(`[Fullscreen] Resuming RTMP stream: ${stream.id}`);
+                    videoEl.play().catch(e => console.log(`[Fullscreen] Play blocked for ${stream.id}:`, e));
+                    this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                }
+            }
+            else if (stream.type === 'MJPEG') {
+                const imgEl = $video[0];
+                if (imgEl && imgEl._pausedSrc) {
+                    console.log(`[Fullscreen] Resuming MJPEG stream: ${stream.id}`);
+                    imgEl.src = imgEl._pausedSrc;
+                    delete imgEl._pausedSrc;
+                    this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                }
+            }
+            else if (stream.type === 'SNAPSHOT') {
+                const imgEl = $item.find('.stream-snapshot-img')[0] || $video[0];
+                if (imgEl) {
+                    console.log(`[Fullscreen] Resuming snapshot polling: ${stream.id}`);
+                    try {
+                        await this.snapshotManager.startStream(stream.id, imgEl, stream.cameraType, 1000);
+                        this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                    } catch (e) {
+                        console.error(`[Fullscreen] Failed to resume snapshot stream ${stream.id}:`, e);
+                    }
+                }
+            }
+            else if (stream.type === 'WEBRTC') {
+                if (videoEl) {
+                    console.log(`[Fullscreen] Resuming WebRTC stream: ${stream.id}`);
+                    const streamSubType = videoEl._webrtcStreamType || 'sub';
+                    delete videoEl._webrtcStreamType;
+                    try {
+                        await this.webrtcManager.startStream(stream.id, videoEl, streamSubType);
+                        this.attachHealthMonitor(stream.id, $item, itemStreamType);
+                    } catch (e) {
+                        console.error(`[Fullscreen] Failed to resume WebRTC stream ${stream.id}:`, e);
+                    }
+                }
+            }
+        }
+
+        this.pausedStreams = [];
+        console.log('[Fullscreen] All streams resumed');
     }
 
     /**
@@ -3999,17 +4017,16 @@ export class MultiStreamManager {
         this._fullscreenProcessing = false;
         window._fullscreenLocked = false;
 
-        // Clear paused streams list (won't try to resume)
-        this.pausedStreams = [];
-
         console.log('[Fullscreen] FORCE EXIT complete - UI restored to grid view');
 
-        // Call the normal closeFullscreen after a delay to do cleanup
-        // This runs async and won't block the UI
+        // Resume paused streams and run fullscreen teardown after a short delay.
+        // The delay lets the UI paint (css-fullscreen already removed above) before
+        // async stream operations begin.  _resumePausedStreams() is called inside
+        // closeFullscreen() via the early-return path (css-fullscreen already gone).
         setTimeout(() => {
-            console.log('[Fullscreen] Running deferred cleanup...');
+            console.log('[Fullscreen] Running deferred stream resume...');
             this.closeFullscreen().catch(e => {
-                console.warn('[Fullscreen] Deferred cleanup error (ignored):', e);
+                console.warn('[Fullscreen] Deferred resume error (ignored):', e);
             });
         }, 500);
     }
@@ -4048,6 +4065,11 @@ export class MultiStreamManager {
 
         // Then collapse any already expanded camera
         this.collapseExpandedCamera();
+
+        // Arrange mode is grid-view only — exit it before opening modal
+        if (tileArrangeManager.arrangeMode) {
+            tileArrangeManager.exitArrangeMode(false);
+        }
 
         const cameraId = $streamItem.data('camera-serial');
         console.log(`[Expanded] Opening modal for ${cameraId}`);

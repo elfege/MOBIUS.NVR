@@ -37,38 +37,147 @@ export class HLSStreamManager {
         return badge;
     }
 
-    _attachLatencyMeter(hls, videoEl) {
-        // keep last seen PDT in ms
+    /**
+     * Attach PDT-based latency meter to a video element.
+     *
+     * Displays live stream lag (Date.now - last fragment PDT) as a badge overlay.
+     * Also drives two-stage frozen stream recovery:
+     *
+     *   Stage 1 — UI restart (no backend involvement):
+     *     If lag > LAG_THRESHOLD_MS for > FREEZE_CONFIRM_MS continuously,
+     *     destroy and reinitialise HLS.js (forceRefreshStream).
+     *     This resolves most freezes caused by transient network glitches or
+     *     HLS.js buffer stalls without touching the backend pipeline.
+     *
+     *   Stage 2 — Backend pipeline check (informational only):
+     *     POST_RESTART_CHECK_MS after the UI restart, if lag is still above
+     *     threshold we query /api/camera/state/<id> and log whether the backend
+     *     pipeline is broken.  We deliberately do NOT force a backend restart
+     *     here — the StreamWatchdog owns that decision.
+     *
+     * A UI_RESTART_COOLDOWN_MS prevents restart loops.
+     *
+     * @param {Hls}             hls      - hls.js instance
+     * @param {HTMLVideoElement} videoEl  - video element being driven
+     * @param {string}           cameraId - camera serial number
+     */
+    _attachLatencyMeter(hls, videoEl, cameraId) {
+        const LAG_THRESHOLD_MS       = 30_000;   // lag above this = frozen
+        const FREEZE_CONFIRM_MS      = 10_000;   // must be frozen this long before acting
+        const POST_RESTART_CHECK_MS  = 60_000;   // check backend state this long after UI restart
+        const UI_RESTART_COOLDOWN_MS = 120_000;  // minimum gap between consecutive UI restarts
+
+        // Keep last seen PDT in ms
         videoEl._lastFragPdtMs = null;
+
+        // Frozen-stream recovery state (persists across hls.js reinits on the same element)
+        videoEl._lagStartMs           = null;   // when lag first exceeded threshold
+        videoEl._frozenUiRestarted    = false;  // UI restart triggered for this freeze episode
+        videoEl._frozenLastRestartMs  = videoEl._frozenLastRestartMs || 0;  // last UI restart timestamp (preserved across reinits for cooldown)
+
+        // Cancel any pending post-restart check from a prior hls.js instance on this element
+        if (videoEl._frozenPostRestartTimer) {
+            clearTimeout(videoEl._frozenPostRestartTimer);
+            videoEl._frozenPostRestartTimer = null;
+        }
 
         const overlay = this._ensureLatencyOverlay(videoEl);
 
         const onFrag = (_, data) => {
-            // programDateTime may be number or string; normalize to ms
             const pdt = data?.frag?.programDateTime;
             if (pdt != null) {
-                videoEl._lastFragPdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
+                const pdtMs = typeof pdt === 'number' ? pdt : new Date(pdt).getTime();
+                // Only advance on genuinely new fragment PDT to avoid duplicates confusing recovery
+                if (!videoEl._lastFragPdtMs || pdtMs > videoEl._lastFragPdtMs) {
+                    videoEl._lastFragPdtMs = pdtMs;
+                    // Fresh fragment: reset lag-tracking (stream is producing again)
+                    videoEl._lagStartMs        = null;
+                    videoEl._frozenUiRestarted = false;
+                    if (videoEl._frozenPostRestartTimer) {
+                        clearTimeout(videoEl._frozenPostRestartTimer);
+                        videoEl._frozenPostRestartTimer = null;
+                    }
+                }
             }
         };
 
         hls.on(Hls.Events.FRAG_CHANGED, onFrag);
 
-        // update text ~4×/sec
+        // Update badge ~4×/sec and drive frozen-stream recovery
         if (videoEl._latencyTimer) clearInterval(videoEl._latencyTimer);
         videoEl._latencyTimer = setInterval(() => {
             if (!videoEl._lastFragPdtMs) return;
-            const ms = Date.now() - videoEl._lastFragPdtMs;
-            const s = (ms / 1000).toFixed(1);
+
+            const now = Date.now();
+            const ms  = now - videoEl._lastFragPdtMs;
+            const s   = (ms / 1000).toFixed(1);
             overlay.textContent = `${s}s`;
-            overlay.style.display = ''; // ensure shown
+            overlay.style.display = '';
+
+            // --- Stage 1: UI restart ---
+            if (ms > LAG_THRESHOLD_MS) {
+                if (!videoEl._lagStartMs) videoEl._lagStartMs = now;
+                const frozenDuration  = now - videoEl._lagStartMs;
+                const cooldownExpired = (now - videoEl._frozenLastRestartMs) > UI_RESTART_COOLDOWN_MS;
+
+                if (frozenDuration > FREEZE_CONFIRM_MS && !videoEl._frozenUiRestarted && cooldownExpired) {
+                    videoEl._frozenUiRestarted   = true;
+                    videoEl._frozenLastRestartMs = now;
+
+                    console.warn(`[HLS] ${cameraId}: frozen (${(frozenDuration / 1000).toFixed(0)}s lag) — triggering UI restart`);
+
+                    // Destroy and reinitialise HLS.js client-side only
+                    this.forceRefreshStream(cameraId, videoEl).catch(e => {
+                        console.warn(`[HLS] ${cameraId}: forceRefreshStream failed:`, e);
+                    });
+
+                    // --- Stage 2: backend pipeline check after grace period ---
+                    videoEl._frozenPostRestartTimer = setTimeout(async () => {
+                        videoEl._frozenPostRestartTimer = null;
+
+                        // If lag recovered (lagStartMs was reset by fresh PDT), nothing to do
+                        if (!videoEl._lagStartMs) {
+                            console.log(`[HLS] ${cameraId}: UI restart resolved frozen stream`);
+                            return;
+                        }
+                        const currentLag = Date.now() - videoEl._lastFragPdtMs;
+                        if (currentLag <= LAG_THRESHOLD_MS) {
+                            console.log(`[HLS] ${cameraId}: UI restart resolved frozen stream`);
+                            return;
+                        }
+
+                        // Still frozen — check backend pipeline state (informational)
+                        console.warn(`[HLS] ${cameraId}: still frozen ${(currentLag / 1000).toFixed(0)}s after UI restart — checking backend pipeline`);
+                        try {
+                            const resp = await fetch(`/api/camera/state/${cameraId}`);
+                            if (!resp.ok) return;
+                            const state = await resp.json();
+                            const avail = state?.availability;
+                            if (avail === 'ONLINE') {
+                                console.log(`[HLS] ${cameraId}: backend reports ONLINE — transient player issue; watchdog will handle if pipeline is actually broken`);
+                            } else {
+                                console.warn(`[HLS] ${cameraId}: backend reports ${avail} — pipeline may be broken; StreamWatchdog should restart it`);
+                            }
+                        } catch (e) {
+                            console.warn(`[HLS] ${cameraId}: backend state check failed:`, e);
+                        }
+                    }, POST_RESTART_CHECK_MS);
+                }
+            }
+            // lag < threshold: _lagStartMs is reset in onFrag when a fresh fragment arrives.
+            // If no new frags arrive at all, lagStartMs stays set and drives recovery above.
         }, 250);
 
-        // store for cleanup
+        // Cleanup hook — called by stopStream / _attachLatencyMeter reinit
         videoEl._latencyDetach = () => {
             hls.off(Hls.Events.FRAG_CHANGED, onFrag);
             if (videoEl._latencyTimer) { clearInterval(videoEl._latencyTimer); videoEl._latencyTimer = null; }
             if (videoEl._latencyOverlay) { videoEl._latencyOverlay.textContent = ''; }
-            videoEl._lastFragPdtMs = null;
+            if (videoEl._frozenPostRestartTimer) { clearTimeout(videoEl._frozenPostRestartTimer); videoEl._frozenPostRestartTimer = null; }
+            videoEl._lastFragPdtMs     = null;
+            videoEl._lagStartMs        = null;
+            videoEl._frozenUiRestarted = false;
+            // NOTE: _frozenLastRestartMs intentionally NOT cleared — preserves cooldown across detach/reinit
         };
     }
 
@@ -227,7 +336,7 @@ export class HLSStreamManager {
 
                 hls.loadSource(playlistUrl);
                 hls.attachMedia(videoElement);
-                this._attachLatencyMeter(hls, videoElement);
+                this._attachLatencyMeter(hls, videoElement, cameraId);
 
                 return new Promise((resolve, reject) => {
                     hls.on(Hls.Events.MANIFEST_PARSED, () => {

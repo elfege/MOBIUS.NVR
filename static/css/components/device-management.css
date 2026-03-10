@@ -1,0 +1,226 @@
+/**
+ * Device Management Modal Styles
+ *
+ * Admin interface for viewing connected devices and managing trust status.
+ * Follows the same visual patterns as user-management.css.
+ */
+
+/* Device management modal container */
+.device-management-modal .modal-content {
+    width: 700px;
+    max-width: 92vw;
+}
+
+/* Device list */
+.device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Individual device row */
+.device-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: #f5f5f5;
+    border-radius: 8px;
+    border-left: 4px solid transparent;
+    transition: background 0.2s;
+}
+
+.device-item:hover {
+    background: #e8e8e8;
+}
+
+/* Online/offline indicator via left border */
+.device-item.device-online {
+    border-left-color: #4caf50;
+}
+
+.device-item.device-offline {
+    border-left-color: #bdbdbd;
+}
+
+/* Highlight "this device" */
+.device-item.device-current {
+    background: #e3f2fd;
+}
+
+.device-item.device-current:hover {
+    background: #bbdefb;
+}
+
+/* Device info section */
+.device-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.device-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Status dot */
+.device-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.device-status-dot.online {
+    background: #4caf50;
+    box-shadow: 0 0 6px rgba(76, 175, 80, 0.5);
+}
+
+.device-status-dot.offline {
+    background: #bdbdbd;
+}
+
+/* Device name */
+.device-name {
+    font-weight: 500;
+    color: #333;
+    font-size: 1.05rem;
+}
+
+/* Badges */
+.device-this-badge {
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #2196F3;
+    color: white;
+}
+
+.device-trusted-badge {
+    padding: 0.15rem 0.5rem;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: #4caf50;
+    color: white;
+}
+
+/* Detail line (user, IP, last seen) */
+.device-details {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: #666;
+    flex-wrap: wrap;
+}
+
+.device-details i {
+    margin-right: 0.25rem;
+    width: 14px;
+    text-align: center;
+    color: #999;
+}
+
+/* Action buttons */
+.device-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.device-actions .btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Trusted button active state */
+.btn-trusted {
+    background: #4caf50 !important;
+    color: white;
+}
+
+.btn-trusted:hover {
+    background: #388e3c !important;
+}
+
+/* Refresh button in header */
+.device-refresh-btn {
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    color: #666;
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: color 0.2s, transform 0.3s;
+}
+
+.device-refresh-btn:hover {
+    color: #2196F3;
+    transform: rotate(180deg);
+}
+
+/* Messages */
+.device-management-message {
+    padding: 0.75rem 1rem;
+    margin: 0.75rem 1.5rem 0;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.device-management-message.success {
+    background: #4caf50;
+    color: white;
+}
+
+.device-management-message.error {
+    background: #f44336;
+    color: white;
+}
+
+.no-devices-message {
+    text-align: center;
+    padding: 2rem;
+    color: #666;
+}
+
+/* Controls bar (refresh) */
+.device-management-controls {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 0.75rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .device-management-modal .modal-content {
+        width: 95vw;
+    }
+
+    .device-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .device-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .device-details {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+}

@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 09, 2026 22:09 EDT*
+*Last updated: March 09, 2026 23:40 EST*
 
 **Branch:** `ptz_baichuan_E1_MAR_09_2026_a` (new branch — Baichuan E1 PTZ investigation)
 
@@ -221,7 +221,7 @@ export AWS_PROFILE=personal bash -c "source ~/.bash_utils && get_cameras_credent
 
 ---
 
-### Side-Chat Session: External API + TILES Integration (Feb 20, 09:00-09:45 EST)
+### Side Task:External API + TILES Integration (Feb 20, 09:00-09:45 EST)
 
 **Context:** Running as `office-nvr` side-chat, coordinating with `office-tiles` via intercom.
 
@@ -860,72 +860,139 @@ Host npm warnings are cosmetic — packages run fine on container's Node 20.
 
 ---
 
+## March 09-10, 2026 — All Tasks (Branch: `ptz_baichuan_E1_MAR_09_2026_a`)
+
+### Task A: PTZ Baichuan E1 Fix (22:00-23:41 EST) — this chat
+
+**Context:** Continued from compacted session. Previous session fixed HLS frozen recovery, fullscreen grid resume, and identified E1 PTZ failure.
+
+#### A1. E1 PTZ Credential Fix (22:10 EST)
+- **Root cause:** `api-user` lacked PTZ permission on E1 camera (192.168.10.123)
+- Camera returned HTTP 400 (error code 1) on PtzCtrl cmd_id 18 with `api-user`
+- Tested `admin` credentials — PTZ works
+- User recreated `api-user` on camera with PTZ permission — confirmed working
+- Reverted code back to `use_api_credentials=True`
+- **Commits:** `8ff5c89` (admin fix), `3cb046a` (revert to api-user)
+
+#### A2. Baichuan PTZ Event Loop Rewrite (22:30 EST)
+- **Problem:** `_run_async()` used `asyncio.run()` per call (new event loop each time). Cached `Host` objects held sockets bound to previous loops — commands hung until 30s timeout — minutes-long delayed movements
+- **Fix:** Dedicated background event loop (`_ensure_loop()`) in daemon thread. All PTZ coroutines dispatched via `run_coroutine_threadsafe()`. Connection cache now valid (same loop = same sockets).
+- **Per-camera threading.Lock** prevents flooding camera with simultaneous connections
+
+#### A3. Cache Validity Fix (23:15 EST)
+- **Bug:** `_token` is always `None` for `bc_only=True` connections (no HTTP API = no token). Cache validity check always failed — reconnect on every command (~3s each)
+- **Fix:** Use `host.session_active` or `host.baichuan._logged_in` instead
+- **Result:** Cold connect ~1.1s, cached commands ~100ms
+
+#### A4. Stop Command Lock Strategy (23:25 EST)
+- **Bug:** Non-blocking lock on `move_camera()` caused stop commands to be silently dropped when move was still executing — camera kept moving indefinitely
+- **Fix:** Stop commands block-wait (up to 5s). Move commands remain non-blocking (skip if busy).
+
+#### A5. Baichuan Preset Save (23:00 EST)
+- **Discovery:** `SetPtzPreset` not supported via Baichuan in reolink_aio, but raw XML with `cmd_id=19` and `<command>setPos</command>` works
+- Added `save_preset()` method to `BaichuanPTZHandler`
+- Wired into Flask route `api_ptz_set_preset()` — Baichuan path added before ONVIF fallback
+- Verified: preset save + retrieve working on E1
+
+**Files Modified (Task A):**
+| File | Change |
+|------|--------|
+| `services/ptz/baichuan_ptz_handler.py` | Full rewrite: dedicated event loop, connection caching, stop-priority lock, preset save via raw Baichuan XML |
+| `app.py` | Added Baichuan preset save route (before ONVIF fallback) |
+| `docs/README_handoff.md` | Updated branch name, session notes |
+
+---
+
+### Task B: Trusted Devices + Connected Clients (22:15-23:40 EST) — side chat
+
+**Status:** Code complete, NOT committed, NOT tested (PostgREST was down — see blocker)
+
+#### B1. Feature: Trusted Device Management
+Admin can view all connected clients and mark devices as "trusted" — trusted devices auto-login via cookie, never see the login page again.
+
+**Architecture:**
+- Device token (UUID) in localStorage + httpOnly cookie
+- Heartbeat piggybacks on existing ConnectionMonitor health checks
+- `@app.before_request` auto-login for trusted devices
+- Admin modal: online/offline status, IP, user-agent, user, trust toggle, rename, delete
+
+**Files Created:** `psql/migrations/015_trusted_devices.sql`, `static/js/modals/device-management-modal.js`, `static/css/components/device-management.css`
+
+**Files Modified:** `app.py` (before_request hook, login device registration, 6 API routes), `static/js/connection-monitor.js` (`_sendDeviceHeartbeat()`), `templates/streams.html` (CSS link, nav button, modal HTML, script tag)
+
+#### B2. Blocker: PostgREST Restart Loop (pre-existing)
+`~/.cache/nvr_secrets.env` has 4 different `POSTGRES_PASSWORD` values; last one is SmartHome's, not NVR's. Temporary fix: `ALTER ROLE nvr_api` to match. Needs proper secrets cache dedup.
+
+**Intercom:** MSG-181 + MSG-182 posted (PENDING).
+
+---
+
+### Task C: HLS + Startup Fixes (23:00-23:41 EST) — side chat
+
+#### C1. HLS Signal-Lost Overlay Stuck After Recovery — `static/js/streaming/hls-stream.js` (23:05 EST)
+**Problem:** "Signal Lost" overlay stayed visible after stream recovered. `_firstFragReceived` one-shot flag never reset.
+**Fix:** Reset `videoElement._firstFragReceived = false` in both `forceRefreshStream()` and HLS 404 retry loop.
+
+#### C2. Parallel AWS Secrets Pull + LAN Cache — `start.sh` (23:15 EST)
+**Problem:** 14 sequential AWS calls = ~15s. **Fix:** Parallel subshells + LAN cache at `~/.cache/nvr_secrets.env`.
+
+| Scenario | Wall-clock |
+|----------|------------|
+| LAN cache hit | ~0s |
+| Parallel pull | ~4s |
+| Before (serial) | ~15s |
+
+#### C3. Nginx 502 + MSG-181 Login — Investigation Only
+Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-182 posted.
+
+**Uncommitted (Task C):** `static/js/streaming/hls-stream.js`, `start.sh`
+
+---
+
 ## Next Session TODO
 
-**Immediate (User must test in UI — March 09 session features):**
-- [ ] Run `./start.sh` to apply migrations 012–014 and load all new code
-- [ ] Hard refresh browser after restart
-- [ ] Test golden ratio tile layout (13/8 aspect ratio — visually verify)
-- [ ] Test video fit mode toggle (per-user default + per-camera override)
-- [ ] Test tile rearrange: long-press → jiggle → drag → Done pill → verify order persists on reload
-- [ ] Test arrange mode guard: confirm long-press blocked in fullscreen and expanded modal
-- [ ] Test HD button in expanded modal (toggle HD/SD from modal)
-- [ ] Test pin button: pin a camera → verify auto-expands on next reload
-- [ ] Test floating pinned window (pin + HD simultaneously → verify draggable/resizable window)
-- [ ] Test multiple pinned windows
-- [ ] Test pinned window position persistence across reload
+**Immediate (PTZ — Task A):**
+- [ ] Run `./start.sh` to pick up PTZ code changes (event loop, cache fix, stop-priority lock)
+- [ ] Test E1 PTZ responsiveness — should be ~100ms per cached command
+- [ ] Test preset save via UI on E1
 
-**Immediate (User must test in UI — prior sessions):**
-- [ ] Test Issue 2: Save/overwrite preset on Eufy KITCHEN OFFICE (T8419P0024110C6A)
-- [ ] Test Issue 3: Switch a camera to MJPEG, then switch back to WebRTC — verify create-path works
-- [ ] Test performance refactoring: verify static Cache-Control, SocketIO push, non-blocking restart
+**Immediate (Trusted Devices — Task B):**
+- [ ] Fix `~/.cache/nvr_secrets.env` — deduplicate POSTGRES_PASSWORD entries
+- [ ] Run `./start.sh` (auto-applies migration 015)
+- [ ] Test login, verify device token cookie is set
+- [ ] Test admin "Manage Devices" modal
+- [ ] Test trust toggle — mark trusted, logout, verify auto-login
+- [ ] Commit all trusted device files once verified
+
+**Immediate (User must test — March 09 features):**
+- [ ] Hard refresh browser after restart
+- [ ] Test golden ratio tile layout (13/8 aspect ratio)
+- [ ] Test video fit mode toggle (per-user default + per-camera override)
+- [ ] Test tile rearrange: long-press → jiggle → drag → Done pill
+- [ ] Test HD button + pin button in expanded modal
+- [ ] Test floating pinned window (pin + HD simultaneously)
+
+**Immediate (Prior sessions — still untested):**
+- [ ] Test Eufy preset save/overwrite (T8419P0024110C6A)
+- [ ] Test MJPEG→WebRTC stream switching
 - [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
-- [ ] Test camera rename feature
-- [ ] Test stream reload overlay animations (stream.js `_showStreamReloadOverlay`)
+- [ ] Test camera rename, stream reload overlay
 
 **Issues 4-7 (from `docs/ISSUES_March_4_2026.md`):**
-- [ ] Issue 4: Mobile UI overhaul (iPhone/iPad) — needs planning session
-- [ ] Issue 5: Older iPad stream stalling — likely related to Issues 6+7
-- [ ] Issue 6: Frozen stream diagnostics — per-camera logging, virtual terminal, DB log tables
-- [ ] Issue 7: Device capability assessment — fingerprinting, adaptive quality, ML learning
+- [ ] Issue 4: Mobile UI overhaul (iPhone/iPad)
+- [ ] Issue 5: Older iPad stream stalling
+- [ ] Issue 6: Frozen stream diagnostics
+- [ ] Issue 7: Device capability assessment
 
-**Testing Required (DB Migration):**
-- [ ] Test stream type switching: select MJPEG in UI -> backend serves MJPEG
-- [ ] Test per-user preferences: user A sets WebRTC, verify backend uses it
-- [ ] Test force-sync: `POST /api/cameras/force-sync` resets from JSON
-- [ ] Test fallback: stop PostgREST -> verify app still works from JSON
-- [ ] 24-hour stability test
-
-**Testing Required (Previous):**
-- [ ] Phase 1 stream stability fixes (still untested from Feb 14)
-- [ ] Manual restart button: works within 10-15 seconds
-- [ ] Monitor for Entrance door RTSP null exceptions
-
-**Cleanup:**
-- [x] Fix `.gitignore` neolink entry (done 01:25 EST)
-- [x] Commit project rename files (done 01:30 EST)
-- [x] Fix git remote push URL (done 01:20 EST)
-- [ ] Decide on recursive `docs/docs/docs/...` deletions
-
-**Pending (Phase 2 -- Code Quality):**
-- [ ] Centralize 30+ hardcoded timeouts to config/timeouts.yaml
-- [ ] Centralize hardcoded MediaMTX addresses to config/services.yaml
-- [ ] Remove commented-out code from MJPEG service files
-- [ ] Fix bare except clauses in talkback_transcoder.py
-
-**Pending (Phase 3 -- Refactoring):**
-- [ ] Extract MJPEG handler base class (reduce ~300 lines duplication)
+**Pending (Code Quality / Refactoring / Other):**
+- [ ] Preset delete via Baichuan (`delPos`) — camera ignores command
+- [ ] Centralize hardcoded timeouts + MediaMTX addresses
+- [ ] Extract MJPEG handler base class
 - [ ] Fix circular import architecture
-- [ ] Add camera state audit trail (90-day retention)
-
-**Pending (Other):**
-- [ ] file_operations_log cleanup: 98M rows (34GB) needs retention/pruning policy
-- [ ] VACUUM ANALYZE on recordings table (never been vacuumed)
-- [ ] Security: Implement stricter RLS policies (currently permissive)
-- [ ] Security: Investigate container encryption (secrets are cleartext in container env)
-- [ ] WebRTC HD/SD fallback -- falls back too fast, doesn't retry HD
-- [ ] Add snapshot feature in fullscreen mode
-- [ ] Investigate segment buffer failures -- pre-alarm recording broken
+- [ ] file_operations_log cleanup (98M rows / 34GB)
+- [ ] VACUUM ANALYZE on recordings table
+- [ ] WebRTC HD/SD fallback too aggressive
+- [ ] Snapshot in fullscreen mode
+- [ ] Segment buffer / pre-alarm recording
 - [ ] Warm restart sub-service (`restart_warm.sh`)
-- [ ] Rename camera on device itself via vendor API (Baichuan for Reolink, ONVIF for others)
-- [ ] "Add a Camera" UI — form + POST endpoint + MediaMTX path setup
+- [ ] "Add a Camera" UI

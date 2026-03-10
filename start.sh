@@ -67,12 +67,92 @@ fi
 # export credentials
 set -a
 . ~/0_MOBIUS.NVR/.env
-# start_spinner 20 "$BLUE Exporting Secrets..."
-pull_nvr_secrets # >/dev/null
 
-# Detect and export host IP
+# Detect host IP early (needed for LAN-cache decision + container env)
 export NVR_LOCAL_HOST_IP=$(ip route get 1.1.1.1 | awk '{print $7}' | head -1)
-stop_spinner
+
+# ── Parallel secrets pull with LAN cache ──────────────────────────────────────
+# On the home LAN (192.168.10.0/24) AWS secrets are cached to disk so
+# subsequent start.sh runs skip the ~13s of serial AWS round-trips entirely.
+# Off-LAN the cache is not persisted — secrets are always pulled fresh.
+#
+# Parallelization: list-secrets (1 call, serial) then N get-secret-value calls
+# fired simultaneously.  Each subshell writes KEY=VALUE lines to a temp file;
+# the parent concatenates them into the cache and sources it under set -a.
+# ──────────────────────────────────────────────────────────────────────────────
+_NVR_SECRETS_CACHE="$HOME/.cache/nvr_secrets.env"
+_on_lan=false
+[[ "$NVR_LOCAL_HOST_IP" == 192.168.10.* ]] && _on_lan=true
+_need_pull=true
+
+# Try LAN cache first
+if $_on_lan && [[ -f "$_NVR_SECRETS_CACHE" ]]; then
+	. "$_NVR_SECRETS_CACHE"
+	if [[ -n "$POSTGRES_PASSWORD" ]]; then
+		echo -e "${GREEN}✓ Secrets loaded from LAN cache${NC}"
+		_need_pull=false
+	else
+		echo -e "${YELLOW}⚠️  Cached secrets invalid — re-pulling from AWS${NC}"
+		rm -f "$_NVR_SECRETS_CACHE"
+	fi
+fi
+
+if $_need_pull; then
+	_sec_start=$(date +%s)
+	mkdir -p "$(dirname "$_NVR_SECRETS_CACHE")"
+	export AWS_PROFILE=personal
+
+	# Authenticate (serial — cached SSO check is fast)
+	if ! aws_auth 2>/dev/null; then
+		echo -e "${RED}✗ AWS authentication failed${NC}"
+		exit 1
+	fi
+
+	# List all secret names (1 API call)
+	_list_output=$(aws secretsmanager list-secrets \
+		--query 'SecretList[].Name' --output text 2>&1)
+	if [[ $? -ne 0 ]]; then
+		echo -e "${RED}✗ Failed to list secrets: $_list_output${NC}"
+		exit 1
+	fi
+	readarray -t _secret_names < <(echo "$_list_output" | tr '\t' '\n')
+	echo "Fetching ${#_secret_names[@]} secrets in parallel..."
+
+	# Parallel fetch: each secret → temp file with KEY='value' lines
+	# Values are jq @sh-escaped so sourcing is safe for any content.
+	_tmpdir=$(mktemp -d)
+	for _sname in "${_secret_names[@]}"; do
+		(
+			aws secretsmanager get-secret-value \
+				--secret-id "$_sname" \
+				--query SecretString \
+				--output text 2>/dev/null \
+			| jq -r 'to_entries | .[] | "\(.key)=\(.value | @sh)"' \
+			> "$_tmpdir/${_sname}.env" 2>/dev/null
+		) &
+	done
+	wait
+
+	# Combine into single env file, source under set -a (auto-export)
+	cat "$_tmpdir"/*.env > "$_NVR_SECRETS_CACHE" 2>/dev/null
+	rm -rf "$_tmpdir"
+	. "$_NVR_SECRETS_CACHE"
+
+	_sec_end=$(date +%s)
+	echo -e "${GREEN}✓ All secrets loaded in $((_sec_end - _sec_start))s (${#_secret_names[@]} secrets, parallel)${NC}"
+
+	# Off-LAN: don't persist the cache
+	if ! $_on_lan; then
+		rm -f "$_NVR_SECRETS_CACHE"
+	fi
+
+	# Verify critical secrets
+	if [[ -z "$POSTGRES_PASSWORD" ]]; then
+		echo -e "${RED}✗ POSTGRES_PASSWORD missing after pull — check AWS secrets${NC}"
+		exit 1
+	fi
+fi
+# ──────────────────────────────────────────────────────────────────────────────
 set +a
 
 if [[ -f ~/0_MOBIUS.NVR/scripts/update_mediamtx_paths.sh && -f ~/0_MOBIUS.NVR/packager/mediamtx.yml ]]; then

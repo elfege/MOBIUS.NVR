@@ -19,6 +19,7 @@ import time
 import traceback
 from datetime import datetime
 from threading import Thread
+import uuid
 
 from flask import Flask, render_template, jsonify, request, Response, redirect, send_file, session
 from flask_wtf import FlaskForm
@@ -128,6 +129,55 @@ def load_user(user_id):
         User: User instance if found, None otherwise
     """
     return User.get_by_id(user_id)
+
+
+@app.before_request
+def _auto_login_trusted_device():
+    """
+    Auto-login users on trusted devices.
+
+    If the user is not authenticated but presents a valid device_token cookie
+    that matches a trusted device in the database, automatically log them in
+    as the user associated with that device. This means trusted devices never
+    see the login page again.
+
+    Skips static files, health checks, and the login route itself.
+    """
+    from flask_login import current_user as _cu
+    # Skip if already authenticated
+    if _cu and _cu.is_authenticated:
+        return
+
+    # Skip routes that don't need auth
+    skip_prefixes = ('/static/', '/api/health', '/login', '/favicon')
+    if any(request.path.startswith(p) for p in skip_prefixes):
+        return
+
+    device_token = request.cookies.get('device_token')
+    if not device_token:
+        return
+
+    try:
+        resp = _postgrest_session.get(
+            f"{POSTGREST_URL}/trusted_devices",
+            params={
+                'device_token': f'eq.{device_token}',
+                'is_trusted': 'eq.true',
+                'select': 'user_id'
+            },
+            timeout=3
+        )
+        if resp.status_code == 200:
+            devices = resp.json()
+            if devices and devices[0].get('user_id'):
+                user = User.get_by_id(devices[0]['user_id'])
+                if user:
+                    login_user(user, remember=True)
+                    print(f"[TrustedDevice] Auto-login: {user.username} (token: {device_token[:8]}...)")
+    except Exception as e:
+        # Don't block the request if DB is down — just skip auto-login
+        print(f"[TrustedDevice] Auto-login check failed: {e}")
+
 
 # Initialize Flask-SocketIO
 # async_mode='threading' works with Gunicorn gthread workers
@@ -974,12 +1024,32 @@ def login():
     # Create session record in database
     _create_user_session(user.id, request.remote_addr, request.user_agent.string)
 
+    # Register device token — reuse existing cookie or generate new one
+    device_token = request.cookies.get('device_token') or str(uuid.uuid4())
+    _register_or_update_device(
+        device_token=device_token,
+        user_id=user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
+
     # Check if password change required AFTER login
     # This allows change-password route to use current_user with proper auth context
     if user.must_change_password:
-        return redirect('/change-password')
+        resp = redirect('/change-password')
+    else:
+        resp = redirect('/streams')
 
-    return redirect('/streams')
+    # Set device_token cookie on the redirect response
+    resp.set_cookie(
+        'device_token',
+        device_token,
+        max_age=365 * 24 * 3600,
+        httponly=True,
+        samesite='Lax',
+        secure=False
+    )
+    return resp
 
 @app.route('/logout', methods=['POST'])
 @csrf.exempt
@@ -1296,6 +1366,283 @@ def api_reset_user_password(user_id):
     except requests.RequestException as e:
         print(f"Error resetting password: {e}")
         return jsonify({'error': 'Database error'}), 500
+
+# ===== Device Management API =====
+
+def _register_or_update_device(device_token, user_id, ip_address, user_agent):
+    """
+    Register a new device or update last_seen for an existing one.
+
+    Uses PostgREST upsert (ON CONFLICT) to atomically create or update.
+    Returns the device record.
+    """
+    try:
+        # Try to find existing device
+        resp = _postgrest_session.get(
+            f"{POSTGREST_URL}/trusted_devices",
+            params={
+                'device_token': f'eq.{device_token}',
+                'select': 'id,device_token,user_id,device_name,ip_address,user_agent,is_trusted,first_seen,last_seen'
+            },
+            timeout=5
+        )
+        if resp.status_code == 200 and resp.json():
+            # Device exists — update last_seen, ip, user_agent, and user_id
+            device = resp.json()[0]
+            update_data = {
+                'last_seen': datetime.utcnow().isoformat(),
+                'ip_address': ip_address,
+                'user_agent': user_agent
+            }
+            if user_id:
+                update_data['user_id'] = user_id
+            _postgrest_session.patch(
+                f"{POSTGREST_URL}/trusted_devices",
+                params={'device_token': f'eq.{device_token}'},
+                json=update_data,
+                headers={'Prefer': 'return=minimal'},
+                timeout=5
+            )
+            device.update(update_data)
+            return device
+
+        # New device — insert
+        new_device = {
+            'device_token': device_token,
+            'user_id': user_id,
+            'ip_address': ip_address,
+            'user_agent': user_agent
+        }
+        resp = _postgrest_session.post(
+            f"{POSTGREST_URL}/trusted_devices",
+            json=new_device,
+            headers={'Prefer': 'return=representation'},
+            timeout=5
+        )
+        if resp.status_code == 201:
+            return resp.json()[0]
+        return None
+    except requests.RequestException as e:
+        print(f"[DeviceManager] Error registering device: {e}")
+        return None
+
+
+@app.route('/api/device/register', methods=['POST'])
+@csrf.exempt
+@login_required
+def api_device_register():
+    """
+    Register a device token for the current user.
+
+    Called by the frontend on page load. If the client already has a device_token
+    in localStorage, it sends it here. Otherwise, the server generates a new one.
+
+    Returns:
+        JSON with device_token (to be stored in localStorage by client)
+    """
+    data = request.get_json() or {}
+    client_token = data.get('device_token')
+
+    # Use the client's existing token or generate a new one
+    device_token = client_token or str(uuid.uuid4())
+
+    device = _register_or_update_device(
+        device_token=device_token,
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
+
+    if not device:
+        return jsonify({'error': 'Failed to register device'}), 500
+
+    # Set the device_token as an httpOnly cookie (backup for localStorage)
+    resp = jsonify({
+        'device_token': device_token,
+        'is_trusted': device.get('is_trusted', False)
+    })
+    resp.set_cookie(
+        'device_token',
+        device_token,
+        max_age=365 * 24 * 3600,  # 1 year
+        httponly=True,
+        samesite='Lax',
+        secure=False  # Set True when HTTPS enabled
+    )
+    return resp
+
+
+@app.route('/api/device/heartbeat', methods=['POST'])
+@csrf.exempt
+@login_required
+def api_device_heartbeat():
+    """
+    Update last_seen for the current device.
+
+    Called periodically by the connection monitor alongside health checks.
+    Updates IP, user_agent, and last_seen timestamp.
+
+    Returns:
+        JSON with is_trusted status
+    """
+    data = request.get_json() or {}
+    device_token = data.get('device_token') or request.cookies.get('device_token')
+
+    if not device_token:
+        return jsonify({'error': 'No device token'}), 400
+
+    device = _register_or_update_device(
+        device_token=device_token,
+        user_id=current_user.id,
+        ip_address=request.remote_addr,
+        user_agent=request.user_agent.string
+    )
+
+    if not device:
+        return jsonify({'error': 'Failed to update device'}), 500
+
+    return jsonify({'is_trusted': device.get('is_trusted', False)})
+
+
+@app.route('/api/admin/devices', methods=['GET'])
+@login_required
+def api_admin_get_devices():
+    """
+    Get all registered devices (admin only).
+
+    Returns list of devices with user info, IP, last_seen, trust status.
+    Devices seen in the last 5 minutes are considered "online".
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        resp = _postgrest_session.get(
+            f"{POSTGREST_URL}/trusted_devices",
+            params={
+                'select': 'id,device_token,user_id,device_name,ip_address,user_agent,is_trusted,first_seen,last_seen',
+                'order': 'last_seen.desc'
+            },
+            timeout=5
+        )
+        if resp.status_code != 200:
+            return jsonify({'error': 'Failed to fetch devices'}), 500
+
+        devices = resp.json()
+
+        # Enrich with username lookup
+        user_cache = {}
+        for device in devices:
+            uid = device.get('user_id')
+            if uid and uid not in user_cache:
+                user = User.get_by_id(uid)
+                user_cache[uid] = user.username if user else 'unknown'
+            device['username'] = user_cache.get(uid, 'unlinked')
+
+        return jsonify(devices)
+    except requests.RequestException as e:
+        print(f"[DeviceManager] Error fetching devices: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+
+@app.route('/api/admin/devices/<int:device_id>/trust', methods=['PATCH'])
+@csrf.exempt
+@login_required
+def api_admin_toggle_trust(device_id):
+    """
+    Toggle trusted status for a device (admin only).
+
+    Expects JSON: {is_trusted: true/false}
+    When trusted, the device will auto-login without requiring credentials.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json()
+    if data is None or 'is_trusted' not in data:
+        return jsonify({'error': 'is_trusted field required'}), 400
+
+    try:
+        resp = _postgrest_session.patch(
+            f"{POSTGREST_URL}/trusted_devices",
+            params={'id': f'eq.{device_id}'},
+            json={'is_trusted': bool(data['is_trusted'])},
+            headers={'Prefer': 'return=representation'},
+            timeout=5
+        )
+        if resp.status_code == 200 and resp.json():
+            device = resp.json()[0]
+            action = 'trusted' if device['is_trusted'] else 'untrusted'
+            print(f"[DeviceManager] Device {device_id} marked as {action} by {current_user.username}")
+            return jsonify(device)
+
+        return jsonify({'error': 'Device not found'}), 404
+    except requests.RequestException as e:
+        print(f"[DeviceManager] Error toggling trust: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+
+@app.route('/api/admin/devices/<int:device_id>/name', methods=['PATCH'])
+@csrf.exempt
+@login_required
+def api_admin_rename_device(device_id):
+    """
+    Set a friendly name for a device (admin only).
+
+    Expects JSON: {device_name: "Living Room iPad"}
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json()
+    if data is None or 'device_name' not in data:
+        return jsonify({'error': 'device_name field required'}), 400
+
+    try:
+        resp = _postgrest_session.patch(
+            f"{POSTGREST_URL}/trusted_devices",
+            params={'id': f'eq.{device_id}'},
+            json={'device_name': str(data['device_name'])[:100]},
+            headers={'Prefer': 'return=representation'},
+            timeout=5
+        )
+        if resp.status_code == 200 and resp.json():
+            return jsonify(resp.json()[0])
+
+        return jsonify({'error': 'Device not found'}), 404
+    except requests.RequestException as e:
+        print(f"[DeviceManager] Error renaming device: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
+
+@app.route('/api/admin/devices/<int:device_id>', methods=['DELETE'])
+@csrf.exempt
+@login_required
+def api_admin_delete_device(device_id):
+    """
+    Delete a registered device (admin only).
+
+    Removes the device from the database entirely.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    try:
+        resp = _postgrest_session.delete(
+            f"{POSTGREST_URL}/trusted_devices",
+            params={'id': f'eq.{device_id}'},
+            headers={'Prefer': 'return=minimal'},
+            timeout=5
+        )
+        if resp.status_code == 204:
+            print(f"[DeviceManager] Device {device_id} deleted by {current_user.username}")
+            return jsonify({'success': True})
+
+        return jsonify({'error': 'Device not found'}), 404
+    except requests.RequestException as e:
+        print(f"[DeviceManager] Error deleting device: {e}")
+        return jsonify({'error': 'Database error'}), 500
+
 
 # ===== User Camera Access Control =====
 
@@ -1790,13 +2137,24 @@ def api_mediamtx_create_path(camera_serial):
                 'error': 'Failed to create all required MediaMTX paths'
             }), 500
 
-        # Start FFmpeg publisher for this camera (sub stream — dual-output publishes both)
-        stream_url = stream_manager.start_stream(camera_serial, resolution='sub')
+        # Determine target protocol for FFmpeg startup.
+        # When switching from MJPEG, the camera's stored stream_type is still MJPEG,
+        # so we must override it to actually start FFmpeg for the target protocol.
+        data = request.get_json() or {}
+        target_type = data.get('target_type', 'LL_HLS').upper()
+        if target_type == 'MJPEG':
+            # Nonsensical: creating MediaMTX path for MJPEG. Default to LL_HLS.
+            target_type = 'LL_HLS'
+
+        # Start FFmpeg publisher with protocol override (sub stream — dual-output publishes both)
+        stream_url = stream_manager.start_stream(
+            camera_serial, resolution='sub', protocol_override=target_type)
 
         return jsonify({
             'success': True,
             'paths_created': created,
             'stream_url': stream_url,
+            'target_type': target_type,
             'message': f'MediaMTX paths created and FFmpeg publisher started for {path_name}'
         })
 
@@ -2236,11 +2594,13 @@ def api_stream_start(camera_serial):
         data = request.get_json() or {}
         resolution = data.get('type', 'sub')  # 'main' or 'sub'
 
-        print(f"[API] /api/stream/start/{camera_serial} - resolution={resolution}")
+        print(f"[API] /api/stream/start/{camera_serial} - resolution={resolution}, effective_type={stream_type}")
 
-        # Start the stream with specified resolution
+        # Start the stream with specified resolution.
+        # Pass effective stream_type as protocol_override so that cameras whose stored
+        # config says MJPEG but whose user preference says WEBRTC/HLS actually start FFmpeg.
         stream_url = stream_manager.start_stream(
-            camera_serial, resolution=resolution)
+            camera_serial, resolution=resolution, protocol_override=stream_type)
 
         if not stream_url:
             return jsonify({'success': False, 'error': 'Failed to start stream'}), 500
@@ -4628,15 +4988,31 @@ def api_ptz_set_preset(camera_serial):
                 response['bridge_status'] = eufy_bridge.get_status()
             return jsonify(response), status_code
 
-        # For ONVIF cameras, preset name is required
+        # Preset name is required for all non-Eufy cameras
         if not preset_name:
             return jsonify({'success': False, 'error': 'Preset name required'}), 400
+
+        # Check if camera uses Baichuan for PTZ (E1, NEOLINK cameras, no ONVIF port)
+        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera)
+
+        if use_baichuan:
+            # Save preset via Baichuan protocol (raw XML cmd_id 19, setPos command)
+            preset_id_override = int(preset_token) if preset_token else None
+            success, message = BaichuanPTZHandler.save_preset(
+                camera_serial, preset_name, camera, preset_id=preset_id_override
+            )
+            return jsonify({
+                'success': success,
+                'camera': camera_serial,
+                'preset_name': preset_name,
+                'message': message
+            })
 
         # Only Amcrest and Reolink support ONVIF presets
         if camera_type not in ['amcrest', 'reolink']:
             return jsonify({'success': False, 'error': 'Presets not supported for this camera type'}), 400
 
-        # Set preset (preset_token allows overwriting an existing preset)
+        # Set preset via ONVIF (preset_token allows overwriting an existing preset)
         success, message = ONVIFPTZHandler.set_preset(
             camera_serial, preset_name, camera, preset_token=preset_token
         )

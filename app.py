@@ -330,7 +330,7 @@ def _auto_login_trusted():
         client_ip = _get_client_ip()
         if _is_same_subnet(client_ip):
             # Auto-login as admin (default user for trusted network)
-            admin_user = User.get_by_username('admin')
+            admin_user, _ = User.get_by_username("admin")
             if admin_user:
                 login_user(admin_user, remember=True)
                 print(f"[TrustedNetwork] Auto-login: admin (client: {client_ip})")

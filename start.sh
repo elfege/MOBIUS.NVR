@@ -66,8 +66,14 @@ else
 	exit 1
 fi
 
-# Detect host IP early (needed for LAN-cache decision + container env)
-export NVR_LOCAL_HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -1)
+# Detect host IP early (needed for LAN-cache decision + container env).
+# Only export if detection succeeds — if it fails, docker compose falls back to .env value.
+_detected_ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -1)
+if [[ -n "$_detected_ip" ]]; then
+    export NVR_LOCAL_HOST_IP="$_detected_ip"
+else
+    echo -e "${YELLOW}WARNING: Could not auto-detect host IP via ip route. Using .env value: ${NVR_LOCAL_HOST_IP:-unset}${NC}"
+fi
 
 echo "=========================================="
 echo "  Unified NVR - Container Startup"

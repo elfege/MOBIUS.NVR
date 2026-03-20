@@ -24,7 +24,7 @@ class DeviceManagementModal {
      */
     init() {
         this.$closeBtn.on('click', () => this.hide());
-        this.$backdrop.on('click', () => this.hide());
+        // No backdrop click to close — prevents accidental dismissal
         this.$refreshBtn.on('click', () => this.loadDevices());
 
         // Trust toggle via event delegation

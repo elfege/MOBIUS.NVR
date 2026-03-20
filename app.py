@@ -84,8 +84,8 @@ from routes.presence import presence_bp
 from routes.ptz import ptz_bp
 from routes.recording import recording_bp
 from routes.storage import storage_bp
-from routes.streaming import streaming_bp
-from routes.talkback import talkback_bp
+from routes.streaming import streaming_bp, init_socketio as _init_streaming_socketio
+from routes.talkback import talkback_bp, init_socketio as _init_talkback_socketio
 
 # Flask-SocketIO for WebSocket MJPEG multiplexing
 # Uses simple-websocket for Gunicorn compatibility (gthread workers)
@@ -641,6 +641,10 @@ try:
             print(f"⚠️  Reolink motion service initialization failed: {e}")
             reolink_motion_service = None
 
+    # Timeline service (global singleton)
+    timeline_service = get_timeline_service()
+    print("✅ Timeline service initialized")
+
     # Snapshot service
     try:
         snapshot_service = SnapshotService(
@@ -1158,6 +1162,16 @@ _shared.set_services(
     camera_state_tracker=camera_state_tracker,
 )
 print("✅ Shared service registry populated for blueprints")
+
+# ===== Register SocketIO event handlers =====
+# Must run AFTER set_services() so socketio is no longer None.
+# Handlers are defined as plain functions in streaming.py and talkback.py;
+# init_socketio(sio) registers them via sio.on(...)(fn) to avoid the
+# import-time AttributeError that occurs when @shared.socketio.on(...)
+# decorators fire before shared.socketio is set.
+_init_streaming_socketio(socketio)
+_init_talkback_socketio(socketio)
+print("✅ SocketIO handlers registered (/mjpeg, /stream_events, /talkback)")
 
 # ===== Flask Forms =====
 class PTZControlForm(FlaskForm):

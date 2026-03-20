@@ -149,7 +149,6 @@ _talkback_transcoder_manager = TalkbackTranscoderManager(on_aac_frame=_on_transc
 # Uses push-to-talk model: client emits start_talkback, sends audio_frames,
 # then stop_talkback when done.
 
-@shared.socketio.on('connect', namespace='/talkback')
 def handle_talkback_connect():
     """
     Handle WebSocket connection for two-way audio.
@@ -163,7 +162,6 @@ def handle_talkback_connect():
     emit('connected', {'status': 'ok', 'sid': sid})
 
 
-@shared.socketio.on('disconnect', namespace='/talkback')
 def handle_talkback_disconnect():
     """
     Handle WebSocket disconnection from talkback namespace.
@@ -190,7 +188,6 @@ def handle_talkback_disconnect():
     logger.info(f"[Talkback] Client {sid[:8]}... disconnected")
 
 
-@shared.socketio.on('start_talkback', namespace='/talkback')
 def handle_start_talkback(data):
     """
     Start talkback session with a camera.
@@ -358,7 +355,6 @@ def handle_start_talkback(data):
         })
 
 
-@shared.socketio.on('audio_frame', namespace='/talkback')
 def handle_audio_frame(data):
     """
     Receive PCM audio frame from browser and feed to transcoder.
@@ -419,7 +415,6 @@ def handle_audio_frame(data):
         print(f"[Talkback Audio] Transcoder feed error: {e}")
 
 
-@shared.socketio.on('stop_talkback', namespace='/talkback')
 def handle_stop_talkback(data):
     """
     Stop talkback session.
@@ -502,6 +497,22 @@ def handle_stop_talkback(data):
 
     emit('talkback_stopped', {'camera_id': camera_id})
     logger.info(f"[Talkback] Stopped {protocol} for {camera_id}")
+
+
+def init_socketio(sio):
+    """
+    Register SocketIO event handlers for the /talkback namespace.
+
+    Must be called from app.py AFTER socketio is initialized and set_services() has run.
+    Using a factory function avoids the import-time crash that occurs when
+    @shared.socketio.on(...) decorators fire before shared.socketio is set.
+    """
+    sio.on('connect', namespace='/talkback')(handle_talkback_connect)
+    sio.on('disconnect', namespace='/talkback')(handle_talkback_disconnect)
+    sio.on('start_talkback', namespace='/talkback')(handle_start_talkback)
+    sio.on('audio_frame', namespace='/talkback')(handle_audio_frame)
+    sio.on('stop_talkback', namespace='/talkback')(handle_stop_talkback)
+    logger.info("[Talkback] SocketIO handlers registered on /talkback namespace")
 
 
 # ============================================================================

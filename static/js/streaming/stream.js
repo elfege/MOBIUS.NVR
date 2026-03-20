@@ -190,6 +190,10 @@ export class MultiStreamManager {
         this.wsMjpegManager = new WebSocketMJPEGStreamManager();
         this.useWebSocketMJPEG = new URLSearchParams(window.location.search).get('useWebSocketMJPEG') === 'true';
 
+        // Global pause state — when true, all streams are stopped and
+        // health monitor / recovery callbacks will not auto-restart them.
+        this._globalPaused = false;
+
         // iOS pagination state - limit streams per page to avoid Safari video decode limits
         // DISABLED: Now that iOS uses snapshot polling (img tags) instead of video elements,
         // the Safari video decode limit no longer applies. All cameras can load simultaneously.
@@ -217,6 +221,12 @@ export class MultiStreamManager {
                 }
             },
             onRecovery: (cameraId, $streamItem, previousState, newState) => {
+                // Suppress recovery while globally paused
+                if (this._globalPaused) {
+                    console.log(`[Recovery] ${cameraId}: Skipping recovery — global pause is active`);
+                    return;
+                }
+
                 // CRITICAL: Skip recovery for user-stopped streams
                 // User explicitly stopped this stream via UI, don't auto-restart
                 if (this.isUserStoppedStream(cameraId)) {
@@ -652,6 +662,16 @@ export class MultiStreamManager {
 
         $('#stop-all-streams').on('click', () => {
             this.stopAllStreams();
+        });
+
+        // =========================================================================
+        // GLOBAL PAUSE / RESUME TOGGLE
+        // =========================================================================
+        // Stops all streams without marking them as user-stopped, so resuming
+        // restarts everything cleanly.  While paused, health monitor and backend
+        // recovery callbacks are suppressed (checked via this._globalPaused).
+        $('#global-pause-btn, #menu-pause-toggle').on('click', () => {
+            this.toggleGlobalPause();
         });
 
         // Individual stream control handlers
@@ -2835,6 +2855,70 @@ export class MultiStreamManager {
     }
 
     /**
+     * Toggle global pause state.
+     * Pause stops all streams (without marking user-stopped) and suppresses
+     * health-monitor / recovery restarts.  Resume restarts everything.
+     */
+    toggleGlobalPause() {
+        if (this._globalPaused) {
+            this.resumeAllStreams();
+        } else {
+            this.pauseAllStreams();
+        }
+    }
+
+    /**
+     * Pause all streams globally.
+     * Calls stopAllStreams() but does NOT mark any stream as user-stopped,
+     * so resumeAllStreams() can bring them all back.
+     * Updates the navbar and slide-in menu button icons/text.
+     */
+    async pauseAllStreams() {
+        console.log('[GlobalPause] Pausing all streams');
+        this._globalPaused = true;
+        await this.stopAllStreams();
+
+        // Update navbar button icon and title
+        const $navBtn = $('#global-pause-btn');
+        $navBtn.attr('title', 'Resume all streams');
+        $navBtn.find('i').removeClass('fa-pause').addClass('fa-play');
+
+        // Update slide-in menu entry
+        const $menuBtn = $('#menu-pause-toggle');
+        $menuBtn.find('i').removeClass('fa-pause').addClass('fa-play');
+        $menuBtn.find('span').text('Resume All Streams');
+
+        // Update status text on all tiles to show "Paused" instead of "Stopped"
+        this.$container.find('.stream-item').each((_, item) => {
+            this.setStreamStatus($(item), 'loading', 'Paused');
+        });
+
+        console.log('[GlobalPause] All streams paused');
+    }
+
+    /**
+     * Resume all streams from global pause.
+     * Clears the pause flag and restarts all streams via startAllStreams().
+     */
+    async resumeAllStreams() {
+        console.log('[GlobalPause] Resuming all streams');
+        this._globalPaused = false;
+
+        // Update navbar button icon and title
+        const $navBtn = $('#global-pause-btn');
+        $navBtn.attr('title', 'Pause all streams');
+        $navBtn.find('i').removeClass('fa-play').addClass('fa-pause');
+
+        // Update slide-in menu entry
+        const $menuBtn = $('#menu-pause-toggle');
+        $menuBtn.find('i').removeClass('fa-play').addClass('fa-pause');
+        $menuBtn.find('span').text('Pause All Streams');
+
+        await this.startAllStreams();
+        console.log('[GlobalPause] All streams resumed');
+    }
+
+    /**
      * Restart a stream that has become unhealthy or frozen
      * 
      * This method is typically called by the health monitor when a stream is detected
@@ -2860,6 +2944,12 @@ export class MultiStreamManager {
      * await this.restartStream('REOLINK_LAUNDRY', $('.stream-item[data-camera-serial="REOLINK_LAUNDRY"]'));
      */
     async restartStream(cameraId, $streamItem) {
+        // Suppress auto-restart while globally paused
+        if (this._globalPaused) {
+            console.log(`[Restart] ${cameraId}: Skipping — global pause is active`);
+            return;
+        }
+
         try {
             console.log(`[Restart] ${cameraId}: Beginning restart sequence`);
             this.updateStreamButtons($streamItem, true);
@@ -2921,6 +3011,12 @@ export class MultiStreamManager {
      * @param {jQuery} $streamItem - Stream item element
      */
     async handleBackendRecovery(cameraId, $streamItem) {
+        // Suppress recovery while globally paused
+        if (this._globalPaused) {
+            console.log(`[Recovery] ${cameraId}: Skipping backend recovery — global pause is active`);
+            return;
+        }
+
         try {
             // CRITICAL: Skip recovery for user-stopped streams
             // User explicitly stopped this stream via UI, don't auto-restart

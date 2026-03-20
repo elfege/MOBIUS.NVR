@@ -46,10 +46,19 @@ class ReolinkMJPEGCaptureService:
         
     def _get_reolink_credentials(self) -> Tuple[Optional[str], Optional[str]]:
         """
-        Get Reolink API credentials from environment
-        Tries API-specific credentials first, falls back to main credentials
+        Get Reolink API credentials.
+        Tries DB first, then API env vars, then main env vars.
         """
-        # Try API-specific credentials first (for passwords with special characters)
+        # Try database first
+        try:
+            from services.credentials.credential_db_service import get_credential
+            username, password = get_credential('reolink_api', 'service')
+            if username and password:
+                return (username, password)
+        except Exception:
+            pass
+
+        # Fall back to API-specific env vars
         username = os.getenv('NVR_REOLINK_API_USER')
         password = os.getenv('NVR_REOLINK_API_PASSWORD')
 
@@ -57,7 +66,7 @@ class ReolinkMJPEGCaptureService:
         if not username or not password:
             username = os.getenv('NVR_REOLINK_USERNAME')
             password = os.getenv('NVR_REOLINK_PASSWORD')
-        
+
         return (username, password)
     
     def start_capture(self, camera_id: str, camera_config: dict, camera_repo) -> bool:

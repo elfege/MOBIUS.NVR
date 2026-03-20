@@ -81,6 +81,10 @@ class EufyBridge:
         self._last_restart_attempt = 0
         self._crash_reason = None  # Store why the bridge died
         self.script_path = "./services/eufy/eufy_bridge.sh"
+        # Generation counter: incremented on each start(). Monitor and keepalive
+        # threads check this to self-terminate when a newer generation has started,
+        # preventing stale threads from corrupting the new instance's state.
+        self._generation = 0
 
         # PTZ direction mapping (from eufy-security-client PanTiltDirection enum)
         # ROTATE360=0, LEFT=1, RIGHT=2, UP=3, DOWN=4
@@ -102,16 +106,22 @@ class EufyBridge:
         """Start the Eufy bridge process"""
         if self.is_running():
             return True
-            
+
         try:
-            
+            # Increment generation BEFORE cleanup so old threads detect staleness
+            self._generation += 1
+            gen = self._generation
+            print(f"[EUFY BRIDGE] Starting generation {gen}")
+
             print("########### KILL eufy-security-server ###########")
-            # Kill any existing bridge process
-            subprocess.run(f"pkill -f 'eufy-security-server.*port {self.port}'", 
+            # Kill any existing bridge process — use broader pattern to catch zombies
+            subprocess.run(f"pkill -f 'eufy-security-server.*port {self.port}'",
+                         shell=True, stderr=subprocess.DEVNULL)
+            # Also kill orphan shell wrappers from previous generations
+            subprocess.run(f"pkill -f 'eufy_bridge.sh {self.port}'",
                          shell=True, stderr=subprocess.DEVNULL)
             time.sleep(1)
-            
-            
+
             print("########### Starting bridge process ###########")
             # Start bridge process
             self.process = subprocess.Popen(
@@ -121,10 +131,10 @@ class EufyBridge:
                 stderr=subprocess.STDOUT,
                 universal_newlines=True
             )
-            
+
             # Give it a moment to start
             time.sleep(2)
-            
+
             # CHECK IF STILL ALIVE
             if self.process.poll() is not None:
                 # Process died! Get the output
@@ -133,17 +143,18 @@ class EufyBridge:
                 print(f"Exit code: {self.process.returncode}")
                 print(f"Output:\n{output}")
                 return False
-            
+
             print("########### BRIDGE PROCESS STARTED ###########")
             self._running = True  # Mark as running so is_running() returns True
 
-            # Start monitoring thread
-            monitor_thread = Thread(target=self._monitor_bridge, daemon=True)
+            # Start monitoring thread — passes generation so it self-terminates if stale
+            monitor_thread = Thread(target=self._monitor_bridge, args=(gen,),
+                                    daemon=True, name=f"eufy-monitor-g{gen}")
             monitor_thread.start()
 
             # Start keepalive thread to prevent P2P session expiration
-            keepalive_thread = Thread(target=self._keepalive_loop, daemon=True,
-                                     name="eufy-keepalive")
+            keepalive_thread = Thread(target=self._keepalive_loop, args=(gen,),
+                                     daemon=True, name=f"eufy-keepalive-g{gen}")
             keepalive_thread.start()
 
             return True
@@ -282,12 +293,19 @@ class EufyBridge:
             'port': self.port,
         }
 
-    def _monitor_bridge(self):
+    def _monitor_bridge(self, generation):
         """Monitor bridge output for readiness and ongoing health.
 
         Runs in a daemon thread. Two phases:
         1. Wait for "server listening" line to set ready_event
         2. Continue reading output to detect process death
+
+        Args:
+            generation: The bridge generation this thread belongs to.
+                       If self._generation has advanced past this value,
+                       this is a stale thread from a previous start() and
+                       must NOT call _mark_bridge_dead (which would corrupt
+                       the new generation's state).
         """
         if not self.process:
             return
@@ -295,6 +313,11 @@ class EufyBridge:
         ready_detected = False
         try:
             for line in iter(self.process.stdout.readline, ''):
+                # Stale thread check: a newer generation has started, exit silently
+                if generation != self._generation:
+                    print(f"[EUFY BRIDGE MONITOR] Stale thread (gen {generation} vs current {self._generation}), exiting")
+                    return
+
                 # Phase 1: Detect server readiness
                 if not ready_detected:
                     if "Eufy Security server listening" in line or "server listening" in line:
@@ -304,12 +327,18 @@ class EufyBridge:
 
                 # Check if process exited while we were reading
                 if self.process and self.process.poll() is not None:
-                    self._mark_bridge_dead(
-                        f"Bridge process exited (code {self.process.returncode})"
-                    )
+                    if generation == self._generation:
+                        self._mark_bridge_dead(
+                            f"Bridge process exited (code {self.process.returncode})"
+                        )
                     return
 
             # readline returned '' — stdout closed, process is dead
+            # Only mark dead if we're still the current generation
+            if generation != self._generation:
+                print(f"[EUFY BRIDGE MONITOR] Stale thread (gen {generation}) detected EOF, ignoring")
+                return
+
             if self.process and self.process.poll() is not None:
                 self._mark_bridge_dead(
                     f"Bridge process exited (code {self.process.returncode})"
@@ -318,36 +347,48 @@ class EufyBridge:
                 self._mark_bridge_dead("Bridge output stream closed unexpectedly")
 
         except Exception as e:
+            if generation != self._generation:
+                print(f"[EUFY BRIDGE MONITOR] Stale thread (gen {generation}) error ignored: {e}")
+                return
             print(f"[EUFY BRIDGE MONITOR] Error: {e}")
             traceback.print_exc()
             self._mark_bridge_dead(f"Monitor thread error: {e}")
 
-    def _keepalive_loop(self):
+    def _keepalive_loop(self, generation):
         """Periodic health check to prevent P2P session key expiration.
 
         The eufy-security-server P2P sessions can expire after extended inactivity.
         This thread pings the port every KEEPALIVE_INTERVAL seconds and proactively
         restarts the bridge if it's found dead — before any user action fails.
+
+        Args:
+            generation: The bridge generation this thread belongs to.
+                       Exits silently if a newer generation has started.
         """
-        print(f"[EUFY BRIDGE KEEPALIVE] Started (interval: {self.KEEPALIVE_INTERVAL}s)")
-        while self._running:
-            # Sleep in small increments so we can exit quickly on stop()
+        print(f"[EUFY BRIDGE KEEPALIVE] Started (gen {generation}, interval: {self.KEEPALIVE_INTERVAL}s)")
+        while self._running and generation == self._generation:
+            # Sleep in small increments so we can exit quickly on stop() or generation change
             for _ in range(self.KEEPALIVE_INTERVAL):
-                if not self._running:
+                if not self._running or generation != self._generation:
+                    if generation != self._generation:
+                        print(f"[EUFY BRIDGE KEEPALIVE] Stale thread (gen {generation}), exiting")
                     return
                 time.sleep(1)
 
-            if not self._running:
+            if not self._running or generation != self._generation:
                 return
 
             try:
                 if not self._check_port_alive():
+                    if generation != self._generation:
+                        return  # Don't restart if we're stale
                     logger.warning("[EUFY BRIDGE KEEPALIVE] Port check failed, attempting restart")
                     print("[EUFY BRIDGE KEEPALIVE] Port check failed, attempting restart")
                     self._mark_bridge_dead("Keepalive detected port 3000 not responding")
                     if self.restart():
-                        print("[EUFY BRIDGE KEEPALIVE] Proactive restart succeeded")
-                        logger.info("[EUFY BRIDGE KEEPALIVE] Proactive restart succeeded")
+                        # restart() starts a new generation — this thread is now stale
+                        print(f"[EUFY BRIDGE KEEPALIVE] Proactive restart succeeded (gen {generation} retiring)")
+                        return
                     else:
                         print("[EUFY BRIDGE KEEPALIVE] Proactive restart failed")
                         logger.error("[EUFY BRIDGE KEEPALIVE] Proactive restart failed")

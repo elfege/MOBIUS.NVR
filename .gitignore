@@ -9,15 +9,14 @@ config/
 !config/cameras.json.example
 !config/recording_settings.json.example
 !config/go2rtc.yaml.example
+!config/go2rtc.yaml
 !config/cameras_json_notes.json
 !config/recording_config_loader.py
 
 # -----------------------------------------------------------------------------
 # Documentation - track only specific files
 # -----------------------------------------------------------------------------
-docs/*.md
-!docs/README_project_history.md
-!docs/README_handoff.md
+docs/
 DOCS/
 
 # -----------------------------------------------------------------------------
@@ -29,6 +28,10 @@ persistent.json.backup_2
 bootstrap.json
 tree.md
 neolink/target/
+
+# Personal scripts (untracked — use _deploy.sh and _start.sh instead)
+deploy.sh
+start.sh
 
 # Deprecated/unused scripts
 eufy_bridge.sh
@@ -56,6 +59,7 @@ chat*.md
 *.rsa
 .env
 .env.*
+secrets.env
 
 # -----------------------------------------------------------------------------
 # Python
@@ -206,4 +210,4 @@ Thumbs.db
 *vpn*
 
 
-retrieved_files_post_catastrophic_loss_of_feb_15_2026/
+**/retrieved_files_post_catastrophic_loss_of_feb_15_2026/

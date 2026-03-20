@@ -1,0 +1,152 @@
+# =============================================================================
+# Unified NVR — Multi-Stage Docker Build (Production)
+#
+# Targets:
+#   production  — Hardened: compiled .pyc, minified JS, shells removed,
+#                 non-root user. No readable Python or JS source code.
+#   debug       — Development: full source, shells, hot-reload via mount.
+#
+# Build:
+#   docker build --target production -t nvr:prod -f Dockerfile.production .
+#   docker build --target debug -t nvr:debug -f Dockerfile.production .
+#
+# Production image contains NO readable Python or JavaScript source.
+# =============================================================================
+
+
+# --- JS minification --------------------------------------------------------
+# Separate stage: minifies all JS files using terser.
+# Keeps node dependencies out of the Python stages entirely.
+FROM node:20-slim AS js-build
+
+WORKDIR /js
+COPY static/js/ ./
+RUN npm install -g terser 2>/dev/null && \
+    find . -name "*.js" -exec sh -c 'terser "$1" --compress --mangle -o "$1"' _ {} \;
+
+
+# --- Python builder ----------------------------------------------------------
+# Installs all dependencies, compiles Python to .pyc, strips .py source.
+# Only compiled artifacts are copied to the final production image.
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ffmpeg \
+        jq \
+        procps \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Node.js dependencies (for eufy bridge)
+COPY package.json package-lock.json ./
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm \
+    && npm ci --production \
+    && apt-get purge -y npm \
+    && rm -rf /var/lib/apt/lists/*
+
+# Application code
+COPY app.py .
+COPY gunicorn.conf.py .
+COPY entrypoint.sh .
+COPY services/ services/
+COPY models/ models/
+COPY low_level_handlers/ low_level_handlers/
+COPY templates/ templates/
+COPY static/ static/
+COPY scripts/ scripts/
+COPY psql/ psql/
+COPY streaming/ streaming/
+COPY config/ config/
+COPY nginx/ nginx/
+COPY packager/ packager/
+COPY neolink/ neolink/
+
+# Overlay minified JS from js-build stage
+COPY --from=js-build /js/ static/js/
+
+# Compile Python to .pyc (in-place with -b flag), then delete .py source.
+# Python's SourcelessFileLoader imports .pyc directly when .py is absent.
+RUN python -m compileall -b -q /app \
+    && find /app -name "*.py" -delete \
+    && find /app -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+
+
+# --- Production (hardened) ---------------------------------------------------
+# No readable source. Shells removed from PATH.
+FROM python:3.11-slim AS production
+
+# System deps: ffmpeg (recording/transcoding), curl (health checks), jq, procps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ffmpeg \
+        jq \
+        procps \
+        nodejs \
+        iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root app user
+RUN useradd -r -s /bin/false -u 1000 appuser
+
+# Compiled app + Python packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /app /app
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/streams /app/config /app/static /app/templates /app/services \
+    && chown -R appuser:appuser /app
+
+# Hardening: move shell to hidden path, remove all standard shells.
+# docker exec ... sh/bash/dash → "executable file not found"
+# THIS MUST BE THE LAST RUN COMMAND — no /bin/sh after this.
+RUN mkdir -p /opt/shells && \
+    cp /bin/bash /opt/shells/bash 2>/dev/null || true && \
+    rm -f /bin/sh /bin/bash /bin/dash /usr/bin/sh /usr/bin/bash 2>/dev/null || true
+
+WORKDIR /app
+USER appuser
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5000/api/status || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+
+
+# --- Debug (development) -----------------------------------------------------
+# Full source code, shells intact, runs as root for volume mount compatibility.
+FROM python:3.11-slim AS debug
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ffmpeg \
+        jq \
+        procps \
+        nodejs \
+        npm \
+        iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd -r -s /bin/bash -u 1000 appuser
+
+# Python packages from builder (avoids re-downloading)
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
+# Source code from build context (readable, for development)
+WORKDIR /app
+COPY . .
+
+RUN npm ci --production 2>/dev/null || true
+RUN mkdir -p /app/logs /app/streams /app/config \
+    && chmod +x /app/entrypoint.sh \
+    && chown -R appuser:appuser /app
+
+EXPOSE 5000
+
+ENTRYPOINT ["/app/entrypoint.sh"]

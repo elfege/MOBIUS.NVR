@@ -1,0 +1,38 @@
+# =============================================================================
+# NVR — Production Hardening Overlay
+# =============================================================================
+# Use alongside the base docker-compose.yml:
+#   docker compose -f docker-compose.yml -f deployment/docker-compose.production.yml up -d
+#
+# Adds: capability dropping, read-only filesystem, tmpfs mounts,
+#       no-new-privileges, prebuilt image (no build context).
+# =============================================================================
+
+services:
+  nvr:
+    # Use prebuilt hardened image instead of building from source
+    image: nvr:prod
+    build: !reset null
+
+    # Security hardening
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE    # Bind to port 5000
+      - SETUID              # Needed for entrypoint user switching
+      - SETGID              # Needed for entrypoint user switching
+    security_opt:
+      - no-new-privileges:true
+
+    # Read-only root filesystem with writable tmpfs where needed
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+      - /var/run:size=10M
+      - /app/logs:size=500M
+      - /app/streams:size=2G
+
+    # License validation
+    environment:
+      NVR_LICENSE_KEY: ${NVR_LICENSE_KEY:-}
+      NVR_LICENSE_VALIDATOR_URL: ${NVR_LICENSE_VALIDATOR_URL:-}

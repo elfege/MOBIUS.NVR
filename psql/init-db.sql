@@ -371,6 +371,34 @@ CREATE TRIGGER update_cameras_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================================================
+-- CAMERA CREDENTIALS TABLE
+-- =============================================================================
+
+CREATE TABLE camera_credentials (
+    id BIGSERIAL PRIMARY KEY,
+    credential_key VARCHAR(255) NOT NULL,
+    credential_type VARCHAR(20) NOT NULL DEFAULT 'camera'
+        CHECK (credential_type IN ('camera', 'service')),
+    vendor VARCHAR(50) NOT NULL
+        CHECK (vendor IN ('eufy', 'reolink', 'unifi', 'amcrest', 'sv3c', 'system')),
+    username_enc TEXT NOT NULL,
+    password_enc TEXT NOT NULL,
+    label VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT camera_credentials_key_type_unique UNIQUE (credential_key, credential_type)
+);
+
+CREATE INDEX idx_camera_credentials_key ON camera_credentials(credential_key);
+CREATE INDEX idx_camera_credentials_vendor ON camera_credentials(vendor);
+CREATE INDEX idx_camera_credentials_type ON camera_credentials(credential_type);
+
+CREATE TRIGGER update_camera_credentials_updated_at
+    BEFORE UPDATE ON camera_credentials
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
 -- CAMERA STATE TABLE
 -- =============================================================================
 
@@ -408,6 +436,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON user_camera_access TO nvr_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON user_preferences TO nvr_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON cameras TO nvr_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON camera_state TO nvr_anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON camera_credentials TO nvr_anon;
 
 -- =============================================================================
 -- ROW LEVEL SECURITY
@@ -426,6 +455,7 @@ ALTER TABLE user_camera_access ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cameras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE camera_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE camera_credentials ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies for all tables (security enforced at Flask/PostgREST level)
 CREATE POLICY "Allow all" ON recordings FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
@@ -441,6 +471,7 @@ CREATE POLICY "Allow all" ON user_camera_access FOR ALL TO nvr_anon USING (true)
 CREATE POLICY "Allow all" ON user_preferences FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON cameras FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON camera_state FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all" ON camera_credentials FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 
 -- =============================================================================
 -- INITIALIZATION COMPLETE

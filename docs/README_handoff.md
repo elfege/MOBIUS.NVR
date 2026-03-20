@@ -15,17 +15,221 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 09, 2026 23:40 EST*
+*Last updated: March 20, 2026 01:00 EDT*
 
-**Branch:** `ptz_baichuan_E1_MAR_09_2026_a` (new branch — Baichuan E1 PTZ investigation)
+**Branch:** `main` (two-repo model now)
 
-**Previous Session (Feb 19):** Database camera config migration (Option B), CameraRepository DB-first loading.
-
-**Previous Branch:** `db_camera_config_migration_FEB_19_2026_a`
+**Previous Branch:** `go2rtc_video_streaming_MAR_10_2026_a`
 
 ---
 
-## Current Session: March 04, 2026 (00:14 - 01:00 EST)
+## Current Session: March 20, 2026 (00:00 - 01:00 EDT)
+
+### Repository Security Overhaul — Two-Repo Model + Git-Crypt + License System
+
+**Motivation:** Former employer (Mindhop) may clone and use NVR codebase commercially. BSL 1.1 license alone insufficient without enforcement. User decided on multi-layered IP protection.
+
+**What was done:**
+
+1. **Repo migration:**
+   - `MOBIUS.NVR` renamed to `MOBIUS.NVR-dev` (private) — full history preserved as authorship proof
+   - Fresh `MOBIUS.NVR` created (public) — encrypted from commit #1 via git-crypt
+   - 152 source files encrypted (.py, .js, .html, .sql, Dockerfile, docker-compose.yml, requirements.txt)
+   - Plaintext: LICENSE (BSL 1.1), README.md, _deploy.sh, _start.sh, .gitattributes
+
+2. **Git-crypt setup:**
+   - Symmetric key generated, backed up to AWS Secrets Manager (`nvr-git-crypt-key`)
+   - Local key file shredded after backup
+   - `.gitattributes` defines encryption patterns
+
+3. **Dual remotes configured locally:**
+   - `origin` → `elfege/MOBIUS.NVR-dev` (private, daily dev)
+   - `public` → `elfege/MOBIUS.NVR` (public, encrypted storefront)
+
+4. **Generic scripts created (tracked, plaintext):**
+   - `_deploy.sh` — no personal env dependencies, flag-driven, calls `_start.sh`
+   - `_start.sh` — ENV mode only, no AWS, portable for anyone with Docker
+   - `deploy.sh` / `start.sh` added to `.gitignore` (personal, untracked)
+
+5. **Phone-home system scaffolded:**
+   - `scripts/phone_home.sh` — heartbeat client (SHA-256 hardware fingerprint)
+   - `infrastructure/lambda/phone_home/` — Lambda + DynamoDB deployment scripts
+   - `entrypoint.sh` modified for periodic 24h heartbeat
+
+6. **License validation system created (not yet deployed):**
+   - `infrastructure/lambda/license/validator.py` — validates keys, binds hardware on first activation
+   - `infrastructure/lambda/license/issuer.py` — creates keys (admin-protected)
+   - `infrastructure/lambda/license/deploy_license.sh` — AWS CLI deployment
+   - `services/license_service.py` — NVR client-side: 7-day demo mode, hardware-locked, offline grace
+
+7. **Public repo policies:**
+   - Auto-tag GitHub Action (semantic versioning on PR merge)
+   - Branch protection: PRs only to `main`
+
+8. **Intercom posted:** MSG-197 (to office-sync: register new repos), MSG-198 (to ALL: FYI)
+
+**Note:** app.py is 8,401 lines (not 300K — that was byte count misread). Modularization needed but separate scope.
+
+**Files created/modified:**
+- `.gitattributes` (new)
+- `.gitignore` (modified — added deploy.sh, start.sh)
+- `_deploy.sh` (new)
+- `_start.sh` (new)
+- `scripts/phone_home.sh` (new)
+- `infrastructure/lambda/phone_home/lambda_function.py` (new)
+- `infrastructure/lambda/phone_home/deploy_lambda.sh` (new)
+- `infrastructure/lambda/phone_home/trust_policy.json` (new)
+- `infrastructure/lambda/license/validator.py` (new)
+- `infrastructure/lambda/license/issuer.py` (new)
+- `infrastructure/lambda/license/deploy_license.sh` (new)
+- `services/license_service.py` (new)
+- `entrypoint.sh` (modified — phone-home periodic heartbeat)
+- `.github/workflows/auto-tag.yml` (new, public repo only)
+
+---
+
+## Previous Session: March 10, 2026 (14:00 - 23:22 EDT)
+
+### Security Hardening + DB-Based Credentials + Idempotent Startup (22:00 - 23:22 EDT)
+
+**Motivation:** Hardcoded Flask SECRET_KEY and camera credentials in docker-compose.yml — security concern + bad for public portfolio.
+
+**Phase 1 complete: DB-based credential storage + idempotent startup scripts.**
+
+#### Security Fixes
+
+1. **`app.py`** (22:05 EDT)
+   - SECRET_KEY now reads from `NVR_SECRET_KEY` env var, fallback to `os.urandom(32).hex()`
+   - SESSION_COOKIE_SECURE now defaults to True unless FLASK_ENV=development
+   - Added credential migration hook at startup (env vars -> DB, idempotent)
+   - Added credential CRUD API endpoints: GET/PUT/DELETE `/api/camera/<serial>/credentials`
+
+#### DB-Based Camera Credentials
+
+2. **`psql/migrations/017_camera_credentials.sql`** + **`psql/init-db.sql`** (22:10 EDT)
+   - New `camera_credentials` table with AES-256-GCM encrypted columns
+   - Supports per-camera (keyed by serial) and service-level (keyed by vendor) credentials
+   - Full RLS + permissions matching existing pattern
+
+3. **`services/credentials/credential_db_service.py`** (22:15 EDT) — NEW
+   - CRUD operations via PostgREST for camera_credentials table
+   - AES-256-GCM encryption using pycryptodomex (key derived from NVR_SECRET_KEY via SHA-256)
+   - Thread-safe in-memory cache with lazy loading
+   - PostgREST upsert for store, cache invalidation on delete
+
+4. **`services/credentials/migrate_env_to_db.py`** (22:20 EDT) — NEW
+   - One-time migration: scans env vars, stores in DB (idempotent)
+   - Auto-discovers Eufy per-camera vars via regex pattern matching
+   - Called at app startup; migrated 15 credentials successfully in testing
+
+5. **Credential providers refactored** (22:25 EDT)
+   - `eufy_credential_provider.py` — DB first, env var fallback
+   - `reolink_credential_provider.py` — DB first, env var fallback
+   - `unifi_credential_provider.py` — DB first, env var fallback
+   - `amcrest_credential_provider.py` — DB first, env var fallback (removed debug prints)
+   - `sv3c_credential_provider.py` — DB first, env var fallback (removed hardcoded admin/01234567)
+
+6. **Direct env var reads updated** (22:30 EDT)
+   - `services/power/unifi_poe_service.py` — tries DB 'unifi_controller' service key
+   - `services/unifi_protect_service.py` — tries DB 'unifi_protect' service key
+   - `services/reolink_mjpeg_capture_service.py` — tries DB 'reolink_api' service key
+
+#### Docker-Compose Cleanup
+
+7. **`docker-compose.yml`** (22:35 EDT)
+   - Removed entire `x-all-camera-credentials` anchor (40+ lines of per-camera env vars)
+   - Removed `<<: *all-camera-credentials` merge from nvr service
+   - Added `env_file: secrets.env` (required: false) for go2rtc, packager, nvr containers
+   - Parameterized all hardcoded volume paths: `NVR_RECORDING_PATH`, `NVR_STORAGE_PATH`, `NVR_POSTGRES_DATA`, `NVR_ALTERNATE_RECORDING_STORAGE`
+   - Parameterized network name: `NVR_NETWORK_NAME`
+   - Parameterized edge ports: `NVR_EDGE_HTTP_PORT`, `NVR_EDGE_HTTPS_PORT`
+
+#### Idempotent Startup Scripts
+
+8. **`start.sh`** (22:40 EDT) — Full rewrite
+   - `ENV_BASED_CONFIG=true/false` toggle in .env
+   - Portable color/utility setup (works without ~/.env.colors, ~/logger.sh, ~/.bash_utils)
+   - AWS mode: unchanged behavior (pull from Secrets Manager)
+   - ENV mode: read from secrets.env, auto-generate POSTGRES_PASSWORD if missing
+   - Generates `secrets.env` from AWS cache for docker compose env_file
+   - Auto-generates NVR_SECRET_KEY if not set
+   - Validates project root, creates config from example if missing
+
+9. **`deploy.sh`** (22:45 EDT) — Same idempotency pattern
+   - Portable color/utility setup
+   - Loads secrets from secrets.env or bash_utils
+
+10. **`.env`** (22:50 EDT)
+    - Added `ENV_BASED_CONFIG=false` toggle
+    - Added storage path variables (NVR_RECORDING_PATH, etc.)
+    - Added network/port variables
+
+11. **`secrets.env.example`** (22:50 EDT) — NEW
+    - Template for non-AWS users
+    - Documents all credential env vars with comments
+    - Camera credentials marked optional (can add via UI instead)
+
+12. **`.gitignore`** — Added `secrets.env`
+
+13. **`requirements.txt`** — Added `pycryptodomex`
+
+#### Testing Results
+
+- Migration: 15 credentials migrated from env vars to DB
+- All 5 credential providers verified reading from DB
+- Encryption roundtrip: AES-256-GCM encrypt/decrypt verified
+- PostgREST: table visible, CRUD operations confirmed
+- app.py syntax validation: passed
+
+#### Pending (Phase 2+)
+
+- [ ] Camera settings modal: add credential username/password fields (API endpoints ready)
+- [ ] Container restart required (`./start.sh`) to load new Python code
+- [ ] Full deploy test with `./deploy.sh --prune --no-cache` to verify idempotent startup
+- [ ] go2rtc config generation from DB (currently still uses env var interpolation)
+
+---
+
+### Two issues: Eufy preset 503 + MJPEG→WebRTC stream switching
+
+#### Issue A: MJPEG → WebRTC/HLS stream type switching (backend fix applied)
+
+**Root cause:** Two independent MJPEG bailout points in the backend read the camera's *stored* `stream_type` instead of the *requested* target type. When a camera is configured as MJPEG, `start_stream()` and `/api/stream/start/` both return early without starting FFmpeg, even when the user requests WebRTC.
+
+**Files Modified:**
+
+1. **`streaming/stream_manager.py`** (14:15 EDT)
+   - Added `protocol_override` parameter to `start_stream()` and `_start_stream()`
+   - When set, bypasses MJPEG bailout and uses override for all protocol branching
+   - Three protocol resolution points updated (lines 278, 443, 468)
+
+2. **`app.py`** (14:20 EDT)
+   - `/api/mediamtx/create-path/`: accepts `target_type` from request body, passes as `protocol_override`
+   - `/api/stream/start/`: passes resolved effective stream type as `protocol_override`
+
+3. **`static/js/streaming/stream.js`** — **DEFERRED** (go2rtc branch conflict per MSG-183)
+   - Still needed: move preference save before Phase 0, pass `target_type` to create-path
+   - Without this frontend fix, backend fixes help but the full flow isn't complete
+
+#### Issue B: Eufy bridge persistent 503 (self-recovery race condition fixed)
+
+**Root cause:** Race condition between old and new bridge generations. When `restart()` calls `stop()` then `start()`, the OLD `_monitor_bridge` thread is still reading stdout from the old process. When it detects EOF, it calls `_mark_bridge_dead()` which sets `_running = False` — **corrupting the NEW bridge instance's state**. The new keepalive loop exits, and all subsequent commands get 503. Additionally, zombie shell wrapper processes (`eufy_bridge.sh`) accumulated across restarts.
+
+**Files Modified:**
+
+1. **`services/eufy/eufy_bridge.py`** (14:30 EDT)
+   - Added `_generation` counter to `__init__`, incremented on each `start()`
+   - `_monitor_bridge(generation)`: checks generation before calling `_mark_bridge_dead()`, exits silently if stale
+   - `_keepalive_loop(generation)`: checks generation in sleep loop and before restart, retires after successful proactive restart
+   - `start()`: kills orphan `eufy_bridge.sh` wrappers (not just node process), logs generation number
+   - Thread names include generation for debugging (e.g., `eufy-monitor-g3`)
+
+2. **`services/eufy/eufy_bridge_watchdog.py`** (14:32 EDT)
+   - Fixed log message: said "15 seconds" but sleep was 120s
+
+---
+
+## Previous Session: March 04, 2026 (00:14 - 01:00 EST)
 
 ### Issues 1-3 from `docs/ISSUES_March_4_2026.md`
 
@@ -949,7 +1153,44 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 ---
 
+### go2rtc Infrastructure Gaps Fixed (post-compaction continuation ~16:00 EDT)
+
+**Context:** After context compaction, continued addressing user's 4 concerns about go2rtc implementation gaps.
+
+**Concerns addressed:**
+
+1. **go2rtc.yaml git tracking** — Added `!config/go2rtc.yaml` exception to `.gitignore`. File contains NO credentials (only `${ENV_VAR}` references), safe to track.
+
+2. **`update_neolink_config.sh` still functional** — Confirmed. Called by `start.sh` at line 164-166. Reads cameras.json, filters for NEOLINK cameras, generates neolink.toml. No changes needed.
+
+3. **go2rtc.yaml dynamic updates** — Created `scripts/update_go2rtc_config.sh`:
+   - Reads cameras.json, finds all NEOLINK/GO2RTC/NEOLINK_LL_HLS cameras
+   - Preserves static audio backchannel section (above `# VIDEO RELAY STREAMS` marker)
+   - Regenerates video relay section from cameras.json
+   - Hooked into `start.sh` (runs after neolink config update)
+   - Idempotent — running twice produces identical output
+
+4. **Database workflow verified** — Full chain works:
+   - Migration 016: adds GO2RTC to CHECK constraint
+   - `VALID_STREAM_TYPES` in app.py includes GO2RTC
+   - `PUT /api/camera/<serial>/stream-preference` saves via PostgREST upsert
+   - `get_effective_stream_type()` loads user pref with camera default fallback
+
+**Files Modified:**
+- `.gitignore` — added `!config/go2rtc.yaml` exception
+- `scripts/update_go2rtc_config.sh` — NEW, auto-generates go2rtc video relay streams
+- `start.sh` — hooked in update_go2rtc_config.sh after neolink config update
+- `config/go2rtc.yaml` — regenerated by script (identical content, now git-tracked)
+
+---
+
 ## Next Session TODO
+
+**Immediate (go2rtc — current work):**
+- [ ] Run `./start.sh` to pick up all go2rtc changes
+- [ ] Test go2rtc button on Cat Feeders camera — verify latency improvement
+- [ ] Verify database migration 016 applied correctly
+- [ ] Commit go2rtc infrastructure gap fixes
 
 **Immediate (PTZ — Task A):**
 - [ ] Run `./start.sh` to pick up PTZ code changes (event loop, cache fix, stop-priority lock)

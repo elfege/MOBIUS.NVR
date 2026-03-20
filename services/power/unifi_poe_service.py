@@ -171,12 +171,19 @@ class UnifiPoePowerService:
         self._camera_repo = camera_repo
         self._state_tracker = camera_state_tracker
 
-        # Load configuration from environment
+        # Load configuration: try database first, fall back to environment
         self._controller_host = controller_host or os.environ.get(
             'NVR_UNIFI_CONTROLLER_HOST', ''
         )
-        self._username = os.environ.get('NVR_UNIFI_CONTROLLER_USERNAME', '')
-        self._password = os.environ.get('NVR_UNIFI_CONTROLLER_PASSWORD', '')
+        # Try DB for controller credentials
+        try:
+            from services.credentials.credential_db_service import get_credential
+            db_user, db_pass = get_credential('unifi_controller', 'service')
+            self._username = db_user or os.environ.get('NVR_UNIFI_CONTROLLER_USERNAME', '')
+            self._password = db_pass or os.environ.get('NVR_UNIFI_CONTROLLER_PASSWORD', '')
+        except Exception:
+            self._username = os.environ.get('NVR_UNIFI_CONTROLLER_USERNAME', '')
+            self._password = os.environ.get('NVR_UNIFI_CONTROLLER_PASSWORD', '')
         self._site = os.environ.get('NVR_UNIFI_CONTROLLER_SITE', 'default')
         self._controller_type = os.environ.get(
             'NVR_UNIFI_CONTROLLER_TYPE', 'udm'

@@ -97,6 +97,11 @@
 
         <!-- Right-side actions -->
         <div class="navbar-actions">
+            <!-- Global Pause/Resume toggle for all streams -->
+            <button id="global-pause-btn" class="navbar-action-btn" title="Pause all streams">
+                <i class="fas fa-pause"></i>
+            </button>
+
             <!-- Camera Selector Button (compact) -->
             <button id="camera-selector-btn" class="navbar-action-btn" title="Filter cameras">
                 <i class="fas fa-filter"></i>
@@ -133,6 +138,10 @@
                 <i class="fas fa-filter"></i>
                 <span>Camera Selector</span>
                 <span class="menu-badge" id="menu-camera-count">All</span>
+            </button>
+            <button class="nav-menu-item" id="menu-pause-toggle">
+                <i class="fas fa-pause"></i>
+                <span>Pause All Streams</span>
             </button>
             <button class="nav-menu-item" id="menu-fullscreen-toggle">
                 <i class="fas fa-expand"></i>

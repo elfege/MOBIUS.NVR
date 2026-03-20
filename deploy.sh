@@ -25,9 +25,25 @@ cd "$SCRIPT_DIR" &>/dev/null || true
 
 sudo chown -R "$USER":"$USER" ./ &>/dev/null || true
 
-. ~/.env.colors
-. ~/logger.sh --no-exec &>/dev/null || true
-. /etc/profile.d/custom-env.sh --no-exec &>/dev/null || true
+# =============================================================================
+# Portable color/utility setup — works with or without ~/.env.colors
+# =============================================================================
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+[[ -f ~/.env.colors ]] && . ~/.env.colors
+if [[ -f ~/logger.sh ]]; then
+	. ~/logger.sh --no-exec &>/dev/null
+else
+	start_spinner() { echo -e "  $2"; }
+	stop_spinner() { :; }
+fi
+
+# Source custom-env.sh if available (non-critical)
+[[ -f /etc/profile.d/custom-env.sh ]] && . /etc/profile.d/custom-env.sh --no-exec &>/dev/null
 
 # Parse flags
 do_prune=false
@@ -44,15 +60,13 @@ echo "  Unified NVR - Docker Image Build"
 echo "=========================================="
 echo ""
 
-# Check if Dockerfile exists
-if [ ! -f Dockerfile ]; then
-	echo -e "${RED}✗ Dockerfile not found!${NC}"
+# Check prerequisites
+if [[ ! -f Dockerfile ]]; then
+	echo -e "${RED}ERROR: Dockerfile not found!${NC}"
 	exit 1
 fi
-
-# Check if docker-compose.yml exists
-if [ ! -f docker-compose.yml ]; then
-	echo -e "${RED}✗ docker-compose.yml not found!${NC}"
+if [[ ! -f docker-compose.yml ]]; then
+	echo -e "${RED}ERROR: docker-compose.yml not found!${NC}"
 	exit 1
 fi
 
@@ -78,17 +92,30 @@ start_spinner "" "$CYAN Cleaning up containers and images..."
 # Stop and remove containers
 docker compose down &>/dev/null || true
 
-echo -e "${GREEN}✓ Containers stopped and removed${NC}"
+echo -e "${GREEN}Containers stopped and removed${NC}"
 echo ""
 # Remove the old image
 docker rmi 0_nvr-nvr &>/dev/null || true
-echo -e "${GREEN}✓ Cleanup complete${NC}"
+echo -e "${GREEN}Cleanup complete${NC}"
 echo ""
 
 stop_spinner &>/dev/null || true
 
-echo "Fetching camera credentials..."
-pull_nvr_secrets >/dev/null
+# Load secrets for the build (env vars used in docker compose build context)
+# Uses same credential mode as start.sh
+set -a
+[[ -f .env ]] && . .env
+[[ -f secrets.env ]] && . secrets.env
+
+# If no secrets.env and bash_utils available, try AWS pull
+if [[ ! -f secrets.env ]] && [[ -f ~/.bash_utils ]]; then
+	. ~/.bash_utils &>/dev/null
+	echo "Fetching camera credentials..."
+	if type pull_nvr_secrets &>/dev/null; then
+		pull_nvr_secrets >/dev/null
+	fi
+fi
+set +a
 
 # Build Docker image
 if $do_nocache; then
@@ -99,12 +126,12 @@ else
 	docker compose build
 fi
 
-if [ $? -eq 0 ]; then
+if [[ $? -eq 0 ]]; then
 	echo ""
-	echo -e "${GREEN}✓ Docker image built successfully${NC}"
+	echo -e "${GREEN}Docker image built successfully${NC}"
 	echo ""
 	./start.sh
 else
-	echo -e "${RED}✗ Docker build failed${NC}"
+	echo -e "${RED}Docker build failed${NC}"
 	exit 1
 fi

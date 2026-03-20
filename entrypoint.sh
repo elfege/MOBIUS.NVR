@@ -36,6 +36,13 @@ echo "=========================================="
 #   - Threading model works with FFmpeg subprocess calls
 #   - gevent would NOT help - FFmpeg calls are blocking I/O
 
+# Phone-home periodic heartbeat (non-blocking background, silent failure)
+# Sends anonymous deployment fingerprint every 24h for license enforcement
+if [[ -f /app/scripts/phone_home.sh ]]; then
+    . /app/scripts/phone_home.sh
+    nvr_phone_home_periodic &
+fi
+
 # Use gunicorn.conf.py for configuration including custom access log filtering
 # This filters out high-frequency /api/snap/ requests from logs
 exec gunicorn \

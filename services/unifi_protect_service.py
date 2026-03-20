@@ -32,8 +32,15 @@ class UniFiProtectService(CameraService):
         # Protect console info
         self.protect_host = camera_config.get('protect_host', '192.168.10.3')
         self.camera_id = camera_config.get('camera_id')
-        self.username = os.getenv('NVR_PROTECT_USERNAME', "None")
-        self.password = os.getenv('NVR_PROTECT_SERVER_PASSWORD', "None")
+        # Try DB first for Protect credentials, fall back to env vars
+        try:
+            from services.credentials.credential_db_service import get_credential
+            db_user, db_pass = get_credential('unifi_protect', 'service')
+            self.username = db_user or os.getenv('NVR_PROTECT_USERNAME', "None")
+            self.password = db_pass or os.getenv('NVR_PROTECT_SERVER_PASSWORD', "None")
+        except Exception:
+            self.username = os.getenv('NVR_PROTECT_USERNAME', "None")
+            self.password = os.getenv('NVR_PROTECT_SERVER_PASSWORD', "None")
         self.protect_alias = os.getenv('NVR_CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS', "None")
         self.rtsp_alias = os.getenv('NVR_CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS', "None") # camera_config.get('rtsp_alias')  # From bootstrap or manual config
         self.protect_port = os.getenv('NVR_PROTECT_PORT', 7447)

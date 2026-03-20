@@ -15,15 +15,33 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 20, 2026 01:00 EDT*
+*Last updated: March 20, 2026 16:05 EDT*
 
-**Branch:** `main` (two-repo model now)
+**Branch:** `app_modularization_MAR_20_2026_a` (just created)
 
-**Previous Branch:** `go2rtc_video_streaming_MAR_10_2026_a`
+**Previous Branch:** `repo_security_licensing_MAR_20_2026_b` → merged into `main`
 
 ---
 
-## Current Session: March 20, 2026 (00:00 - 01:00 EDT)
+## Current Session: March 20, 2026 (16:00 - 16:05 EDT)
+
+### NVR_LOCAL_HOST_IP Fallback Fix + Merge
+
+**What was done:**
+
+1. **`start.sh` + `_start.sh`** (16:02 EDT)
+   - `ip route get 1.1.1.1` result only exported if non-empty
+   - If detection fails, docker compose falls back to `.env` value (192.168.10.20)
+   - Previously: empty export silently clobbered the `.env` value
+
+2. **Merged `repo_security_licensing_MAR_20_2026_b` → `main`**
+   - Includes: trusted network auto-login, viewer role, PostgREST GRANT fix, NVR_LOCAL_HOST_IP fallback
+
+**Next task:** app.py modularization (8,401 lines → service modules)
+
+---
+
+## Previous Session: March 20, 2026 (00:00 - 16:00 EDT)
 
 ### Repository Security Overhaul — Two-Repo Model + Git-Crypt + License System
 

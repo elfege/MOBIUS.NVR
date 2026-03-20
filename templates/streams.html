@@ -297,54 +297,52 @@
     </div>
     {% endif %}
 
-    <!-- Trusted Network Toggle (Admin Only) -->
+    <!-- Trusted Network Toggle (Admin Only) — in device management modal footer -->
     {% if current_user.role == 'admin' %}
+    <div id="trusted-network-container" style="display:none; padding:12px 16px; border-top:1px solid #333; margin-top:8px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#ccc;font-size:0.85rem;">
+            <input type="checkbox" id="trusted-network-toggle" style="cursor:pointer;">
+            <span>Trust this network <small style="color:#888;">(LAN clients skip login)</small></span>
+        </label>
+    </div>
     <script>
-    // Trusted Network toggle — loaded inline because it's a simple setting
     (function() {
-        // Add toggle to the nav menu (settings area)
-        const navSettings = document.querySelector('.nav-settings, .settings-panel, #settings-container');
-        if (!navSettings) return;
+        // Move toggle into the device management modal body
+        const observer = new MutationObserver(function() {
+            const modalBody = document.querySelector('#device-management-modal .modal-body');
+            const toggle = document.getElementById('trusted-network-container');
+            if (modalBody && toggle && !modalBody.contains(toggle)) {
+                modalBody.appendChild(toggle);
+                toggle.style.display = 'block';
 
-        const container = document.createElement('div');
-        container.className = 'trusted-network-setting';
-        container.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;';
-        container.innerHTML = `
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#ccc;font-size:0.85rem;">
-                <input type="checkbox" id="trusted-network-toggle" style="cursor:pointer;">
-                Trust this network (skip login for LAN clients)
-            </label>
-        `;
+                // Load current state
+                fetch('/api/settings/trusted-network')
+                    .then(r => r.json())
+                    .then(data => {
+                        document.getElementById('trusted-network-toggle').checked = data.enabled;
+                    })
+                    .catch(() => {});
 
-        // Load current state
-        fetch('/api/settings/trusted-network')
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('trusted-network-toggle').checked = data.enabled;
-            })
-            .catch(() => {});
+                // Handle toggle
+                document.getElementById('trusted-network-toggle').addEventListener('change', function() {
+                    fetch('/api/settings/trusted-network', {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({enabled: this.checked})
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.success) {
+                            this.checked = !this.checked;
+                        }
+                    })
+                    .catch(() => { this.checked = !this.checked; });
+                });
 
-        // Handle toggle
-        container.querySelector('#trusted-network-toggle').addEventListener('change', function() {
-            fetch('/api/settings/trusted-network', {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({enabled: this.checked})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (!data.success) {
-                    this.checked = !this.checked;
-                    alert('Failed to update setting');
-                }
-            })
-            .catch(() => {
-                this.checked = !this.checked;
-            });
+                observer.disconnect();
+            }
         });
-
-        // Insert after first settings element found
-        navSettings.appendChild(container);
+        observer.observe(document.body, {childList: true, subtree: true});
     })();
     </script>
     {% endif %}

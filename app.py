@@ -204,17 +204,91 @@ def load_user(user_id):
     return User.get_by_id(user_id)
 
 
-@app.before_request
-def _auto_login_trusted_device():
+def _get_client_ip():
     """
-    Auto-login users on trusted devices.
+    Get the real client IP address, accounting for nginx reverse proxy.
+    Nginx sets X-Forwarded-For to the actual client IP.
+    Falls back to request.remote_addr (which is nginx's container IP behind proxy).
+    """
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        # X-Forwarded-For can be a comma-separated list; first is the real client
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr
 
-    If the user is not authenticated but presents a valid device_token cookie
-    that matches a trusted device in the database, automatically log them in
-    as the user associated with that device. This means trusted devices never
-    see the login page again.
 
-    Skips static files, health checks, and the login route itself.
+def _is_same_subnet(client_ip):
+    """
+    Check if client IP is on the same private subnet as the NVR host.
+    Compares the first 3 octets (assumes /24 subnet for home networks).
+    Only considers private IP ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x).
+    """
+    import ipaddress
+    try:
+        client = ipaddress.ip_address(client_ip)
+        if not client.is_private:
+            return False
+        # Get host IP from environment (set by start.sh)
+        host_ip = os.environ.get('NVR_LOCAL_HOST_IP', '')
+        if not host_ip:
+            return False
+        host = ipaddress.ip_address(host_ip)
+        # Compare /24 subnet (first 3 octets)
+        client_net = ipaddress.ip_network(f"{client_ip}/24", strict=False)
+        host_net = ipaddress.ip_network(f"{host_ip}/24", strict=False)
+        return client_net == host_net
+    except (ValueError, TypeError):
+        return False
+
+
+# Cache for trusted network setting (avoid DB query on every request)
+_trusted_network_cache = {'enabled': None, 'checked_at': 0}
+
+
+def _is_trusted_network_enabled():
+    """
+    Check if the admin has enabled 'Trust this network' setting.
+    Cached for 30 seconds to avoid hammering the DB on every request.
+    """
+    import time as _time
+    now = _time.time()
+    if _trusted_network_cache['enabled'] is not None and (now - _trusted_network_cache['checked_at']) < 30:
+        return _trusted_network_cache['enabled']
+
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=3
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM nvr_settings WHERE key='TRUSTED_NETWORK_ENABLED';")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        enabled = row[0].lower() == 'true' if row else False
+    except Exception:
+        enabled = False
+
+    _trusted_network_cache['enabled'] = enabled
+    _trusted_network_cache['checked_at'] = now
+    return enabled
+
+
+@app.before_request
+def _auto_login_trusted():
+    """
+    Auto-login users via trusted device OR trusted network.
+
+    Priority:
+    1. Already authenticated → skip
+    2. Trusted device cookie → auto-login as device's user
+    3. Trusted network enabled + same subnet → auto-login as admin
+    4. None → normal login required
     """
     from flask_login import current_user as _cu
     # Skip if already authenticated
@@ -222,34 +296,45 @@ def _auto_login_trusted_device():
         return
 
     # Skip routes that don't need auth
-    skip_prefixes = ('/static/', '/api/health', '/login', '/favicon')
+    skip_prefixes = ('/static/', '/api/health', '/login', '/favicon',
+                     '/install-cert', '/api/cert/')
     if any(request.path.startswith(p) for p in skip_prefixes):
         return
 
+    # --- Trusted device (existing logic) ---
     device_token = request.cookies.get('device_token')
-    if not device_token:
-        return
+    if device_token:
+        try:
+            resp = _postgrest_session.get(
+                f"{POSTGREST_URL}/trusted_devices",
+                params={
+                    'device_token': f'eq.{device_token}',
+                    'is_trusted': 'eq.true',
+                    'select': 'user_id'
+                },
+                timeout=3
+            )
+            if resp.status_code == 200:
+                devices = resp.json()
+                if devices and devices[0].get('user_id'):
+                    user = User.get_by_id(devices[0]['user_id'])
+                    if user:
+                        login_user(user, remember=True)
+                        print(f"[TrustedDevice] Auto-login: {user.username} (token: {device_token[:8]}...)")
+                        return
+        except Exception as e:
+            print(f"[TrustedDevice] Auto-login check failed: {e}")
 
-    try:
-        resp = _postgrest_session.get(
-            f"{POSTGREST_URL}/trusted_devices",
-            params={
-                'device_token': f'eq.{device_token}',
-                'is_trusted': 'eq.true',
-                'select': 'user_id'
-            },
-            timeout=3
-        )
-        if resp.status_code == 200:
-            devices = resp.json()
-            if devices and devices[0].get('user_id'):
-                user = User.get_by_id(devices[0]['user_id'])
-                if user:
-                    login_user(user, remember=True)
-                    print(f"[TrustedDevice] Auto-login: {user.username} (token: {device_token[:8]}...)")
-    except Exception as e:
-        # Don't block the request if DB is down — just skip auto-login
-        print(f"[TrustedDevice] Auto-login check failed: {e}")
+    # --- Trusted network (new logic) ---
+    if _is_trusted_network_enabled():
+        client_ip = _get_client_ip()
+        if _is_same_subnet(client_ip):
+            # Auto-login as admin (default user for trusted network)
+            admin_user = User.get_by_username('admin')
+            if admin_user:
+                login_user(admin_user, remember=True)
+                print(f"[TrustedNetwork] Auto-login: admin (client: {client_ip})")
+                return
 
 
 # Initialize Flask-SocketIO
@@ -2343,6 +2428,53 @@ def api_license_status():
     Used by the UI to show demo banners, camera limits, and watermark status.
     """
     return jsonify(license.to_dict()), 200
+
+
+@app.route('/api/settings/trusted-network', methods=['GET'])
+@login_required
+def api_trusted_network_get():
+    """Get the current trusted network setting."""
+    return jsonify({
+        'enabled': _is_trusted_network_enabled(),
+        'client_ip': _get_client_ip(),
+        'on_same_subnet': _is_same_subnet(_get_client_ip())
+    }), 200
+
+
+@app.route('/api/settings/trusted-network', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_trusted_network_put():
+    """Enable or disable trusted network auto-login. Admin only."""
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json()
+    enabled = str(data.get('enabled', False)).lower()
+
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=5
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute("SELECT upsert_setting(%s, %s);", ('TRUSTED_NETWORK_ENABLED', enabled))
+        cur.close()
+        conn.close()
+
+        # Invalidate cache
+        _trusted_network_cache['enabled'] = enabled == 'true'
+        _trusted_network_cache['checked_at'] = 0
+
+        return jsonify({'success': True, 'enabled': enabled == 'true'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/status')

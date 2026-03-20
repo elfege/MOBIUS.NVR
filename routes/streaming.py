@@ -1296,7 +1296,6 @@ def _api_sv3c_stream_mjpeg_main(camera_id):
 #         WEBSOCKET MJPEG (MULTIPLEXED) — /mjpeg
 ########################################################
 
-@shared.socketio.on('connect', namespace='/mjpeg')
 def ws_mjpeg_connect():
     """
     Handle WebSocket connection for MJPEG streaming.
@@ -1312,7 +1311,6 @@ def ws_mjpeg_connect():
     emit('connected', {'status': 'ok', 'sid': sid})
 
 
-@shared.socketio.on('disconnect', namespace='/mjpeg')
 def ws_mjpeg_disconnect():
     """Handle WebSocket disconnection"""
     from flask import request as flask_request
@@ -1322,7 +1320,6 @@ def ws_mjpeg_disconnect():
     logging.getLogger(__name__).info(f"WebSocket MJPEG: Client {sid[:8]}... disconnected")
 
 
-@shared.socketio.on('subscribe', namespace='/mjpeg')
 def ws_mjpeg_subscribe(data):
     """
     Subscribe client to camera streams.
@@ -1365,7 +1362,6 @@ def ws_mjpeg_subscribe(data):
     })
 
 
-@shared.socketio.on('unsubscribe', namespace='/mjpeg')
 def ws_mjpeg_unsubscribe(data=None):
     """Unsubscribe client from all camera streams"""
     from flask import request as flask_request
@@ -1381,7 +1377,6 @@ def ws_mjpeg_unsubscribe(data=None):
 #  from StreamWatchdog instead of waiting for 10s polling.
 ########################################################
 
-@shared.socketio.on('connect', namespace='/stream_events')
 def handle_stream_events_connect():
     """
     Handle WebSocket connection for stream event notifications.
@@ -1396,10 +1391,31 @@ def handle_stream_events_connect():
     emit('connected', {'status': 'ok', 'sid': sid})
 
 
-@shared.socketio.on('disconnect', namespace='/stream_events')
 def handle_stream_events_disconnect():
     """Handle WebSocket disconnection from stream events namespace"""
     from flask import request as flask_request
     sid = flask_request.sid
     import logging
     logging.getLogger(__name__).info(f"StreamEvents: Client {sid[:8]}... disconnected")
+
+
+def init_socketio(sio):
+    """
+    Register SocketIO event handlers for /mjpeg and /stream_events namespaces.
+
+    Must be called from app.py AFTER socketio is initialized and set_services() has run.
+    Using a factory function avoids the import-time crash that occurs when
+    @shared.socketio.on(...) decorators fire before shared.socketio is set.
+    """
+    # /mjpeg namespace — multiplexed WebSocket MJPEG streaming
+    sio.on('connect', namespace='/mjpeg')(ws_mjpeg_connect)
+    sio.on('disconnect', namespace='/mjpeg')(ws_mjpeg_disconnect)
+    sio.on('subscribe', namespace='/mjpeg')(ws_mjpeg_subscribe)
+    sio.on('unsubscribe', namespace='/mjpeg')(ws_mjpeg_unsubscribe)
+
+    # /stream_events namespace — real-time stream restart notifications
+    sio.on('connect', namespace='/stream_events')(handle_stream_events_connect)
+    sio.on('disconnect', namespace='/stream_events')(handle_stream_events_disconnect)
+
+    import logging
+    logging.getLogger(__name__).info("[Streaming] SocketIO handlers registered on /mjpeg and /stream_events namespaces")

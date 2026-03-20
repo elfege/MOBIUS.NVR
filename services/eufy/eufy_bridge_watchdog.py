@@ -40,7 +40,7 @@ class BridgeWatchdog:
             
     def _monitor_loop(self):
         # CRITICAL: Give bridge time to start before first check
-        logger.info("Watchdog waiting 15 seconds for bridge startup...")
+        logger.info("Watchdog waiting 120 seconds for bridge startup...")
         time.sleep(120)
         logger.info("Watchdog monitoring started")
         

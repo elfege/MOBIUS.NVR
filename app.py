@@ -69,6 +69,7 @@ from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
+from services.license_service import license, validate_license
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
 
@@ -78,20 +79,92 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Flask app setup
 app = Flask(__name__)
-app.config['SECRET_KEY'] = '-ratatouillemescouilles'
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+
+
+def _get_or_create_secret_key():
+    """
+    Retrieve NVR_SECRET_KEY from DB (nvr_settings table) via direct
+    psycopg2 connection (not PostgREST, which may not be ready at startup).
+    Falls back to env var, then generates a new one if neither exists.
+    The key is persisted to DB so it survives container restarts without
+    needing any secrets file on disk.
+    """
+    import psycopg2
+
+    _pg_host = os.getenv('POSTGRES_HOST', 'postgres')
+    _pg_port = os.getenv('POSTGRES_PORT', '5432')
+    _pg_db = os.getenv('POSTGRES_DB', 'nvr')
+    _pg_user = os.getenv('POSTGRES_USER', 'nvr_api')
+    _pg_pass = os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key')
+
+    def _db_query(sql, params=None):
+        """Run a SQL query via psycopg2 and return the first result value."""
+        try:
+            conn = psycopg2.connect(
+                host=_pg_host, port=_pg_port, dbname=_pg_db,
+                user=_pg_user, password=_pg_pass,
+                connect_timeout=10
+            )
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            return row[0] if row else ''
+        except Exception as e:
+            print(f"[SECRET_KEY] DB query failed: {e}")
+            return ''
+
+    # 1. Try reading from DB (direct connection — always available before PostgREST)
+    db_key = _db_query("SELECT value FROM nvr_settings WHERE key='NVR_SECRET_KEY';")
+    if db_key:
+        return db_key
+
+    # 2. Try env var (backward compat / migration path)
+    env_key = os.environ.get('NVR_SECRET_KEY', '')
+    if env_key:
+        _db_query("SELECT upsert_setting(%s, %s);", ('NVR_SECRET_KEY', env_key))
+        return env_key
+
+    # 3. Generate new key and store in DB
+    import secrets as _secrets
+    new_key = _secrets.token_hex(32)
+    _db_query("SELECT upsert_setting(%s, %s);", ('NVR_SECRET_KEY', new_key))
+    return new_key
+
+
+_secret_key = _get_or_create_secret_key()
+app.config['SECRET_KEY'] = _secret_key
+# Also set as env var so credential_db_service and other modules can read it
+os.environ['NVR_SECRET_KEY'] = _secret_key
 csrf = CSRFProtect(app)
 
 # Register Blueprints
 app.register_blueprint(cert_bp)
 app.register_blueprint(external_api_bp)
 
+# ===== License Validation =====
+# Validates on startup. Sets global license state (demo/valid/expired).
+# Demo mode: 7 days, max 2 cameras, no recording, watermark on streams.
+logger = logging.getLogger(__name__)
+try:
+    validate_license()
+    if license.is_demo:
+        logger.warning(f"LICENSE: {license.message}")
+    else:
+        logger.info(f"LICENSE: Valid, expires {license.expires}")
+except Exception as e:
+    logger.error(f"LICENSE: Validation failed: {e} — running in demo mode")
+    license.set_demo()
+
 # Flask-Login session configuration
 # Indefinite sessions until logout (no automatic expiry)
 from datetime import timedelta
 app.config['SESSION_PERMANENT'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True when using HTTPS
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_ENV') != 'development'
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
 
@@ -261,6 +334,17 @@ try:
             print(f"✅ Camera sync: {existing} cameras in sync, no migration needed")
     except Exception as e:
         print(f"⚠️ Camera sync failed (non-fatal): {e}")
+
+    # Migrate credentials from env vars to database (one-time, idempotent)
+    try:
+        from services.credentials.migrate_env_to_db import migrate_all as migrate_credentials
+        cred_count = migrate_credentials()
+        if cred_count > 0:
+            print(f"✅ Credential migration: {cred_count} credentials moved from env vars to database")
+        else:
+            print("✅ Credentials: all in database (no env var migration needed)")
+    except Exception as e:
+        print(f"⚠️ Credential migration failed (non-fatal, env vars still work): {e}")
 
     # PTZ validator
     ptz_validator = PTZValidator(camera_repo)
@@ -2250,6 +2334,16 @@ def api_health():
         'status': 'ok',
         'message': 'Server is healthy'
     }), 200
+
+@app.route('/api/license')
+@login_required
+def api_license_status():
+    """
+    Returns the current license state for the frontend.
+    Used by the UI to show demo banners, camera limits, and watermark status.
+    """
+    return jsonify(license.to_dict()), 200
+
 
 @app.route('/api/status')
 @login_required
@@ -5501,6 +5595,147 @@ def api_camera_power_supply(camera_serial):
         'power_supply_device_id': camera.get('power_supply_device_id'),
         'power_cycle_on_failure': camera.get('power_cycle_on_failure')
     })
+
+
+# =============================================================================
+# Camera Credential Management API
+# =============================================================================
+
+@app.route('/api/camera/<camera_serial>/credentials', methods=['GET'])
+@login_required
+def api_camera_credentials_get(camera_serial):
+    """
+    Check if credentials exist for a camera (does NOT return actual passwords).
+    Returns: {has_credentials: true/false, username: "...", source: "db"|"env"|"none"}
+    """
+    from services.credentials import credential_db_service as cred_db
+
+    # Check DB
+    username, password = cred_db.get_credential(camera_serial, 'camera')
+    if username and password:
+        return jsonify({
+            'has_credentials': True,
+            'username': username,
+            'source': 'db'
+        })
+
+    # Check service-level credentials based on camera type
+    camera = camera_repo.get_camera(camera_serial)
+    if camera:
+        cam_type = camera.get('type', '').lower()
+        service_key_map = {
+            'reolink': 'reolink_api',
+            'amcrest': 'amcrest',
+            'sv3c': 'sv3c',
+            'unifi': 'unifi_protect',
+            'eufy': None  # Eufy uses per-camera, already checked above
+        }
+        service_key = service_key_map.get(cam_type)
+        if service_key:
+            username, password = cred_db.get_credential(service_key, 'service')
+            if username and password:
+                return jsonify({
+                    'has_credentials': True,
+                    'username': username,
+                    'source': 'db',
+                    'scope': 'brand'
+                })
+
+    return jsonify({
+        'has_credentials': False,
+        'username': None,
+        'source': 'none'
+    })
+
+
+@app.route('/api/camera/<camera_serial>/credentials', methods=['PUT'])
+@csrf.exempt
+@login_required
+def api_camera_credentials_put(camera_serial):
+    """
+    Store or update credentials for a camera.
+    Body: {username: "...", password: "...", scope: "camera"|"brand"}
+
+    scope="camera" stores per-camera credentials (keyed by serial).
+    scope="brand" stores brand-level credentials (keyed by vendor type).
+    """
+    from services.credentials import credential_db_service as cred_db
+
+    data = request.get_json()
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'success': False, 'error': 'username and password required'}), 400
+
+    camera = camera_repo.get_camera(camera_serial)
+    if not camera:
+        return jsonify({'success': False, 'error': 'Camera not found'}), 404
+
+    cam_type = camera.get('type', '').lower()
+    scope = data.get('scope', 'camera')
+
+    if scope == 'brand':
+        # Store as brand-level service credential
+        vendor_key_map = {
+            'reolink': 'reolink_api',
+            'amcrest': 'amcrest',
+            'sv3c': 'sv3c',
+            'unifi': 'unifi_protect',
+            'eufy': 'eufy_bridge'
+        }
+        cred_key = vendor_key_map.get(cam_type, cam_type)
+        cred_type = 'service'
+        label = f'{cam_type.title()} brand credentials'
+    else:
+        cred_key = camera_serial
+        cred_type = 'camera'
+        label = f'{camera.get("name", camera_serial)} credentials'
+
+    vendor = cam_type if cam_type in ('eufy', 'reolink', 'unifi', 'amcrest', 'sv3c') else 'system'
+
+    success = cred_db.store_credential(
+        credential_key=cred_key,
+        username=data['username'],
+        password=data['password'],
+        vendor=vendor,
+        credential_type=cred_type,
+        label=label
+    )
+
+    return jsonify({'success': success})
+
+
+@app.route('/api/camera/<camera_serial>/credentials', methods=['DELETE'])
+@csrf.exempt
+@login_required
+def api_camera_credentials_delete(camera_serial):
+    """Delete per-camera credentials (does not delete brand-level credentials)."""
+    from services.credentials import credential_db_service as cred_db
+
+    success = cred_db.delete_credential(camera_serial, 'camera')
+    return jsonify({'success': success})
+
+
+@app.route('/api/credentials/service', methods=['GET'])
+@login_required
+def api_service_credentials_list():
+    """
+    List all service-level credentials (brand-level).
+    Returns credential keys and usernames only (no passwords).
+    """
+    from services.credentials import credential_db_service as cred_db
+
+    try:
+        resp = cred_db._postgrest_session().get(
+            f"{cred_db.POSTGREST_URL}/camera_credentials",
+            params={
+                'credential_type': 'eq.service',
+                'select': 'credential_key,vendor,label,updated_at'
+            }
+        )
+        if resp.status_code == 200:
+            return jsonify(resp.json())
+        return jsonify([])
+    except Exception:
+        return jsonify([])
 
 
 @app.route('/api/cameras/<camera_serial>/speaker_volume', methods=['GET', 'POST'])

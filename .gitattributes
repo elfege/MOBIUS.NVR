@@ -1,0 +1,41 @@
+# =============================================================================
+# Git-Crypt Encryption Patterns
+# Files matching these patterns are encrypted in the remote repository.
+# Locally (with the key unlocked), they appear as plaintext.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Python — all backend logic
+# -----------------------------------------------------------------------------
+*.py filter=git-crypt diff=git-crypt
+services/**/*.py filter=git-crypt diff=git-crypt
+
+# -----------------------------------------------------------------------------
+# Frontend
+# -----------------------------------------------------------------------------
+static/js/**/*.js filter=git-crypt diff=git-crypt
+templates/*.html filter=git-crypt diff=git-crypt
+
+# -----------------------------------------------------------------------------
+# Database
+# -----------------------------------------------------------------------------
+psql/**/*.sql filter=git-crypt diff=git-crypt
+
+# -----------------------------------------------------------------------------
+# Infrastructure
+# -----------------------------------------------------------------------------
+docker-compose.yml filter=git-crypt diff=git-crypt
+requirements.txt filter=git-crypt diff=git-crypt
+Dockerfile filter=git-crypt diff=git-crypt
+
+# -----------------------------------------------------------------------------
+# Config examples
+# -----------------------------------------------------------------------------
+config/*.example filter=git-crypt diff=git-crypt
+config/*.yaml filter=git-crypt diff=git-crypt
+
+# -----------------------------------------------------------------------------
+# Shell scripts (encrypted — except _deploy.sh, _start.sh which stay plaintext)
+# -----------------------------------------------------------------------------
+scripts/**/*.sh filter=git-crypt diff=git-crypt
+entrypoint.sh filter=git-crypt diff=git-crypt

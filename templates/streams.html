@@ -253,6 +253,7 @@
                         <label for="user-form-role">Role</label>
                         <select id="user-form-role" required>
                             <option value="user">User</option>
+                            <option value="viewer">Viewer (read-only)</option>
                             <option value="admin">Admin</option>
                         </select>
                     </div>
@@ -294,6 +295,58 @@
             </div>
         </div>
     </div>
+    {% endif %}
+
+    <!-- Trusted Network Toggle (Admin Only) -->
+    {% if current_user.role == 'admin' %}
+    <script>
+    // Trusted Network toggle — loaded inline because it's a simple setting
+    (function() {
+        // Add toggle to the nav menu (settings area)
+        const navSettings = document.querySelector('.nav-settings, .settings-panel, #settings-container');
+        if (!navSettings) return;
+
+        const container = document.createElement('div');
+        container.className = 'trusted-network-setting';
+        container.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 12px;';
+        container.innerHTML = `
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;color:#ccc;font-size:0.85rem;">
+                <input type="checkbox" id="trusted-network-toggle" style="cursor:pointer;">
+                Trust this network (skip login for LAN clients)
+            </label>
+        `;
+
+        // Load current state
+        fetch('/api/settings/trusted-network')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('trusted-network-toggle').checked = data.enabled;
+            })
+            .catch(() => {});
+
+        // Handle toggle
+        container.querySelector('#trusted-network-toggle').addEventListener('change', function() {
+            fetch('/api/settings/trusted-network', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled: this.checked})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    this.checked = !this.checked;
+                    alert('Failed to update setting');
+                }
+            })
+            .catch(() => {
+                this.checked = !this.checked;
+            });
+        });
+
+        // Insert after first settings element found
+        navSettings.appendChild(container);
+    })();
+    </script>
     {% endif %}
 
     <!-- Old toggle button removed - navbar is always visible now -->

@@ -23,21 +23,69 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-## Current Session: March 20, 2026 (16:00 - 16:05 EDT)
+## Current Session: March 20, 2026 (16:00 - ??:?? EDT)
 
-### NVR_LOCAL_HOST_IP Fallback Fix + Merge
+### app.py Modularization — Flask Blueprints
 
 **What was done:**
 
 1. **`start.sh` + `_start.sh`** (16:02 EDT)
    - `ip route get 1.1.1.1` result only exported if non-empty
-   - If detection fails, docker compose falls back to `.env` value (192.168.10.20)
-   - Previously: empty export silently clobbered the `.env` value
+   - If detection fails, docker compose falls back to `.env` value
 
-2. **Merged `repo_security_licensing_MAR_20_2026_b` → `main`**
-   - Includes: trusted network auto-login, viewer role, PostgREST GRANT fix, NVR_LOCAL_HOST_IP fallback
+2. **Merged `repo_security_licensing_MAR_20_2026_b` → `main`**, created `app_modularization_MAR_20_2026_a`
 
-**Next task:** app.py modularization (8,401 lines → service modules)
+3. **app.py modularized** — 8,616 lines → ~1,276 lines. All routes moved to `routes/`:
+
+   | File | Contents |
+   |---|---|
+   | `routes/__init__.py` | Package marker |
+   | `routes/shared.py` | Service registry (singletons, PostgREST session, `set_services()`) |
+   | `routes/helpers.py` | Shared helpers: `csrf_exempt`, session, device, camera access, env vars, trusted-network |
+   | `routes/auth.py` | login, logout, change-password, users CRUD, devices, preferences |
+   | `routes/camera.py` | Camera display, order, credentials, streaming config, FLV, reboot |
+   | `routes/config.py` | UI pages (/, /streams, /reloading), health, license, trusted-network, status, camera list |
+   | `routes/eufy.py` | Eufy auth flow (`/api/eufy-auth/*`), Amcrest MJPEG (`/api/amcrest/*/stream/mjpeg`) |
+   | `routes/power.py` | Hubitat power, UniFi POE |
+   | `routes/presence.py` | Household presence tracking |
+   | `routes/ptz.py` | PTZ move, presets, latency, reversal |
+   | `routes/recording.py` | Recording, timeline (`/api/timeline/*`), file browser, exports, preview-merge |
+   | `routes/storage.py` | Storage stats, migration, cleanup, motion detection routes |
+   | `routes/streaming.py` | Stream lifecycle, HLS, MJPEG, WebSocket namespaces `/mjpeg` + `/stream_events` |
+   | `routes/talkback.py` | Talkback WebSocket `/talkback` + capabilities route |
+
+4. **Commit:** `024a99a` on branch `app_modularization_MAR_20_2026_a`
+
+---
+
+## ⚠️ CRITICAL: NOT YET DEPLOYED — DO NOT MARK COMPLETE
+
+### Known Issue: SocketIO decorator import-time race
+
+`routes/streaming.py` and `routes/talkback.py` use:
+```python
+@shared.socketio.on('connect', namespace='/mjpeg')
+```
+
+These decorators execute at **module import time**, but `shared.socketio` is `None` at import time — `set_services()` runs AFTER blueprints are registered. This will crash on startup.
+
+**Fix needed (next session):**
+
+- Option A: Register SocketIO handlers via `socketio.on(...)` calls inside a `register_socketio_handlers(socketio)` function called from app.py after `set_services()`
+- Option B: Move SocketIO namespaces back into app.py (simpler, less modular)
+- Option C: Use `socketio.on_namespace()` with Namespace classes (cleanest but most work)
+
+**Recommended:** Option A. In streaming.py and talkback.py, replace decorator-style handlers with a function `def init_socketio(sio): sio.on('connect', handler, namespace='/mjpeg')` etc., called from app.py.
+
+---
+
+## Next Session TODO
+
+- [ ] Fix SocketIO import-time crash in `routes/streaming.py` + `routes/talkback.py`
+- [ ] Run `python3 -c "import app"` inside container to check for other import errors
+- [ ] Deploy with `./start.sh` and verify all endpoints work
+- [ ] If deploy fails: create `app_modularization_MAR_20_2026_b` and fix
+- [ ] When confirmed working: merge to main
 
 ---
 

@@ -15,15 +15,56 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 27, 2026 12:15 EDT*
+*Last updated: March 27, 2026 15:50 EDT*
 
-**Branch:** `app_modularization_MAR_20_2026_a` (just created)
+**Branch:** `fix_unifi_catfeeders_March_27_2026_a`
 
-**Previous Branch:** `repo_security_licensing_MAR_20_2026_b` → merged into `main`
+**Previous Branch:** `app_modularization_MAR_20_2026_a`
 
 ---
 
-## Current Session: March 20, 2026 (16:00 - ??:?? EDT)
+## Current Session: March 27, 2026 (13:00 - 15:50 EDT)
+
+### Camera Stream Fixes — DB Credential Migration Fallout + CSRF Bug
+
+**Root Cause Analysis:**
+After the app was modularized into Flask Blueprints (commit `024a99a`, March 20), `secrets.env` was removed and credentials moved to PostgreSQL `camera_credentials` table. However, several services still read credentials from `os.getenv()` which is empty inside Docker containers. Additionally, the custom `@csrf_exempt` decorator in `helpers.py` was a no-op — Flask-WTF only checks its internal `_exempt_views` set (populated via `csrf.exempt()`), not the `_csrf_exempt` attribute set by our decorator.
+
+**Fixes applied (branch `fix_unifi_catfeeders_March_27_2026_a`):**
+
+| Commit | Fix | Impact |
+|--------|-----|--------|
+| `7feec21` | UniFi token alias: read from DB via `UniFiCredentialProvider.get_token_alias()` | STAIRS camera stream restored |
+| `7feec21` | `CameraRepository.get_camera()` called as class method → use `shared.camera_repo` instance | Fixed 500 error on `/api/mediamtx/path-status` for all cameras |
+| `5c413d5` | Register all API blueprints with `csrf.exempt(bp)` in app.py | Fixed CSRF 400 on ALL POST/PUT/DELETE API endpoints (stream start, preferences, etc.) |
+| `5d0ec28` | SV3C MJPEG: read credentials from DB (`sv3c` service key) instead of env vars | SV3C MJPEG stream auth restored |
+
+**Token alias seeded in DB:**
+- Camera `68d49398005cf203e400043f` (STAIRS): token `zmUKsRyrMpDGSThn` stored in `camera_credentials` table (key=camera_id, type='camera', vendor='unifi')
+
+**Files modified:**
+- `app.py` — Added `csrf.exempt()` for all API blueprints after registration
+- `services/credentials/unifi_credential_provider.py` — Added `get_token_alias(camera_id)` method (DB first, env fallback)
+- `streaming/handlers/unifi_stream_handler.py` — Use credential provider instead of `os.getenv()` for token alias
+- `services/unifi_protect_service.py` — Use credential provider; removed hardcoded camera ID in env var name
+- `routes/camera.py` — Fixed `CameraRepository.get_camera()` class method call → `shared.camera_repo.get_camera()`
+- `services/sv3c_mjpeg_capture_service.py` — Read SV3C credentials from DB first, env fallback
+
+**Stream type switching investigation:**
+- Pipeline is: UI button → `PUT /api/user/stream-preferences` (DB) → stop old stream → create MediaMTX paths if needed → start new stream with `protocol_override`
+- CSRF bug was blocking ALL POST requests from browser, silently breaking stream switching for HLS/LL-HLS/NEOLINK types
+- WEBRTC and MJPEG bypassed the issue (direct MediaMTX WHEP / direct camera connection)
+- Cat Feeders (only NEOLINK camera) was the most visible victim
+
+**Discoveries:**
+- Cat Feeders backend was always streaming fine (MediaMTX ready=True) — issue was purely browser-side CSRF
+- `@csrf_exempt` decorator pattern in `helpers.py` never worked since Blueprint modularization — Flask-WTF ignores `_csrf_exempt` attribute
+- Eufy cameras don't have native MJPEG endpoints (P2P bridge only)
+- Another Claude instance is building camera settings modal redesign with per-camera credential editing UI
+
+---
+
+## Previous Session: March 20, 2026 (16:00 - 17:00 EDT)
 
 ### app.py Modularization — Flask Blueprints
 
@@ -1250,22 +1291,19 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 ---
 
-## Next Session TODO — Updated 2026-03-27
+## Next Session TODO — Updated 2026-03-27 15:50 EDT
 
 ### Stakeholder: Elfege (manual testing & decisions)
 
-**Blocked on `./start.sh` restart:**
-- [ ] Run `./start.sh` to pick up go2rtc + PTZ + trusted device changes
-- [ ] Test go2rtc button on Cat Feeders camera — verify latency improvement
-- [ ] Verify database migration 016 applied correctly
+**Immediate (after `./start.sh` with latest fixes):**
+- [ ] Verify STAIRS (UniFi GFlex) streaming on WebRTC ← FIXED this session
+- [ ] Verify Cat Feeders (NEOLINK) streaming ← CSRF fix this session
+- [ ] Verify SV3C_Living_3 MJPEG works ← credential fix this session
+- [ ] Test stream type switching for all cameras (WebRTC↔MJPEG↔HLS↔LL-HLS)
+- [ ] Test go2rtc button on Cat Feeders — verify latency improvement
 - [ ] Test E1 PTZ responsiveness — should be ~100ms per cached command
-- [ ] Test preset save via UI on E1
-- [ ] Fix `~/.cache/nvr_secrets.env` — deduplicate POSTGRES_PASSWORD entries
-- [ ] Test login, verify device token cookie is set
-- [ ] Test admin "Manage Devices" modal
-- [ ] Test trust toggle — mark trusted, logout, verify auto-login
 
-**UI testing (after restart + hard refresh):**
+**UI testing (after hard refresh):**
 - [ ] Test golden ratio tile layout (13/8 aspect ratio)
 - [ ] Test video fit mode toggle (per-user default + per-camera override)
 - [ ] Test tile rearrange: long-press → jiggle → drag → Done pill
@@ -1274,12 +1312,13 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 **Prior sessions — still untested:**
 - [ ] Test Eufy preset save/overwrite (T8419P0024110C6A)
-- [ ] Test MJPEG→WebRTC stream switching
 - [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
 - [ ] Test camera rename, stream reload overlay
+- [ ] Test trusted devices: login, cookie, trust toggle, auto-login
+- [ ] Fix `~/.cache/nvr_secrets.env` — deduplicate POSTGRES_PASSWORD entries
 
 **Decisions needed:**
-- [ ] Create Stripe account + update `NVR-STRIPE` AWS secret with real keys (blocks purchase system)
+- [ ] Create Stripe account + update `NVR-STRIPE` AWS secret with real keys
 - [ ] Review public repo after history push — confirm portfolio looks right
 
 ---
@@ -1287,22 +1326,28 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 ### Stakeholder: server-elfege-com (Claude on elfege.com)
 
 - [ ] Build `/nvr-purchase` hidden page — Stripe Checkout, **$39/year** (MSG-199 + MSG-201)
-- [ ] Stripe webhook Lambda (`nvr-purchase-handler`) — payment confirmed → license issuance
-- [ ] S3 bucket `nvr-releases` + presigned URL generation for Docker image download
-- [ ] AWS SES setup — license delivery emails (key + download URL + GPG passphrase)
-- [ ] Apply dark-theme template to personal project pages (intercom PENDING)
+- [ ] Stripe webhook Lambda (`nvr-purchase-handler`)
+- [ ] S3 bucket `nvr-releases` + presigned URL generation
+- [ ] AWS SES license delivery emails
+- [ ] Dark-theme template for personal project pages
 
 ---
 
 ### Stakeholder: office-nvr (this instance)
 
 **High priority:**
-- [ ] Push dev history to public repo — BFG scrub certs + junk files (delegated to parallel Claude instance)
-- [x] ACK + RESOLVE MSG-200 (trusted network diagnostic — fix already merged in `686a59e`)
-- [ ] Commit go2rtc infrastructure gap fixes (after Elfege tests)
+- [ ] Build comprehensive test suite: PTZ, stream type switching, UI features, MJPEG/WebRTC/HLS for each camera type
+- [ ] Push dev history to public repo — BFG scrub certs + junk files
+- [x] ACK + RESOLVE MSG-200 (trusted network fix in `686a59e`)
+- [x] Fix STAIRS stream — UniFi token alias from DB (commit `7feec21`)
+- [x] Fix CSRF exemption — register blueprints with `csrf.exempt()` (commit `5c413d5`)
+- [x] Fix SV3C MJPEG auth — credentials from DB (commit `5d0ec28`)
+- [x] Fix path-status 500 — CameraRepository instance method (commit `7feec21`)
 
-**After elfege.com purchase page exists:**
-- [ ] Add `--upload` flag to `push_nvr.sh` for S3 image upload
+**Known limitations (stream type switching):**
+- Eufy cameras: no native MJPEG (P2P bridge only) — MJPEG switch may not work
+- UniFi cameras: MJPEG requires Protect snapshot API session — limited support
+- Another Claude instance is building camera settings modal with per-camera credential editing
 
 **Tech debt:**
 - [ ] Centralize hardcoded timeouts + MediaMTX addresses

@@ -172,6 +172,15 @@ app.register_blueprint(storage_bp)
 app.register_blueprint(streaming_bp)
 app.register_blueprint(talkback_bp)
 
+# Exempt all API blueprints from CSRF validation.
+# All routes use JSON APIs consumed by frontend JS (not HTML forms).
+# The custom @csrf_exempt decorator in helpers.py sets f._csrf_exempt but
+# Flask-WTF only checks its internal _exempt_views/_exempt_blueprints sets,
+# so we must register exemptions via the CSRFProtect instance directly.
+for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
+           ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp]:
+    csrf.exempt(bp)
+
 # ===== License Validation =====
 # Validates on startup. Sets global license state (demo/valid/expired).
 # Demo mode: 7 days, max 2 cameras, no recording, watermark on streams.

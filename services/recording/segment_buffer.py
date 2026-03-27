@@ -82,18 +82,20 @@ class SegmentBuffer:
 
     def _check_mediamtx_path_ready(self, path: str, timeout: int = 2) -> bool:
         """
-        Check if a MediaMTX path is ready and has an active publisher.
+        Check if the streaming hub path is ready and has an active publisher.
 
         Uses ffprobe to quickly test if the path exists and has a stream.
+        Works with both MediaMTX and go2rtc RTSP sources.
 
         Args:
-            path: MediaMTX path (e.g., "68d49398005cf203e400043f")
+            path: Stream path (e.g., "68d49398005cf203e400043f")
             timeout: Timeout in seconds for the check
 
         Returns:
             True if path is ready, False otherwise
         """
-        rtsp_url = f"rtsp://nvr-packager:8554/{path}"
+        # Use the source_url which already points to the correct hub (MediaMTX or go2rtc)
+        rtsp_url = self.source_url
         cmd = [
             'ffprobe',
             '-v', 'error',

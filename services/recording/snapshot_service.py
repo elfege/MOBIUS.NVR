@@ -193,10 +193,11 @@ class SnapshotService:
         camera_type = camera.get('type', '').lower()
         stream_type = camera.get('stream_type', '').upper()
         
-        # For HLS/LL_HLS cameras, use MediaMTX RTSP
-        if stream_type in ['HLS', 'LL_HLS']:
-            packager_path = camera.get('packager_path', camera.get('serial'))
-            return f"rtsp://nvr-packager:8554/{packager_path}"
+        # For cameras using a streaming hub, tap hub RTSP (single-consumer policy)
+        from services.streaming_hub import get_streaming_hub, get_rtsp_source_url
+        hub = get_streaming_hub(camera)
+        if stream_type in ('HLS', 'LL_HLS', 'NEOLINK', 'WEBRTC', 'GO2RTC') or hub == 'go2rtc':
+            return get_rtsp_source_url(camera.get('serial', ''), camera)
         
         # For RTSP/MJPEG cameras, build direct RTSP URL
         # Import handler for camera type

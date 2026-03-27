@@ -58,15 +58,24 @@ class SV3CMJPEGCaptureService:
 
     def _get_sv3c_credentials(self) -> Tuple[Optional[str], Optional[str]]:
         """
-        Get SV3C credentials from environment.
+        Get SV3C credentials from database first, with env var fallback.
         SV3C cameras typically use simple username/password auth.
         """
+        # Try database first
+        try:
+            from services.credentials.credential_db_service import get_credential
+            username, password = get_credential('sv3c', 'service')
+            if username and password:
+                return (username, password)
+        except Exception:
+            pass
+
+        # Fall back to environment variables
         username = os.getenv('NVR_SV3C_USERNAME')
         password = os.getenv('NVR_SV3C_PASSWORD')
 
         if not username or not password:
-            # Log warning but don't fail - some SV3C cameras may not require auth
-            logger.warning("SV3C credentials not found in environment (NVR_SV3C_USERNAME/NVR_SV3C_PASSWORD)")
+            logger.warning("SV3C credentials not found in DB or environment")
 
         return (username, password)
 

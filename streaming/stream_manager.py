@@ -277,6 +277,14 @@ class StreamManager:
         # Use protocol_override when switching from MJPEG to a MediaMTX-based type
         protocol = protocol_override.upper() if protocol_override else (camera or {}).get('stream_type', 'HLS').upper()
 
+        # go2rtc cameras: no FFmpeg needed for viewing. go2rtc is the single consumer
+        # and serves WebRTC/HLS directly to browser. FFmpeg only runs separately for
+        # recording (started by recording_service, not stream_manager).
+        from services.streaming_hub import is_go2rtc_camera
+        if camera and is_go2rtc_camera(camera) and protocol in ('GO2RTC', 'WEBRTC', 'NEOLINK'):
+            print(f"[GO2RTC] {camera_serial} uses go2rtc as streaming hub — no FFmpeg needed for viewing")
+            return None  # Frontend uses go2rtc WebRTC directly, no HLS URL needed
+
         # For LL_HLS/NEOLINK/WEBRTC with dual-output: main stream is always available if sub is running
         # The single FFmpeg process publishes to both /camera and /camera_main
         # WEBRTC uses same FFmpeg→MediaMTX pipeline, just different delivery to browser

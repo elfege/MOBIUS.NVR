@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 27, 2026 15:50 EDT*
+*Last updated: March 27, 2026 16:30 EDT*
 
 **Branch:** `fix_unifi_catfeeders_March_27_2026_a`
 
@@ -23,7 +23,43 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-## Current Session: March 27, 2026 (13:00 - 15:50 EDT)
+## Current Session: March 27, 2026 (15:50 - 16:30 EDT)
+
+### Public Repo History Push — BFG/filter-repo Scrub + git-crypt Encryption
+
+**Goal:** Push full dev history (1,303 commits, 19 branches) to the public repo (`MOBIUS.NVR`) with all source files encrypted in git-crypt format across the entire history.
+
+**What was done:**
+
+1. **Mirror cloned** dev repo to `/tmp/nvr-history-clean` (bare mirror)
+2. **Scrubbed sensitive files** with `git filter-repo --invert-paths`:
+   - `certs/dev/privkey.pem` — EC private key (self-signed, localhost)
+   - `certs/dev/fullchain.pem` — matching cert
+   - Two zero-byte junk files with philosophical-quote filenames
+3. **Encrypted all source blobs** across entire history:
+   - Built comprehensive blob→path mapping by walking every tree in every commit (5,000 blob-path pairs)
+   - 1,314 unique blobs matched `.gitattributes` git-crypt patterns (`.py`, `.js`, `.html`, `.sql`, `.sh`, `docker-compose.yml`, `Dockerfile`, configs)
+   - `git filter-repo --blob-callback` with Python AES-256-CTR encryption matching git-crypt's format
+   - **Key insight:** Nonce must be `HMAC-SHA1(hmac_key, plaintext)[:12]` — random nonces cause "tampered" error on smudge. First attempt used random nonces and failed; second attempt with correct HMAC nonces succeeded.
+4. **Pushed to public repo** (`git push --all --force`):
+   - Temporarily removed branch protection on `main`, re-enabled after push
+   - Cleaned up 1,301 `refs/replace/` references left by filter-repo
+5. **Updated prod** (`dellserver:~/0_MOBIUS.NVR-prod`):
+   - `git fetch --all && git reset --hard origin/main`
+   - git-crypt decrypts correctly: 535 encrypted files, `app.py` shows plaintext
+6. **Verified on GitHub:** 19 branches, 866 commits visible, source files show as binary (encrypted)
+
+**Key technical details for future reference:**
+- git-crypt encrypted blob format: `\x00GITCRYPT\x00` (10 bytes) + nonce (12 bytes) + AES-256-CTR ciphertext
+- IV for CTR mode: nonce + `\x00\x00\x00\x00` (16 bytes total)
+- git-crypt key file at: `dellserver:~/0_MOBIUS.NVR-prod/.git/git-crypt/keys/default`
+- Key file structure: `\x00GITCRYPTKEY\x00` header, AES key at offset 0x28 (32 bytes), HMAC key at offset 0x50 (64 bytes)
+
+**Open question for next session:** Need a deployment script to keep public repo synced with dev repo on future pushes. Check if `.github/workflows/` or hooks already handle this.
+
+---
+
+## Previous Session: March 27, 2026 (13:00 - 15:50 EDT)
 
 ### Camera Stream Fixes — DB Credential Migration Fallout + CSRF Bug
 
@@ -122,6 +158,10 @@ These decorators execute at **module import time**, but `shared.socketio` is `No
 
 ## Next Session TODO
 
+- [x] Push full dev history to public repo with git-crypt encryption (March 27, 2026)
+- [x] Scrub certs + junk files from history
+- [x] Update prod clone on dellserver
+- [ ] Create deployment script to sync dev→public repo on future pushes
 - [ ] Fix SocketIO import-time crash in `routes/streaming.py` + `routes/talkback.py`
 - [ ] Run `python3 -c "import app"` inside container to check for other import errors
 - [ ] Deploy with `./start.sh` and verify all endpoints work

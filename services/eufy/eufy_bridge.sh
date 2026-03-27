@@ -89,16 +89,16 @@ echo "==========================================================================
 echo "STEP 1: LOADING CREDENTIALS"
 echo "============================================================================"
 
-echo "EUFY_BRIDGE_USERNAME: $NVR_EUFY_BRIDGE_USERNAME"
+echo "EUFY_BRIDGE_USERNAME: ${NVR_EUFY_BRIDGE_USERNAME:-NOT SET}"
 
 # Pull AWS secrets if bridge credentials missing
-if [[ -z "${NVR_EUFY_BRIDGE_USERNAME}" || -z "${NVR_EUFY_BRIDGE_PASSWORD}" ]]; then
+if [[ -z "${NVR_EUFY_BRIDGE_USERNAME:-}" || -z "${NVR_EUFY_BRIDGE_PASSWORD:-}" ]]; then
 	log_warn "Credentials not in environment, attempting to load from AWS Secrets Manager..."
 	pull_aws_secrets "EUFY_CAMERAS" 2>/dev/null || true
 fi
 
 # Verify bridge credentials loaded
-if [[ -z "${NVR_EUFY_BRIDGE_USERNAME}" || -z "${NVR_EUFY_BRIDGE_PASSWORD}" ]]; then
+if [[ -z "${NVR_EUFY_BRIDGE_USERNAME:-}" || -z "${NVR_EUFY_BRIDGE_PASSWORD:-}" ]]; then
 	echo ""
 	log_error "Bridge credentials missing after attempting to load from AWS"
 	echo ""

@@ -194,12 +194,255 @@
     color: #e74c3c;
 }
 
-/* Modal Body */
-.recording-modal-body {
+/* Tab Navigation */
+.settings-tabs {
+    display: flex;
+    background: #111;
+    border-bottom: 2px solid #333;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.settings-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.settings-tab-btn {
+    flex: 0 0 auto;
+    padding: 12px 20px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    color: #888;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.settings-tab-btn:hover {
+    color: #ccc;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-tab-btn.active {
+    color: #3498db;
+    border-bottom-color: #3498db;
+    background: rgba(52, 152, 219, 0.08);
+}
+
+.settings-tab-btn i {
+    font-size: 14px;
+}
+
+.settings-tab-panel {
+    display: none;
     padding: 24px;
+}
+
+.settings-tab-panel.active {
+    display: block;
+}
+
+/* Modal Body — no horizontal padding so tabs can be full-width */
+.recording-modal-body {
+    padding: 0;
     max-height: calc(90vh - 140px);
     overflow-y: auto;
     color: #fff;
+}
+
+/* Help Tooltip Button (?) */
+.setting-help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(52, 152, 219, 0.3);
+    border: 1px solid rgba(52, 152, 219, 0.6);
+    color: #3498db;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-left: 6px;
+    transition: all 0.2s ease;
+    vertical-align: middle;
+    line-height: 1;
+}
+
+.setting-help-btn:hover {
+    background: rgba(52, 152, 219, 0.5);
+    color: #fff;
+    transform: scale(1.1);
+}
+
+/* Help Modal (overlay within the settings modal) */
+.setting-help-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.15s ease;
+}
+
+.setting-help-content {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 24px;
+    max-width: 480px;
+    width: 90%;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.setting-help-content h4 {
+    margin: 0 0 12px 0;
+    color: #3498db;
+    font-size: 16px;
+}
+
+.setting-help-content p {
+    margin: 0 0 10px 0;
+    color: #ccc;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.setting-help-content .help-deps {
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: rgba(243, 156, 18, 0.12);
+    border: 1px solid rgba(243, 156, 18, 0.3);
+    border-radius: 6px;
+    color: #f39c12;
+    font-size: 13px;
+}
+
+.setting-help-content .help-close-btn {
+    margin-top: 16px;
+    padding: 8px 20px;
+    background: #3498db;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.setting-help-content .help-close-btn:hover {
+    background: #2980b9;
+}
+
+/* Advanced Tab - JSON-like field editor */
+.advanced-setting-group {
+    margin-bottom: 16px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #333;
+    border-radius: 8px;
+}
+
+.advanced-setting-group.nested {
+    margin-left: 16px;
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border-color: #2a2a2a;
+}
+
+.advanced-setting-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    color: #aaa;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'Courier New', monospace;
+}
+
+.advanced-setting-label .key-name {
+    color: #e0a060;
+}
+
+.advanced-setting-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: #1e1e1e;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #ddd;
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+}
+
+.advanced-setting-input:focus {
+    border-color: #3498db;
+    outline: none;
+}
+
+.advanced-setting-input.json-editor {
+    min-height: 80px;
+    resize: vertical;
+    white-space: pre;
+}
+
+.advanced-section-toggle {
+    background: none;
+    border: none;
+    color: #3498db;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.advanced-section-toggle:hover {
+    color: #5dade2;
+}
+
+/* Credentials tab */
+.credential-scope-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.credential-scope-selector label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: #bbb;
+    font-size: 14px;
+}
+
+.credential-scope-selector input[type="radio"] {
+    accent-color: #3498db;
+}
+
+@media (max-width: 600px) {
+    .settings-tab-btn {
+        padding: 10px 14px;
+        font-size: 12px;
+    }
 }
 
 /* Form Sections */
@@ -248,6 +491,8 @@
 }
 
 /* Inputs */
+.recording-form-group input[type="text"],
+.recording-form-group input[type="password"],
 .recording-form-group input[type="number"],
 .recording-form-group select {
     width: 100%;
@@ -260,12 +505,16 @@
     transition: border-color 0.2s ease;
 }
 
+.recording-form-group input[type="text"]:focus,
+.recording-form-group input[type="password"]:focus,
 .recording-form-group input[type="number"]:focus,
 .recording-form-group select:focus {
     outline: none;
     border-color: #3498db;
 }
 
+.recording-form-group input[type="text"]:disabled,
+.recording-form-group input[type="password"]:disabled,
 .recording-form-group input[type="number"]:disabled,
 .recording-form-group select:disabled {
     background: #1a1a1a;
@@ -321,6 +570,7 @@
     justify-content: flex-end;
     gap: 12px;
     margin-top: 24px;
+    padding: 24px;
     padding-top: 24px;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -373,6 +623,11 @@
     display: flex;
     align-items: center;
     gap: 10px;
+}
+
+/* Alerts prepended directly to modal body need their own margin */
+.recording-modal-body > .recording-alert {
+    margin: 16px 24px 0 24px;
 }
 
 .recording-alert-warning {

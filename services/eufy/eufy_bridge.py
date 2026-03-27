@@ -102,6 +102,32 @@ class EufyBridge:
         # Supported on: T8416 (S350), T8425 (Floodlight), T8423 (Floodlight)
         self.PRESET_SLOTS = 4
     
+    def _load_bridge_env(self):
+        """Load bridge credentials from DB and build subprocess environment.
+
+        Reads Eufy bridge credentials from the database (via credential provider)
+        and injects them as environment variables for the shell script subprocess.
+        Falls back to existing env vars if DB lookup fails.
+
+        Returns:
+            dict: Environment variables for the bridge subprocess
+        """
+        env = os.environ.copy()
+        try:
+            from services.credentials.eufy_credential_provider import EufyCredentialProvider
+            provider = EufyCredentialProvider()
+            username, password = provider.get_bridge_credentials()
+            if username and password:
+                env['NVR_EUFY_BRIDGE_USERNAME'] = username
+                env['NVR_EUFY_BRIDGE_PASSWORD'] = password
+                print("[EUFY BRIDGE] Bridge credentials loaded from DB")
+            else:
+                print("[EUFY BRIDGE] WARNING: No bridge credentials found in DB or env vars")
+        except Exception as e:
+            logger.error(f"[EUFY BRIDGE] Failed to load bridge credentials from DB: {e}")
+            print(f"[EUFY BRIDGE] WARNING: DB credential load failed: {e}")
+        return env
+
     def start(self):
         """Start the Eufy bridge process"""
         if self.is_running():
@@ -113,6 +139,9 @@ class EufyBridge:
             gen = self._generation
             print(f"[EUFY BRIDGE] Starting generation {gen}")
 
+            # Load bridge credentials from DB into env vars for the shell script
+            bridge_env = self._load_bridge_env()
+
             print("########### KILL eufy-security-server ###########")
             # Kill any existing bridge process — use broader pattern to catch zombies
             subprocess.run(f"pkill -f 'eufy-security-server.*port {self.port}'",
@@ -123,13 +152,14 @@ class EufyBridge:
             time.sleep(1)
 
             print("########### Starting bridge process ###########")
-            # Start bridge process
+            # Start bridge process with credentials injected into environment
             self.process = subprocess.Popen(
                 f"bash {self.script_path} {self.port}",
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                universal_newlines=True
+                universal_newlines=True,
+                env=bridge_env
             )
 
             # Give it a moment to start

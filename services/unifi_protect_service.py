@@ -41,8 +41,12 @@ class UniFiProtectService(CameraService):
         except Exception:
             self.username = os.getenv('NVR_PROTECT_USERNAME', "None")
             self.password = os.getenv('NVR_PROTECT_SERVER_PASSWORD', "None")
-        self.protect_alias = os.getenv('NVR_CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS', "None")
-        self.rtsp_alias = os.getenv('NVR_CAMERA_68d49398005cf203e400043f_TOKEN_ALIAS', "None") # camera_config.get('rtsp_alias')  # From bootstrap or manual config
+        # Retrieve token alias from DB (with env var fallback)
+        from services.credentials.unifi_credential_provider import UniFiCredentialProvider
+        _cred_provider = UniFiCredentialProvider()
+        token_alias = _cred_provider.get_token_alias(self.camera_id)
+        self.protect_alias = token_alias or "None"
+        self.rtsp_alias = token_alias or "None"
         self.protect_port = os.getenv('NVR_PROTECT_PORT', 7447)
         # Pre-authenticated URLs (optional - from Protect web UI)
         self.ll_hls_url = camera_config.get('ll_hls_url')  # Tokenized LL-HLS from Protect

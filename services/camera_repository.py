@@ -148,10 +148,10 @@ class CameraRepository:
         # key presence (e.g., 'rtsp_alias' in config) works the same as JSON
         direct_fields = [
             'serial', 'name', 'type', 'camera_id', 'host', 'mac',
-            'packager_path', 'stream_type', 'rtsp_alias', 'max_connections',
-            'onvif_port', 'power_supply', 'hidden', 'ui_health_monitor',
-            'reversed_pan', 'reversed_tilt', 'notes', 'power_supply_device_id',
-            'true_mjpeg',
+            'packager_path', 'stream_type', 'streaming_hub', 'rtsp_alias',
+            'max_connections', 'onvif_port', 'power_supply', 'hidden',
+            'ui_health_monitor', 'reversed_pan', 'reversed_tilt', 'notes',
+            'power_supply_device_id', 'true_mjpeg',
         ]
 
         for field in direct_fields:

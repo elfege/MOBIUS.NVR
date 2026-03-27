@@ -51,24 +51,30 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 
 **Streaming Architecture:**
 
-- LL-HLS via MediaMTX (primary)
-- Traditional HLS
-- MJPEG
-- `[update this if relevant]`
+- WebRTC via MediaMTX WHEP (primary for most cameras)
+- WebRTC via go2rtc (primary for Baichuan/Neolink cameras)
+- LL-HLS via MediaMTX (iOS fallback when DTLS disabled)
+- MJPEG (direct camera endpoint, budget cameras)
+- Snapshot polling (iOS grid view, 1fps)
+
+**Streaming Hub (per-camera):**
+
+- `streaming_hub` field in DB `cameras` table determines which relay hub serves each camera
+- `mediamtx` (default): Camera → FFmpeg → MediaMTX → all consumers
+- `go2rtc`: Camera → go2rtc (single consumer) → WebRTC to browser, RTSP re-export to FFmpeg for recording
+- Migration in progress: consolidating on go2rtc as the single streaming hub
 
 **Motion Detection:**
 
-- Reolink Baichuan
+- Reolink Baichuan (direct, not stream-dependent)
 - ONVIF PullPoint
-- FFmpeg scene detection
-- `[update this if relevant]`
+- FFmpeg scene detection (reads from streaming hub RTSP, not camera directly)
 
 **Recording Types:**
 
 - Motion-triggered
 - Continuous
 - Manual
-- `[update this if relevant]`
 
 **Recording Paths:**
 
@@ -86,6 +92,33 @@ Multi-camera NVR (Network Video Recorder) system supporting:
 - `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/continuous:/recordings/STORAGE/continuous`
 - `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/manual:/recordings/STORAGE/manual`
 - `/mnt/THE_BIG_DRIVE/NVR_RECORDINGS/snapshots:/recordings/STORAGE/snapshots`
+
+**Data Architecture — Camera Configuration:**
+
+```
+cameras.json (seed file, checked into git)
+    │
+    ▼  synced on startup by camera_config_sync.py
+DB: cameras table (RUNTIME SOURCE OF TRUTH)
+    │
+    ▼  overridden per-user at runtime
+DB: user_camera_preferences table (per-user overrides)
+```
+
+- **`cameras.json`** is a SEED FILE, not the runtime source of truth
+- **DB `cameras` table** is what the app reads at runtime via `camera_repository.py`
+- **`camera_config_sync.py`** copies cameras.json → DB on startup (DIRECT_FIELDS list)
+- **`user_camera_preferences`** stores per-user overrides (stream_type, display_order, visibility)
+- **`get_effective_stream_type(serial, user_id)`** resolves: user preference first → camera default fallback
+- **NEVER read cameras.json directly in app code** — always use `camera_repository.get_camera()`
+- **New fields** must be added to: cameras.json schema, DB migration, AND `DIRECT_FIELDS` in camera_config_sync.py
+
+**Credential Architecture:**
+
+- **`camera_credentials` table** stores all credentials (AES-256-GCM encrypted)
+- **Credential providers** (`services/credentials/`) read DB first, env var fallback
+- **NEVER use `os.getenv()` directly** for camera credentials — always use credential providers
+- **`secrets.env` no longer exists** — credentials live in the database only
 
 **Engineering Documentation:**
 
@@ -305,13 +338,17 @@ startnvr    # Full restart with credential reload (./start.sh)
 - Never use display names (e.g., "Living Room") as primary identifiers
 - NOTE: Display names acceptable as supplementary metadata (future enhancement for recording_settings.json UI updates)
 
-### RULE 11: MediaMTX Architecture - Tap, Don't Connect
+### RULE 11: Single-Consumer Policy — Tap, Don't Connect
 
 **Streaming source priority:**
 
 - Budget cameras (SV3C, Eufy) support ONE RTSP connection only
-- All consumers tap MediaMTX, not cameras directly (EXCEPTION: MJPEG connects directly)
-- LL_HLS publishes to MediaMTX (enables RTSP re-export)
+- All consumers tap the streaming hub (MediaMTX or go2rtc), NEVER the camera directly
+- The streaming hub (`streaming_hub` field in DB) determines which relay:
+  - `mediamtx`: FFmpeg → MediaMTX (default for most cameras)
+  - `go2rtc`: go2rtc connects to camera, re-exports RTSP for FFmpeg recording
+- Use `services/streaming_hub.py` `get_rtsp_source_url()` to resolve the correct RTSP URL
+- NEVER hardcode `rtsp://nvr-packager:8554/` — always use the streaming hub utility
 - NOTE: Future enhancement needed - WebRTC for further latency optimization
 
 ### RULE 12: Code Style - Extensive Documentation

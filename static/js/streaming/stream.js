@@ -2665,6 +2665,13 @@ export class MultiStreamManager {
 
             let success;
 
+            // Check streaming hub — go2rtc cameras always use go2rtc WebRTC regardless of stream type
+            // The streaming_hub dictates the transport infrastructure, not the user's preference
+            const streamingHub = $streamItem.data('streaming-hub') || 'mediamtx';
+            if (streamingHub === 'go2rtc' && streamType !== 'SNAPSHOT' && streamType !== 'MJPEG') {
+                console.log(`[Stream] ${cameraId}: streaming_hub=go2rtc — using go2rtc WebRTC`);
+                success = await this.webrtcManager.startGo2rtcStream(cameraId, streamElement);
+            } else
             // Use streamType to determine which manager to use
             // NOTE: mjpeg_proxy is only for direct access to UNIFI MJPEG streams (when not using Protect)
             if (streamType === 'SNAPSHOT') {

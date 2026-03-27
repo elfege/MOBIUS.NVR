@@ -78,14 +78,30 @@ def api_stream_start(camera_serial):
 
         print(f"Attempting to start camera {camera_serial} - {camera_name}")
 
+        # Check if camera uses go2rtc as its streaming hub.
+        # go2rtc cameras bypass FFmpeg + MediaMTX entirely — go2rtc is the single
+        # consumer and serves WebRTC directly to browser. This takes priority over
+        # the user's stream type preference (WEBRTC/HLS/etc.) because the streaming
+        # hub dictates the transport infrastructure, not the user preference.
+        from services.streaming_hub import is_go2rtc_camera
+        if is_go2rtc_camera(camera):
+            print(f"[API] {camera_serial} uses go2rtc hub — no FFmpeg needed")
+            return jsonify({
+                'success': True,
+                'camera_serial': camera_serial,
+                'camera_name': camera_name,
+                'stream_type': 'GO2RTC',
+                'streaming_hub': 'go2rtc',
+                'protocol': 'go2rtc_webrtc',
+                'message': f'GO2RTC stream for {camera_name} (WebRTC via go2rtc, no FFmpeg)'
+            })
+
         # Resolve effective stream type (user preference overrides camera default)
         # This allows per-user stream type switching to actually work end-to-end
         stream_type = shared.camera_repo.get_effective_stream_type(
             camera_serial, user_id=current_user.id if current_user else None)
         if stream_type == 'GO2RTC':
-            # GO2RTC streams bypass FFmpeg + MediaMTX entirely.
-            # go2rtc reads from Neolink RTSP directly and serves WebRTC to browser.
-            # No backend stream start needed — go2rtc handles everything on-demand.
+            # GO2RTC stream type without streaming_hub field (legacy or manual selection)
             print(f"[API] {camera_serial} is GO2RTC - no FFmpeg needed (go2rtc reads from Neolink)")
             return jsonify({
                 'success': True,

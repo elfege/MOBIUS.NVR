@@ -357,6 +357,7 @@
         {% for serial, info in cameras.items() %}
         <div class="stream-item" data-camera-serial="{{ serial }}" data-camera-name="{{ info.name }}"
             data-camera-type="{{ info.type }}" data-stream-type="{{ info.stream_type }}"
+            data-streaming-hub="{{ info.get('streaming_hub', 'mediamtx') }}"
             data-mjpeg-source="{{ info.get('mjpeg_source', '') }}"
             data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}"
             data-video-fit="{{ info.get('video_fit_mode') or '' }}">

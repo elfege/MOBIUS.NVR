@@ -193,7 +193,8 @@ class FFmpegMotionDetector:
                 # Fall through to ffprobe fallback
 
         # Fallback: ffprobe check (creates RTSP connection - not ideal)
-        rtsp_url = f"rtsp://nvr-packager:8554/{camera_id}"
+        from services.streaming_hub import get_rtsp_source_url
+        rtsp_url = get_rtsp_source_url(camera_id, camera)
         cmd = [
             'ffprobe',
             '-v', 'error',
@@ -227,17 +228,15 @@ class FFmpegMotionDetector:
         camera_type = camera.get('type', '').lower()
         stream_type = camera.get('stream_type', '').upper()
 
-        # For LL_HLS/NEOLINK/WEBRTC cameras, use MediaMTX RTSP output
-        # This avoids opening a second connection to the camera
-        # NEOLINK and WEBRTC route through MediaMTX (same FFmpeg→MediaMTX pipeline)
-        if stream_type in ('LL_HLS', 'NEOLINK', 'WEBRTC'):
-            packager_path = camera.get('packager_path') or camera.get('serial')
-            if packager_path:
-                mediamtx_url = f"rtsp://nvr-packager:8554/{packager_path}"
-                logger.info(f"Using MediaMTX RTSP for {camera.get('name')}: {mediamtx_url}")
-                return mediamtx_url
-            else:
-                logger.warning(f"{stream_type} camera {camera.get('name')} has no packager_path, falling back to direct RTSP")
+        # For cameras using a streaming hub, tap hub RTSP output
+        # This avoids opening a second connection to the camera (single-consumer policy)
+        from services.streaming_hub import get_streaming_hub, get_rtsp_source_url
+        hub = get_streaming_hub(camera)
+        if stream_type in ('LL_HLS', 'NEOLINK', 'WEBRTC', 'GO2RTC') or hub == 'go2rtc':
+            camera_id = camera.get('serial') or camera.get('camera_id', '')
+            hub_url = get_rtsp_source_url(camera_id, camera)
+            logger.info(f"Using {hub} RTSP for {camera.get('name')}: {hub_url}")
+            return hub_url
 
         # For other cameras, use direct camera RTSP URL via stream handler
         try:

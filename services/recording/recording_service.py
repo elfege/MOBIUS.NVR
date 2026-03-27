@@ -102,42 +102,35 @@ class RecordingService:
         logger.debug(f"Camera {camera_id}: stream_type={stream_type}, recording_source={recording_source}")
         
         # Resolve source URL based on configuration
-        # LL_HLS/HLS/NEOLINK/WEBRTC cameras MUST use MediaMTX (they don't have direct RTSP access)
-        # NEOLINK and WEBRTC route through MediaMTX for LL-HLS/WebRTC packaging
-        # This overrides any config setting since direct RTSP isn't possible for these cameras
-        if stream_type in ('LL_HLS', 'HLS', 'NEOLINK', 'WEBRTC'):
-            if recording_source != 'mediamtx':
-                logger.debug(f"Overriding recording_source '{recording_source}' to 'mediamtx' for {camera_id} (stream_type={stream_type})")
-            recording_source = 'mediamtx'
+        # Cameras using a streaming hub (go2rtc or MediaMTX) must tap the hub's RTSP output
+        # to maintain the single-consumer policy (one connection per camera).
+        from services.streaming_hub import get_streaming_hub, get_rtsp_source_url, get_rtsp_source_url_main
+
+        hub = get_streaming_hub(camera)
+
+        if stream_type in ('LL_HLS', 'HLS', 'NEOLINK', 'WEBRTC', 'GO2RTC'):
+            if recording_source not in ('mediamtx', 'go2rtc', 'auto'):
+                logger.debug(f"Overriding recording_source '{recording_source}' to hub '{hub}' for {camera_id}")
+            recording_source = hub
         elif recording_source == 'auto':
             if stream_type == 'MJPEG':
-                # MJPEG cameras use dedicated capture service
                 recording_source = 'mjpeg_service'
             else:
-                # Fallback to direct RTSP for unknown types
                 recording_source = 'rtsp'
             logger.debug(f"Auto-resolved recording_source to '{recording_source}' for {camera_id}")
 
-        if recording_source == 'mediamtx':
-            # Tap MediaMTX RTSP output (required for single-connection cameras)
-            # MediaMTX publishes two streams per camera:
-            #   - /{packager_path}      → Sub stream (320x240 transcoded)
-            #   - /{packager_path}_main → Main stream (native resolution, passthrough)
-            packager_path = camera.get('packager_path', camera_id)
-
-            # Get quality setting from recording config (default: main for best quality)
+        if recording_source in ('mediamtx', 'go2rtc'):
+            # Tap streaming hub RTSP output (required for single-connection cameras)
             quality = camera_cfg.get('motion_recording', {}).get('quality', 'main')
 
             if quality == 'main':
-                # Use main stream path for high quality recordings
-                mediamtx_path = f"{packager_path}_main"
-                logger.debug(f"Recording {camera_id} from MediaMTX main stream: {mediamtx_path}")
+                rtsp_url = get_rtsp_source_url_main(camera_id, camera)
+                logger.debug(f"Recording {camera_id} from {hub} main stream: {rtsp_url}")
             else:
-                # Use sub stream path for lower quality/smaller files
-                mediamtx_path = packager_path
-                logger.debug(f"Recording {camera_id} from MediaMTX sub stream: {mediamtx_path}")
+                rtsp_url = get_rtsp_source_url(camera_id, camera)
+                logger.debug(f"Recording {camera_id} from {hub} sub stream: {rtsp_url}")
 
-            return (f"rtsp://nvr-packager:8554/{mediamtx_path}", 'mediamtx')
+            return (rtsp_url, hub)
 
         elif recording_source == 'rtsp':
             # Direct camera RTSP connection

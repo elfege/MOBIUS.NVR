@@ -244,12 +244,40 @@ def api_mediamtx_path_status(camera_serial):
         {ready: bool, path: str, message: str}
     """
     try:
-        # Resolve MediaMTX path name from camera config
+        # Resolve streaming hub and path from camera config
         from routes import shared
+        from services.streaming_hub import is_go2rtc_camera
         camera_config = shared.camera_repo.get_camera(camera_serial) or {}
         path_name = camera_config.get('packager_path') or camera_serial
 
-        # Query MediaMTX API for path list
+        # go2rtc cameras don't use MediaMTX — check go2rtc API instead
+        if is_go2rtc_camera(camera_config):
+            try:
+                resp = requests.get(
+                    'http://nvr-go2rtc:1984/api/streams',
+                    timeout=3
+                )
+                if resp.status_code == 200:
+                    streams = resp.json()
+                    stream_info = streams.get(camera_serial, {})
+                    producers = stream_info.get('producers') or []
+                    is_ready = len(producers) > 0
+                    return jsonify({
+                        'ready': is_ready,
+                        'path': camera_serial,
+                        'streaming_hub': 'go2rtc',
+                        'message': 'go2rtc stream active' if is_ready else 'go2rtc stream has no active producer'
+                    })
+            except requests.RequestException:
+                pass
+            return jsonify({
+                'ready': False,
+                'path': camera_serial,
+                'streaming_hub': 'go2rtc',
+                'message': 'go2rtc API unavailable'
+            })
+
+        # MediaMTX cameras: query MediaMTX API for path list
         resp = requests.get(
             'http://nvr-packager:9997/v3/paths/list',
             auth=('nvr-api', ''),

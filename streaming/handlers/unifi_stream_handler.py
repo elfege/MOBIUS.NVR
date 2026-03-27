@@ -16,6 +16,7 @@ from ..ffmpeg_params import (
     build_ll_hls_output_publish_params,
     build_ll_hls_dual_output_publish_params
 )
+from services.credentials.unifi_credential_provider import UniFiCredentialProvider
 
 
 logger = logging.getLogger(__name__)
@@ -27,12 +28,17 @@ class UniFiStreamHandler(StreamHandler):
     Uses Protect console RTSP proxy (no camera credentials needed)
     """
 
+    # Shared credential provider instance for all UniFi stream handlers
+    _cred_provider = UniFiCredentialProvider()
+
     def build_rtsp_url(self, camera_config: Dict, stream_type: str = 'sub') -> str:
         """
         Build RTSP URL for UniFi Protect camera
 
         Format: rtsp://protect_host:port/rtsp_alias
-        No credentials needed in URL (console handles auth)
+        No credentials needed in URL (console handles auth via token alias)
+
+        Token alias lookup: DB first, then env var fallback.
         """
         if not self.validate_camera_config(camera_config):
             raise ValueError(
@@ -44,11 +50,11 @@ class UniFiStreamHandler(StreamHandler):
         protect_port = console_config.get('port', 7447)
 
         # Get camera-specific config
-        camera_id = camera_config.get("camera_id")  # ✅ Use camera_id instead of name
+        camera_id = camera_config.get("camera_id")
         camera_name = camera_config.get("name", "UNKNOWN")
 
-        # Construct env var name from camera_id (no spaces)
-        rtsp_alias = os.getenv(f"NVR_CAMERA_{camera_id}_TOKEN_ALIAS", None)
+        # Retrieve token alias from DB (with env var fallback)
+        rtsp_alias = self._cred_provider.get_token_alias(camera_id)
 
         print("═══════════════════════════════════════════════════════════════════════════")
         print(f"UNIFI protect_host: {protect_host}")
@@ -57,7 +63,7 @@ class UniFiStreamHandler(StreamHandler):
         if rtsp_alias:
             print(f"UNIFI rtsp_alias: *********{rtsp_alias[-3:]}")
         else:
-            print(f"UNIFI rtsp_alias: None (env var not found)")
+            print(f"UNIFI rtsp_alias: None (not found in DB or env)")
         print("═══════════════════════════════════════════════════════════════════════════")
 
         if not rtsp_alias:

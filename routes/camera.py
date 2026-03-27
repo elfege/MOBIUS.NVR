@@ -245,8 +245,8 @@ def api_mediamtx_path_status(camera_serial):
     """
     try:
         # Resolve MediaMTX path name from camera config
-        from services.camera_repository import CameraRepository
-        camera_config = CameraRepository.get_camera(camera_serial) or {}
+        from routes import shared
+        camera_config = shared.camera_repo.get_camera(camera_serial) or {}
         path_name = camera_config.get('packager_path') or camera_serial
 
         # Query MediaMTX API for path list

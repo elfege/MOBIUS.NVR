@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 20, 2026 16:05 EDT*
+*Last updated: March 27, 2026 12:15 EDT*
 
 **Branch:** `app_modularization_MAR_20_2026_a` (just created)
 
@@ -1250,56 +1250,79 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 ---
 
-## Next Session TODO
+## Next Session TODO — Updated 2026-03-27
 
-**Immediate (go2rtc — current work):**
-- [ ] Run `./start.sh` to pick up all go2rtc changes
+### Stakeholder: Elfege (manual testing & decisions)
+
+**Blocked on `./start.sh` restart:**
+- [ ] Run `./start.sh` to pick up go2rtc + PTZ + trusted device changes
 - [ ] Test go2rtc button on Cat Feeders camera — verify latency improvement
 - [ ] Verify database migration 016 applied correctly
-- [ ] Commit go2rtc infrastructure gap fixes
-
-**Immediate (PTZ — Task A):**
-- [ ] Run `./start.sh` to pick up PTZ code changes (event loop, cache fix, stop-priority lock)
 - [ ] Test E1 PTZ responsiveness — should be ~100ms per cached command
 - [ ] Test preset save via UI on E1
-
-**Immediate (Trusted Devices — Task B):**
 - [ ] Fix `~/.cache/nvr_secrets.env` — deduplicate POSTGRES_PASSWORD entries
-- [ ] Run `./start.sh` (auto-applies migration 015)
 - [ ] Test login, verify device token cookie is set
 - [ ] Test admin "Manage Devices" modal
 - [ ] Test trust toggle — mark trusted, logout, verify auto-login
-- [ ] Commit all trusted device files once verified
 
-**Immediate (User must test — March 09 features):**
-- [ ] Hard refresh browser after restart
+**UI testing (after restart + hard refresh):**
 - [ ] Test golden ratio tile layout (13/8 aspect ratio)
 - [ ] Test video fit mode toggle (per-user default + per-camera override)
 - [ ] Test tile rearrange: long-press → jiggle → drag → Done pill
 - [ ] Test HD button + pin button in expanded modal
 - [ ] Test floating pinned window (pin + HD simultaneously)
 
-**Immediate (Prior sessions — still untested):**
+**Prior sessions — still untested:**
 - [ ] Test Eufy preset save/overwrite (T8419P0024110C6A)
 - [ ] Test MJPEG→WebRTC stream switching
 - [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
 - [ ] Test camera rename, stream reload overlay
+
+**Decisions needed:**
+- [ ] Create Stripe account + update `NVR-STRIPE` AWS secret with real keys (blocks purchase system)
+- [ ] Review public repo after history push — confirm portfolio looks right
+
+---
+
+### Stakeholder: server-elfege-com (Claude on elfege.com)
+
+- [ ] Build `/nvr-purchase` hidden page — Stripe Checkout, **$39/year** (MSG-199 + MSG-201)
+- [ ] Stripe webhook Lambda (`nvr-purchase-handler`) — payment confirmed → license issuance
+- [ ] S3 bucket `nvr-releases` + presigned URL generation for Docker image download
+- [ ] AWS SES setup — license delivery emails (key + download URL + GPG passphrase)
+- [ ] Apply dark-theme template to personal project pages (intercom PENDING)
+
+---
+
+### Stakeholder: office-nvr (this instance)
+
+**High priority:**
+- [ ] Push dev history to public repo — BFG scrub certs + junk files (delegated to parallel Claude instance)
+- [x] ACK + RESOLVE MSG-200 (trusted network diagnostic — fix already merged in `686a59e`)
+- [ ] Commit go2rtc infrastructure gap fixes (after Elfege tests)
+
+**After elfege.com purchase page exists:**
+- [ ] Add `--upload` flag to `push_nvr.sh` for S3 image upload
+
+**Tech debt:**
+- [ ] Centralize hardcoded timeouts + MediaMTX addresses
+- [ ] Extract MJPEG handler base class
+- [ ] Fix circular import architecture
+- [ ] Preset delete via Baichuan (`delPos`) — camera ignores command
+
+**Maintenance:**
+- [ ] file_operations_log cleanup (98M rows / 34GB)
+- [ ] VACUUM ANALYZE on recordings table
+
+**Features (backlog):**
+- [ ] WebRTC HD/SD fallback too aggressive
+- [ ] Snapshot in fullscreen mode
+- [ ] Segment buffer / pre-alarm recording
+- [ ] Warm restart sub-service (`restart_warm.sh`)
+- [ ] "Add a Camera" UI
 
 **Issues 4-7 (from `docs/ISSUES_March_4_2026.md`):**
 - [ ] Issue 4: Mobile UI overhaul (iPhone/iPad)
 - [ ] Issue 5: Older iPad stream stalling
 - [ ] Issue 6: Frozen stream diagnostics
 - [ ] Issue 7: Device capability assessment
-
-**Pending (Code Quality / Refactoring / Other):**
-- [ ] Preset delete via Baichuan (`delPos`) — camera ignores command
-- [ ] Centralize hardcoded timeouts + MediaMTX addresses
-- [ ] Extract MJPEG handler base class
-- [ ] Fix circular import architecture
-- [ ] file_operations_log cleanup (98M rows / 34GB)
-- [ ] VACUUM ANALYZE on recordings table
-- [ ] WebRTC HD/SD fallback too aggressive
-- [ ] Snapshot in fullscreen mode
-- [ ] Segment buffer / pre-alarm recording
-- [ ] Warm restart sub-service (`restart_warm.sh`)
-- [ ] "Add a Camera" UI

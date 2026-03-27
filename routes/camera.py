@@ -323,10 +323,16 @@ def api_mediamtx_create_path(camera_serial):
                 if resp.status_code in (200, 201):
                     created.append(p)
                     logger.info(f"[MEDIAMTX] Created path: {p}")
-                elif resp.status_code == 409:
-                    # Path already exists — treat as success
-                    created.append(p)
-                    logger.info(f"[MEDIAMTX] Path {p} already exists")
+                elif resp.status_code in (400, 409):
+                    # Path already exists — MediaMTX returns 400 with
+                    # "path already exists" or 409 depending on version
+                    resp_body = resp.text.lower()
+                    if 'already exists' in resp_body or resp.status_code == 409:
+                        created.append(p)
+                        logger.info(f"[MEDIAMTX] Path {p} already exists")
+                    else:
+                        logger.warning(f"[MEDIAMTX] Failed to create path {p}: "
+                                       f"{resp.status_code} {resp.text}")
                 else:
                     logger.warning(f"[MEDIAMTX] Failed to create path {p}: "
                                    f"{resp.status_code} {resp.text}")
@@ -438,6 +444,72 @@ def api_camera_rename(camera_serial):
 
     except Exception as e:
         logger.error(f"Error renaming camera {camera_serial}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ===== Camera Settings (Generic) =====
+
+@camera_bp.route('/api/camera/<camera_serial>/settings', methods=['PUT'])
+@csrf_exempt
+@login_required
+def api_camera_settings_update(camera_serial):
+    """
+    Update one or more top-level settings for a camera.
+
+    Request body: {"key": "value", ...}
+    Only whitelisted keys are accepted to prevent accidental corruption.
+    Nested objects (ll_hls, mjpeg_snap, etc.) are accepted as full replacements.
+
+    Returns:
+        200: {"success": true, "updated": ["key1", "key2"]}
+        400: Invalid key or value
+        404: Camera not found
+    """
+    # Keys that the UI is allowed to modify via this endpoint.
+    # 'serial' and 'camera_id' are immutable identifiers.
+    EDITABLE_KEYS = {
+        'name', 'type', 'host', 'mac', 'packager_path', 'stream_type',
+        'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
+        'hidden', 'ui_health_monitor', 'reversed_pan', 'reversed_tilt',
+        'notes', 'power_supply_device_id', 'true_mjpeg', 'capabilities',
+        'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
+        'rtsp_input', 'rtsp_output', 'two_way_audio',
+        'power_cycle_on_failure', 'rtsp', 'model', 'station',
+        'image_mirrored',
+    }
+    IMMUTABLE_KEYS = {'serial', 'camera_id', 'id'}
+
+    try:
+        data = request.get_json()
+        if not data or not isinstance(data, dict):
+            return jsonify({'error': 'Request body must be a JSON object'}), 400
+
+        camera = shared.camera_repo.get_camera(camera_serial)
+        if not camera:
+            return jsonify({'error': f'Camera not found: {camera_serial}'}), 404
+
+        # Reject immutable keys
+        blocked = set(data.keys()) & IMMUTABLE_KEYS
+        if blocked:
+            return jsonify({'error': f'Cannot modify immutable keys: {", ".join(blocked)}'}), 400
+
+        # Filter to editable keys only; unknown keys go into extra_config
+        updated = []
+        for key, value in data.items():
+            success = shared.camera_repo.update_camera_setting(camera_serial, key, value)
+            if success:
+                updated.append(key)
+            else:
+                logger.warning(f"Failed to update {camera_serial}.{key}")
+
+        if not updated:
+            return jsonify({'error': 'No settings were updated'}), 500
+
+        logger.info(f"Camera settings updated for {camera_serial}: {updated}")
+        return jsonify({'success': True, 'updated': updated})
+
+    except Exception as e:
+        logger.error(f"Error updating camera settings {camera_serial}: {e}")
         return jsonify({'error': str(e)}), 500
 
 

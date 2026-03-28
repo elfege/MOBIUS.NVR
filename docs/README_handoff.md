@@ -1870,3 +1870,42 @@ Steps remaining (backend + frontend + generate script update):
 - [ ] AppRestartHandler HTTP endpoint for UI "Restart Now" button
 - [ ] OOP refactor of streaming hub dispatch (single getStreamMethod() dispatcher)
 - [ ] cameras.json header comment about seed file role vs DB runtime truth
+
+---
+
+## Session: March 28, 2026 ~17:00-20:00 EDT (Opus 1M continued)
+
+**Branch:** `go2rtc_migration_March_28_2026_b`
+
+### Critical Fixes
+- **`camera_repository.update_camera_setting()` missing `streaming_hub`/`go2rtc_source` from `db_columns`** — fields were stuffed into `extra_config` JSONB, overriding direct columns. ROOT CAUSE of persistent routing bugs.
+- **Migration 021 unconditionally overwriting `go2rtc_source`** on every `./start.sh` — added `AND go2rtc_source IS NULL` guard. Eufy cameras now use `rtsp://` not `eufy://`.
+- **`enable_dtls` lost when cameras.json removed** — `update_mediamtx_paths.sh` read from cameras.json, defaulted to `false` → MediaMTX WHEP switched to HTTP → nginx proxy to HTTPS → 502. Fixed: seeded `enable_dtls=true` in `nvr_settings` DB.
+- **nvr-edge nginx `error_page` at server level** overrode location-level `proxy_intercept_errors off` → moved error interception into `location /` only.
+- **cameras.json removed from runtime entirely** — DB is sole source of truth. No more JSON reads/writes/sync at startup.
+
+### Implemented (Steps 0-7)
+- Auto-set streaming_hub when go2rtc_source saved
+- "Backend Restart Required" modal
+- Button bar adapts to streaming_hub
+- E1 protocol selector locked with info text
+- Admin restart endpoint (POST /api/admin/restart)
+- Re-auth for credential passwords (session auth_method tracking)
+- Stream preference save 409 conflict fix
+- Restart endpoint no-op for go2rtc cameras
+- Hub-aware overlay text
+- Both hubs pre-populated (parallel config generation)
+- Global hub override applied to template rendering
+- Eufy go2rtc credentials bulk-copied from camera credentials
+
+### Blocker for go2rtc Global Rollout
+- **go2rtc WebRTC ICE disconnection** — signaling completes, tracks received, but no media flows. ICE goes to `disconnected`. Affects ALL cameras tested (E1, Reolink, Eufy). Not a single-consumer issue (no FFmpeg competing). Possibly go2rtc's WebRTC/STUN/TURN configuration or a Docker network issue. Needs dedicated investigation.
+
+### TODO
+- [ ] Investigate go2rtc ICE disconnection (the actual blocker)
+- [ ] Stream manager: use streaming_hub.get_rtsp_source_url() for FFmpeg source (single-consumer fix)
+- [ ] E1 detection: camera property instead of URL pattern matching
+- [ ] PostgREST merge-duplicates globally broken — consider fixing or replacing
+- [ ] "Add Camera" UI button (cameras.json no longer used for new cameras)
+- [ ] Python rewrite of mediamtx bash script
+- [ ] OOP refactor of streaming hub dispatch in stream.js

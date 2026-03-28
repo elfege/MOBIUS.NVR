@@ -1349,6 +1349,74 @@ def api_camera_credentials_delete(camera_serial):
     return jsonify({'success': success})
 
 
+@camera_bp.route('/api/credentials/copy-to-go2rtc/<vendor>', methods=['POST'])
+@csrf_exempt
+@login_required
+def api_copy_camera_creds_to_go2rtc(vendor):
+    """
+    Copy each camera's main credentials into its go2rtc credential slot
+    for all cameras of the given vendor type.
+
+    For each camera of that vendor:
+      1. Read main credential (per-camera first, brand-level fallback)
+      2. Store as (serial, 'go2rtc') credential
+
+    Returns: { copied: int, skipped: int, errors: [...] }
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    from services.credentials import credential_db_service as cred_db
+
+    # Get all cameras of this vendor type
+    all_cameras = shared.camera_repo.get_all_cameras(include_hidden=True)
+    vendor_cameras = {
+        serial: cam for serial, cam in all_cameras.items()
+        if (cam.get('type') or '').lower() == vendor.lower()
+    }
+
+    if not vendor_cameras:
+        return jsonify({'error': f'No cameras found for vendor "{vendor}"'}), 404
+
+    copied = 0
+    skipped = 0
+    errors = []
+
+    for serial, cam in vendor_cameras.items():
+        # Read main camera credential (per-camera first, brand fallback)
+        username, password = cred_db.get_credential(serial, 'camera')
+        if not username or not password:
+            # Try brand-level fallback
+            service_key_map = {
+                'reolink': 'reolink_api', 'amcrest': 'amcrest',
+                'sv3c': 'sv3c', 'unifi': 'unifi_protect', 'eufy': None,
+            }
+            service_key = service_key_map.get(vendor.lower())
+            if service_key:
+                username, password = cred_db.get_credential(service_key, 'service')
+
+        if not username or not password:
+            skipped += 1
+            continue
+
+        cam_name = cam.get('name', serial)
+        success = cred_db.store_credential(
+            credential_key=serial,
+            username=username,
+            password=password,
+            vendor=vendor.lower(),
+            credential_type='go2rtc',
+            label=f'{cam_name} go2rtc credentials'
+        )
+        if success:
+            copied += 1
+        else:
+            errors.append(serial)
+
+    logger.info(f"[CopyToGo2rtc] vendor={vendor}: copied={copied}, skipped={skipped}, errors={len(errors)}")
+    return jsonify({'copied': copied, 'skipped': skipped, 'errors': errors})
+
+
 # ===== Service-Level (Brand) Credentials =====
 
 @camera_bp.route('/api/credentials/service', methods=['GET'])

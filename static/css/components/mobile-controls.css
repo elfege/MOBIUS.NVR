@@ -149,9 +149,10 @@
    ============================================================================ */
 
 @media (max-width: 768px) {
-    /* Show the more button in expanded mode on mobile */
+    /* Show the more button in expanded, fullscreen, and pinned-window mode on mobile */
     .stream-item.expanded .stream-more-btn,
-    .stream-item.css-fullscreen .stream-more-btn {
+    .stream-item.css-fullscreen .stream-more-btn,
+    .stream-item.pinned-window .stream-more-btn {
         display: flex !important;
         opacity: 1 !important;
         pointer-events: auto !important;

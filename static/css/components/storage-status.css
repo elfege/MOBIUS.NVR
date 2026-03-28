@@ -1,5 +1,5 @@
 /* ============================================================================
-   STORAGE STATUS COMPONENT
+   STORAGE STATUS COMPONENT — Dark Theme
 
    STRUCTURE:
    - Container: Wraps all storage visualization elements
@@ -8,36 +8,35 @@
    - Action Buttons: Trigger migration/cleanup/reconcile operations
 
    COLOR CODING:
-   - Green (storage-ok): < 60% used
-   - Yellow (storage-warning): 60-80% used
-   - Red (storage-critical): > 80% used
+   - Green  (storage-ok):       < 60% used
+   - Yellow (storage-warning):  60–80% used
+   - Red    (storage-critical): > 80% used
    ============================================================================ */
 
-/* Main container */
+/* ── Main container ──────────────────────────────────────────────────────── */
 .storage-status-container {
-    background: #f8f9fa;
+    background: transparent;
     border-radius: 8px;
-    padding: 1rem;
+    padding: 0;
 }
 
-/* Loading state */
+/* ── Loading / error states ──────────────────────────────────────────────── */
 .storage-loading {
     text-align: center;
     padding: 2rem;
-    color: #667eea;
-    font-size: 1rem;
+    color: #3498db;
+    font-size: 0.9rem;
 }
 
 .storage-loading i {
     margin-right: 0.5rem;
 }
 
-/* Error state */
 .storage-status-error {
     text-align: center;
     padding: 2rem;
-    color: #dc3545;
-    font-size: 1rem;
+    color: #e74c3c;
+    font-size: 0.9rem;
 }
 
 .storage-status-error i {
@@ -49,16 +48,15 @@
    ============================================================================ */
 
 .storage-tier {
-    background: white;
+    background: #1e1e1e;
     border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border-left: 4px solid #667eea;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    border-left: 3px solid #3498db;
 }
 
 .storage-tier:last-of-type {
-    margin-bottom: 0.5rem;
+    margin-bottom: 0;
 }
 
 /* Tier header (name + path) */
@@ -66,31 +64,32 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 0.75rem;
+    margin-bottom: 10px;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 6px;
 }
 
 .storage-tier-name {
     font-weight: 600;
-    color: #333;
-    font-size: 1rem;
+    color: #ddd;
+    font-size: 14px;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
 }
 
 .storage-tier-name i {
-    color: #667eea;
+    color: #3498db;
 }
 
 .storage-tier-path {
-    font-size: 0.75rem;
-    color: #888;
+    font-size: 11px;
+    color: #777;
     font-family: monospace;
-    background: #f0f0f0;
-    padding: 0.25rem 0.5rem;
+    background: #2a2a2a;
+    padding: 3px 8px;
     border-radius: 4px;
+    border: 1px solid #333;
 }
 
 /* ============================================================================
@@ -99,23 +98,23 @@
 
 .storage-progress-container {
     width: 100%;
-    height: 24px;
-    background: #e9ecef;
-    border-radius: 12px;
+    height: 20px;
+    background: #333;
+    border-radius: 10px;
     overflow: hidden;
-    margin-bottom: 0.5rem;
+    margin-bottom: 8px;
 }
 
 .storage-progress-bar {
     height: 100%;
-    border-radius: 12px;
+    border-radius: 10px;
     transition: width 0.5s ease, background-color 0.3s ease;
     min-width: 0;
     position: relative;
     overflow: hidden;
 }
 
-/* Wave/shimmer animation during migration */
+/* Wave/shimmer during migration */
 .storage-progress-bar.migrating::after {
     content: '';
     position: absolute;
@@ -126,32 +125,28 @@
     background: linear-gradient(
         90deg,
         transparent 0%,
-        rgba(255, 255, 255, 0.3) 50%,
+        rgba(255, 255, 255, 0.25) 50%,
         transparent 100%
     );
     animation: progress-wave 1.5s infinite;
 }
 
 @keyframes progress-wave {
-    0% {
-        left: -100%;
-    }
-    100% {
-        left: 100%;
-    }
+    0%   { left: -100%; }
+    100% { left: 100%; }
 }
 
-/* Color classes based on usage percentage */
+/* Semantic bar colors (kept intentional — red/orange/green are universal) */
 .storage-ok {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
 }
 
 .storage-warning {
-    background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
 }
 
 .storage-critical {
-    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
 }
 
 /* Tier stats row */
@@ -159,16 +154,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.85rem;
-    color: #666;
+    font-size: 12px;
+    color: #888;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 6px;
 }
 
 .storage-tier-stats span {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 4px;
 }
 
 /* ============================================================================
@@ -176,19 +171,20 @@
    ============================================================================ */
 
 .storage-warnings {
-    background: rgba(220, 53, 69, 0.08);
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin: 0.75rem 0;
+    background: rgba(231, 76, 60, 0.08);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 8px 0;
 }
 
 .storage-warning {
-    color: #dc3545;
-    font-size: 0.9rem;
+    color: #e74c3c;
+    font-size: 12px;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    gap: 8px;
+    margin-bottom: 6px;
 }
 
 .storage-warning:last-child {
@@ -206,24 +202,25 @@
 .storage-config-summary {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    padding: 0.75rem;
-    background: #e9ecef;
-    border-radius: 8px;
-    margin: 0.75rem 0;
-    font-size: 0.85rem;
-    color: #555;
+    gap: 12px;
+    padding: 10px 12px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    margin: 8px 0;
+    font-size: 12px;
+    color: #888;
 }
 
 .storage-config-summary span {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 6px;
     cursor: help;
 }
 
 .storage-config-summary i {
-    color: #667eea;
+    color: #3498db;
 }
 
 /* ============================================================================
@@ -233,70 +230,70 @@
 .storage-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 1rem;
+    gap: 8px;
+    margin-top: 12px;
 }
 
 .storage-action-btn {
     flex: 1;
-    min-width: 140px;
-    padding: 0.75rem 1rem;
-    border: none;
-    border-radius: 8px;
-    font-size: 0.9rem;
+    min-width: 130px;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 13px;
     font-weight: 500;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 6px;
     transition: all 0.2s ease;
 }
 
 .storage-action-btn:disabled,
 .storage-action-btn.disabled {
-    opacity: 0.5;
+    opacity: 0.4;
     cursor: not-allowed;
 }
 
 .storage-action-btn i {
-    font-size: 1rem;
+    font-size: 13px;
 }
 
-/* Migrate button - primary action */
+/* Migrate — primary */
 .storage-action-migrate {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
 }
 
 .storage-action-migrate:hover:not(:disabled) {
-    background: linear-gradient(135deg, #5a71d4 0%, #6a4292 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    background: #2980b9;
+    border-color: #2980b9;
 }
 
-/* Cleanup button - warning action */
+/* Cleanup — warning */
 .storage-action-cleanup {
-    background: linear-gradient(135deg, #fd7e14 0%, #dc3545 100%);
-    color: white;
+    background: transparent;
+    color: #e67e22;
+    border-color: #e67e22;
 }
 
 .storage-action-cleanup:hover:not(:disabled) {
-    background: linear-gradient(135deg, #e96f0d 0%, #c82333 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(253, 126, 20, 0.4);
+    background: #e67e22;
+    color: #fff;
 }
 
-/* Reconcile button - secondary action */
+/* Reconcile — secondary */
 .storage-action-reconcile {
-    background: #6c757d;
-    color: white;
+    background: transparent;
+    color: #aaa;
+    border-color: #444;
 }
 
 .storage-action-reconcile:hover:not(:disabled) {
-    background: #5a6268;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+    color: #ddd;
+    border-color: #3498db;
 }
 
 /* ============================================================================
@@ -304,12 +301,13 @@
    ============================================================================ */
 
 .storage-operation-result {
-    padding: 0.75rem 1rem;
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-    color: white;
-    border-radius: 8px;
-    margin-top: 1rem;
-    font-size: 0.9rem;
+    padding: 10px 14px;
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
+    border-radius: 6px;
+    margin-top: 10px;
+    font-size: 13px;
     text-align: center;
     opacity: 0;
     max-height: 0;
@@ -320,6 +318,293 @@
 .storage-operation-result.show {
     opacity: 1;
     max-height: 100px;
+}
+
+/* ============================================================================
+   SETTINGS SECTION
+   ============================================================================ */
+
+.storage-settings-section {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin: 8px 0;
+}
+
+.storage-settings-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: #ddd;
+    font-size: 13px;
+}
+
+.storage-settings-header span {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.storage-settings-header i {
+    color: #3498db;
+}
+
+.storage-edit-settings-btn,
+.storage-save-settings-btn,
+.storage-cancel-settings-btn {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.storage-edit-settings-btn {
+    background: transparent;
+    color: #aaa;
+    border: 1px solid #444;
+}
+
+.storage-edit-settings-btn:hover {
+    color: #ddd;
+    border-color: #3498db;
+}
+
+.storage-save-settings-btn {
+    background: #27ae60;
+    color: #fff;
+    border: 1px solid #27ae60;
+}
+
+.storage-save-settings-btn:hover {
+    background: #219a52;
+}
+
+.storage-cancel-settings-btn {
+    background: transparent;
+    color: #aaa;
+    border: 1px solid #444;
+}
+
+.storage-cancel-settings-btn:hover {
+    color: #ddd;
+    border-color: #555;
+}
+
+.storage-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.storage-settings-form .settings-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.storage-settings-form label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #888;
+    cursor: help;
+}
+
+.storage-settings-form label i {
+    color: #3498db;
+    width: 14px;
+}
+
+.storage-settings-form input {
+    width: 65px;
+    padding: 4px 8px;
+    background: #1e1e1e;
+    color: #ddd;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 12px;
+    text-align: right;
+    transition: border-color 0.2s ease;
+}
+
+.storage-settings-form input:disabled {
+    background: #111;
+    color: #555;
+    cursor: not-allowed;
+}
+
+.storage-settings-form.editing input {
+    border-color: #3498db;
+}
+
+.storage-settings-form.editing input:focus {
+    outline: none;
+    border-color: #2980b9;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+.settings-size-limits input {
+    width: 80px;
+}
+
+.settings-hint {
+    font-size: 11px;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.settings-hint i {
+    color: #3498db;
+}
+
+/* ============================================================================
+   PROGRESS INDICATOR (during operations)
+   ============================================================================ */
+
+.storage-progress-indicator {
+    display: none;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(52, 152, 219, 0.1);
+    border: 1px solid #3498db;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    color: #ddd;
+}
+
+.storage-progress-indicator.show {
+    display: flex;
+    animation: pulse-glow 1.5s infinite;
+}
+
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.3); }
+    50%       { box-shadow: 0 0 12px 3px rgba(52, 152, 219, 0.2); }
+}
+
+.progress-spinner {
+    width: 22px;
+    height: 22px;
+    border: 2px solid rgba(52, 152, 219, 0.3);
+    border-top-color: #3498db;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.progress-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.progress-operation {
+    font-weight: 600;
+    font-size: 13px;
+    color: #ddd;
+}
+
+.progress-files,
+.progress-bytes,
+.progress-current {
+    font-size: 12px;
+    color: #888;
+}
+
+.progress-current {
+    font-family: monospace;
+    font-size: 11px;
+    color: #666;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Cancel button in progress indicator */
+.storage-cancel-btn {
+    margin-top: 6px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid #555;
+    border-radius: 6px;
+    color: #aaa;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+}
+
+.storage-cancel-btn:hover:not(:disabled) {
+    border-color: #e74c3c;
+    color: #e74c3c;
+}
+
+.storage-cancel-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* ============================================================================
+   MODAL LOCK (during operations)
+   ============================================================================ */
+
+.modal-locked .close-btn,
+.modal-locked .modal-close,
+.modal-locked [data-dismiss="modal"] {
+    opacity: 0.3;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+/* ============================================================================
+   ANIMATION — critical bar pulse
+   ============================================================================ */
+
+@keyframes pulse-critical {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.4); }
+    50%       { box-shadow: 0 0 0 6px rgba(231, 76, 60, 0); }
+}
+
+.storage-progress-bar.storage-critical {
+    animation: pulse-critical 2s infinite;
+}
+
+/* Shimmer for loading state */
+@keyframes shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+
+.storage-progress-bar.loading {
+    background: linear-gradient(
+        90deg,
+        #2a2a2a 0px,
+        #333 40px,
+        #2a2a2a 80px
+    );
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite linear;
 }
 
 /* ============================================================================
@@ -346,7 +631,7 @@
 
     .storage-config-summary {
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 6px;
     }
 
     .storage-actions {
@@ -356,306 +641,10 @@
     .storage-action-btn {
         width: 100%;
     }
-}
 
-/* ============================================================================
-   PROGRESS INDICATOR (during operations)
-   ============================================================================ */
-
-.storage-progress-indicator {
-    display: none;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    color: white;
-}
-
-.storage-progress-indicator.show {
-    display: flex;
-    animation: pulse-glow 1.5s infinite;
-}
-
-@keyframes pulse-glow {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4);
-    }
-    50% {
-        box-shadow: 0 0 20px 5px rgba(102, 126, 234, 0.6);
-    }
-}
-
-.progress-spinner {
-    width: 24px;
-    height: 24px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-.progress-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.progress-operation {
-    font-weight: 600;
-    font-size: 1rem;
-}
-
-.progress-files,
-.progress-bytes,
-.progress-current {
-    font-size: 0.85rem;
-    opacity: 0.9;
-}
-
-.progress-current {
-    font-family: monospace;
-    font-size: 0.75rem;
-    opacity: 0.7;
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-/* Cancel button in progress indicator */
-.storage-cancel-btn {
-    margin-top: 0.5rem;
-    padding: 0.4rem 0.75rem;
-    background: rgba(255, 255, 255, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 6px;
-    color: white;
-    font-size: 0.8rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    transition: all 0.2s ease;
-}
-
-.storage-cancel-btn:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.3);
-    border-color: rgba(255, 255, 255, 0.6);
-}
-
-.storage-cancel-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* ============================================================================
-   SETTINGS SECTION
-   ============================================================================ */
-
-.storage-settings-section {
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 0.75rem;
-    margin: 0.75rem 0;
-}
-
-.storage-settings-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-    font-weight: 600;
-    color: #333;
-}
-
-.storage-settings-header span {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.storage-settings-header i {
-    color: #667eea;
-}
-
-.storage-edit-settings-btn,
-.storage-save-settings-btn,
-.storage-cancel-settings-btn {
-    padding: 0.4rem 0.75rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    transition: all 0.2s ease;
-}
-
-.storage-edit-settings-btn {
-    background: #e9ecef;
-    color: #495057;
-}
-
-.storage-edit-settings-btn:hover {
-    background: #dee2e6;
-}
-
-.storage-save-settings-btn {
-    background: #28a745;
-    color: white;
-}
-
-.storage-save-settings-btn:hover {
-    background: #218838;
-}
-
-.storage-cancel-settings-btn {
-    background: #6c757d;
-    color: white;
-}
-
-.storage-cancel-settings-btn:hover {
-    background: #5a6268;
-}
-
-.storage-settings-form {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.storage-settings-form .settings-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-
-.storage-settings-form label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
-    color: #555;
-    cursor: help;
-}
-
-.storage-settings-form label i {
-    color: #667eea;
-    width: 16px;
-}
-
-.storage-settings-form input {
-    width: 70px;
-    padding: 0.3rem 0.5rem;
-    border: 1px solid #ced4da;
-    border-radius: 4px;
-    font-size: 0.85rem;
-    text-align: right;
-    background: #fff;
-}
-
-.storage-settings-form input:disabled {
-    background: #e9ecef;
-    cursor: not-allowed;
-}
-
-.storage-settings-form.editing input {
-    background: #fff;
-    border-color: #667eea;
-    cursor: text;
-}
-
-.storage-settings-form.editing input:focus {
-    outline: none;
-    border-color: #764ba2;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
-}
-
-.settings-size-limits input {
-    width: 90px;
-}
-
-.settings-hint {
-    font-size: 0.75rem;
-    color: #888;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-}
-
-.settings-hint i {
-    color: #667eea;
-}
-
-/* ============================================================================
-   MODAL LOCK (during operations)
-   - Only disable close buttons, not entire modal (allows scrolling)
-   ============================================================================ */
-
-.modal-locked .close-btn,
-.modal-locked .modal-close,
-.modal-locked [data-dismiss="modal"] {
-    opacity: 0.3;
-    pointer-events: none;
-    cursor: not-allowed;
-}
-
-/* ============================================================================
-   ANIMATION ENHANCEMENTS
-   ============================================================================ */
-
-/* Pulse animation for critical storage */
-@keyframes pulse-critical {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
-    }
-    50% {
-        box-shadow: 0 0 0 8px rgba(220, 53, 69, 0);
-    }
-}
-
-.storage-progress-bar.storage-critical {
-    animation: pulse-critical 2s infinite;
-}
-
-/* Shimmer effect for loading */
-@keyframes shimmer {
-    0% {
-        background-position: -200px 0;
-    }
-    100% {
-        background-position: calc(200px + 100%) 0;
-    }
-}
-
-.storage-progress-bar.loading {
-    background: linear-gradient(
-        90deg,
-        #e9ecef 0px,
-        #f8f9fa 40px,
-        #e9ecef 80px
-    );
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite linear;
-}
-
-/* ============================================================================
-   RESPONSIVE DESIGN (Settings)
-   ============================================================================ */
-
-@media (max-width: 768px) {
     .storage-settings-form .settings-row {
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 6px;
     }
 
     .storage-settings-form label {

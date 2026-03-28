@@ -1,35 +1,33 @@
 /**
- * User Management Modal Styles
+ * User Management Modal Styles — Dark Theme
  *
- * Styles for admin user management interface.
- * Includes user list, add/edit forms, and action buttons.
+ * Design matches global-settings modal (settings-overlay.css):
+ * panel #1a1a1a, header gradient, accent #3498db, rows #222.
  */
 
-/* Modal backdrop */
+/* ── Backdrop ────────────────────────────────────────────────────────────── */
 .modal-backdrop {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
     z-index: 9998;
     display: none;
 }
 
-/* Modal container */
+/* ── Modal container ─────────────────────────────────────────────────────── */
 .modal {
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: white;
+    background: #1a1a1a;
     border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     z-index: 9999;
-    max-width: 90%;
+    max-width: 90vw;
     max-height: 90vh;
     display: none;
+    overflow: hidden;
 }
 
 .modal-content {
@@ -38,241 +36,284 @@
     max-height: 90vh;
 }
 
-/* Modal header */
+/* ── Header ──────────────────────────────────────────────────────────────── */
 .modal-header {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    padding: 20px 24px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1.5rem;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 2px solid #3498db;
+    flex-shrink: 0;
 }
 
 .modal-header h3 {
     margin: 0;
-    font-size: 1.5rem;
-    color: #333;
+    font-size: 18px;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .modal-header h3 i {
-    margin-right: 0.5rem;
-    color: #2196F3;
+    color: #3498db;
 }
 
 .modal-close-btn {
-    background: none;
+    background: transparent;
     border: none;
-    font-size: 1.5rem;
-    color: #666;
+    color: #fff;
+    font-size: 22px;
     cursor: pointer;
-    padding: 0.5rem;
+    padding: 4px 8px;
     line-height: 1;
-    transition: color 0.2s;
+    transition: color 0.2s ease;
 }
 
 .modal-close-btn:hover {
-    color: #333;
+    color: #e74c3c;
 }
 
-/* Modal body */
+/* ── Body ────────────────────────────────────────────────────────────────── */
 .modal-body {
-    padding: 1.5rem;
+    padding: 16px;
     overflow-y: auto;
     flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: #333 #111;
 }
 
-/* User management specific */
+.modal-body::-webkit-scrollbar { width: 6px; }
+.modal-body::-webkit-scrollbar-track { background: #111; }
+.modal-body::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+.modal-body::-webkit-scrollbar-thumb:hover { background: #3498db; }
+
+/* ── User management modal size ──────────────────────────────────────────── */
 .user-management-modal .modal-content {
     width: 600px;
     max-width: 90vw;
 }
 
+/* ── Add User button row ─────────────────────────────────────────────────── */
 .user-management-controls {
-    margin-bottom: 1rem;
+    margin-bottom: 12px;
 }
 
+/* ── User list ───────────────────────────────────────────────────────────── */
 .user-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 8px;
 }
 
 .user-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    background: #f5f5f5;
+    padding: 12px 16px;
+    background: #222;
     border-radius: 8px;
-    transition: background 0.2s;
+    border-left: 3px solid #3498db;
+    transition: background 0.15s ease;
 }
 
 .user-item:hover {
-    background: #e8e8e8;
+    background: #2a2a2a;
 }
 
 .user-info {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 12px;
 }
 
 .user-username {
     font-weight: 500;
-    color: #333;
-    font-size: 1.1rem;
+    color: #ddd;
+    font-size: 14px;
 }
 
 .user-role {
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.85rem;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 12px;
     font-weight: 500;
 }
 
 .user-role.role-admin {
-    background: #ff9800;
-    color: white;
+    background: rgba(230, 126, 34, 0.2);
+    color: #e67e22;
+    border: 1px solid #e67e22;
 }
 
 .user-role.role-user {
-    background: #2196F3;
-    color: white;
+    background: rgba(52, 152, 219, 0.2);
+    color: #3498db;
+    border: 1px solid #3498db;
 }
 
 .user-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 6px;
 }
 
-/* Form modal */
+/* ── Form modal ──────────────────────────────────────────────────────────── */
 .user-form-modal .modal-content {
     width: 500px;
     max-width: 90vw;
 }
 
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 16px;
 }
 
 .form-group label {
     display: block;
-    margin-bottom: 0.5rem;
-    color: #333;
+    margin-bottom: 6px;
+    color: #ddd;
+    font-size: 13px;
     font-weight: 500;
 }
 
 .form-group input,
 .form-group select {
     width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
+    padding: 8px 10px;
+    background: #1e1e1e;
+    color: #ddd;
+    border: 1px solid #444;
     border-radius: 6px;
-    font-size: 1rem;
+    font-size: 13px;
     box-sizing: border-box;
+    transition: border-color 0.2s ease;
 }
 
 .form-group input:focus,
 .form-group select:focus {
     outline: none;
-    border-color: #2196F3;
-    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+    border-color: #3498db;
+}
+
+.form-group select option {
+    background: #1e1e1e;
 }
 
 .form-group input:disabled {
-    background: #f5f5f5;
+    background: #111;
+    color: #555;
     cursor: not-allowed;
 }
 
 .form-group small {
     display: block;
-    margin-top: 0.25rem;
+    margin-top: 4px;
     color: #666;
-    font-size: 0.85rem;
+    font-size: 12px;
 }
 
 .form-actions {
     display: flex;
-    gap: 0.75rem;
-    margin-top: 2rem;
+    gap: 10px;
+    margin-top: 20px;
 }
 
 .form-actions button {
     flex: 1;
 }
 
-/* Buttons */
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
 .btn {
-    padding: 0.75rem 1.5rem;
-    border: none;
+    padding: 7px 16px;
+    border: 1px solid transparent;
     border-radius: 6px;
-    font-size: 1rem;
+    font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
+    gap: 6px;
 }
 
 .btn-sm {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.9rem;
+    padding: 5px 10px;
+    font-size: 12px;
 }
 
-/* Icon-only buttons (circular) */
+/* Icon-only action buttons (circular) */
 .user-actions .btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     padding: 0;
+    gap: 0;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
+}
+
+.user-actions .btn i {
+    font-size: 13px;
+    line-height: 1;
+    display: block;
 }
 
 .btn-primary {
-    background: #2196F3;
-    color: white;
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
 }
 
 .btn-primary:hover {
-    background: #1976D2;
+    background: #2980b9;
+    border-color: #2980b9;
 }
 
 .btn-secondary {
-    background: #757575;
-    color: white;
+    background: transparent;
+    color: #aaa;
+    border-color: #444;
 }
 
 .btn-secondary:hover {
-    background: #616161;
+    color: #ddd;
+    border-color: #3498db;
 }
 
 .btn-danger {
-    background: #f44336;
-    color: white;
+    background: transparent;
+    color: #e74c3c;
+    border-color: #e74c3c;
 }
 
 .btn-danger:hover {
-    background: #d32f2f;
+    background: #e74c3c;
+    color: #fff;
 }
 
-/* Messages */
+/* ── Messages ────────────────────────────────────────────────────────────── */
 .user-management-message {
-    padding: 1rem;
-    margin: 1rem 1.5rem 0;
+    padding: 10px 14px;
+    margin-bottom: 12px;
     border-radius: 6px;
+    font-size: 13px;
     font-weight: 500;
 }
 
 .user-management-message.success {
-    background: #4caf50;
-    color: white;
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
 }
 
 .user-management-message.error {
-    background: #f44336;
-    color: white;
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
 }
 
 .no-users-message,
@@ -280,13 +321,14 @@
     text-align: center;
     padding: 2rem;
     color: #666;
+    font-size: 13px;
 }
 
 .error-message {
-    color: #f44336;
+    color: #e74c3c;
 }
 
-/* User menu in header */
+/* ── User menu in header bar ─────────────────────────────────────────────── */
 .user-menu {
     display: flex;
     align-items: center;
@@ -310,16 +352,12 @@
 }
 
 /* ============================================================================
-   CAMERA ACCESS MODAL
-   Fixed modal with no backdrop exit - only Save/Cancel buttons
+   CAMERA ACCESS MODAL — dark theme
    ============================================================================ */
 
 .camera-access-modal {
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
+    inset: 0;
     background: rgba(0, 0, 0, 0.8);
     z-index: 10010;
     display: none;
@@ -327,96 +365,103 @@
     justify-content: center;
 }
 
-/* Override display:none with flex when shown via jQuery fadeIn */
+/* jQuery fadeIn sets display:block — force flex */
 .camera-access-modal[style*="display: block"],
 .camera-access-modal[style*="display:block"] {
     display: flex !important;
 }
 
 .camera-access-panel {
-    background: white;
+    background: #1a1a1a;
     border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
     width: 500px;
     max-width: 90vw;
     max-height: 80vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+}
+
+/* Camera access panel reuses modal-header styles */
+.camera-access-panel .modal-header {
+    border-radius: 12px 12px 0 0;
 }
 
 .camera-access-body {
-    padding: 1rem 1.5rem;
+    padding: 16px;
     overflow-y: auto;
     flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: #333 #111;
 }
 
 .camera-access-controls {
     display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid #e0e0e0;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #333;
 }
 
 .camera-access-list {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 4px;
 }
 
 .camera-access-item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.6rem 0.75rem;
+    gap: 10px;
+    padding: 8px 10px;
     border-radius: 6px;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s ease;
 }
 
 .camera-access-item:hover {
-    background: #f0f0f0;
+    background: #2a2a2a;
 }
 
 .camera-access-item input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     cursor: pointer;
-    accent-color: #2196F3;
+    accent-color: #3498db;
 }
 
 .camera-access-name {
+    font-size: 13px;
     font-weight: 500;
-    color: #333;
+    color: #ddd;
     flex: 1;
 }
 
 .camera-access-serial {
-    font-size: 0.8rem;
-    color: #999;
+    font-size: 11px;
+    color: #666;
     font-family: monospace;
 }
 
 .camera-access-footer {
     display: flex;
     justify-content: flex-end;
-    gap: 0.75rem;
-    padding: 1rem 1.5rem;
-    border-top: 1px solid #e0e0e0;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid #333;
+    background: #111;
 }
 
 .no-cameras {
     text-align: center;
     padding: 2rem;
     color: #666;
+    font-size: 13px;
 }
 
-/* Responsive */
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
-    .modal-content {
-        max-width: 95vw;
-    }
-
     .user-management-modal .modal-content,
     .user-form-modal .modal-content {
         width: 95vw;
@@ -425,7 +470,7 @@
     .user-item {
         flex-direction: column;
         align-items: flex-start;
-        gap: 1rem;
+        gap: 10px;
     }
 
     .user-actions {

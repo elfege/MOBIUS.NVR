@@ -8,6 +8,20 @@
 4. Have I read: `docs/nvr_engineering_architecture.html`?
 5. Read `~/0_CLAUDE_IC/user_profile_elfege.md` — persistent user profile (background, preferences, communication style). Never make the user re-explain his history.
 6. Am I following ALL rules below? (Explicitly reference rule numbers when making decisions)
+7. Am I violating RULE 0.6? Never add unrequested features without confirmation through a message.
+
+---
+
+## RULE 0.6: No Unrequested Features — HARD RULE
+
+- **0.6.1** Never add unrequested features, no matter how relevant they might seem, without confirmation through a message (not a fucking prompt).
+
+## RULE 0.7: Query Anamnesis Before Acting — HARD RULE
+
+- **0.7.1** Before implementing anything non-trivial, query Anamnesis for relevant past episodes on the matter.
+- **0.7.2** Query: `curl -s -X POST http://192.168.10.20:3010/api/episodes/search -H 'Content-Type: application/json' -d '{"query_text": "<topic>", "top_k": 5}'`
+- **0.7.3** If relevant episodes exist, apply their lessons before proceeding.
+- **0.7.4** This applies to: bug fixes, new features, UI changes, architectural decisions, debugging sessions.
 
 ---
 
@@ -415,6 +429,24 @@ NOTE: Steps overlap with RULE 0 and RULE 1 intentionally - redundancy ensures cr
 
 ## Quality Control Rules
 
+### RULE 14.5: File Deletion — Always Use `remover.sh`
+
+**NEVER use `rm` to delete files in this repo.**
+
+- `rm` runs in the Claude Code sandbox and does NOT propagate to the sync system
+- Deleted files will be **restored on the next sync** from dellserver's source_of_truth
+- Always use the `remove` alias instead:
+
+```bash
+~/0_SCRIPTS/0_SYNC/0_REMOVAL/remover.sh <file1> [file2] ...
+```
+
+- After `git rm`, also run `remover.sh` on the same paths to mark them deleted in source_of_truth
+- The script accepts an empty Enter to confirm (`<<< ""` works for non-interactive use)
+- `git rm` alone is insufficient — `remover.sh` is always required
+
+---
+
 ### RULE 15: Missing Files - Ask, Don't Guess
 
 **If file is missing or empty:**
@@ -490,7 +522,7 @@ Every message... It's that simple.
 
 ### 17.1 Instance Identity
 
-- **17.1.1** Instance ID: `office-nvr`
+- **17.1.1** Instance ID: `dellserver-nvr`
 - **17.1.2** Intercom canonical location: `server:~/0_CLAUDE_IC/intercom.md`
 - **17.1.3** Read access: `ssh server cat ~/0_CLAUDE_IC/intercom.md`
 - **17.1.4** Write access: append via `ssh server` (see intercom header for message format)
@@ -498,7 +530,7 @@ Every message... It's that simple.
 ### 17.2 Protocol
 
 - **17.2.1** Read intercom at session start via SSH to server
-- **17.2.2** ACK any PENDING messages targeted at `office-nvr`
+- **17.2.2** ACK any PENDING messages targeted at `dellserver-nvr`
 - **17.2.3** Set RESOLVED when action complete
 - **17.2.4** When making changes that affect other machines, post a message
 - **17.2.5** See intercom file header for full protocol (status flow, pruning rules)

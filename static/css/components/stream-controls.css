@@ -26,10 +26,10 @@
     display: block;
 }
 
-/* CRITICAL: Hide stream controls in grid mode (non-expanded, non-fullscreen)
+/* CRITICAL: Hide stream controls in grid mode (non-expanded, non-fullscreen, non-pinned)
    Even if stream-controls-visible class is set, grid thumbnails should not show
-   the control panel. Controls are only appropriate in expanded or fullscreen. */
-.stream-item:not(.css-fullscreen):not(.expanded) .stream-controls {
+   the control panel. Controls are only appropriate in expanded, fullscreen, or pinned-window mode. */
+.stream-item:not(.css-fullscreen):not(.expanded):not(.pinned-window) .stream-controls {
     display: none !important;
 }
 

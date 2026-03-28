@@ -217,6 +217,43 @@
     pointer-events: auto !important;
 }
 
+/* ============================================================================
+   SHOW ALL BUTTONS IN PINNED-WINDOW MODE
+   Pinned floating windows are a third "enlarged" state alongside expanded and
+   css-fullscreen. The global grid-mode hide rule in stream-item.css applies
+   to ALL .stream-items with no exceptions, so pinned windows need the same
+   override that expanded mode gets above.
+   ============================================================================ */
+
+.stream-item.pinned-window .stream-fullscreen-btn,
+.stream-item.pinned-window .stream-audio-btn,
+.stream-item.pinned-window .stream-ptz-toggle-btn,
+.stream-item.pinned-window .stream-controls-toggle-btn,
+.stream-item.pinned-window .camera-record-btn,
+.stream-item.pinned-window .camera-settings-btn,
+.stream-item.pinned-window .camera-playback-btn,
+.stream-item.pinned-window .stream-power-btn,
+.stream-item.pinned-window .stream-talkback-btn,
+.stream-item.pinned-window .volume-control-container {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+/* Hover-based visibility in pinned-window mode — same as expanded */
+.stream-item.pinned-window:hover .stream-fullscreen-btn,
+.stream-item.pinned-window:hover .stream-audio-btn,
+.stream-item.pinned-window:hover .stream-ptz-toggle-btn,
+.stream-item.pinned-window:hover .stream-controls-toggle-btn,
+.stream-item.pinned-window:hover .camera-record-btn,
+.stream-item.pinned-window:hover .camera-settings-btn,
+.stream-item.pinned-window:hover .camera-playback-btn,
+.stream-item.pinned-window:hover .stream-power-btn,
+.stream-item.pinned-window:hover .stream-talkback-btn,
+.stream-item.pinned-window:hover .volume-control-container {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
 /* Slightly larger buttons in expanded mode for easier touch */
 .stream-item.expanded .stream-fullscreen-btn,
 .stream-item.expanded .stream-audio-btn,
@@ -443,9 +480,10 @@
     transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
 
-/* Show in expanded and fullscreen */
+/* Show in expanded, fullscreen, and pinned-window */
 .stream-item.expanded .stream-hd-btn,
-.stream-item.css-fullscreen .stream-hd-btn {
+.stream-item.css-fullscreen .stream-hd-btn,
+.stream-item.pinned-window .stream-hd-btn {
     display: flex !important;
 }
 
@@ -491,9 +529,10 @@
     transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.2s ease;
 }
 
-/* Show in expanded and fullscreen */
+/* Show in expanded, fullscreen, and pinned-window */
 .stream-item.expanded .stream-pin-btn,
-.stream-item.css-fullscreen .stream-pin-btn {
+.stream-item.css-fullscreen .stream-pin-btn,
+.stream-item.pinned-window .stream-pin-btn {
     display: flex !important;
 }
 
@@ -520,4 +559,94 @@
 .stream-pin-btn i {
     font-size: 14px;
     transition: transform 0.2s ease;
+}
+
+/* ============================================================================
+   FULLSCREEN NAVIGATION MAP
+   Minimap overlay shown when navigating cameras with arrow keys or swipe.
+   Fades in on navigation, fades out 3s after last action.
+   Size is 20% of the live grid dimensions, captured before fullscreen entry.
+   ============================================================================ */
+
+#fullscreen-nav-map {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10100;          /* above css-fullscreen (z-index 9999) */
+    pointer-events: none;
+    opacity: 0;
+
+    display: grid;
+    /* --nav-map-cols set by JS to match live grid column count */
+    grid-template-columns: repeat(var(--nav-map-cols, 3), 1fr);
+    gap: 3px;
+    padding: 6px;
+
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 8px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Individual camera cell in the map */
+.nav-map-cell {
+    position: relative;
+    overflow: hidden;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    aspect-ratio: 16 / 9;  /* match typical camera aspect ratio */
+}
+
+/* Snapshot image fills the cell */
+.nav-map-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 0.55;          /* image is transparent — label and dot read over it */
+}
+
+/* 4-char camera name label — bottom of cell */
+.nav-map-label {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 9px;
+    font-family: monospace;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.72);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 0 2px;
+}
+
+/* Active camera cell — brighter border + slightly more visible */
+.nav-map-cell.active {
+    border-color: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-map-cell.active img {
+    opacity: 0.75;
+}
+
+/* Current-location dot — centered in active cell */
+.nav-map-dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 6px 2px rgba(255, 255, 255, 0.5);
+    pointer-events: none;
 }

@@ -5,7 +5,7 @@
  */
 
 import { RecordingController } from '../controllers/recording-controller.js';
-import { RecordingSettingsForm } from '../forms/recording-settings-form.js';
+import { RecordingSettingsForm } from '../forms/camera-settings-form.js';
 
 export class CameraSettingsModal {
     constructor() {
@@ -40,24 +40,18 @@ export class CameraSettingsModal {
      * Attach modal control events
      */
     attachModalEvents() {
-        // Close button
+        // X button
         this.$modal.find('.recording-modal-close').on('click', () => {
             this.hide();
         });
-        
-        // Click outside modal to close
-        this.$modal.on('click', (e) => {
-            if ($(e.target).hasClass('recording-modal')) {
-                this.hide();
-            }
+
+        // Cancel button
+        this.$modal.find('#cancel-settings-btn').on('click', () => {
+            this.hide();
         });
-        
-        // Escape key to close
-        $(document).on('keydown', (e) => {
-            if (e.key === 'Escape' && this.$modal.is(':visible')) {
-                this.hide();
-            }
-        });
+
+        // Backdrop click and Escape key intentionally disabled —
+        // only X, Cancel, and Save may close this modal.
     }
 
     /**
@@ -120,17 +114,29 @@ export class CameraSettingsModal {
         this.$modal.fadeIn(200);
         
         try {
-            // Load recording settings and display settings in parallel
-            const [settings, displayResp] = await Promise.all([
+            // Load recording settings, display settings, and full camera config in parallel.
+            // Full config is needed upfront for the streaming hub toggle (General tab).
+            const [settings, displayResp, cameraConfig] = await Promise.all([
                 this.controller.getSettings(cameraId),
-                fetch(`/api/camera/${cameraId}/display`).then(r => r.json()).catch(() => ({ video_fit_mode: null }))
+                fetch(`/api/camera/${cameraId}/display`).then(r => r.json()).catch(() => ({ video_fit_mode: null })),
+                fetch(`/api/cameras/${cameraId}`).then(r => r.json()).catch(() => ({}))
             ]);
             const videoFitMode = displayResp.video_fit_mode || null;
+            const streamingHub = cameraConfig.streaming_hub || 'mediamtx';
+            const go2rtcSource = cameraConfig.go2rtc_source || null;
 
-            // Generate and insert form (pass cameraName for the rename field)
-            const formHtml = this.form.generateForm(cameraId, settings.settings, capabilities, cameraType, this.streamType, cameraName, videoFitMode);
+            // Generate and insert form
+            const formHtml = this.form.generateForm(
+                cameraId, settings.settings, capabilities, cameraType,
+                this.streamType, cameraName, videoFitMode, streamingHub, go2rtcSource
+            );
             this.$modalBody.html(formHtml);
-            
+
+            // Pre-populate the Advanced tab cache so it doesn't re-fetch
+            if (Object.keys(cameraConfig).length > 0) {
+                this.form.fullCameraConfig = cameraConfig;
+            }
+
             // Attach form events
             this.form.attachEvents(
                 (cameraId, formData) => this.onSave(cameraId, formData),

@@ -132,7 +132,8 @@
     flex-shrink: 0;
 }
 
-.modal-close-btn {
+/* Scoped to camera-selector-modal only — prevents bleeding into other modals */
+.camera-selector-modal .modal-close-btn {
     position: absolute;
     top: 1rem;
     right: 1rem;
@@ -152,7 +153,7 @@
     border-radius: 4px;
 }
 
-.modal-close-btn:hover {
+.camera-selector-modal .modal-close-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     color: rgba(255, 255, 255, 0.9);
 }
@@ -380,7 +381,7 @@
         padding: 1rem;
     }
 
-    .modal-close-btn {
+    .camera-selector-modal .modal-close-btn {
         top: 0.75rem;
         right: 0.75rem;
     }

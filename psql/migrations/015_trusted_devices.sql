@@ -43,6 +43,10 @@ BEGIN
         CREATE POLICY trusted_devices_all ON trusted_devices
             FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 
+        -- Grant table-level privileges to PostgREST role (required in addition to RLS policy)
+        GRANT SELECT, INSERT, UPDATE, DELETE ON trusted_devices TO nvr_anon;
+        GRANT USAGE, SELECT ON SEQUENCE trusted_devices_id_seq TO nvr_anon;
+
         RAISE NOTICE 'Created trusted_devices table with indexes and RLS';
     END IF;
 

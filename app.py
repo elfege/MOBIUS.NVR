@@ -445,17 +445,13 @@ try:
     # Initialize external API with camera_repo reference (for TILES integration)
     init_external_api(camera_repo)
 
-    # Auto-sync: migrate new cameras from cameras.json to database
-    try:
-        migrated, existing, warnings = sync_cameras_json_to_db('./config/cameras.json')
-        if migrated > 0:
-            # Reload from DB to pick up newly migrated cameras
-            camera_repo.reload()
-            print(f"✅ Camera sync: {migrated} new cameras migrated to database")
-        else:
-            print(f"✅ Camera sync: {existing} cameras in sync, no migration needed")
-    except Exception as e:
-        print(f"⚠️ Camera sync failed (non-fatal): {e}")
+    # cameras.json is NO LONGER used at runtime. The database is the sole source
+    # of truth. cameras.json is retained as a brand schema template for the
+    # "Add Camera" UI form. New cameras are added via the UI, not by editing JSON.
+    #
+    # To import cameras from cameras.json (first boot / migration), use:
+    #   python3 -c "from services.camera_config_sync import sync_cameras_json_to_db; sync_cameras_json_to_db()"
+    print("✅ Camera data: database is sole source of truth (cameras.json not used at runtime)")
 
     # Migrate credentials from env vars to database (one-time, idempotent)
     try:

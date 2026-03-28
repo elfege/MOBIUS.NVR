@@ -651,6 +651,79 @@ export class RecordingSettingsForm {
         `;
     }
 
+    /**
+     * Show a modal informing user that backend restart is required for
+     * streaming infrastructure changes (go2rtc_source, streaming_hub) to take effect.
+     */
+    _showRestartRequiredModal() {
+        // Remove any existing modal
+        $('#restart-required-modal').remove();
+
+        const modalHtml = `
+            <div id="restart-required-modal" style="position:fixed; top:0; left:0; right:0; bottom:0;
+                 background:rgba(0,0,0,0.7); z-index:10001; display:flex; align-items:center; justify-content:center;">
+                <div style="background:#1a1f2e; border:1px solid #2a3548; border-radius:10px; padding:24px 28px;
+                     max-width:420px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+                    <h3 style="margin:0 0 12px; color:#f59e0b; font-size:16px;">
+                        <i class="fas fa-exclamation-triangle" style="margin-right:8px;"></i>Backend Restart Required
+                    </h3>
+                    <p style="color:#9ca3af; font-size:13px; line-height:1.6; margin:0 0 16px;">
+                        Changes to streaming configuration require a backend restart to take effect:
+                    </p>
+                    <ul style="color:#9ca3af; font-size:13px; line-height:1.8; margin:0 0 20px; padding-left:20px;">
+                        <li>go2rtc.yaml will be regenerated</li>
+                        <li>Credential placeholders resolved from database</li>
+                        <li>Streaming hub routing updated</li>
+                    </ul>
+                    <div style="display:flex; gap:10px; justify-content:flex-end;">
+                        <button id="restart-later-btn" type="button"
+                                style="background:#374151; color:#d1d5db; border:none; border-radius:6px; padding:8px 18px; cursor:pointer; font-size:13px;">
+                            Later
+                        </button>
+                        <button id="restart-now-btn" type="button"
+                                style="background:#dc2626; color:#fff; border:none; border-radius:6px; padding:8px 18px; cursor:pointer; font-size:13px; font-weight:600;">
+                            <i class="fas fa-redo" style="margin-right:6px;"></i>Restart Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        $('body').append(modalHtml);
+
+        $('#restart-later-btn').on('click', () => {
+            $('#restart-required-modal').remove();
+        });
+
+        $('#restart-now-btn').on('click', async () => {
+            const $btn = $('#restart-now-btn');
+            $btn.prop('disabled', true).html('<span class="recording-loading" style="width:14px;height:14px;border-width:2px;"></span> Restarting...');
+            try {
+                await axios.post('/api/admin/restart', { reason: 'Streaming config changed via UI' });
+                // App will exit — show message while it restarts
+                $('#restart-required-modal div:last-child').html(`
+                    <p style="color:#10b981; text-align:center; font-size:14px;">
+                        <i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>
+                        Restarting... page will reload automatically.
+                    </p>
+                `);
+                // Poll for app to come back
+                const pollRestart = setInterval(async () => {
+                    try {
+                        const resp = await axios.get('/api/status', { timeout: 2000 });
+                        if (resp.status === 200) {
+                            clearInterval(pollRestart);
+                            window.location.reload();
+                        }
+                    } catch (_) { /* still restarting */ }
+                }, 3000);
+            } catch (e) {
+                $btn.prop('disabled', false).html('<i class="fas fa-redo" style="margin-right:6px;"></i>Restart Now');
+                console.error('[Restart] Failed:', e);
+            }
+        });
+    }
+
     // =========================================================================
     //  POWER CYCLE SECTION (unchanged logic, extracted)
     // =========================================================================
@@ -891,6 +964,25 @@ export class RecordingSettingsForm {
                 if (key === 'go2rtc_source') {
                     const cameraType = config.type || '';
                     const cameraHost = config.host || '';
+                    const isE1 = displayVal.includes('neolink:8554');
+
+                    if (isE1) {
+                        // E1 Baichuan cameras: locked — only path is Neolink RTSP bridge
+                        protocolHelper = `
+                            <div id="go2rtc-protocol-helper" style="margin-top:8px; padding:10px 12px; background:#111827; border:1px solid #1f2d42; border-radius:6px;">
+                                <div style="font-size:11px; font-weight:600; color:#7eb8f7; letter-spacing:0.05em; margin-bottom:8px; text-transform:uppercase;">
+                                    Source Protocol
+                                </div>
+                                <div style="padding:8px 10px; background:#1a1a2e; border-radius:4px; color:#9ca3af; font-size:12px; line-height:1.6;">
+                                    <i class="fas fa-lock" style="margin-right:6px; color:#6b7280;"></i>
+                                    <strong style="color:#c9d1d9;">Neolink RTSP Bridge</strong> —
+                                    This camera uses the Baichuan protocol (not standard RTSP/ONVIF).
+                                    go2rtc connects via the Neolink container which bridges Baichuan to RTSP.
+                                    This is the only supported path for E1 cameras.
+                                </div>
+                            </div>
+                        `;
+                    } else {
                     const protocolOptions = this._getGo2rtcProtocolOptions(cameraType);
                     // Detect current scheme from go2rtc_source value to pre-select dropdown
                     const currentScheme = (displayVal.match(/^(\w+):\/\//) || [])[1] || 'rtsp';
@@ -926,7 +1018,8 @@ export class RecordingSettingsForm {
                             </div>
                         </div>
                     `;
-                }
+                    } // end else (non-E1 protocol helper)
+                } // end if (go2rtc_source)
 
                 html += `
                     <div class="advanced-setting-group">
@@ -1499,6 +1592,8 @@ export class RecordingSettingsForm {
                     $('#go2rtc-cred-username').val(go2rtc.username);
                     if (go2rtc.password) {
                         $('#go2rtc-cred-password').val(go2rtc.password);
+                    } else if (go2rtc.requires_reauth) {
+                        $('#go2rtc-cred-password').attr('placeholder', '••••••••  (log in with password to view)');
                     }
                 } else {
                     $g2Status.html(`
@@ -1721,6 +1816,34 @@ export class RecordingSettingsForm {
                 // Update local cache
                 for (const [k, v] of Object.entries(updates)) {
                     if (this.fullCameraConfig) this.fullCameraConfig[k] = v;
+                }
+
+                // ── Step 1: Auto-set streaming_hub when go2rtc_source changes ──
+                if ('go2rtc_source' in updates || 'streaming_hub' in updates) {
+                    const newSource = updates.go2rtc_source ?? this.fullCameraConfig?.go2rtc_source;
+                    const currentHub = this.fullCameraConfig?.streaming_hub ?? 'mediamtx';
+
+                    // Auto-set hub if source was set but hub wasn't explicitly changed
+                    if (newSource && newSource.trim() && currentHub !== 'go2rtc' && !('streaming_hub' in updates)) {
+                        try {
+                            await axios.put(`/api/camera/${this.currentCameraId}/settings`, { streaming_hub: 'go2rtc' });
+                            if (this.fullCameraConfig) this.fullCameraConfig.streaming_hub = 'go2rtc';
+                            console.log(`[Advanced] Auto-set streaming_hub=go2rtc for ${this.currentCameraId}`);
+                        } catch (e) {
+                            console.warn(`[Advanced] Failed to auto-set streaming_hub:`, e);
+                        }
+                    } else if ((!newSource || !newSource.trim()) && currentHub === 'go2rtc') {
+                        try {
+                            await axios.put(`/api/camera/${this.currentCameraId}/settings`, { streaming_hub: 'mediamtx' });
+                            if (this.fullCameraConfig) this.fullCameraConfig.streaming_hub = 'mediamtx';
+                            console.log(`[Advanced] Auto-cleared streaming_hub to mediamtx for ${this.currentCameraId}`);
+                        } catch (e) {
+                            console.warn(`[Advanced] Failed to clear streaming_hub:`, e);
+                        }
+                    }
+
+                    // Show restart required modal
+                    this._showRestartRequiredModal();
                 }
             } else {
                 throw new Error(response.data.error || 'Save failed');

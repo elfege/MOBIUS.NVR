@@ -356,6 +356,7 @@ def _auto_login_trusted():
                     user = User.get_by_id(devices[0]['user_id'])
                     if user:
                         login_user(user, remember=True)
+                        session['auth_method'] = 'trusted_device'
                         print(f"[TrustedDevice] Auto-login: {user.username} (token: {device_token[:8]}...)")
                         return
         except Exception as e:
@@ -369,6 +370,7 @@ def _auto_login_trusted():
             admin_user, _ = User.get_by_username("admin")
             if admin_user:
                 login_user(admin_user, remember=True)
+                session['auth_method'] = 'trusted_network'
                 print(f"[TrustedNetwork] Auto-login: admin (client: {client_ip})")
                 return
 

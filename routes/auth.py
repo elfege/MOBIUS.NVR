@@ -23,7 +23,7 @@ import uuid
 import requests
 import bcrypt
 from datetime import datetime
-from flask import Blueprint, render_template, jsonify, request, redirect
+from flask import Blueprint, render_template, jsonify, request, redirect, session
 from flask_login import login_required, login_user, logout_user, current_user
 from models.user import User
 import routes.shared as shared
@@ -32,6 +32,7 @@ from routes.helpers import (
     _create_user_session,
     _deactivate_user_session,
     _register_or_update_device,
+    _get_client_ip,
 )
 
 auth_bp = Blueprint('auth', __name__)
@@ -69,16 +70,17 @@ def login():
 
     # Log user in (even if password change required - they authenticated successfully)
     login_user(user, remember=True)
+    session['auth_method'] = 'password'
 
     # Create session record in database
-    _create_user_session(user.id, request.remote_addr, request.user_agent.string)
+    _create_user_session(user.id, _get_client_ip(), request.user_agent.string)
 
     # Register device token — reuse existing cookie or generate new one
     device_token = request.cookies.get('device_token') or str(uuid.uuid4())
     _register_or_update_device(
         device_token=device_token,
         user_id=user.id,
-        ip_address=request.remote_addr,
+        ip_address=_get_client_ip(),
         user_agent=request.user_agent.string
     )
 
@@ -442,7 +444,7 @@ def api_device_register():
     device = _register_or_update_device(
         device_token=device_token,
         user_id=current_user.id,
-        ip_address=request.remote_addr,
+        ip_address=_get_client_ip(),
         user_agent=request.user_agent.string
     )
 
@@ -487,7 +489,7 @@ def api_device_heartbeat():
     device = _register_or_update_device(
         device_token=device_token,
         user_id=current_user.id,
-        ip_address=request.remote_addr,
+        ip_address=_get_client_ip(),
         user_agent=request.user_agent.string
     )
 

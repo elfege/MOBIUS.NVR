@@ -1,62 +1,80 @@
 /**
- * Device Management Modal Styles
+ * Device Management Modal Styles — Dark Theme
  *
- * Admin interface for viewing connected devices and managing trust status.
- * Follows the same visual patterns as user-management.css.
+ * Design matches global-settings modal (settings-overlay.css).
+ * Inherits .modal, .modal-header, .modal-body, .btn from user-management.css.
  */
 
-/* Device management modal container */
+/* ── Modal size ──────────────────────────────────────────────────────────── */
 .device-management-modal .modal-content {
     width: 700px;
     max-width: 92vw;
 }
 
-/* Device list */
+/* ── Refresh button in header ────────────────────────────────────────────── */
+.device-refresh-btn {
+    background: transparent;
+    border: none;
+    color: #aaa;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+    transition: color 0.2s ease, transform 0.35s ease;
+}
+
+.device-refresh-btn:hover {
+    color: #3498db;
+    transform: rotate(180deg);
+}
+
+/* ── Device list ─────────────────────────────────────────────────────────── */
 .device-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: 8px;
 }
 
-/* Individual device row */
+/* ── Individual device row ───────────────────────────────────────────────── */
 .device-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    background: #f5f5f5;
+    padding: 12px 16px;
+    background: #222;
     border-radius: 8px;
-    border-left: 4px solid transparent;
-    transition: background 0.2s;
+    border-left: 3px solid #444;
+    transition: background 0.15s ease;
 }
 
 .device-item:hover {
-    background: #e8e8e8;
+    background: #2a2a2a;
 }
 
-/* Online/offline indicator via left border */
+/* Left border encodes online/offline state */
 .device-item.device-online {
-    border-left-color: #4caf50;
+    border-left-color: #2ecc71;
 }
 
 .device-item.device-offline {
-    border-left-color: #bdbdbd;
+    border-left-color: #555;
 }
 
-/* Highlight "this device" */
+/* "This device" highlight */
 .device-item.device-current {
-    background: #e3f2fd;
+    background: rgba(52, 152, 219, 0.08);
+    border-left-color: #3498db;
 }
 
 .device-item.device-current:hover {
-    background: #bbdefb;
+    background: rgba(52, 152, 219, 0.13);
 }
 
-/* Device info section */
+/* ── Device info ─────────────────────────────────────────────────────────── */
 .device-info {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 4px;
     flex: 1;
     min-width: 0;
 }
@@ -64,145 +82,144 @@
 .device-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     flex-wrap: wrap;
 }
 
-/* Status dot */
+/* Online/offline dot */
 .device-status-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
 }
 
 .device-status-dot.online {
-    background: #4caf50;
-    box-shadow: 0 0 6px rgba(76, 175, 80, 0.5);
+    background: #2ecc71;
+    box-shadow: 0 0 5px rgba(46, 204, 113, 0.5);
 }
 
 .device-status-dot.offline {
-    background: #bdbdbd;
+    background: #555;
 }
 
 /* Device name */
 .device-name {
     font-weight: 500;
-    color: #333;
-    font-size: 1.05rem;
+    color: #ddd;
+    font-size: 14px;
 }
 
 /* Badges */
 .device-this-badge {
-    padding: 0.15rem 0.5rem;
+    padding: 2px 8px;
     border-radius: 10px;
-    font-size: 0.75rem;
+    font-size: 11px;
     font-weight: 600;
-    background: #2196F3;
-    color: white;
+    background: rgba(52, 152, 219, 0.2);
+    color: #3498db;
+    border: 1px solid #3498db;
 }
 
 .device-trusted-badge {
-    padding: 0.15rem 0.5rem;
+    padding: 2px 8px;
     border-radius: 10px;
-    font-size: 0.75rem;
+    font-size: 11px;
     font-weight: 600;
-    background: #4caf50;
-    color: white;
+    background: rgba(46, 204, 113, 0.2);
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
 }
 
 /* Detail line (user, IP, last seen) */
 .device-details {
     display: flex;
-    gap: 1rem;
-    font-size: 0.85rem;
+    gap: 12px;
+    font-size: 12px;
     color: #666;
     flex-wrap: wrap;
 }
 
 .device-details i {
-    margin-right: 0.25rem;
+    margin-right: 4px;
     width: 14px;
     text-align: center;
-    color: #999;
+    color: #555;
 }
 
-/* Action buttons */
+/* ── Action buttons ──────────────────────────────────────────────────────── */
 .device-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 6px;
     flex-shrink: 0;
 }
 
 .device-actions .btn {
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     padding: 0;
+    gap: 0;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    line-height: 1;
 }
 
-/* Trusted button active state */
+.device-actions .btn i {
+    font-size: 13px;
+    line-height: 1;
+    display: block;
+}
+
+/* Trusted-state button */
 .btn-trusted {
-    background: #4caf50 !important;
-    color: white;
+    background: rgba(46, 204, 113, 0.15) !important;
+    color: #2ecc71 !important;
+    border-color: #2ecc71 !important;
 }
 
 .btn-trusted:hover {
-    background: #388e3c !important;
+    background: #2ecc71 !important;
+    color: #fff !important;
 }
 
-/* Refresh button in header */
-.device-refresh-btn {
-    background: none;
-    border: none;
-    font-size: 1.1rem;
-    color: #666;
-    cursor: pointer;
-    padding: 0.5rem;
-    transition: color 0.2s, transform 0.3s;
-}
-
-.device-refresh-btn:hover {
-    color: #2196F3;
-    transform: rotate(180deg);
-}
-
-/* Messages */
+/* ── Messages ────────────────────────────────────────────────────────────── */
 .device-management-message {
-    padding: 0.75rem 1rem;
-    margin: 0.75rem 1.5rem 0;
+    padding: 10px 14px;
+    margin-bottom: 12px;
     border-radius: 6px;
+    font-size: 13px;
     font-weight: 500;
-    font-size: 0.9rem;
 }
 
 .device-management-message.success {
-    background: #4caf50;
-    color: white;
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+    border: 1px solid #2ecc71;
 }
 
 .device-management-message.error {
-    background: #f44336;
-    color: white;
+    background: rgba(231, 76, 60, 0.15);
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
 }
 
 .no-devices-message {
     text-align: center;
     padding: 2rem;
     color: #666;
+    font-size: 13px;
 }
 
-/* Controls bar (refresh) */
+/* Controls bar */
 .device-management-controls {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 0.75rem;
+    margin-bottom: 10px;
 }
 
-/* Responsive */
+/* ── Responsive ──────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
     .device-management-modal .modal-content {
         width: 95vw;
@@ -211,7 +228,7 @@
     .device-item {
         flex-direction: column;
         align-items: flex-start;
-        gap: 0.75rem;
+        gap: 10px;
     }
 
     .device-actions {
@@ -221,6 +238,6 @@
 
     .device-details {
         flex-direction: column;
-        gap: 0.25rem;
+        gap: 4px;
     }
 }

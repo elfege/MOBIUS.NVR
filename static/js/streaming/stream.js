@@ -861,14 +861,20 @@ export class MultiStreamManager {
 
                 const result = await response.json();
                 console.log(`[Restart] ${cameraId}: Backend restart successful, stream_url: ${result.stream_url}`);
-                this._logStreamReloadStep($streamItem, 'Backend acknowledged — FFmpeg process terminated.', 'info');
-                this._logStreamReloadStep($streamItem, 'Spawning new FFmpeg instance and connecting to camera RTSP source...', 'info');
 
-                // Step 2: Wait for FFmpeg to establish its connection to the camera
-                // and begin publishing the HLS/WebRTC stream to MediaMTX.
-                // FFmpeg typically needs 2-3 s to negotiate RTSP and start streaming.
-                this._logStreamReloadStep($streamItem, 'Waiting for FFmpeg to publish to MediaMTX (~3 s)...', 'info');
-                await new Promise(r => setTimeout(r, 3000));
+                // Step 2: Wait for the streaming hub to be ready.
+                // go2rtc cameras: go2rtc manages the camera connection — no FFmpeg involved.
+                // MediaMTX cameras: FFmpeg must connect to camera and publish to MediaMTX (~3 s).
+                const isGo2rtcCamera = ($streamItem.data('streaming-hub') || 'mediamtx') === 'go2rtc';
+                if (isGo2rtcCamera) {
+                    this._logStreamReloadStep($streamItem, 'go2rtc manages camera connection — reconnecting player...', 'info');
+                    await new Promise(r => setTimeout(r, 1000));
+                } else {
+                    this._logStreamReloadStep($streamItem, 'Backend acknowledged — FFmpeg process terminated.', 'info');
+                    this._logStreamReloadStep($streamItem, 'Spawning new FFmpeg instance and connecting to camera RTSP source...', 'info');
+                    this._logStreamReloadStep($streamItem, 'Waiting for FFmpeg to publish to MediaMTX (~3 s)...', 'info');
+                    await new Promise(r => setTimeout(r, 3000));
+                }
 
                 // Step 3: Reconnect the client-side player with retry logic.
                 // MediaMTX may not have the path ready immediately after FFmpeg starts,
@@ -995,6 +1001,60 @@ export class MultiStreamManager {
                     this.collapseExpandedCamera();
                 }
             }
+
+            // Arrow key 2D navigation in fullscreen — mirrors the grid layout.
+            // ArrowLeft/Right navigate within the same row; ArrowUp/Down move between rows.
+            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+                const $fullscreenItem = $('.stream-item.css-fullscreen');
+                if ($fullscreenItem.length > 0) {
+                    e.preventDefault();
+                    const dirMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
+                    console.log(`[Fullscreen] Arrow key navigation: ${e.key}`);
+                    this._navigateFullscreen2D(dirMap[e.key]);
+                }
+            }
+        });
+
+        // Touch swipe navigation in fullscreen: 2D, mirrors the grid layout.
+        // - Horizontal swipe (left/right): navigate within the same grid row.
+        // - Vertical swipe (up/down): navigate to the camera above/below in the grid.
+        // Uses document-level listeners to capture touches on PTZ overlays as well.
+        // Minimum travel: 60px in the dominant axis. Diagonal threshold 1.2:1 (dominant/secondary)
+        // keeps it loose enough to feel natural but avoids single-axis PTZ drag false-positives.
+        let _swipeTouchStartX = 0;
+        let _swipeTouchStartY = 0;
+
+        $(document).on('touchstart.fullscreenSwipe', (e) => {
+            if ($('.stream-item.css-fullscreen').length === 0) return;
+            const touch = e.originalEvent.touches[0];
+            _swipeTouchStartX = touch.clientX;
+            _swipeTouchStartY = touch.clientY;
+        });
+
+        $(document).on('touchend.fullscreenSwipe', (e) => {
+            if ($('.stream-item.css-fullscreen').length === 0) return;
+
+            const touch = e.originalEvent.changedTouches[0];
+            const dx = touch.clientX - _swipeTouchStartX;
+            const dy = touch.clientY - _swipeTouchStartY;
+            const absX = Math.abs(dx);
+            const absY = Math.abs(dy);
+
+            // Require at least 60px of travel in the dominant axis
+            if (Math.max(absX, absY) < 60) return;
+
+            // Require a 1.2:1 dominance ratio to avoid diagonal confusion
+            let dir;
+            if (absX >= absY * 1.2) {
+                dir = dx < 0 ? 'right' : 'left';   // swipe left → go right, swipe right → go left
+            } else if (absY >= absX * 1.2) {
+                dir = dy < 0 ? 'down' : 'up';       // swipe up → go down, swipe down → go up
+            } else {
+                return; // too diagonal
+            }
+
+            console.log(`[Fullscreen] Swipe navigation: dx=${dx.toFixed(0)}, dy=${dy.toFixed(0)}, dir=${dir}`);
+            this._navigateFullscreen2D(dir);
         });
 
         // Global emergency exit - triple-click anywhere to force exit fullscreen
@@ -2344,19 +2404,28 @@ export class MultiStreamManager {
             console.warn('[SwitchType] Error saving preference early:', prefErr);
         }
 
-        // Phase 0b: Check MediaMTX path availability for non-MJPEG types
-        // MJPEG connects directly to camera, GO2RTC uses go2rtc container, rest need MediaMTX
+        // Phase 0b: Check streaming hub path availability for non-MJPEG types.
+        // - go2rtc cameras: call /api/mediamtx/path-status which transparently checks go2rtc API.
+        //   go2rtc manages its own reconnections — no path creation needed.
+        // - MediaMTX cameras: check MediaMTX path; create on demand if switching from MJPEG.
+        // - GO2RTC button: always skips this check (go2rtc is the hub, no MediaMTX path).
+        const hubType = $streamItem.data('streaming-hub') || 'mediamtx';
         const mediamtxTypes = ['WEBRTC', 'HLS', 'LL_HLS', 'NEOLINK', 'NEOLINK_LL_HLS'];
-        if (mediamtxTypes.includes(newStreamType)) {
+        const needsPathCheck = mediamtxTypes.includes(newStreamType) && newStreamType !== 'GO2RTC';
+        if (needsPathCheck) {
             try {
                 const checkResp = await fetch(`/api/mediamtx/path-status/${cameraSerial}`);
                 if (checkResp.ok) {
                     const pathStatus = await checkResp.json();
                     if (!pathStatus.ready) {
-                        // If switching FROM MJPEG, the path likely doesn't exist yet.
-                        // MJPEG cameras bypass MediaMTX entirely, so no path was created at startup.
-                        // Create one on demand and start the FFmpeg publisher.
-                        if (oldStreamType === 'MJPEG') {
+                        if (hubType === 'go2rtc') {
+                            // go2rtc camera: stream not yet active (camera may be offline).
+                            // go2rtc reconnects automatically — warn but allow the switch to proceed.
+                            console.warn(`[SwitchType] go2rtc stream not ready for ${cameraSerial}: ${pathStatus.message} — proceeding anyway`);
+                        } else if (oldStreamType === 'MJPEG') {
+                            // MediaMTX camera switching FROM MJPEG: path likely doesn't exist yet.
+                            // MJPEG cameras bypass MediaMTX entirely, so no path was created at startup.
+                            // Create one on demand and start the FFmpeg publisher.
                             console.log(`[SwitchType] MJPEG → ${newStreamType}: creating MediaMTX path on demand`);
                             const cameraName = $streamItem.data('camera-name') || cameraSerial;
                             this._showStreamTypeToast(cameraName, 'Preparing stream path...', 'info');
@@ -2390,7 +2459,7 @@ export class MultiStreamManager {
                                 return;
                             }
                         } else {
-                            // Not switching from MJPEG — path should exist but isn't ready
+                            // MediaMTX camera — path should exist but publisher isn't running
                             console.warn(`[SwitchType] MediaMTX path not ready for ${cameraSerial}: ${pathStatus.message}`);
                             const cameraName = $streamItem.data('camera-name') || cameraSerial;
                             this._showStreamTypeToast(cameraName, pathStatus.message, 'error');
@@ -2402,7 +2471,7 @@ export class MultiStreamManager {
                     }
                 }
             } catch (err) {
-                console.warn('[SwitchType] Could not check MediaMTX path, proceeding anyway:', err);
+                console.warn('[SwitchType] Could not check path status, proceeding anyway:', err);
             }
         }
 
@@ -2442,11 +2511,21 @@ export class MultiStreamManager {
 
         // Phase 4: Start new stream
         const quality = $streamItem.hasClass('hd-mode') ? 'main' : 'sub';
+        const switchingHub = $streamItem.data('streaming-hub') || 'mediamtx';
         try {
             if (newStreamType === 'MJPEG') {
                 const targetEl = $streamItem.find('img.mjpeg-stream')[0];
                 if (this.mjpegManager && targetEl) {
                     await this.mjpegManager.startStream(cameraSerial, targetEl, quality);
+                }
+            } else if (switchingHub === 'go2rtc') {
+                // go2rtc cameras: all non-MJPEG stream types use go2rtc WebRTC.
+                // The streaming_hub field takes precedence over stream_type — go2rtc is
+                // the transport layer regardless of which button the user clicked.
+                videoEl = $streamItem.find('video')[0];
+                if (videoEl) {
+                    console.log(`[SwitchType] ${cameraSerial}: streaming_hub=go2rtc — routing ${newStreamType} → go2rtc WebRTC`);
+                    await this.webrtcManager.startGo2rtcStream(cameraSerial, videoEl);
                 }
             } else if (newStreamType === 'WEBRTC') {
                 videoEl = $streamItem.find('video')[0];
@@ -4180,6 +4259,111 @@ export class MultiStreamManager {
      *
      * User can then manually restart streams if needed.
      */
+
+    /**
+     * Navigate to an adjacent camera in fullscreen mode, using the live grid layout as a
+     * 2D reference. Supports Pac-Man wrapping on all four edges.
+     *
+     * Algorithm:
+     *   1. Sample bounding rects of all visible .stream-item tiles.
+     *   2. Cluster tiles into rows: tiles whose vertical centres are within ROW_TOLERANCE px
+     *      of each other are considered the same row (handles sub-pixel grid misalignment).
+     *   3. Sort rows top→bottom; tiles within each row left→right.
+     *   4. Find the current fullscreen camera in the 2D structure (row, col).
+     *   5. Resolve the neighbour in the requested direction with Pac-Man wrapping:
+     *        left / right  → stay on same row, wrap column index.
+     *        up   / down   → jump to adjacent row; select the tile whose horizontal
+     *                        centre is closest to the current tile\'s, then wrap row index.
+     *   6. forceExitFullscreen() (synchronous CSS removal) then openFullscreen() after 80 ms.
+     *
+     * @param {'left'|'right'|'up'|'down'} direction
+     */
+    _navigateFullscreen2D(direction) {
+        const ROW_TOLERANCE = 30; // px — tiles within this vertical band share a logical row
+
+        // Build position snapshot of all rendered tiles
+        const tiles = [];
+        this.$container.find('.stream-item').each((_, el) => {
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) return; // skip hidden tiles
+            tiles.push({ el, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 });
+        });
+
+        if (tiles.length === 0) return;
+
+        // Cluster into rows by vertical-centre proximity
+        const rows = [];
+        tiles.forEach(tile => {
+            const row = rows.find(r => Math.abs(r.cy - tile.cy) <= ROW_TOLERANCE);
+            if (row) {
+                row.tiles.push(tile);
+                row.cy = row.tiles.reduce((s, t) => s + t.cy, 0) / row.tiles.length;
+            } else {
+                rows.push({ cy: tile.cy, tiles: [tile] });
+            }
+        });
+
+        rows.sort((a, b) => a.cy - b.cy);
+        rows.forEach(row => row.tiles.sort((a, b) => a.cx - b.cx));
+
+        // Locate the current fullscreen camera
+        const $current = $('.stream-item.css-fullscreen');
+        if ($current.length === 0) return;
+        const currentEl = $current[0];
+
+        let currentRowIdx = -1, currentColIdx = -1;
+        rows.forEach((row, ri) => row.tiles.forEach((tile, ci) => {
+            if (tile.el === currentEl) { currentRowIdx = ri; currentColIdx = ci; }
+        }));
+
+        if (currentRowIdx === -1) {
+            console.warn('[Fullscreen] 2D nav: current camera not found in grid snapshot');
+            return;
+        }
+
+        const currentRow = rows[currentRowIdx];
+        const currentCx  = currentRow.tiles[currentColIdx].cx;
+        let targetTile   = null;
+
+        switch (direction) {
+            case 'left':
+                targetTile = currentRow.tiles[(currentColIdx - 1 + currentRow.tiles.length) % currentRow.tiles.length];
+                break;
+            case 'right':
+                targetTile = currentRow.tiles[(currentColIdx + 1) % currentRow.tiles.length];
+                break;
+            case 'up': {
+                const targetRow = rows[(currentRowIdx - 1 + rows.length) % rows.length];
+                targetTile = targetRow.tiles.reduce((best, t) =>
+                    Math.abs(t.cx - currentCx) < Math.abs(best.cx - currentCx) ? t : best);
+                break;
+            }
+            case 'down': {
+                const targetRow = rows[(currentRowIdx + 1) % rows.length];
+                targetTile = targetRow.tiles.reduce((best, t) =>
+                    Math.abs(t.cx - currentCx) < Math.abs(best.cx - currentCx) ? t : best);
+                break;
+            }
+        }
+
+        if (!targetTile) return;
+
+        const $target    = $(targetTile.el);
+        const cameraId   = $target.data('camera-serial');
+        const name       = $target.data('camera-name');
+        const cameraType = $target.data('camera-type');
+        const streamType = $target.data('stream-type');
+
+        if (!cameraId || cameraId === $current.data('camera-serial')) return;
+
+        console.log(`[Fullscreen] 2D nav ${direction} → ${name} (${cameraId})`);
+
+        // forceExitFullscreen removes css-fullscreen synchronously — openFullscreen's
+        // "already in fullscreen" guard will not block the subsequent call.
+        this.forceExitFullscreen();
+        setTimeout(() => this.openFullscreen(cameraId, name, cameraType, streamType), 80);
+    }
+
     forceExitFullscreen() {
         console.log('[Fullscreen] FORCE EXIT - bypassing stream operations');
 

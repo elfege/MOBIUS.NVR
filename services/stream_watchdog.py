@@ -288,7 +288,13 @@ class StreamWatchdog:
                 # Set cooldown BEFORE restart attempt to prevent rapid cycling
                 self._restart_cooldowns[camera_id] = now + self.RESTART_COOLDOWN_SECONDS
 
-                if stream_type == 'LL_HLS':
+                if stream_type in ('GO2RTC', 'NEOLINK', 'NEOLINK_LL_HLS') or \
+                        self._is_go2rtc_camera(camera_id):
+                    # go2rtc manages its own reconnection to camera — watchdog does not restart.
+                    # CameraStateTracker.publisher_active reflects go2rtc producer state;
+                    # when camera comes back online go2rtc reconnects automatically.
+                    logger.debug(f"[WATCHDOG] Camera {camera_id} uses go2rtc hub — skipping restart (go2rtc self-heals)")
+                elif stream_type == 'LL_HLS':
                     self._restart_ll_hls(camera_id)
                 elif stream_type == 'MJPEG':
                     self._restart_mjpeg(camera_id)
@@ -341,6 +347,27 @@ class StreamWatchdog:
 
         # Default to LL_HLS
         return 'LL_HLS'
+
+    def _is_go2rtc_camera(self, camera_id: str) -> bool:
+        """
+        Check if camera uses go2rtc as its streaming hub.
+
+        go2rtc cameras manage their own reconnection — the watchdog should not
+        attempt to restart them when publisher_active is False.
+
+        Args:
+            camera_id: Camera serial number
+
+        Returns:
+            True if camera's streaming_hub is 'go2rtc', False otherwise
+        """
+        try:
+            from services.streaming_hub import is_go2rtc_camera
+            camera = self._stream_manager.camera_repo.get_camera(camera_id)
+            return is_go2rtc_camera(camera or {})
+        except Exception as e:
+            logger.debug(f"Error checking go2rtc hub for {camera_id}: {e}")
+            return False
 
     def _restart_ll_hls(self, camera_id: str) -> None:
         """

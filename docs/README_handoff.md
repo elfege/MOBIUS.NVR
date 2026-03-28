@@ -83,14 +83,27 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 - `routes/camera.py` — added `streaming_hub` to `EDITABLE_KEYS`
 - `static/js/modals/camera-settings-modal.js` — fetches `/api/cameras/<id>` in initial `Promise.all`; passes `streamingHub` + `go2rtcSource` to `generateForm`; pre-caches config (eliminates duplicate fetch for Advanced tab)
-- `static/js/forms/recording-settings-form.js` — General tab now shows **MediaMTX / go2rtc** segmented button pair (only when camera has `go2rtc_source` set); immediate PUT on click; added `streaming_hub` + `go2rtc_source` tooltip help text
+- `static/js/forms/camera-settings-form.js` — hub toggle code landed here (active file); see UI Session below
+- NOTE: `recording-settings-form.js` was already renamed/replaced by the parallel UI session — hub edits were re-applied to `camera-settings-form.js` by that session
 
-### JS modularization — global settings moved to modals/ (03:08 EDT)
+### JS modularization + conflict resolution (03:08–03:20 EDT)
 
-- `static/js/settings/settings-ui.js` → **deleted**
-- `static/js/modals/global-settings-modal.js` → **new** (import paths updated to `../settings/`)
+Two simultaneous sessions modified the same files. Resolved as follows:
+
+- `static/js/settings/settings-ui.js` → **`git rm -f`** (other session's changes merged into `global-settings-modal.js` first)
+- `static/js/modals/global-settings-modal.js` → **new** (contains other session's settings-ui.js state + corrected import paths `../settings/`)
 - `static/js/settings/settings-manager.js` — import updated to `../modals/global-settings-modal.js`
 - `templates/streams.html` — `<script>` tag updated
+- `static/css/components/recording-modal.css` → **`git rm -f`** (was renamed to `camera-settings-modal.css` by UI session but rm had silently failed)
+- `static/js/forms/recording-settings-form.js` → **`git rm -f`** (was renamed to `camera-settings-form.js` by UI session but rm had silently failed)
+
+### ⚠️ DAMAGE — global-settings-modal.js tabs destroyed (03:15 EDT)
+
+**What happened:** Copying other session's already-stripped `settings-ui.js` into `global-settings-modal.js` overwrote uncommitted tab-based render() code that was ONLY in the working copy (never committed). Tabs: View | Fullscreen | Streaming | Audio | Storage are gone.
+
+**Current state:** Another session has since restored the tabbed render() into `global-settings-modal.js` (visible in system-reminder). Settings button selector mismatch also fixed (`#global-settings-overlay` etc.).
+
+**TODO:** Verify settings panel works correctly after next hard refresh. Test all 5 tabs.
 
 ---
 
@@ -113,7 +126,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 | `templates/streams.html` | `<link>` + `<script>` tags updated to new filenames. |
 | `static/js/modals/camera-settings-modal.js` | Import updated to `camera-settings-form.js`. |
 
-**Deleted:** `recording-settings-form.js`, `recording-modal.css`
+**Deleted:** `recording-settings-form.js`, `recording-modal.css` — intended deletes; `rm` silently failed in both sessions, completed via `git rm -f` in this session (03:20 EDT)
 
 **Note:** CSS class names (`.recording-modal`, `.recording-btn`, etc.) intentionally NOT renamed — 100+ occurrences, purely internal.
 
@@ -1529,34 +1542,29 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 ---
 
-## Next Session TODO — Updated 2026-03-28 00:50 EDT
+## Next Session TODO — Updated 2026-03-28 02:55 EDT
 
 ### Stakeholder: Elfege (manual testing & decisions)
 
-**Immediate (after `./start.sh` with latest fixes):**
-- [ ] Verify STAIRS (UniFi GFlex) streaming on WebRTC ← FIXED this session
-- [ ] Verify Cat Feeders (NEOLINK) streaming ← CSRF fix this session
-- [ ] Verify SV3C_Living_3 MJPEG works ← credential fix this session
-- [ ] Test stream type switching for all cameras (WebRTC↔MJPEG↔HLS↔LL-HLS)
-- [ ] Test go2rtc button on Cat Feeders — verify latency improvement
-- [ ] Test E1 PTZ responsiveness — should be ~100ms per cached command
+**Immediate — run `./start.sh` to apply dual-hub config:**
+- [ ] Run `./start.sh` — regenerates go2rtc.yaml (18 cameras) + mediamtx.yml (19 cameras) from DB
+- [ ] Verify Cat Feeders streams via go2rtc WebRTC (no "Waiting for FFmpeg to publish to MediaMTX" message)
+- [ ] Verify all other cameras still stream normally (mediamtx hub unchanged)
+- [ ] Test stream type switching for all cameras
 
 **UI testing (after hard refresh):**
-- [ ] Test fullscreen 2D navigation: arrow keys + swipe (all 4 directions + Pac-Man wrap) ← ADDED 2026-03-28
-- [ ] Test golden ratio tile layout (13/8 aspect ratio)
-- [ ] Test video fit mode toggle (per-user default + per-camera override)
-- [ ] Test tile rearrange: long-press → jiggle → drag → Done pill
-- [ ] Test HD button + pin button in expanded modal
-- [ ] Test floating pinned window (pin + HD simultaneously)
+- [ ] Test fullscreen 2D navigation: arrow keys + swipe (all 4 directions + Pac-Man wrap)
+- [ ] Test camera settings modal redesign (other chat — coordinate)
 
 **Prior sessions — still untested:**
 - [ ] Test Eufy preset save/overwrite (T8419P0024110C6A)
-- [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart) ← bridge credential injection FIXED 2026-03-27, needs `./start.sh`
+- [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
 - [ ] Test camera rename, stream reload overlay
 - [ ] Test trusted devices: login, cookie, trust toggle, auto-login
-- [ ] Fix `~/.cache/nvr_secrets.env` — deduplicate POSTGRES_PASSWORD entries
 
 **Decisions needed:**
+- [ ] Should global hub toggle also trigger mediamtx.yml/go2rtc.yaml regen (container restart)?
+- [ ] DTLS setting: migrate from cameras.json to `nvr_settings` table (currently TODO in mediamtx script)
 - [ ] Create Stripe account + update `NVR-STRIPE` AWS secret with real keys
 - [ ] Review public repo after history push — confirm portfolio looks right
 

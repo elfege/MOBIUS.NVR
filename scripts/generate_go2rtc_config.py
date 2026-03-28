@@ -299,11 +299,13 @@ def main():
 
     # ── Query cameras with go2rtc_source ─────────────────────────────────────
     print(f"{CYAN}Querying cameras with go2rtc_source from DB...{NC}")
+    # Generate entries for ALL cameras with go2rtc_source, regardless of
+    # streaming_hub. Both go2rtc and MediaMTX configs are pre-populated so
+    # hub switching is instant (no restart needed — just change DB field).
     rows = _psql(
         "SELECT serial, COALESCE(name, serial), go2rtc_source, COALESCE(type, '') "
         "FROM cameras "
         "WHERE go2rtc_source IS NOT NULL AND go2rtc_source <> '' "
-        "  AND streaming_hub = 'go2rtc' "
         "ORDER BY name;"
     )
 

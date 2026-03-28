@@ -108,7 +108,7 @@ hlsAlwaysRemux: yes # stable timing even if source timestamps wobble
 #
 webrtc: yes
 webrtcAddress: :8889 # HTTP endpoint for WHEP signaling
-webrtcEncryption: yes # Controlled by cameras.json webrtc_global_settings.enable_dtls
+webrtcEncryption: no # Controlled by cameras.json webrtc_global_settings.enable_dtls (TODO: move to nvr_settings)
 webrtcServerKey: /certs/privkey.pem
 webrtcServerCert: /certs/fullchain.pem
 webrtcAllowOrigin: "*" # Allow browser clients
@@ -136,79 +136,79 @@ writeTimeout: 10m # Very long timeout - let writeQueueSize handle buffering inst
 writeQueueSize: 8192 # Large write queue to absorb unconsumed main stream (allows ~8 seconds of buffering at 2Mbps)
 
 paths:
-  68d49398005cf203e400043f:
-    source: publisher
-  68d49398005cf203e400043f_main:
-    source: publisher
-  95270000D1B5FBEW:
-    source: publisher
-  95270000D1B5FBEW_main:
-    source: publisher
-  95270000YPTKLLD6:
-    source: rtsp://nvr-go2rtc:8555/95270000YPTKLLD6
-  95270000YPTKLLD6_main:
-    source: rtsp://nvr-go2rtc:8555/95270000YPTKLLD6
-  95270001CSHLPO74:
-    source: publisher
-  95270001CSHLPO74_main:
-    source: publisher
-  95270001CSO4BPDZ:
-    source: publisher
-  95270001CSO4BPDZ_main:
-    source: publisher
-  95270001NT3KNA67:
-    source: publisher
-  95270001NT3KNA67_main:
-    source: publisher
-  95270001Q3D82PF7:
-    source: publisher
-  95270001Q3D82PF7_main:
-    source: publisher
   AMC043145A67EFBF79:
     source: publisher
   AMC043145A67EFBF79_main:
-    source: publisher
-  C6F0SgZ0N0PoL2:
-    source: publisher
-  C6F0SgZ0N0PoL2_main:
     source: publisher
   T821451024233587:
     source: publisher
   T821451024233587_main:
     source: publisher
-  T8416P0023352DA9:
-    source: publisher
-  T8416P0023352DA9_main:
-    source: publisher
-  T8416P0023370398:
-    source: publisher
-  T8416P0023370398_main:
-    source: publisher
   T8416P00233717CB:
     source: publisher
   T8416P00233717CB_main:
     source: publisher
-  T8416P0023390DE9:
+  95270000D1B5FBEW:
     source: publisher
-  T8416P0023390DE9_main:
+  95270000D1B5FBEW_main:
     source: publisher
   T8416P6024350412:
     source: publisher
   T8416P6024350412_main:
     source: publisher
+  T8441P122428038A:
+    source: publisher
+  T8441P122428038A_main:
+    source: publisher
   T8419P0024110C6A:
     source: publisher
   T8419P0024110C6A_main:
+    source: publisher
+  T8416P0023390DE9:
+    source: publisher
+  T8416P0023390DE9_main:
+    source: publisher
+  95270001NT3KNA67:
+    source: publisher
+  95270001NT3KNA67_main:
+    source: publisher
+  T8416P0023352DA9:
+    source: publisher
+  T8416P0023352DA9_main:
+    source: publisher
+  XCPTP369388MNVTG:
+    source: publisher
+  XCPTP369388MNVTG_main:
+    source: publisher
+  95270001Q3D82PF7:
+    source: publisher
+  95270001Q3D82PF7_main:
+    source: publisher
+  T8416P0023370398:
+    source: publisher
+  T8416P0023370398_main:
+    source: publisher
+  95270000YPTKLLD6:
+    source: publisher
+  95270000YPTKLLD6_main:
+    source: publisher
+  95270001CSO4BPDZ:
+    source: publisher
+  95270001CSO4BPDZ_main:
+    source: publisher
+  68d49398005cf203e400043f:
+    source: publisher
+  68d49398005cf203e400043f_main:
+    source: publisher
+  C6F0SgZ0N0PoL2:
+    source: publisher
+  C6F0SgZ0N0PoL2_main:
     source: publisher
   T8441P12242302AC:
     source: publisher
   T8441P12242302AC_main:
     source: publisher
-  T8441P122428038A:
+  95270001CSHLPO74:
     source: publisher
-  T8441P122428038A_main:
-    source: publisher
-  XCPTP369388MNVTG:
-    source: publisher
-  XCPTP369388MNVTG_main:
+  95270001CSHLPO74_main:
     source: publisher

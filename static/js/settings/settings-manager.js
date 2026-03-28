@@ -4,7 +4,7 @@
  */
 
 import { fullscreenHandler } from './fullscreen-handler.js';
-import { settingsUI } from './settings-ui.js';
+import { settingsUI } from '../modals/global-settings-modal.js';
 
 class SettingsManager {
     constructor() {

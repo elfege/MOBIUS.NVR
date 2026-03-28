@@ -476,9 +476,9 @@ export class RecordingSettingsForm {
                         </div>
                         <div class="recording-alert recording-alert-warning" style="margin-bottom: 16px;">
                             <i class="fas fa-exclamation-triangle"></i>
-                            <span>These settings map directly to <code>cameras.json</code>. Incorrect values
-                            can break streaming or recording. Hover or tap the <strong>(?)</strong> icon
-                            next to each field for an explanation.</span>
+                            <span>These settings map directly to the camera configuration in the database.
+                            Incorrect values can break streaming or recording.
+                            Hover or tap the <strong>(?)</strong> icon next to each field for an explanation.</span>
                         </div>
                         <div id="advanced-fields-loading" style="text-align: center; padding: 20px;">
                             <span class="recording-loading" style="width: 24px; height: 24px; border-width: 3px;"></span>
@@ -602,6 +602,14 @@ export class RecordingSettingsForm {
                     <strong>Note:</strong> Some protocols require the camera's native admin account
                     (e.g. <code>reolink://</code> needs admin, not the API user).
                 </span>
+
+                <div style="margin-bottom: 14px;">
+                    <button type="button" id="copy-cam-creds-to-go2rtc-btn"
+                            class="recording-btn recording-btn-secondary" style="font-size:12px;padding:4px 10px;">
+                        <i class="fas fa-copy"></i> Copy from Camera Credentials
+                    </button>
+                    <span id="copy-creds-status" style="font-size:12px;margin-left:8px;"></span>
+                </div>
 
                 <div id="go2rtc-credentials-status" style="margin-bottom: 14px;"></div>
 
@@ -1300,6 +1308,61 @@ export class RecordingSettingsForm {
             const isPassword = $input.attr('type') === 'password';
             $input.attr('type', isPassword ? 'text' : 'password');
             $(this).find('i').toggleClass('fa-eye fa-eye-slash');
+        });
+        // Copy camera credentials into go2rtc fields (fetches from DB)
+        // Prompts: apply to all cameras of this vendor, or just this one
+        $('#copy-cam-creds-to-go2rtc-btn').on('click', async () => {
+            const $status = $('#copy-creds-status');
+            const $btn = $('#copy-cam-creds-to-go2rtc-btn');
+            const vendor = (self._credentialsCameraType || '').toLowerCase();
+            const vendorLabel = vendor.charAt(0).toUpperCase() + vendor.slice(1);
+
+            // Fetch this camera's credentials first
+            $btn.prop('disabled', true);
+            $status.text('Fetching…').css('color', '#aaa');
+            let creds;
+            try {
+                const resp = await axios.get(`/api/camera/${self.currentCameraId}/credentials`);
+                creds = resp.data;
+                if (!creds.has_credentials || !creds.password) {
+                    $status.text('No camera credentials found.').css('color', '#e74c3c');
+                    $btn.prop('disabled', false);
+                    setTimeout(() => $status.text(''), 4000);
+                    return;
+                }
+            } catch (e) {
+                $status.text(`Error: ${e.message}`).css('color', '#e74c3c');
+                $btn.prop('disabled', false);
+                setTimeout(() => $status.text(''), 4000);
+                return;
+            }
+
+            // Populate this camera's go2rtc fields
+            $('#go2rtc-cred-username').val(creds.username);
+            $('#go2rtc-cred-password').val(creds.password);
+
+            // Ask about batch copy for all cameras of same vendor
+            if (vendor) {
+                const choice = confirm(`Apply to all ${vendorLabel} cameras?\n\nOK = copy camera credentials → go2rtc for every ${vendorLabel} camera.\nCancel = this camera only (click Save to persist).`);
+                if (choice) {
+                    $status.text(`Copying to all ${vendorLabel} cameras…`).css('color', '#aaa');
+                    try {
+                        const batchResp = await axios.post(`/api/credentials/copy-to-go2rtc/${vendor}`);
+                        const r = batchResp.data;
+                        $status.text(`Done: ${r.copied} copied, ${r.skipped} skipped.`).css('color', '#2ecc71');
+                    } catch (e) {
+                        const msg = e.response?.data?.error || e.message;
+                        $status.text(`Batch error: ${msg}`).css('color', '#e74c3c');
+                    }
+                } else {
+                    $status.text('Copied for this camera — click Save to persist.').css('color', '#2ecc71');
+                }
+            } else {
+                $status.text('Copied — click Save to persist.').css('color', '#2ecc71');
+            }
+
+            $btn.prop('disabled', false);
+            setTimeout(() => $status.text(''), 6000);
         });
 
         // ── Advanced tab — render immediately if config was pre-fetched, else load async ──

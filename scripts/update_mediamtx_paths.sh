@@ -1,17 +1,26 @@
 #!/bin/bash
 
-# Sync mediamtx.yml with cameras.json settings
-# - Updates webrtcEncryption: setting from webrtc_global_settings.enable_dtls
-# - Updates paths: section with entries for ALL cameras MediaMTX should serve
+# Sync mediamtx.yml from DB cameras table.
 #
-# Source per camera depends on streaming_hub field:
-#   streaming_hub=go2rtc (or stream_type=GO2RTC):
-#     source: rtsp://nvr-go2rtc:8555/{serial}
-#     MediaMTX pulls from go2rtc RTSP re-export (go2rtc is the single camera consumer)
+# Source of truth: DB cameras table (serial, name, streaming_hub columns).
+# cameras.json is legacy/export-import only — NOT read for camera data.
+# cameras.json IS still read for webrtc_global_settings.enable_dtls until
+# that setting is migrated to the nvr_settings table.
 #
-#   streaming_hub=mediamtx (default):
-#     source: publisher
-#     FFmpeg connects directly to camera and pushes to MediaMTX
+# Generates two sections:
+#
+#   1. webrtcEncryption — controlled by enable_dtls setting
+#
+#   2. paths: — one entry per camera, source determined by streaming_hub:
+#        streaming_hub=go2rtc → source: rtsp://nvr-go2rtc:8555/{serial}
+#          (MediaMTX pulls from go2rtc RTSP re-export; go2rtc is the single
+#           camera consumer per the single-consumer policy)
+#        streaming_hub=mediamtx (default) → source: publisher
+#          (FFmpeg connects to camera and pushes to MediaMTX)
+#
+#      Each camera gets both sub ({serial}) and main ({serial}_main) paths.
+#      Sub = low-res transcoded for grid view.
+#      Main = native resolution for fullscreen.
 #
 # Run on container startup via start.sh
 
@@ -27,7 +36,7 @@ CAMERAS_JSON="${PROJECT_ROOT}/config/cameras.json"
 MEDIAMTX_YML="${PROJECT_ROOT}/packager/mediamtx.yml"
 BACKUP_DIR="${PROJECT_ROOT}/packager/backups"
 
-echo -e "${GREEN}=== Sync MediaMTX with cameras.json ===${NC}"
+echo -e "${GREEN}=== Sync MediaMTX with DB ===${NC}"
 echo
 
 # Backup
@@ -39,7 +48,9 @@ echo
 # ============================================================================
 # DTLS/WebRTC Encryption Setting
 # ============================================================================
-ENABLE_DTLS=$(jq -r '.webrtc_global_settings.enable_dtls // false' "$CAMERAS_JSON")
+# TODO: migrate enable_dtls to nvr_settings DB table; fall back to cameras.json
+# for now since nvr_settings doesn't have it yet.
+ENABLE_DTLS=$(jq -r '.webrtc_global_settings.enable_dtls // false' "$CAMERAS_JSON" 2>/dev/null || echo "false")
 
 if [[ "$ENABLE_DTLS" == "true" ]]; then
     WEBRTC_ENCRYPTION="yes"
@@ -50,7 +61,7 @@ else
 fi
 
 if grep -q "^webrtcEncryption:" "$MEDIAMTX_YML"; then
-    sed -i "s/^webrtcEncryption:.*/webrtcEncryption: ${WEBRTC_ENCRYPTION} # Controlled by cameras.json webrtc_global_settings.enable_dtls/" "$MEDIAMTX_YML"
+    sed -i "s/^webrtcEncryption:.*/webrtcEncryption: ${WEBRTC_ENCRYPTION} # Controlled by cameras.json webrtc_global_settings.enable_dtls (TODO: move to nvr_settings)/" "$MEDIAMTX_YML"
     echo -e "${GREEN}✓${NC} Updated webrtcEncryption: ${WEBRTC_ENCRYPTION}"
 else
     echo -e "${YELLOW}⚠${NC} webrtcEncryption line not found in mediamtx.yml"
@@ -58,63 +69,38 @@ fi
 echo
 
 # ============================================================================
-# Camera Paths Section
+# Camera Paths Section — query DB
 # ============================================================================
-# Build MediaMTX path entries for cameras MediaMTX should serve.
-#
-# A camera gets a MediaMTX path if it has:
-#   - streaming_hub=go2rtc: pulls from go2rtc RTSP re-export
-#   - stream_type in (LL_HLS, NEOLINK, NEOLINK_LL_HLS, WEBRTC, HLS): publisher push
-#   - go2rtc_source set (any type): also added as publisher for pre-staging
-#
-# Each camera gets both sub ({serial}) and main ({serial}_main) paths.
-# Sub = low-res transcoded for grid; Main = native resolution for fullscreen.
+echo -e "${YELLOW}Querying DB for camera streaming_hub configuration...${NC}"
 
-echo -e "${YELLOW}Building MediaMTX paths section...${NC}"
+# Fetch all cameras from DB: serial, name, streaming_hub (default mediamtx if null)
+DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+    -c "SELECT serial,
+               COALESCE(name, serial),
+               COALESCE(streaming_hub, 'mediamtx')
+        FROM cameras
+        ORDER BY name;" 2>/dev/null) || {
+    echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
+    exit 1
+}
 
-# Extract cameras qualifying for MediaMTX paths
-ALL_CAMERAS=$(jq -r '
-    .devices | to_entries[] |
-    select(
-        .value.streaming_hub == "go2rtc" or
-        .value.stream_type == "GO2RTC" or
-        .value.stream_type == "LL_HLS" or
-        .value.stream_type == "NEOLINK" or
-        .value.stream_type == "NEOLINK_LL_HLS" or
-        .value.stream_type == "WEBRTC" or
-        .value.stream_type == "HLS" or
-        (.value.go2rtc_source != null and .value.go2rtc_source != "")
-    ) |
-    {
-        serial: .key,
-        name: .value.name,
-        stream_type: (.value.stream_type // "LL_HLS"),
-        streaming_hub: (.value.streaming_hub // "mediamtx")
-    } | @json
-' "$CAMERAS_JSON")
-
-if [[ -z "$ALL_CAMERAS" ]]; then
-    echo -e "${YELLOW}No cameras found for MediaMTX paths${NC}"
+if [[ -z "$DB_ROWS" ]]; then
+    echo -e "${YELLOW}No cameras found in DB${NC}"
     exit 0
 fi
 
-CAMERA_COUNT=$(echo "$ALL_CAMERAS" | wc -l)
-echo -e "${YELLOW}Found $CAMERA_COUNT camera(s) for MediaMTX paths:${NC}"
+CAMERA_COUNT=$(echo "$DB_ROWS" | grep -c '^' || true)
+echo -e "${YELLOW}Found $CAMERA_COUNT camera(s)${NC}"
+echo
 
 # Build the paths section
 PATHS_SECTION="paths:"
 
-while IFS= read -r camera_json; do
-    serial=$(echo "$camera_json" | jq -r '.serial')
-    name=$(echo "$camera_json" | jq -r '.name')
-    hub=$(echo "$camera_json" | jq -r '.streaming_hub')
-    stream_type=$(echo "$camera_json" | jq -r '.stream_type')
-
-    # Determine MediaMTX source based on streaming hub:
-    #   go2rtc hub → MediaMTX pulls from go2rtc RTSP re-export
-    #                Single-consumer policy: go2rtc connects to camera, MediaMTX reads from go2rtc
-    #   mediamtx hub → FFmpeg pushes (publisher mode, existing architecture)
-    if [[ "$hub" == "go2rtc" ]] || [[ "$stream_type" == "GO2RTC" ]]; then
+while IFS='|' read -r serial name hub; do
+    # Determine MediaMTX source based on streaming_hub:
+    #   go2rtc → MediaMTX pulls from go2rtc RTSP re-export (:8555)
+    #   mediamtx → FFmpeg pushes (publisher mode)
+    if [[ "$hub" == "go2rtc" ]]; then
         SOURCE="rtsp://nvr-go2rtc:8555/${serial}"
         HUB_LABEL="go2rtc→MediaMTX"
     else
@@ -124,17 +110,17 @@ while IFS= read -r camera_json; do
 
     echo "  - $name ($serial) [${HUB_LABEL}]"
 
-    # Sub stream path (grid view — transcoded low-res)
+    # Sub stream (grid view — transcoded low-res)
     PATHS_SECTION="${PATHS_SECTION}
   ${serial}:
     source: ${SOURCE}"
 
-    # Main stream path (fullscreen — native resolution)
+    # Main stream (fullscreen — native resolution)
     PATHS_SECTION="${PATHS_SECTION}
   ${serial}_main:
     source: ${SOURCE}"
 
-done <<< "$ALL_CAMERAS"
+done <<< "$DB_ROWS"
 
 echo
 

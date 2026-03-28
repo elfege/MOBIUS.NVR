@@ -461,14 +461,15 @@ class CameraStateTracker:
 
     def _poll_loop(self):
         """
-        Background thread: continuously poll MediaMTX API for publisher states.
+        Background thread: continuously poll MediaMTX and go2rtc APIs for publisher states.
 
-        Runs every 5 seconds, queries all camera paths from MediaMTX API,
-        and updates publisher_active state based on API response.
+        Runs every 5 seconds, queries:
+        - MediaMTX for cameras using the mediamtx streaming hub
+        - go2rtc for cameras using the go2rtc streaming hub
 
         Handles transient API failures gracefully (logs warning, continues polling).
         """
-        logger.info("MediaMTX API polling loop started (interval: 5s)")
+        logger.info("Streaming hub API polling loop started (interval: 5s)")
 
         while self._running:
             try:
@@ -476,10 +477,15 @@ class CameraStateTracker:
             except Exception as e:
                 logger.error(f"MediaMTX API poll failed: {e}", exc_info=True)
 
+            try:
+                self._poll_go2rtc_api()
+            except Exception as e:
+                logger.error(f"go2rtc API poll failed: {e}", exc_info=True)
+
             # Sleep 5 seconds before next poll
             time.sleep(5)
 
-        logger.info("MediaMTX API polling loop stopped")
+        logger.info("Streaming hub API polling loop stopped")
 
 
     def _poll_mediamtx_api(self):
@@ -550,20 +556,68 @@ class CameraStateTracker:
             logger.error(f"Error parsing MediaMTX API response: {e}", exc_info=True)
 
 
-    def wait_for_publisher_ready(self, camera_id: str, timeout: float = 15.0) -> bool:
+    def _poll_go2rtc_api(self):
         """
-        Block until MediaMTX reports publisher as ready for the given camera.
+        Query go2rtc API for all stream states and update publisher flags.
 
-        Polls MediaMTX API directly (not waiting for background poll cycle)
-        every 1 second until the path reports "ready: true" or timeout expires.
+        Endpoint: GET http://nvr-go2rtc:1984/api/streams
 
-        This closes the race condition where FFmpeg is marked 'active' after
-        a fixed sleep (3s) but MediaMTX hasn't accepted the publisher yet
-        (takes 5-15s depending on camera connection speed).
+        Response format:
+        {
+            "95270000YPTKLLD6": {
+                "producers": [{"id": 0, "state": "online", ...}],
+                "consumers": [...]
+            },
+            ...
+        }
+
+        A stream is considered active if it has at least one producer entry.
+        Updates publisher_active flag for all go2rtc-served cameras.
+        """
+        try:
+            response = requests.get(
+                "http://nvr-go2rtc:1984/api/streams",
+                timeout=3
+            )
+
+            if response.status_code != 200:
+                logger.debug(f"go2rtc API returned status {response.status_code}")
+                return
+
+            streams = response.json()
+
+            for camera_id, stream_info in streams.items():
+                # Count active producers (go2rtc reads from camera here)
+                producers = stream_info.get('producers') or []
+                has_producer = len(producers) > 0
+
+                # Only update state for cameras already tracked by the system.
+                # Don't create new state entries for go2rtc streams that aren't NVR cameras.
+                with self._lock:
+                    if camera_id in self._states:
+                        self.update_publisher_state(camera_id, has_producer)
+
+            logger.debug(f"go2rtc API poll: {len(streams)} streams checked")
+
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"go2rtc API unreachable: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing go2rtc API response: {e}", exc_info=True)
+
+
+    def wait_for_publisher_ready(self, camera_id: str, timeout: float = 15.0,
+                                  streaming_hub: str = 'mediamtx') -> bool:
+        """
+        Block until the streaming hub reports publisher as ready for the given camera.
+
+        For MediaMTX cameras: polls MediaMTX API directly every 1 second.
+        For go2rtc cameras: polls go2rtc API directly every 1 second.
+        Times out after `timeout` seconds.
 
         Args:
             camera_id: Camera serial number
             timeout: Maximum seconds to wait (default: 15)
+            streaming_hub: 'mediamtx' or 'go2rtc' (default: 'mediamtx')
 
         Returns:
             True if publisher became ready within timeout, False otherwise
@@ -573,28 +627,43 @@ class CameraStateTracker:
 
         while (time.time() - start) < timeout:
             try:
-                response = requests.get(
-                    f"{self._mediamtx_api_url}/v3/paths/list",
-                    auth=('nvr-api', ''),
-                    timeout=2
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    for path_info in data.get('items', []):
-                        if path_info.get('name') == camera_id:
-                            if path_info.get('ready', False):
-                                elapsed = time.time() - start
-                                logger.info(
-                                    f"Camera {camera_id} publisher ready after {elapsed:.1f}s"
-                                )
-                                # Update internal state to match
-                                self.update_publisher_state(camera_id, True)
-                                return True
-                            break  # Found path but not ready yet
+                if streaming_hub == 'go2rtc':
+                    # go2rtc: check producers list for this camera_id
+                    response = requests.get(
+                        "http://nvr-go2rtc:1984/api/streams",
+                        timeout=2
+                    )
+                    if response.status_code == 200:
+                        streams = response.json()
+                        stream_info = streams.get(camera_id, {})
+                        producers = stream_info.get('producers') or []
+                        if len(producers) > 0:
+                            elapsed = time.time() - start
+                            logger.info(f"Camera {camera_id} go2rtc producer ready after {elapsed:.1f}s")
+                            self.update_publisher_state(camera_id, True)
+                            return True
+                else:
+                    # MediaMTX: check path "ready" flag
+                    response = requests.get(
+                        f"{self._mediamtx_api_url}/v3/paths/list",
+                        auth=('nvr-api', ''),
+                        timeout=2
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        for path_info in data.get('items', []):
+                            if path_info.get('name') == camera_id:
+                                if path_info.get('ready', False):
+                                    elapsed = time.time() - start
+                                    logger.info(
+                                        f"Camera {camera_id} publisher ready after {elapsed:.1f}s"
+                                    )
+                                    self.update_publisher_state(camera_id, True)
+                                    return True
+                                break  # Found path but not ready yet
 
             except requests.exceptions.RequestException as e:
-                logger.debug(f"MediaMTX API check for {camera_id}: {e}")
+                logger.debug(f"Streaming hub API check for {camera_id}: {e}")
 
             time.sleep(poll_interval)
 

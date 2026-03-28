@@ -25,9 +25,10 @@ POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 # Fields that map directly from cameras.json device to DB columns
 DIRECT_FIELDS = [
     'serial', 'name', 'type', 'camera_id', 'host', 'mac', 'packager_path',
-    'stream_type', 'streaming_hub', 'rtsp_alias', 'max_connections', 'onvif_port',
-    'power_supply', 'hidden', 'ui_health_monitor', 'reversed_pan',
-    'reversed_tilt', 'notes', 'power_supply_device_id',
+    'stream_type', 'streaming_hub', 'go2rtc_source', 'rtsp_alias',
+    'max_connections', 'onvif_port', 'power_supply', 'hidden',
+    'ui_health_monitor', 'reversed_pan', 'reversed_tilt', 'notes',
+    'power_supply_device_id',
 ]
 
 # Fields stored as JSONB columns

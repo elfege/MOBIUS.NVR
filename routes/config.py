@@ -32,6 +32,7 @@ from routes.helpers import (
     _trusted_network_cache,
 )
 from services.license_service import license, validate_license
+from services.streaming_hub import invalidate_global_hub_cache
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +56,52 @@ def streams_page():
         cameras = shared.camera_repo.get_streaming_cameras()
         ui_health = _ui_health_from_env()
 
+        # Apply global streaming hub override (if set) to all cameras.
+        # This ensures the template renders correct data-streaming-hub attributes
+        # and the frontend routes streams to the right hub.
+        from services.streaming_hub import get_global_hub
+        global_hub = get_global_hub()
+        if global_hub:
+            for serial in cameras:
+                cameras[serial]['streaming_hub'] = global_hub
+
         # Filter cameras based on user's access permissions
         allowed = _get_allowed_camera_serials(current_user)
         cameras = _filter_cameras(cameras, allowed)
+
+        # Apply user's saved tile display order from DB
+        order_map = {}
+        try:
+            conn = psycopg2.connect(
+                host=os.getenv('POSTGRES_HOST', 'postgres'),
+                port=os.getenv('POSTGRES_PORT', '5432'),
+                dbname=os.getenv('POSTGRES_DB', 'nvr'),
+                user=os.getenv('POSTGRES_USER', 'nvr_api'),
+                password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+                connect_timeout=3
+            )
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT camera_serial, display_order "
+                "FROM user_camera_preferences "
+                "WHERE user_id = %s AND display_order IS NOT NULL",
+                (current_user.id,)
+            )
+            order_map = {serial: pos for serial, pos in cur.fetchall()}
+            cur.close()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"[streams_page] Could not load display order: {e}")
+
+        # Sort by saved display_order if available, otherwise alphabetical by name
+        # so tile positions are always stable across restarts.
+        cameras = dict(sorted(
+            cameras.items(),
+            key=lambda item: (
+                order_map.get(item[0], float('inf')),
+                (item[1].get('name') or '').lower()
+            )
+        ))
 
         # Pass full camera configs (includes ui_health_monitor per camera)
         return render_template('streams.html', cameras=cameras, ui_health=ui_health)
@@ -146,6 +190,183 @@ def api_trusted_network_put():
 
         return jsonify({'success': True, 'enabled': enabled == 'true'}), 200
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@config_bp.route('/api/settings/global-hub', methods=['GET'])
+@login_required
+def api_global_hub_get():
+    """
+    Get the current global streaming hub override.
+
+    Returns:
+        { "value": "go2rtc" | "mediamtx" | null }
+        null means no global override — each camera uses its own streaming_hub setting.
+    """
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=5
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT value FROM nvr_settings WHERE key = 'streaming_hub_global';")
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        value = row[0] if row else None
+        # Empty string stored in DB is treated as null (no override)
+        return jsonify({'value': value or None}), 200
+    except Exception as e:
+        logger.error(f"[GlobalHub] GET failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@config_bp.route('/api/settings/global-hub', methods=['PUT'])
+@csrf_exempt
+@login_required
+def api_global_hub_put():
+    """
+    Set or clear the global streaming hub override. Admin only.
+
+    Body: { "value": "go2rtc" | "mediamtx" | null }
+    null or omitted clears the override (per-camera setting applies).
+
+    Also invalidates the in-process hub cache so the change takes effect
+    immediately rather than waiting for the 30s TTL.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json() or {}
+    value = data.get('value')  # None, 'go2rtc', or 'mediamtx'
+
+    # Validate
+    if value is not None and value not in ('go2rtc', 'mediamtx'):
+        return jsonify({'error': f"Invalid value '{value}'. Must be 'go2rtc', 'mediamtx', or null."}), 400
+
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=5
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        # Store NULL in DB for "no override"; upsert_setting takes TEXT so we
+        # use direct UPDATE/INSERT here to handle NULL cleanly.
+        cur.execute(
+            """
+            INSERT INTO nvr_settings (key, value, updated_at)
+            VALUES ('streaming_hub_global', %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+            """,
+            (value,)
+        )
+        cur.close()
+        conn.close()
+
+        # Immediately expire the in-process cache so the next stream request
+        # picks up the new value without waiting for the 30s TTL.
+        invalidate_global_hub_cache()
+
+        logger.info(f"[GlobalHub] Global hub set to: {value!r} by user {current_user.id}")
+        return jsonify({'success': True, 'value': value}), 200
+    except Exception as e:
+        logger.error(f"[GlobalHub] PUT failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@config_bp.route('/api/settings/advanced', methods=['GET'])
+@login_required
+def api_advanced_settings_get():
+    """
+    Return all nvr_settings rows (excluding secrets) as a JSON array.
+    Used by the Advanced tab in the global settings modal.
+    Returns: [ { key, value, updated_at }, ... ] ordered by key.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    # Keys that must never be exposed via this endpoint
+    SECRET_KEYS = {'NVR_SECRET_KEY'}
+
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=5
+        )
+        cur = conn.cursor()
+        cur.execute("SELECT key, value, updated_at FROM nvr_settings ORDER BY key;")
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        result = [
+            {'key': r[0], 'value': r[1], 'updated_at': r[2].isoformat() if r[2] else None}
+            for r in rows if r[0] not in SECRET_KEYS
+        ]
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"[AdvancedSettings] GET failed: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@config_bp.route('/api/settings/advanced/<path:key>', methods=['PATCH'])
+@csrf_exempt
+@login_required
+def api_advanced_settings_patch(key):
+    """
+    Update a single nvr_settings row by key. Admin only.
+    Body: { "value": "<new value>" }
+    Rejects attempts to modify secret keys via this endpoint.
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    SECRET_KEYS = {'NVR_SECRET_KEY'}
+    if key in SECRET_KEYS:
+        return jsonify({'error': 'Cannot modify this key via this endpoint'}), 403
+
+    data = request.get_json() or {}
+    value = data.get('value', '')
+
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=5
+        )
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO nvr_settings (key, value, updated_at)
+            VALUES (%s, %s, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+            """,
+            (key, value)
+        )
+        cur.close()
+        conn.close()
+
+        logger.info(f"[AdvancedSettings] '{key}' set by user {current_user.id}")
+        return jsonify({'success': True, 'key': key, 'value': value}), 200
+    except Exception as e:
+        logger.error(f"[AdvancedSettings] PATCH failed for '{key}': {e}")
         return jsonify({'error': str(e)}), 500
 
 

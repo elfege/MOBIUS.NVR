@@ -1,8 +1,17 @@
 #!/bin/bash
 
 # Sync mediamtx.yml with cameras.json settings
-# - Updates paths: section with camera IDs for LL_HLS/NEOLINK/WEBRTC streams
 # - Updates webrtcEncryption: setting from webrtc_global_settings.enable_dtls
+# - Updates paths: section with entries for ALL cameras MediaMTX should serve
+#
+# Source per camera depends on streaming_hub field:
+#   streaming_hub=go2rtc (or stream_type=GO2RTC):
+#     source: rtsp://nvr-go2rtc:8555/{serial}
+#     MediaMTX pulls from go2rtc RTSP re-export (go2rtc is the single camera consumer)
+#
+#   streaming_hub=mediamtx (default):
+#     source: publisher
+#     FFmpeg connects directly to camera and pushes to MediaMTX
 #
 # Run on container startup via start.sh
 
@@ -30,8 +39,6 @@ echo
 # ============================================================================
 # DTLS/WebRTC Encryption Setting
 # ============================================================================
-# Read enable_dtls from cameras.json webrtc_global_settings
-# This is required for iOS Safari to use WebRTC (iOS requires DTLS-SRTP)
 ENABLE_DTLS=$(jq -r '.webrtc_global_settings.enable_dtls // false' "$CAMERAS_JSON")
 
 if [[ "$ENABLE_DTLS" == "true" ]]; then
@@ -42,10 +49,7 @@ else
     echo -e "${YELLOW}!${NC} DTLS disabled (iOS will fall back to HLS)"
 fi
 
-# Update webrtcEncryption line in mediamtx.yml
-# Uses sed to replace the value while preserving comments
 if grep -q "^webrtcEncryption:" "$MEDIAMTX_YML"; then
-    # Preserve any inline comment after the value
     sed -i "s/^webrtcEncryption:.*/webrtcEncryption: ${WEBRTC_ENCRYPTION} # Controlled by cameras.json webrtc_global_settings.enable_dtls/" "$MEDIAMTX_YML"
     echo -e "${GREEN}✓${NC} Updated webrtcEncryption: ${WEBRTC_ENCRYPTION}"
 else
@@ -56,40 +60,87 @@ echo
 # ============================================================================
 # Camera Paths Section
 # ============================================================================
-# Extract LL_HLS, NEOLINK, and WEBRTC camera IDs (all use MediaMTX paths)
-# WEBRTC also needs MediaMTX paths - same FFmpeg→MediaMTX pipeline, different delivery to browser
-LL_HLS_PATHS=$(jq -r '.devices | to_entries[] | select(.value.stream_type == "LL_HLS" or .value.stream_type == "NEOLINK" or .value.stream_type == "WEBRTC") | .key' "$CAMERAS_JSON")
+# Build MediaMTX path entries for cameras MediaMTX should serve.
+#
+# A camera gets a MediaMTX path if it has:
+#   - streaming_hub=go2rtc: pulls from go2rtc RTSP re-export
+#   - stream_type in (LL_HLS, NEOLINK, NEOLINK_LL_HLS, WEBRTC, HLS): publisher push
+#   - go2rtc_source set (any type): also added as publisher for pre-staging
+#
+# Each camera gets both sub ({serial}) and main ({serial}_main) paths.
+# Sub = low-res transcoded for grid; Main = native resolution for fullscreen.
 
-if [[ -z "$LL_HLS_PATHS" ]]; then
-    echo -e "${YELLOW}No LL_HLS, NEOLINK, or WEBRTC cameras found${NC}"
+echo -e "${YELLOW}Building MediaMTX paths section...${NC}"
+
+# Extract cameras qualifying for MediaMTX paths
+ALL_CAMERAS=$(jq -r '
+    .devices | to_entries[] |
+    select(
+        .value.streaming_hub == "go2rtc" or
+        .value.stream_type == "GO2RTC" or
+        .value.stream_type == "LL_HLS" or
+        .value.stream_type == "NEOLINK" or
+        .value.stream_type == "NEOLINK_LL_HLS" or
+        .value.stream_type == "WEBRTC" or
+        .value.stream_type == "HLS" or
+        (.value.go2rtc_source != null and .value.go2rtc_source != "")
+    ) |
+    {
+        serial: .key,
+        name: .value.name,
+        stream_type: (.value.stream_type // "LL_HLS"),
+        streaming_hub: (.value.streaming_hub // "mediamtx")
+    } | @json
+' "$CAMERAS_JSON")
+
+if [[ -z "$ALL_CAMERAS" ]]; then
+    echo -e "${YELLOW}No cameras found for MediaMTX paths${NC}"
     exit 0
 fi
 
-echo -e "${YELLOW}Found LL_HLS/NEOLINK/WEBRTC cameras (creating sub + main paths):${NC}"
-echo "$LL_HLS_PATHS" | while read -r path; do
-    echo "  - $path (sub)"
-    echo "  - ${path}_main (main)"
-done
+CAMERA_COUNT=$(echo "$ALL_CAMERAS" | wc -l)
+echo -e "${YELLOW}Found $CAMERA_COUNT camera(s) for MediaMTX paths:${NC}"
+
+# Build the paths section
+PATHS_SECTION="paths:"
+
+while IFS= read -r camera_json; do
+    serial=$(echo "$camera_json" | jq -r '.serial')
+    name=$(echo "$camera_json" | jq -r '.name')
+    hub=$(echo "$camera_json" | jq -r '.streaming_hub')
+    stream_type=$(echo "$camera_json" | jq -r '.stream_type')
+
+    # Determine MediaMTX source based on streaming hub:
+    #   go2rtc hub → MediaMTX pulls from go2rtc RTSP re-export
+    #                Single-consumer policy: go2rtc connects to camera, MediaMTX reads from go2rtc
+    #   mediamtx hub → FFmpeg pushes (publisher mode, existing architecture)
+    if [[ "$hub" == "go2rtc" ]] || [[ "$stream_type" == "GO2RTC" ]]; then
+        SOURCE="rtsp://nvr-go2rtc:8555/${serial}"
+        HUB_LABEL="go2rtc→MediaMTX"
+    else
+        SOURCE="publisher"
+        HUB_LABEL="FFmpeg→MediaMTX"
+    fi
+
+    echo "  - $name ($serial) [${HUB_LABEL}]"
+
+    # Sub stream path (grid view — transcoded low-res)
+    PATHS_SECTION="${PATHS_SECTION}
+  ${serial}:
+    source: ${SOURCE}"
+
+    # Main stream path (fullscreen — native resolution)
+    PATHS_SECTION="${PATHS_SECTION}
+  ${serial}_main:
+    source: ${SOURCE}"
+
+done <<< "$ALL_CAMERAS"
+
 echo
 
-# Build new paths section with both sub and main streams
-# Sub stream: /camera_serial (transcoded, low-res for grid)
-# Main stream: /camera_serial_main (passthrough, full-res for fullscreen)
-PATHS_SECTION="paths:"
-for path in $LL_HLS_PATHS; do
-    # Sub stream path (default, used for grid view)
-    PATHS_SECTION="${PATHS_SECTION}
-  ${path}:
-    source: publisher"
-    # Main stream path (full resolution for fullscreen)
-    PATHS_SECTION="${PATHS_SECTION}
-  ${path}_main:
-    source: publisher"
-done
-
-# Replace everything after "paths:" line
+# Replace everything from "paths:" onward in mediamtx.yml
 awk -v new="$PATHS_SECTION" '/^paths:/ {print new; exit} {print}' "$MEDIAMTX_YML" > "${MEDIAMTX_YML}.tmp"
 mv "${MEDIAMTX_YML}.tmp" "$MEDIAMTX_YML"
 
-echo -e "${GREEN}✓${NC} Updated mediamtx.yml"
-echo -e "${YELLOW}Restart: docker compose restart nvr-packager${NC}"
+echo -e "${GREEN}✓${NC} Updated mediamtx.yml with $CAMERA_COUNT camera path entries"
+echo -e "${YELLOW}Note: docker compose restart nvr-packager needed to reload paths${NC}"

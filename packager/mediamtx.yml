@@ -140,9 +140,29 @@ paths:
     source: publisher
   68d49398005cf203e400043f_main:
     source: publisher
+  95270000D1B5FBEW:
+    source: publisher
+  95270000D1B5FBEW_main:
+    source: publisher
+  95270000YPTKLLD6:
+    source: rtsp://nvr-go2rtc:8555/95270000YPTKLLD6
+  95270000YPTKLLD6_main:
+    source: rtsp://nvr-go2rtc:8555/95270000YPTKLLD6
+  95270001CSHLPO74:
+    source: publisher
+  95270001CSHLPO74_main:
+    source: publisher
   95270001CSO4BPDZ:
     source: publisher
   95270001CSO4BPDZ_main:
+    source: publisher
+  95270001NT3KNA67:
+    source: publisher
+  95270001NT3KNA67_main:
+    source: publisher
+  95270001Q3D82PF7:
+    source: publisher
+  95270001Q3D82PF7_main:
     source: publisher
   AMC043145A67EFBF79:
     source: publisher

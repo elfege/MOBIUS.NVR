@@ -1265,6 +1265,18 @@ def api_camera_credentials_put(camera_serial):
         cred_key  = camera_serial
         cred_type = 'go2rtc'
         label     = f'{camera.get("name", camera_serial)} go2rtc credentials'
+    elif scope == 'go2rtc_brand':
+        # Brand-level go2rtc credentials — shared by all cameras of this type.
+        # generate_go2rtc_config.py falls back to these when no per-camera go2rtc cred exists.
+        go2rtc_vendor_key_map = {
+            'reolink': 'reolink_go2rtc',
+            'amcrest': 'amcrest_go2rtc',
+            'sv3c': 'sv3c_go2rtc',
+            'eufy': 'eufy_go2rtc',
+        }
+        cred_key  = go2rtc_vendor_key_map.get(cam_type, f'{cam_type}_go2rtc')
+        cred_type = 'service'
+        label     = f'{cam_type.title()} go2rtc brand credentials'
     elif scope == 'brand':
         # Store as brand-level service credential
         vendor_key_map = {

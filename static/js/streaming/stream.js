@@ -3174,11 +3174,12 @@ export class MultiStreamManager {
                 }
                 console.log(`[Recovery] ${cameraId}: ${streamType} refresh triggered`);
 
-                // FALLBACK: If video is still black after 5 seconds, trigger refresh button click directly
-                // This is the "nuclear option" - directly clicking the button that we know works
+                // FALLBACK: If video is still black after timeout, trigger refresh button click directly
+                // go2rtc cameras (especially via Neolink) need longer — Baichuan bridge is slow to deliver first frame
+                const blackFrameTimeout = (recoveryHub === 'go2rtc') ? 15000 : 5000;
                 setTimeout(() => {
                     if (videoElement && (videoElement.readyState < 2 || videoElement.videoWidth === 0)) {
-                        console.log(`[Recovery] ${cameraId}: ${streamType} still black after 5s - triggering refresh button click directly`);
+                        console.log(`[Recovery] ${cameraId}: ${streamType} still black after ${blackFrameTimeout/1000}s - triggering refresh button click directly`);
                         const $refreshBtn = $streamItem.find('.refresh-stream-btn');
                         if ($refreshBtn.length) {
                             $refreshBtn.trigger('click');

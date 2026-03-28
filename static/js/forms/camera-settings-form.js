@@ -464,7 +464,16 @@ export class RecordingSettingsForm {
                 <!-- ============ TAB: Advanced ============ -->
                 <div class="settings-tab-panel" data-tab-panel="advanced">
                     <div class="recording-form-section">
-                        <h4><i class="fas fa-cogs"></i> Advanced Configuration</h4>
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                            <h4 style="margin:0;"><i class="fas fa-cogs"></i> Advanced Configuration</h4>
+                            <div id="advanced-actions" style="display:none;align-items:center;gap:8px;">
+                                <span id="advanced-save-status" style="font-size:12px;"></span>
+                                <button type="button" id="save-advanced-btn"
+                                        class="recording-btn recording-btn-primary" style="font-size:13px;padding:4px 12px;">
+                                    <i class="fas fa-save"></i> Save
+                                </button>
+                            </div>
+                        </div>
                         <div class="recording-alert recording-alert-warning" style="margin-bottom: 16px;">
                             <i class="fas fa-exclamation-triangle"></i>
                             <span>These settings map directly to <code>cameras.json</code>. Incorrect values
@@ -476,13 +485,6 @@ export class RecordingSettingsForm {
                             <span style="margin-left: 10px; color: #999;">Loading camera configuration...</span>
                         </div>
                         <div id="advanced-fields-container" style="display: none;"></div>
-                        <div id="advanced-save-status" style="display: none; margin-top: 10px;"></div>
-                        <div id="advanced-actions" style="display: none; margin-top: 16px; text-align: right;">
-                            <button type="button" id="save-advanced-btn"
-                                    class="recording-btn recording-btn-primary">
-                                <i class="fas fa-save"></i> Save Advanced Settings
-                            </button>
-                        </div>
                     </div>
                 </div>
 
@@ -935,7 +937,7 @@ export class RecordingSettingsForm {
         $container.html(html);
         $('#advanced-fields-loading').hide();
         $container.show();
-        $('#advanced-actions').show();
+        $('#advanced-actions').css('display', 'flex');
 
         // ── Attach go2rtc protocol helper handlers (must be after DOM insert) ──
         const self = this;

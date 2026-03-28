@@ -48,9 +48,10 @@ echo
 # ============================================================================
 # DTLS/WebRTC Encryption Setting
 # ============================================================================
-# TODO: migrate enable_dtls to nvr_settings DB table; fall back to cameras.json
-# for now since nvr_settings doesn't have it yet.
-ENABLE_DTLS=$(jq -r '.webrtc_global_settings.enable_dtls // false' "$CAMERAS_JSON" 2>/dev/null || echo "false")
+# Read enable_dtls from nvr_settings DB table, default false
+ENABLE_DTLS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+    -c "SELECT COALESCE(value, 'false') FROM nvr_settings WHERE key='enable_dtls';" 2>/dev/null || echo "false")
+ENABLE_DTLS="${ENABLE_DTLS:-false}"
 
 if [[ "$ENABLE_DTLS" == "true" ]]; then
     WEBRTC_ENCRYPTION="yes"

@@ -252,6 +252,29 @@ def store_credential(
                 _cache[(credential_key, credential_type)] = (username, password)
             logger.info(f"Stored credentials for {credential_key} ({vendor}/{credential_type})")
             return True
+        elif resp.status_code == 409:
+            # Conflict — row already exists. Update via PATCH instead.
+            patch_resp = session.patch(
+                f"{POSTGREST_URL}/camera_credentials",
+                params={
+                    'credential_key': f'eq.{credential_key}',
+                    'credential_type': f'eq.{credential_type}'
+                },
+                json={
+                    'username_enc': encrypted_user,
+                    'password_enc': encrypted_pass,
+                    'vendor': vendor,
+                    'label': label or credential_key
+                }
+            )
+            if patch_resp.status_code in (200, 204):
+                with _cache_lock:
+                    _cache[(credential_key, credential_type)] = (username, password)
+                logger.info(f"Updated credentials for {credential_key} ({vendor}/{credential_type})")
+                return True
+            else:
+                logger.error(f"Failed to update credentials: HTTP {patch_resp.status_code} — {patch_resp.text}")
+                return False
         else:
             logger.error(f"Failed to store credentials: HTTP {resp.status_code} — {resp.text}")
             return False

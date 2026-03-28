@@ -44,6 +44,7 @@ export class MJPEGStreamManager {
         const streamItem = document.querySelector(`[data-camera-serial="${cameraId}"]`);
         const originalStreamType = streamItem ? streamItem.dataset.streamType : '';
         const mjpegSource = streamItem ? streamItem.dataset.mjpegSource : '';
+        const streamingHub = streamItem ? (streamItem.dataset.streamingHub || 'mediamtx') : 'mediamtx';
         const isNeolink = originalStreamType === 'NEOLINK' || originalStreamType === 'NEOLINK_LL_HLS';
 
         // Priority 1: Check explicit mjpeg_source config
@@ -93,52 +94,63 @@ export class MJPEGStreamManager {
             mjpegUrl = `/api/mediaserver/${cameraId}/stream/mjpeg?t=${Date.now()}`;
         }
 
-        // For mediaserver cameras, ensure HLS stream is started first
-        // MediaServer MJPEG taps the MediaMTX RTSP output from the HLS FFmpeg
-        // NOTE: preWarmHLSStreams() in stream.js starts all HLS streams in parallel
-        // before calling startStream(), so this is usually a no-op on page load.
-        // Still needed for: manual restarts, fullscreen switches, error recovery.
+        // For mediaserver cameras, ensure the upstream stream is ready before connecting.
+        // go2rtc cameras: MediaMTX pulls from go2rtc RTSP on demand — HLS is never started
+        //   for these cameras, so we skip the HLS check and connect directly.
+        // mediamtx cameras: FFmpeg must publish to MediaMTX first. Poll HLS readiness.
         if (usesMediaserver) {
-            // Quick check if stream is already publishing (pre-warm succeeded or page reload)
-            let streamAlreadyReady = false;
-            try {
-                const checkResp = await fetch(`/hls/${cameraId}/index.m3u8`, {
-                    method: 'HEAD',
-                    cache: 'no-store'
-                });
-                streamAlreadyReady = checkResp.ok;
-            } catch (e) {
-                // Network error - stream not ready
-            }
-
-            if (streamAlreadyReady) {
-                console.log(`[MJPEG] ${cameraId}: HLS already publishing, skipping start`);
+            if (streamingHub === 'go2rtc') {
+                // go2rtc cameras: MediaMTX is configured to pull from go2rtc RTSP (port 8555).
+                // The mediaserver MJPEG endpoint connects to MediaMTX RTSP, which triggers the
+                // go2rtc pull automatically. No HLS startup needed — connect immediately.
+                console.log(`[MJPEG] ${cameraId}: go2rtc hub — skipping HLS poll, connecting to mediaserver directly`);
             } else {
-                console.log(`[MJPEG] ${cameraId}: Starting HLS first (required for mediaserver MJPEG)`);
-                try {
-                    const response = await fetch(`/api/stream/start/${cameraId}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ type: 'sub' })
-                    });
-                    if (!response.ok) {
-                        console.warn(`[MJPEG] ${cameraId}: HLS start returned ${response.status}`);
-                    } else {
-                        const data = await response.json();
-                        console.log(`[MJPEG] ${cameraId}: HLS started: ${data.stream_url}`);
+                // mediamtx cameras: FFmpeg publishes HLS+RTSP to MediaMTX. Poll until ready.
+                // NOTE: preWarmHLSStreams() in stream.js starts all HLS streams in parallel
+                // before calling startStream(), so this is usually a no-op on page load.
+                // Still needed for: manual restarts, fullscreen switches, error recovery.
 
-                        // Adaptive wait: poll MediaMTX until stream is ready instead of fixed 5s
-                        // If HLS already running (desktop keeps streams alive), this returns instantly
-                        const streamReady = await this.waitForMediaMTXStream(cameraId, 10000);
-                        if (streamReady) {
-                            console.log(`[MJPEG] ${cameraId}: MediaMTX stream ready`);
-                        } else {
-                            console.warn(`[MJPEG] ${cameraId}: MediaMTX poll timeout, trying MJPEG anyway`);
-                        }
-                    }
+                // Quick check if stream is already publishing (pre-warm succeeded or page reload)
+                let streamAlreadyReady = false;
+                try {
+                    const checkResp = await fetch(`/hls/${cameraId}/index.m3u8`, {
+                        method: 'HEAD',
+                        cache: 'no-store'
+                    });
+                    streamAlreadyReady = checkResp.ok;
                 } catch (e) {
-                    console.warn(`[MJPEG] ${cameraId}: Failed to start HLS: ${e.message}`);
-                    // Continue anyway - maybe HLS was already running
+                    // Network error - stream not ready
+                }
+
+                if (streamAlreadyReady) {
+                    console.log(`[MJPEG] ${cameraId}: HLS already publishing, skipping start`);
+                } else {
+                    console.log(`[MJPEG] ${cameraId}: Starting HLS first (required for mediaserver MJPEG)`);
+                    try {
+                        const response = await fetch(`/api/stream/start/${cameraId}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'sub' })
+                        });
+                        if (!response.ok) {
+                            console.warn(`[MJPEG] ${cameraId}: HLS start returned ${response.status}`);
+                        } else {
+                            const data = await response.json();
+                            console.log(`[MJPEG] ${cameraId}: HLS started: ${data.stream_url}`);
+
+                            // Adaptive wait: poll MediaMTX until stream is ready instead of fixed 5s
+                            // If HLS already running (desktop keeps streams alive), this returns instantly
+                            const streamReady = await this.waitForMediaMTXStream(cameraId, 10000);
+                            if (streamReady) {
+                                console.log(`[MJPEG] ${cameraId}: MediaMTX stream ready`);
+                            } else {
+                                console.warn(`[MJPEG] ${cameraId}: MediaMTX poll timeout, trying MJPEG anyway`);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`[MJPEG] ${cameraId}: Failed to start HLS: ${e.message}`);
+                        // Continue anyway - maybe HLS was already running
+                    }
                 }
             }
         }

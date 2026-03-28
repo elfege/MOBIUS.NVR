@@ -73,38 +73,18 @@ echo
 # ============================================================================
 echo -e "${YELLOW}Querying DB for camera streaming_hub configuration...${NC}"
 
-# Check for global hub override in nvr_settings.
-# If set, all cameras use that hub regardless of per-camera streaming_hub.
-GLOBAL_HUB=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
-    -c "SELECT value FROM nvr_settings WHERE key = 'streaming_hub_global';" 2>/dev/null | tr -d '[:space:]')
-
-if [[ -n "$GLOBAL_HUB" && "$GLOBAL_HUB" != "null" ]]; then
-    echo -e "${CYAN}Global hub override: ${GLOBAL_HUB} (overrides per-camera settings)${NC}"
-else
-    GLOBAL_HUB=""
-    echo -e "${CYAN}No global hub override — using per-camera streaming_hub${NC}"
-fi
-
-# Fetch all cameras from DB.
-# If global hub is set, use it for all cameras; otherwise use per-camera streaming_hub.
-if [[ -n "$GLOBAL_HUB" ]]; then
-    DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
-        -c "SELECT serial, COALESCE(name, serial), '${GLOBAL_HUB}'
-            FROM cameras ORDER BY name;" 2>/dev/null) || {
-        echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
-        exit 1
-    }
-else
-    DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
-        -c "SELECT serial,
-                   COALESCE(name, serial),
-                   COALESCE(streaming_hub, 'mediamtx')
-            FROM cameras
-            ORDER BY name;" 2>/dev/null) || {
-        echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
-        exit 1
-    }
-fi
+# Fetch all cameras from DB — serial and name only.
+# MediaMTX paths are always publisher mode regardless of streaming_hub.
+# The streaming_hub setting controls which hub FFmpeg targets, not MediaMTX path config.
+DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+    -c "SELECT serial,
+               COALESCE(name, serial),
+               COALESCE(streaming_hub, 'mediamtx')
+        FROM cameras
+        ORDER BY name;" 2>/dev/null) || {
+    echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
+    exit 1
+}
 
 if [[ -z "$DB_ROWS" ]]; then
     echo -e "${YELLOW}No cameras found in DB${NC}"
@@ -119,18 +99,17 @@ echo
 PATHS_SECTION="paths:"
 
 while IFS='|' read -r serial name hub; do
-    # Determine MediaMTX source based on streaming_hub:
-    #   go2rtc → MediaMTX pulls from go2rtc RTSP re-export (:8555)
-    #   mediamtx → FFmpeg pushes (publisher mode)
-    if [[ "$hub" == "go2rtc" ]]; then
-        SOURCE="rtsp://nvr-go2rtc:8555/${serial}"
-        HUB_LABEL="go2rtc→MediaMTX"
-    else
-        SOURCE="publisher"
-        HUB_LABEL="FFmpeg→MediaMTX"
-    fi
+    # All MediaMTX paths use publisher mode.
+    # MediaMTX waits for FFmpeg to push — it never pulls from go2rtc.
+    # go2rtc and MediaMTX are independent video hubs:
+    #   go2rtc cameras: cam → go2rtc → streams (MediaMTX path sits idle)
+    #   mediamtx cameras: cam → FFmpeg → MediaMTX → streams
+    # The streaming_hub setting controls which hub FFmpeg targets,
+    # not the MediaMTX path source.
+    SOURCE="publisher"
+    HUB_LABEL="${hub}"
 
-    echo "  - $name ($serial) [${HUB_LABEL}]"
+    echo "  - $name ($serial) [hub: ${HUB_LABEL}]"
 
     # Sub stream (grid view — transcoded low-res)
     PATHS_SECTION="${PATHS_SECTION}

@@ -161,6 +161,7 @@ def _insert_camera(record: dict) -> bool:
         return False
 
 
+
 def sync_cameras_json_to_db(cameras_json_path: str = './config/cameras.json') -> Tuple[int, int, int]:
     """
     Sync cameras.json with the database at app startup.
@@ -223,14 +224,40 @@ def sync_cameras_json_to_db(cameras_json_path: str = './config/cameras.json') ->
         )
         warnings = len(only_in_db)
 
-    already = len(json_serials & db_serials)
+    # For cameras that exist in both JSON and DB, sync infrastructure fields
+    # that the generate scripts need BEFORE the app starts (go2rtc_source,
+    # streaming_hub). These are the seed file's responsibility — runtime
+    # changes via UI update the DB directly and don't touch cameras.json.
+    INFRA_FIELDS = ['go2rtc_source', 'streaming_hub']
+    existing = json_serials & db_serials
+    infra_updated = 0
+    for serial in existing:
+        config = json_devices[serial]
+        updates = {}
+        for field in INFRA_FIELDS:
+            if field in config and config[field] is not None:
+                updates[field] = config[field]
+        if updates:
+            try:
+                resp = requests.patch(
+                    f"{POSTGREST_URL}/cameras",
+                    params={'serial': f'eq.{serial}'},
+                    json=updates,
+                    timeout=5
+                )
+                if resp.status_code in (200, 204):
+                    infra_updated += 1
+            except Exception as e:
+                logger.warning(f"Failed to sync infra fields for {serial}: {e}")
 
-    if migrated == 0 and warnings == 0:
+    already = len(existing)
+
+    if migrated == 0 and warnings == 0 and infra_updated == 0:
         logger.info(f"Camera sync complete: {already} cameras in sync, no changes needed")
     else:
         logger.info(
             f"Camera sync complete: {migrated} migrated, {already} already in DB, "
-            f"{warnings} warnings"
+            f"{infra_updated} infra-field updates, {warnings} warnings"
         )
 
     return (migrated, already, warnings)

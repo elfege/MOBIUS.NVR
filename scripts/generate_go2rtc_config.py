@@ -300,7 +300,7 @@ def main():
     # ── Query cameras with go2rtc_source ─────────────────────────────────────
     print(f"{CYAN}Querying cameras with go2rtc_source from DB...{NC}")
     rows = _psql(
-        "SELECT serial, COALESCE(name, serial), go2rtc_source "
+        "SELECT serial, COALESCE(name, serial), go2rtc_source, COALESCE(type, '') "
         "FROM cameras "
         "WHERE go2rtc_source IS NOT NULL AND go2rtc_source <> '' "
         "  AND streaming_hub = 'go2rtc' "
@@ -337,27 +337,41 @@ def main():
         '  # no env vars are needed in the nvr-go2rtc container environment.',
     ]
 
+    # Brand-level go2rtc credential keys (set via UI "Brand-Level" radio in go2rtc creds)
+    go2rtc_brand_key_map = {
+        'reolink': 'reolink_go2rtc',
+        'amcrest': 'amcrest_go2rtc',
+        'sv3c':    'sv3c_go2rtc',
+        'eufy':    'eufy_go2rtc',
+    }
+
     for row in rows:
         parts = row.split('|')
-        if len(parts) != 3:
+        if len(parts) != 4:
             print(f"{YELLOW}WARNING: Unexpected row format: {row}{NC}", file=sys.stderr)
             continue
-        serial, name, source = parts
+        serial, name, source, cam_type = parts
 
-        # Build per-camera substitution map: global subs + per-camera go2rtc credentials.
-        # Per-camera ${go2rtc_username} / ${go2rtc_password} take precedence — they are set
-        # via the UI Credentials tab and allow different credentials per camera.
-        # Falls back to legacy ${NVR_*} global placeholders if no per-camera creds are set.
+        # Build per-camera substitution map for ${go2rtc_username}/${go2rtc_password}.
+        # Resolution order:
+        #   1. Per-camera go2rtc credentials (serial, 'go2rtc') — set via UI per-camera
+        #   2. Brand-level go2rtc credentials (e.g. 'reolink_go2rtc', 'service') — set via UI brand-level
+        #   3. Legacy ${NVR_*} global placeholders — fallback from global service creds
         per_cam_subs = dict(subs)
         if serial in go2rtc_creds:
             user, pw = go2rtc_creds[serial]
             per_cam_subs['${go2rtc_username}'] = user
             per_cam_subs['${go2rtc_password}'] = pw
         else:
-            # No per-camera go2rtc creds — warn only if the source URL uses the placeholders
-            if '${go2rtc_username}' in source or '${go2rtc_password}' in source:
+            # Try brand-level go2rtc credentials
+            brand_key = go2rtc_brand_key_map.get(cam_type.lower(), '')
+            brand_cred = creds.get((brand_key, 'service'))
+            if brand_cred:
+                per_cam_subs['${go2rtc_username}'] = brand_cred[0]
+                per_cam_subs['${go2rtc_password}'] = brand_cred[1]
+            elif '${go2rtc_username}' in source or '${go2rtc_password}' in source:
                 print(f"{YELLOW}WARNING: {name} ({serial}) uses ${{go2rtc_username}}/${{go2rtc_password}} "
-                      f"but no per-camera go2rtc credentials are set in the DB{NC}", file=sys.stderr)
+                      f"but no per-camera or brand-level go2rtc credentials are set{NC}", file=sys.stderr)
 
         resolved = resolve_source(source, per_cam_subs)
         auto_lines.extend([

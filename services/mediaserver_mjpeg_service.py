@@ -184,22 +184,26 @@ class MediaServerMJPEGService:
 
         logger.info(f"MediaServer MJPEG Service initialized (MediaMTX: {mediamtx_host}:{mediamtx_rtsp_port})")
 
-    def _get_mediamtx_rtsp_url(self, camera_id: str) -> str:
+    def _get_rtsp_url(self, camera_id: str, camera_config: dict) -> str:
         """
-        Build MediaMTX RTSP URL for a camera's sub stream.
+        Build the RTSP URL for extracting MJPEG frames.
 
-        Uses the sub stream path (H.264 320x240) published by the dual-output FFmpeg.
-        The MediaServer MJPEG service will decode this and extract JPEG frames.
+        Routes to the correct streaming hub:
+          - go2rtc cameras: rtsp://nvr-go2rtc:8555/{camera_id}  (go2rtc re-export)
+          - mediamtx cameras: rtsp://nvr-packager:8554/{camera_id}  (MediaMTX sub stream)
+
+        go2rtc and MediaMTX are independent hubs. This service taps whichever hub
+        owns the camera — it never routes mediamtx through go2rtc or vice versa.
 
         Args:
             camera_id: Camera serial number
+            camera_config: Camera configuration dict (used for hub resolution)
 
         Returns:
-            RTSP URL for MediaMTX sub stream
+            RTSP URL for the camera's active hub
         """
-        # MediaMTX sub stream path (published by dual-output FFmpeg)
-        # This is H.264 encoded - FFmpeg will decode and extract JPEG frames
-        return f"rtsp://{self.mediamtx_host}:{self.mediamtx_rtsp_port}/{camera_id}"
+        from services.streaming_hub import get_rtsp_source_url
+        return get_rtsp_source_url(camera_id, camera_config)
 
     def start_capture(self, camera_id: str, camera_config: dict) -> bool:
         """
@@ -217,7 +221,7 @@ class MediaServerMJPEGService:
                 logger.debug(f"MediaServer MJPEG capture already running for {camera_id}")
                 return True
 
-            rtsp_url = self._get_mediamtx_rtsp_url(camera_id)
+            rtsp_url = self._get_rtsp_url(camera_id, camera_config)
             camera_name = camera_config.get('name', camera_id)
 
             capture_info = {

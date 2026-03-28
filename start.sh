@@ -45,6 +45,8 @@ if [[ -f ~/.bash_utils ]]; then
 	. ~/.bash_utils &>/dev/null
 fi
 
+
+
 # =============================================================================
 # Verify we're running from the project root
 # =============================================================================
@@ -54,6 +56,7 @@ if [[ ! -f docker-compose.yml ]] || [[ ! -f Dockerfile ]]; then
 	echo "Current:  $(pwd)"
 	exit 1
 fi
+
 
 # =============================================================================
 # Load .env (non-secret config: feature flags, ports, paths)
@@ -66,6 +69,13 @@ else
 	exit 1
 fi
 
+# =============================================================================
+# - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
+# =============================================================================
+if declare -f get_cameras_credentials >/dev/null 2>&1; then
+	get_cameras_credentials
+fi
+
 # Detect host IP early (needed for LAN-cache decision + container env).
 # Only export if detection succeeds — if it fails, docker compose falls back to .env value.
 _detected_ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' | head -1)
@@ -74,6 +84,7 @@ if [[ -n "$_detected_ip" ]]; then
 else
     echo -e "${YELLOW}WARNING: Could not auto-detect host IP via ip route. Using .env value: ${NVR_LOCAL_HOST_IP:-unset}${NC}"
 fi
+reolink://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@192.168.10.186
 
 echo "=========================================="
 echo "  Unified NVR - Container Startup"
@@ -120,9 +131,41 @@ set +a
 
 # =============================================================================
 # Run config update scripts (if they exist)
+# Several scripts query nvr-postgres directly. Start it early and wait for
+# readiness before running any DB-dependent config scripts.
 # =============================================================================
+_needs_postgres=false
+[[ -f scripts/update_mediamtx_paths.sh && -f packager/mediamtx.yml ]]       && _needs_postgres=true
+[[ -f scripts/generate_go2rtc_config.py && -f config/go2rtc.yaml ]]          && _needs_postgres=true
+[[ -f scripts/update_recording_settings.sh && -f config/recording_settings.json ]] && _needs_postgres=true
+
+if [[ "$_needs_postgres" == "true" ]]; then
+	echo ""
+	echo -e "${CYAN}Starting nvr-postgres early (required for config scripts)...${NC}"
+	docker compose up -d postgres
+	_pg_wait=0
+	_pg_timeout=60
+	until docker exec nvr-postgres pg_isready -U nvr_api -d nvr -q 2>/dev/null; do
+		sleep 1
+		(( _pg_wait++ ))
+		if [[ $_pg_wait -ge $_pg_timeout ]]; then
+			echo -e "${RED}ERROR: nvr-postgres did not become ready after ${_pg_timeout}s${NC}"
+			echo "  Check: docker logs nvr-postgres"
+			echo "  Container state: $(docker inspect --format='{{.State.Status}}' nvr-postgres 2>/dev/null || echo 'not found')"
+			exit 1
+		fi
+	done
+	echo -e "${GREEN}✓${NC} nvr-postgres ready"
+fi
+
+if [[ -f scripts/seed_credentials.py ]]; then
+	start_spinner 20 "$CYAN Seeding service credentials from env → DB"
+	venv/bin/python3 scripts/seed_credentials.py
+	stop_spinner
+fi
+
 if [[ -f scripts/update_mediamtx_paths.sh && -f packager/mediamtx.yml ]]; then
-	start_spinner 20 "$CYAN Appending packager/mediamtx.yml"
+	start_spinner 20 "$CYAN Updating packager/mediamtx.yml"
 	scripts/update_mediamtx_paths.sh >/dev/null
 	stop_spinner
 fi
@@ -133,9 +176,9 @@ if [[ -f scripts/update_neolink_config.sh && -f config/neolink.toml ]]; then
 	stop_spinner
 fi
 
-if [[ -f scripts/update_go2rtc_config.sh && -f config/go2rtc.yaml ]]; then
-	start_spinner 20 "$CYAN Updating config/go2rtc.yaml video relay streams"
-	scripts/update_go2rtc_config.sh >/dev/null
+if [[ -f scripts/generate_go2rtc_config.py && -f config/go2rtc.yaml ]]; then
+	start_spinner 20 "$CYAN Generating config/go2rtc.yaml video relay streams (DB credentials)"
+	venv/bin/python3 scripts/generate_go2rtc_config.py
 	stop_spinner
 fi
 

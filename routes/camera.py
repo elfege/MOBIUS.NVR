@@ -503,7 +503,7 @@ def api_camera_settings_update(camera_serial):
         'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
         'rtsp_input', 'rtsp_output', 'two_way_audio',
         'power_cycle_on_failure', 'rtsp', 'model', 'station',
-        'image_mirrored',
+        'image_mirrored', 'streaming_hub',
     }
     IMMUTABLE_KEYS = {'serial', 'camera_id', 'id'}
 
@@ -1174,46 +1174,55 @@ def api_camera_reboot(camera_serial):
 def api_camera_credentials_get(camera_serial):
     """
     Check if credentials exist for a camera (does NOT return actual passwords).
-    Returns: {has_credentials: true/false, username: "...", source: "db"|"env"|"none"}
+
+    Returns main camera credentials (per-camera or brand-level fallback) plus
+    go2rtc-specific credentials as a separate field.
+
+    Response shape:
+        {
+            has_credentials: bool,
+            username: str|null,
+            source: "db"|"none",
+            scope: "camera"|"brand",          # only present when has_credentials=true
+            go2rtc_credentials: {
+                has_credentials: bool,
+                username: str|null
+            }
+        }
     """
     from services.credentials import credential_db_service as cred_db
 
-    # Check DB
+    # ── Main camera credentials (per-camera first, brand-level fallback) ─────
+    main_result = {'has_credentials': False, 'username': None, 'source': 'none'}
+
     username, password = cred_db.get_credential(camera_serial, 'camera')
     if username and password:
-        return jsonify({
-            'has_credentials': True,
-            'username': username,
-            'source': 'db'
-        })
+        main_result = {'has_credentials': True, 'username': username, 'source': 'db', 'scope': 'camera'}
+    else:
+        camera = shared.camera_repo.get_camera(camera_serial)
+        if camera:
+            cam_type = camera.get('type', '').lower()
+            service_key_map = {
+                'reolink': 'reolink_api',
+                'amcrest': 'amcrest',
+                'sv3c': 'sv3c',
+                'unifi': 'unifi_protect',
+                'eufy': None  # Eufy uses per-camera only
+            }
+            service_key = service_key_map.get(cam_type)
+            if service_key:
+                username, password = cred_db.get_credential(service_key, 'service')
+                if username and password:
+                    main_result = {'has_credentials': True, 'username': username, 'source': 'db', 'scope': 'brand'}
 
-    # Check service-level credentials based on camera type
-    camera = shared.camera_repo.get_camera(camera_serial)
-    if camera:
-        cam_type = camera.get('type', '').lower()
-        service_key_map = {
-            'reolink': 'reolink_api',
-            'amcrest': 'amcrest',
-            'sv3c': 'sv3c',
-            'unifi': 'unifi_protect',
-            'eufy': None  # Eufy uses per-camera, already checked above
-        }
-        service_key = service_key_map.get(cam_type)
-        if service_key:
-            username, password = cred_db.get_credential(service_key, 'service')
-            if username and password:
-                return jsonify({
-                    'has_credentials': True,
-                    'username': username,
-                    'source': 'db',
-                    'scope': 'brand'
-                })
+    # ── go2rtc credentials (per-camera, credential_type='go2rtc') ────────────
+    go2rtc_user, go2rtc_pass = cred_db.get_credential(camera_serial, 'go2rtc')
+    go2rtc_result = {
+        'has_credentials': bool(go2rtc_user and go2rtc_pass),
+        'username': go2rtc_user if go2rtc_user else None
+    }
 
-    return jsonify({
-        'has_credentials': False,
-        'username': None,
-        'source': 'none'
-    })
+    return jsonify({**main_result, 'go2rtc_credentials': go2rtc_result})
 
 
 @camera_bp.route('/api/camera/<camera_serial>/credentials', methods=['PUT'])
@@ -1239,8 +1248,15 @@ def api_camera_credentials_put(camera_serial):
 
     cam_type = camera.get('type', '').lower()
     scope = data.get('scope', 'camera')
+    vendor = cam_type if cam_type in ('eufy', 'reolink', 'unifi', 'amcrest', 'sv3c') else 'system'
 
-    if scope == 'brand':
+    if scope == 'go2rtc':
+        # Per-camera go2rtc credentials — used by generate_go2rtc_config.py to resolve
+        # ${go2rtc_username} / ${go2rtc_password} placeholders in go2rtc_source URLs.
+        cred_key  = camera_serial
+        cred_type = 'go2rtc'
+        label     = f'{camera.get("name", camera_serial)} go2rtc credentials'
+    elif scope == 'brand':
         # Store as brand-level service credential
         vendor_key_map = {
             'reolink': 'reolink_api',
@@ -1249,15 +1265,13 @@ def api_camera_credentials_put(camera_serial):
             'unifi': 'unifi_protect',
             'eufy': 'eufy_bridge'
         }
-        cred_key = vendor_key_map.get(cam_type, cam_type)
+        cred_key  = vendor_key_map.get(cam_type, cam_type)
         cred_type = 'service'
-        label = f'{cam_type.title()} brand credentials'
+        label     = f'{cam_type.title()} brand credentials'
     else:
-        cred_key = camera_serial
+        cred_key  = camera_serial
         cred_type = 'camera'
-        label = f'{camera.get("name", camera_serial)} credentials'
-
-    vendor = cam_type if cam_type in ('eufy', 'reolink', 'unifi', 'amcrest', 'sv3c') else 'system'
+        label     = f'{camera.get("name", camera_serial)} credentials'
 
     success = cred_db.store_credential(
         credential_key=cred_key,

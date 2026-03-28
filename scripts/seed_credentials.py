@@ -32,9 +32,9 @@ except ImportError:
     sys.exit(1)
 
 
-# ── Credential map: (username_env, password_env) → (credential_key, credential_type)
+# ── Credential map: (username_env, password_env, credential_key, credential_type, vendor)
 CREDENTIAL_MAP = [
-    ('NVR_REOLINK_USERNAME', 'NVR_REOLINK_PASSWORD', 'reolink_admin', 'service'),
+    ('NVR_REOLINK_USERNAME', 'NVR_REOLINK_PASSWORD', 'reolink_admin', 'service', 'reolink'),
 ]
 
 
@@ -92,22 +92,105 @@ def _encrypt(plaintext: str) -> str:
 # ── Upsert ────────────────────────────────────────────────────────────────────
 
 def upsert_credential(credential_key: str, credential_type: str,
-                      username: str, password: str) -> None:
+                      username: str, password: str, vendor: str) -> None:
     user_enc = _encrypt(username)
     pass_enc = _encrypt(password)
     query = (
         "INSERT INTO camera_credentials "
-        "  (credential_key, credential_type, username_enc, password_enc) "
-        f" VALUES ('{credential_key}', '{credential_type}', '{user_enc}', '{pass_enc}') "
+        "  (credential_key, credential_type, vendor, username_enc, password_enc) "
+        f" VALUES ('{credential_key}', '{credential_type}', '{vendor}', '{user_enc}', '{pass_enc}') "
         "ON CONFLICT (credential_key, credential_type) DO UPDATE "
         "  SET username_enc = EXCLUDED.username_enc, "
-        "      password_enc = EXCLUDED.password_enc;"
+        "      password_enc = EXCLUDED.password_enc, "
+        "      vendor = EXCLUDED.vendor;"
     )
     _psql(query)
-    print(f"  {GREEN}✓{NC} {credential_key}/{credential_type} → seeded")
+    print(f"  {GREEN}✓{NC} {credential_key}/{credential_type}/{vendor} → seeded")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
+def seed_per_camera_go2rtc_credentials() -> int:
+    """
+    Seed per-camera go2rtc credentials for cameras that have go2rtc_source set
+    but no (serial, 'go2rtc') entry in camera_credentials yet.
+
+    Uses the camera's vendor type to look up the appropriate global service credential
+    and copies it as the per-camera go2rtc credential. Idempotent — NOT EXISTS guard
+    prevents overwriting credentials the user has set explicitly via the UI.
+
+    Camera type → global service credential key mapping:
+        reolink → reolink_api / service   (API user for rtsp://)
+        amcrest → amcrest / service
+        sv3c    → sv3c / service
+
+    Returns the number of per-camera entries seeded.
+    """
+    # Query cameras with go2rtc_source that lack per-camera go2rtc credentials
+    rows = _psql(
+        "SELECT c.serial, c.type FROM cameras c "
+        "WHERE c.go2rtc_source IS NOT NULL AND c.go2rtc_source <> '' "
+        "  AND c.streaming_hub = 'go2rtc' "
+        "  AND NOT EXISTS ("
+        "    SELECT 1 FROM camera_credentials cc "
+        "    WHERE cc.credential_key = c.serial AND cc.credential_type = 'go2rtc'"
+        "  );"
+    )
+
+    if not rows:
+        return 0
+
+    # Resolve global service credentials once
+    # Reolink: use admin credentials (reolink_admin), not API user (reolink_api).
+    # baichuan:// and reolink:// native protocols require the camera admin account.
+    # The admin creds are seeded first by the CREDENTIAL_MAP block above.
+    service_key_map = {
+        'reolink': ('reolink_admin', 'service', 'reolink'),
+        'amcrest': ('amcrest',       'service', 'amcrest'),
+        'sv3c':    ('sv3c',          'service', 'sv3c'),
+    }
+
+    seeded = 0
+    for row in rows:
+        parts = row.split('|')
+        if len(parts) != 2:
+            continue
+        serial, cam_type = parts
+        cam_type = cam_type.lower()
+
+        mapping = service_key_map.get(cam_type)
+        if not mapping:
+            print(f"  {YELLOW}SKIP{NC} {serial} — no global service credential mapping for type '{cam_type}'")
+            continue
+
+        svc_key, svc_type, vendor = mapping
+        svc_rows = _psql(
+            f"SELECT username_enc, password_enc FROM camera_credentials "
+            f"WHERE credential_key = '{svc_key}' AND credential_type = '{svc_type}';"
+        )
+        if not svc_rows:
+            print(f"  {YELLOW}SKIP{NC} {serial} — global service credential '{svc_key}/{svc_type}' not found in DB")
+            continue
+
+        svc_parts = svc_rows[0].split('|')
+        if len(svc_parts) != 2:
+            continue
+        user_enc, pass_enc = svc_parts
+
+        # Insert directly (already encrypted) — same ciphertext is fine since key is the same
+        query = (
+            "INSERT INTO camera_credentials "
+            "  (credential_key, credential_type, vendor, username_enc, password_enc, label) "
+            f" VALUES ('{serial}', 'go2rtc', '{vendor}', '{user_enc}', '{pass_enc}', "
+            f"         'go2rtc credentials for {serial} (seeded from {svc_key})') "
+            "ON CONFLICT (credential_key, credential_type) DO NOTHING;"
+        )
+        _psql(query)
+        print(f"  {GREEN}✓{NC} {serial} → seeded go2rtc credentials from {svc_key}/{svc_type}")
+        seeded += 1
+
+    return seeded
+
 
 def main():
     print(f"{CYAN}=== Seed service credentials from env → camera_credentials ==={NC}")
@@ -116,7 +199,7 @@ def main():
     seeded = 0
     skipped = 0
 
-    for user_env, pass_env, cred_key, cred_type in CREDENTIAL_MAP:
+    for user_env, pass_env, cred_key, cred_type, vendor in CREDENTIAL_MAP:
         username = os.environ.get(user_env, '').strip()
         password = os.environ.get(pass_env, '').strip()
 
@@ -126,11 +209,17 @@ def main():
             skipped += 1
             continue
 
-        upsert_credential(cred_key, cred_type, username, password)
+        upsert_credential(cred_key, cred_type, username, password, vendor)
         seeded += 1
 
     print()
-    print(f"{GREEN}✓{NC} Seeded {seeded} credential(s), skipped {skipped}")
+    print(f"{GREEN}✓{NC} Seeded {seeded} service credential(s), skipped {skipped}")
+
+    # ── Per-camera go2rtc credential seeding ──────────────────────────────────
+    print()
+    print(f"{CYAN}Seeding per-camera go2rtc credentials from global service creds...{NC}")
+    go2rtc_seeded = seed_per_camera_go2rtc_credentials()
+    print(f"{GREEN}✓{NC} {go2rtc_seeded} per-camera go2rtc credential(s) seeded")
 
 
 if __name__ == '__main__':

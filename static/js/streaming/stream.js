@@ -384,6 +384,10 @@ export class MultiStreamManager {
         this.setupEventListeners();
         this.updateStreamCount();
 
+        // Initialize the fullscreen navigation minimap.
+        // Grid layout is registered here (and on resize) while all tiles are visible.
+        this._initFullscreenMap();
+
         // Initialize iOS pagination if enabled
         if (this.iosPagination.enabled) {
             this.initIOSPagination();
@@ -1002,15 +1006,18 @@ export class MultiStreamManager {
                 }
             }
 
-            // Arrow key 2D navigation in fullscreen — mirrors the grid layout.
-            // ArrowLeft/Right navigate within the same row; ArrowUp/Down move between rows.
+            // Arrow key navigation in fullscreen: all four directions cycle through cameras in DOM order.
             if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
                 const $fullscreenItem = $('.stream-item.css-fullscreen');
                 if ($fullscreenItem.length > 0) {
                     e.preventDefault();
-                    const dirMap = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down' };
-                    console.log(`[Fullscreen] Arrow key navigation: ${e.key}`);
-                    this._navigateFullscreen2D(dirMap[e.key]);
+                    const cols = (this._gridLayout && this._gridLayout.cols) || 1;
+                    let step;
+                    if (e.key === 'ArrowRight')     step =  1;
+                    else if (e.key === 'ArrowLeft')  step = -1;
+                    else if (e.key === 'ArrowDown')  step =  cols;
+                    else                             step = -cols;   // ArrowUp
+                    this._navigateFullscreen(step);
                 }
             }
         });
@@ -1044,17 +1051,12 @@ export class MultiStreamManager {
             if (Math.max(absX, absY) < 60) return;
 
             // Require a 1.2:1 dominance ratio to avoid diagonal confusion
-            let dir;
-            if (absX >= absY * 1.2) {
-                dir = dx < 0 ? 'right' : 'left';   // swipe left → go right, swipe right → go left
-            } else if (absY >= absX * 1.2) {
-                dir = dy < 0 ? 'down' : 'up';       // swipe up → go down, swipe down → go up
-            } else {
-                return; // too diagonal
-            }
+            // Only handle horizontal swipes for now
+            if (absX < absY) return;
 
-            console.log(`[Fullscreen] Swipe navigation: dx=${dx.toFixed(0)}, dy=${dy.toFixed(0)}, dir=${dir}`);
-            this._navigateFullscreen2D(dir);
+            const step = dx < 0 ? 1 : -1;
+            console.log(`[Fullscreen] Swipe navigation: dx=${dx.toFixed(0)}, step=${step}`);
+            this._navigateFullscreen(step);
         });
 
         // Global emergency exit - triple-click anywhere to force exit fullscreen
@@ -1134,7 +1136,9 @@ export class MultiStreamManager {
         // HD toggle button (visible in expanded + fullscreen views)
         // Toggles between main (HD) and sub (SD) quality using the existing
         // camera-selector:quality-change event pipeline.
-        this.$container.on('click', '.stream-hd-btn', async (e) => {
+        // Bound to $(document) so it also fires when .stream-item is detached into a
+        // pinned floating window (the element is no longer inside this.$container).
+        $(document).on('click', '.stream-hd-btn', async (e) => {
             e.stopPropagation();
             const $btn = $(e.currentTarget);
             const $streamItem = $btn.closest('.stream-item');
@@ -1188,7 +1192,9 @@ export class MultiStreamManager {
         // Pin toggle button (visible in expanded + fullscreen views)
         // Persists as localStorage 'pinnedCamera' + DB 'pinned_camera'.
         // When pinned: camera auto-expands on reload, backdrop click blocked.
-        this.$container.on('click', '.stream-pin-btn', async (e) => {
+        // Bound to $(document) so it also fires when .stream-item is detached into a
+        // pinned floating window (the element is no longer inside this.$container).
+        $(document).on('click', '.stream-pin-btn', async (e) => {
             e.stopPropagation();
             const $btn = $(e.currentTarget);
             const $streamItem = $btn.closest('.stream-item');
@@ -2127,7 +2133,7 @@ export class MultiStreamManager {
                 const $img = $('<img>', {
                     class: 'stream-video stream-mjpeg-img stream-ws-mjpeg',
                     style: 'object-fit: cover; width: 100%; height: 100%;',
-                    alt: 'WebSocket MJPEG Stream'
+                    alt: ''
                 });
 
                 $video.before($img);
@@ -2695,7 +2701,7 @@ export class MultiStreamManager {
                 const $img = $('<img>', {
                     class: 'stream-video stream-mjpeg-img',
                     style: 'object-fit: cover; width: 100%; height: 100%;',
-                    alt: 'MJPEG Stream'
+                    alt: ''
                 });
 
                 $video.before($img);
@@ -3059,7 +3065,16 @@ export class MultiStreamManager {
             } else if (streamType === 'RTMP') {
                 await this.restartRTMPStream(cameraId, $streamItem, cameraType, streamType);
             } else if (streamType === 'WEBRTC') {
-                await this.restartWebRTCStream(cameraId, videoElement);
+                // If this camera uses go2rtc hub, route to go2rtc even when WEBRTC type
+                // is selected. The hub determines transport, not the user's preference.
+                const hub = $streamItem.data('streaming-hub') || 'mediamtx';
+                if (hub === 'go2rtc') {
+                    this.webrtcManager.stopStream(cameraId);
+                    await new Promise(r => setTimeout(r, 500));
+                    await this.webrtcManager.startGo2rtcStream(cameraId, videoElement);
+                } else {
+                    await this.restartWebRTCStream(cameraId, videoElement);
+                }
             } else if (streamType === 'GO2RTC') {
                 // go2rtc restart: stop then re-establish WebRTC via go2rtc API
                 this.webrtcManager.stopStream(cameraId);
@@ -3858,8 +3873,14 @@ export class MultiStreamManager {
                 await this._startMainStreamWithRetry(cameraId, videoEl, $streamItem, useWebRTC);
             }
 
-            // Pause (not stop) all other streams
+            // Pause (not stop) all other streams — portable devices only.
+            // On desktop, leaving other streams running avoids cold-start latency when
+            // navigating between cameras in fullscreen with arrow keys or swipes.
             this.pausedStreams = [];
+            if (!isPortableDevice()) {
+                console.log('[Fullscreen] Desktop: skipping stream pause for background cameras');
+                return;
+            }
             const $allStreamItems = $('.stream-item');
 
             for (let i = 0; i < $allStreamItems.length; i++) {
@@ -4090,7 +4111,7 @@ export class MultiStreamManager {
                     const $img = $('<img>', {
                         class: 'stream-video stream-mjpeg-img',
                         style: 'object-fit: cover; width: 100%; height: 100%;',
-                        alt: 'MJPEG Stream'
+                        alt: ''
                     });
                     $video.before($img);
                     $existingImg = $img;
@@ -4260,108 +4281,166 @@ export class MultiStreamManager {
      * User can then manually restart streams if needed.
      */
 
+    // ============================================================================
+    // FULLSCREEN NAVIGATION MAP
+    // Minimap overlay shown on arrow/swipe navigation in fullscreen.
+    // Grid layout is sampled outside of fullscreen (tiles visible) and cached.
+    // ============================================================================
+
     /**
-     * Navigate to an adjacent camera in fullscreen mode, using the live grid layout as a
-     * 2D reference. Supports Pac-Man wrapping on all four edges.
-     *
-     * Algorithm:
-     *   1. Sample bounding rects of all visible .stream-item tiles.
-     *   2. Cluster tiles into rows: tiles whose vertical centres are within ROW_TOLERANCE px
-     *      of each other are considered the same row (handles sub-pixel grid misalignment).
-     *   3. Sort rows top→bottom; tiles within each row left→right.
-     *   4. Find the current fullscreen camera in the 2D structure (row, col).
-     *   5. Resolve the neighbour in the requested direction with Pac-Man wrapping:
-     *        left / right  → stay on same row, wrap column index.
-     *        up   / down   → jump to adjacent row; select the tile whose horizontal
-     *                        centre is closest to the current tile\'s, then wrap row index.
-     *   6. forceExitFullscreen() (synchronous CSS removal) then openFullscreen() after 80 ms.
-     *
-     * @param {'left'|'right'|'up'|'down'} direction
+     * Create the map DOM element and register the grid layout.
+     * Called once on init. Also wires the resize listener to keep layout current.
      */
-    _navigateFullscreen2D(direction) {
-        const ROW_TOLERANCE = 30; // px — tiles within this vertical band share a logical row
+    _initFullscreenMap() {
+        // Create the overlay element and append to body (above everything)
+        this._$navMap = $('<div id="fullscreen-nav-map"></div>').appendTo('body');
+        this._navMapHideTimer = null;
 
-        // Build position snapshot of all rendered tiles
-        const tiles = [];
-        this.$container.find('.stream-item').each((_, el) => {
-            const rect = el.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return; // skip hidden tiles
-            tiles.push({ el, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 });
-        });
-
-        if (tiles.length === 0) return;
-
-        // Cluster into rows by vertical-centre proximity
-        const rows = [];
-        tiles.forEach(tile => {
-            const row = rows.find(r => Math.abs(r.cy - tile.cy) <= ROW_TOLERANCE);
-            if (row) {
-                row.tiles.push(tile);
-                row.cy = row.tiles.reduce((s, t) => s + t.cy, 0) / row.tiles.length;
-            } else {
-                rows.push({ cy: tile.cy, tiles: [tile] });
+        // Register layout now (DOM is rendered at this point via $(document).ready)
+        // and re-register on window resize so column count stays accurate.
+        const register = () => {
+            if ($('.stream-item.css-fullscreen').length === 0) {
+                this._registerGridLayout();
             }
+        };
+
+        // Delay the first capture slightly to ensure CSS layout has settled
+        setTimeout(register, 300);
+
+        let resizeDebounce;
+        $(window).on('resize.navmap', () => {
+            clearTimeout(resizeDebounce);
+            resizeDebounce = setTimeout(register, 250);
+        });
+    }
+
+    /**
+     * Snapshot the current grid layout (cols, container size, camera list).
+     * Must be called while all tiles are visible (not in fullscreen).
+     */
+    _registerGridLayout() {
+        const container = this.$container[0];
+        const colStr    = getComputedStyle(container).gridTemplateColumns;
+        // computed value is space-separated track sizes, e.g. "320px 320px 320px"
+        const cols = colStr && colStr !== 'none'
+            ? colStr.trim().split(/\s+/).length
+            : 3; // safe fallback
+
+        const cameras = [];
+        this.$container.find('.stream-item').each((_, el) => {
+            cameras.push({
+                serial: $(el).data('camera-serial'),
+                name:   $(el).data('camera-name') || '',
+            });
         });
 
-        rows.sort((a, b) => a.cy - b.cy);
-        rows.forEach(row => row.tiles.sort((a, b) => a.cx - b.cx));
+        this._gridLayout = {
+            cols,
+            width:   this.$container.width(),
+            height:  this.$container.height(),
+            cameras,
+        };
 
-        // Locate the current fullscreen camera
+        console.log(`[NavMap] Grid registered: ${cols} cols, ${cameras.length} cameras`);
+    }
+
+    /**
+     * Show (or refresh) the navigation map with the current camera highlighted.
+     * Fades in within 100ms. Schedules auto-hide 3s after last call, 2s fadeout.
+     * @param {string} currentSerial  Serial of the camera now in fullscreen
+     */
+    _showFullscreenMap(currentSerial) {
+        const $map = this._$navMap;
+        if (!$map || !this._gridLayout) return;
+
+        const { cols, width, cameras } = this._gridLayout;
+
+        // Map size is user-configurable (Settings slider → localStorage 'navMapSizePercent').
+        // Default 20%, range 10–60%.
+        const sizePct = Math.min(60, Math.max(10, parseInt(localStorage.getItem('navMapSizePercent') || '20'))) / 100;
+        const mapW = Math.round(width * sizePct);
+
+        $map.css({
+            width:  mapW + 'px',
+            '--nav-map-cols': cols,
+        });
+
+        // Rebuild cells
+        $map.empty();
+        cameras.forEach(cam => {
+            const isActive = cam.serial === currentSerial;
+            const label    = (cam.name || cam.serial).substring(0, 4).toUpperCase();
+
+            const $cell = $('<div class="nav-map-cell"></div>');
+            if (isActive) $cell.addClass('active');
+
+            // Snapshot image — loads async; hidden on error (CSS fallback = label only)
+            const $img = $(`<img src="/api/snap/${cam.serial}" alt="" draggable="false">`);
+            $img.on('error', () => $img.hide());
+            $cell.append($img);
+
+            // 4-char label
+            $cell.append(`<span class="nav-map-label">${label}</span>`);
+
+            // Current-position dot
+            if (isActive) $cell.append('<span class="nav-map-dot"></span>');
+
+            $map.append($cell);
+        });
+
+        // Fade in
+        $map.stop(true, true).css('display', 'grid').fadeTo(100, 1);
+
+        // Reset hide timer: 3s idle → 2s fadeout
+        clearTimeout(this._navMapHideTimer);
+        this._navMapHideTimer = setTimeout(() => {
+            $map.stop(true, true).fadeTo(2000, 0, () => $map.css('display', 'none'));
+        }, 3000);
+    }
+
+    /**
+     * Navigate to the next (step=1) or previous (step=-1) camera in DOM order.
+     * Wraps around at both ends.
+     * @param {number} step  +1 or -1
+     */
+    _navigateFullscreen(step) {
         const $current = $('.stream-item.css-fullscreen');
         if ($current.length === 0) return;
-        const currentEl = $current[0];
 
-        let currentRowIdx = -1, currentColIdx = -1;
-        rows.forEach((row, ri) => row.tiles.forEach((tile, ci) => {
-            if (tile.el === currentEl) { currentRowIdx = ri; currentColIdx = ci; }
-        }));
+        const $items = this.$container.find('.stream-item');
+        const count  = $items.length;
+        if (count < 2) return;
 
-        if (currentRowIdx === -1) {
-            console.warn('[Fullscreen] 2D nav: current camera not found in grid snapshot');
-            return;
-        }
+        const currentSerial = $current.data('camera-serial');
+        let currentIdx = -1;
+        $items.each((i, el) => {
+            if ($(el).data('camera-serial') === currentSerial) { currentIdx = i; return false; }
+        });
+        if (currentIdx === -1) return;
 
-        const currentRow = rows[currentRowIdx];
-        const currentCx  = currentRow.tiles[currentColIdx].cx;
-        let targetTile   = null;
-
-        switch (direction) {
-            case 'left':
-                targetTile = currentRow.tiles[(currentColIdx - 1 + currentRow.tiles.length) % currentRow.tiles.length];
-                break;
-            case 'right':
-                targetTile = currentRow.tiles[(currentColIdx + 1) % currentRow.tiles.length];
-                break;
-            case 'up': {
-                const targetRow = rows[(currentRowIdx - 1 + rows.length) % rows.length];
-                targetTile = targetRow.tiles.reduce((best, t) =>
-                    Math.abs(t.cx - currentCx) < Math.abs(best.cx - currentCx) ? t : best);
-                break;
-            }
-            case 'down': {
-                const targetRow = rows[(currentRowIdx + 1) % rows.length];
-                targetTile = targetRow.tiles.reduce((best, t) =>
-                    Math.abs(t.cx - currentCx) < Math.abs(best.cx - currentCx) ? t : best);
-                break;
-            }
-        }
-
-        if (!targetTile) return;
-
-        const $target    = $(targetTile.el);
+        const targetIdx = (currentIdx + step + count) % count;
+        const $target   = $items.eq(targetIdx);
         const cameraId   = $target.data('camera-serial');
         const name       = $target.data('camera-name');
         const cameraType = $target.data('camera-type');
         const streamType = $target.data('stream-type');
 
-        if (!cameraId || cameraId === $current.data('camera-serial')) return;
+        console.log(`[Fullscreen] Navigate ${step > 0 ? 'next' : 'prev'} → ${name} (${cameraId})`);
 
-        console.log(`[Fullscreen] 2D nav ${direction} → ${name} (${cameraId})`);
+        // Show the navigation minimap with the incoming camera highlighted
+        this._showFullscreenMap(cameraId);
 
-        // forceExitFullscreen removes css-fullscreen synchronously — openFullscreen's
-        // "already in fullscreen" guard will not block the subsequent call.
-        this.forceExitFullscreen();
-        setTimeout(() => this.openFullscreen(cameraId, name, cameraType, streamType), 80);
+        // Direct minimal exit — do NOT use forceExitFullscreen() here.
+        // forceExitFullscreen() schedules a deferred closeFullscreen() at +500ms which would
+        // strip the css-fullscreen class from the *new* camera (opened at +80ms), leaving
+        // the user with nothing in fullscreen.
+        $current.removeClass('css-fullscreen');
+        localStorage.removeItem('fullscreenCameraSerial');
+        this.setupLayout();
+        this._fullscreenProcessing = false;
+        window._fullscreenLocked = false;
+
+        this.openFullscreen(cameraId, name, cameraType, streamType);
     }
 
     forceExitFullscreen() {

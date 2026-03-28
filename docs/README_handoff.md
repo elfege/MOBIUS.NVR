@@ -1654,3 +1654,101 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 **File:** `static/css/components/camera-selector.css`
 
+---
+
+## Session: March 28, 2026 (03:00–05:30 EDT) — go2rtc Credential Resolution + Dual-Hub Independence
+
+### Root Cause: All go2rtc Cameras Showing "Signal Lost"
+
+**Diagnosis:** go2rtc WRN logs showed `${ENV_VAR}` not resolved in go2rtc.yaml. `secrets.env` is intentionally truncated to 0 bytes by `start.sh` after startup — go2rtc container never sees NVR_* env vars. Only Cat Feeders (Neolink, no credentials in URL) worked.
+
+**Fix strategy:** DB-centered credential resolution — Python script decrypts camera credentials from DB at startup time, writes resolved values directly into go2rtc.yaml. No env vars needed in go2rtc container.
+
+### Files Changed
+
+**`scripts/generate_go2rtc_config.py`** (NEW — replaces `update_go2rtc_config.sh`)
+- Standalone Python script, runs at startup before `docker compose up`
+- Queries `nvr_settings` for `NVR_SECRET_KEY` (env var fallback, DB primary)
+- Loads all rows from `camera_credentials` via direct psql, decrypts AES-256-GCM
+- Builds substitution map for `${ENV_VAR}` placeholders → actual credential values
+- Credential mapping: eufy_bridge, reolink_api, sv3c, amcrest → username/password pairs
+- Queries cameras with non-null `go2rtc_source`, resolves placeholders, writes go2rtc.yaml
+- Preserves static section (up to `# ===` separator before `# VIDEO RELAY STREAMS`)
+- Requires `pycryptodomex` installed in `venv/`
+
+**`scripts/update_go2rtc_config.sh`** — DELETED (replaced by generate_go2rtc_config.py)
+
+**`start.sh`**
+- Added postgres-first startup block: starts `nvr-postgres` early, waits for `pg_isready` before running any DB-dependent config scripts
+- Updated go2rtc config call from bash script to: `venv/bin/python3 scripts/generate_go2rtc_config.py`
+- Block covers: update_mediamtx_paths.sh, generate_go2rtc_config.py, update_recording_settings.sh
+
+**`scripts/update_mediamtx_paths.sh`**
+- Removed go2rtc pulling: MediaMTX no longer generates `source: rtsp://nvr-go2rtc:8555/{serial}`
+- All MediaMTX paths now use `source: publisher` regardless of streaming_hub
+- Dual-hub independence restored: go2rtc and MediaMTX are completely separate video hubs
+
+**`services/mediaserver_mjpeg_service.py`**
+- Renamed `_get_mediamtx_rtsp_url()` → `_get_rtsp_url(camera_id, camera_config)`
+- Now uses `streaming_hub.get_rtsp_source_url()` to route to correct hub (go2rtc or MediaMTX)
+
+**`static/js/streaming/mjpeg-stream.js`**
+- Added `streamingHub` from `streamItem.dataset.streamingHub`
+- For go2rtc cameras: skip HLS readiness poll entirely, connect to mediaserver MJPEG directly
+- For mediamtx cameras: existing HLS polling logic unchanged
+
+**`~/.bash_utils`** (host, not in repo)
+- Added `docker_psql <container> <user> <database>` — generic, reusable DB shell function
+- Added `nvr_db()` — wrapper: `docker_psql nvr-postgres nvr_api nvr`
+- Uses PSQLRC technique to run `\dt public.*` at logon then stay interactive
+
+**`~/.bash_aliases`** (host, not in repo)
+- Added `nvrdb` alias: `goto --dirname=0_MOBIUS.NVR --ssh-alias=dellserver --cmd="source ~/.bash_utils && nvr_db"`
+
+### Pending After Restart
+- Run `./start.sh` to verify postgres-first startup + generate_go2rtc_config.py resolving credentials
+- Verify go2rtc connects to all 18 cameras (credentials resolved, no more `${ENV_VAR}`)
+- Verify MediaMTX logs no longer show go2rtc pull attempts
+
+### Key Architectural Decisions
+- **Dual-hub independence**: MediaMTX NEVER pulls from go2rtc for video. Both hubs are separate. MediaMTX waits for FFmpeg to push (`source: publisher`).
+- **DB-centered credential resolution**: NVR_SECRET_KEY lives in `nvr_settings` table (not `.env`). Camera credentials AES-256-GCM in `camera_credentials`. Resolved at startup by generate script.
+- **nvr_settings table**: Only 3 rows — NVR_SECRET_KEY, TRUSTED_NETWORK_ENABLED, streaming_hub_global. Not iterated in UI.
+
+---
+
+
+---
+
+## Session: March 28, 2026 (05:00–07:00 EDT) — go2rtc credential resolution + per-camera credential plan
+
+### Committed (f4463c8)
+- `generate_go2rtc_config.py`: only generates for `streaming_hub='go2rtc'` cameras (was all 18, now correct)
+- `seed_credentials.py`: seeds `reolink_admin|service` from AWS env vars at startup
+- `start.sh`: fixed postgres service name, added timeout+diagnostics, calls seed script
+- `update_mediamtx_paths.sh`: all paths = `source: publisher` — dual-hub independence restored
+- `mediaserver_mjpeg_service.py`: uses `streaming_hub.get_rtsp_source_url()`
+- `mjpeg-stream.js`: skip HLS poll for go2rtc cameras
+- Migration 023: `credential_type` CHECK expanded to include `'go2rtc'`
+
+### Key findings this session
+- `streaming_hub_global='go2rtc'` in nvr_settings caused ALL cameras to route to go2rtc — root cause of all streams dead
+- `eufy://` = Eufy cloud/P2P — WAN blocked, AND token changes every 30 days with MFA → dead end. Use `rtsp://` direct local
+- Cat Feeders: go2rtc has native `baichuan://` protocol — test with `baichuan://admin:TarTo56))#FatouiiDRtu@192.168.10.123`
+- Reolink non-E1: can use `reolink://` (native, admin creds, adds motion events) OR `rtsp://` (API creds)
+- All Reolink cameras share same admin and API credentials
+
+### TODO — Per-camera go2rtc credentials (plan approved, implementation started)
+Plan: `/home/elfege/.claude/plans/validated-brewing-treasure.md`
+Steps remaining (backend + frontend + generate script update):
+
+- [ ] `routes/camera.py`: GET returns `go2rtc_credentials` field; PUT handles `scope='go2rtc'`
+- [ ] `camera-settings-form.js`: go2rtc Credentials section in Credentials tab (only when go2rtc_source set)
+- [ ] `camera-settings-form.js`: protocol selector + eufy warning in Advanced tab
+- [ ] `generate_go2rtc_config.py`: `load_go2rtc_credentials()` + per-camera `${go2rtc_username}/${go2rtc_password}` resolution
+- [ ] `seed_credentials.py`: seed per-camera `'go2rtc'` entries from global service creds (idempotent)
+
+### Note for next session
+- `./deploy.sh` (all flags, no prompts) or `./start.sh` can be run freely
+- Migration 023 will apply automatically on next `./start.sh`
+- Current state: mediamtx hub working for all cameras; go2rtc hub only for Cat Feeders (Neolink timeout — needs baichuan:// test)

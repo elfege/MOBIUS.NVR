@@ -934,6 +934,26 @@ export class RecordingSettingsForm {
         $('#advanced-fields-loading').hide();
         $container.show();
         $('#advanced-actions').show();
+
+        // ── Attach go2rtc protocol helper handlers (must be after DOM insert) ──
+        const self = this;
+        $('#go2rtc-apply-template-btn').on('click', function() {
+            const $select = $('#go2rtc-protocol-select');
+            const scheme    = $select.val();
+            const cameraType = $select.data('camera-type') || '';
+            const host      = $select.data('camera-host') || '{host}';
+            const template  = self._getGo2rtcTemplate(scheme, cameraType, host);
+            $('[data-adv-key="go2rtc_source"]').val(template);
+            console.log(`[Protocol Helper] Applied template: ${template}`);
+        });
+        $('#go2rtc-protocol-select').on('change', function() {
+            const scheme = $(this).val();
+            if (scheme === 'eufy') {
+                $('#go2rtc-eufy-warning').slideDown(200);
+            } else {
+                $('#go2rtc-eufy-warning').slideUp(200);
+            }
+        });
     }
 
     // =========================================================================
@@ -1207,26 +1227,6 @@ export class RecordingSettingsForm {
             await self._saveAdvancedSettings();
         });
 
-        // go2rtc protocol helper — delegated (rendered async with advanced fields)
-        // Show/hide eufy warning when protocol dropdown changes
-        form.on('change', '#go2rtc-protocol-select', function() {
-            const scheme = $(this).val();
-            if (scheme === 'eufy') {
-                $('#go2rtc-eufy-warning').slideDown(200);
-            } else {
-                $('#go2rtc-eufy-warning').slideUp(200);
-            }
-        });
-
-        // Apply template button — writes the URL template into the go2rtc_source input
-        form.on('click', '#go2rtc-apply-template-btn', function() {
-            const $select   = $('#go2rtc-protocol-select');
-            const scheme    = $select.val();
-            const cameraType = $select.data('camera-type') || '';
-            const host      = $select.data('camera-host') || '{host}';
-            const template  = self._getGo2rtcTemplate(scheme, cameraType, host);
-            $('[data-adv-key="go2rtc_source"]').val(template);
-        });
     }
 
     // =========================================================================

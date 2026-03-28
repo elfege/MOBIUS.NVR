@@ -431,11 +431,12 @@ class CameraRepository:
         # Determine if this is a direct DB column or goes into extra_config
         db_columns = {
             'serial', 'name', 'type', 'camera_id', 'host', 'mac',
-            'packager_path', 'stream_type', 'rtsp_alias', 'max_connections',
-            'onvif_port', 'power_supply', 'hidden', 'ui_health_monitor',
-            'reversed_pan', 'reversed_tilt', 'notes', 'power_supply_device_id',
-            'true_mjpeg', 'capabilities', 'll_hls', 'mjpeg_snap', 'neolink',
-            'player_settings', 'rtsp_input', 'rtsp_output', 'two_way_audio',
+            'packager_path', 'stream_type', 'streaming_hub', 'go2rtc_source',
+            'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
+            'hidden', 'ui_health_monitor', 'reversed_pan', 'reversed_tilt',
+            'notes', 'power_supply_device_id', 'true_mjpeg', 'capabilities',
+            'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
+            'rtsp_input', 'rtsp_output', 'two_way_audio',
             'power_cycle_on_failure',
         }
 

@@ -1,52 +1,46 @@
 #!/bin/bash
 #
 # update_go2rtc_config.sh
-# Syncs go2rtc.yaml video relay streams with ALL cameras from cameras.json
+# Regenerates the auto-generated section of go2rtc.yaml from the DB cameras table.
 #
 # Called by start.sh before container startup.
+#
+# Source of truth: DB cameras table (go2rtc_source column).
+# cameras.json is legacy/export-import only — not read by this script.
 #
 # go2rtc.yaml has two sections:
 #   1. STATIC (top): API settings, RTSP/WebRTC ports, ONVIF backchannel streams,
 #      Eufy P2P entry for doorbell. Hand-maintained — NOT touched by this script.
 #
 #   2. AUTO-GENERATED (bottom): Video relay streams for all cameras that have
-#      a go2rtc_source field in cameras.json.
-#      Source URL format uses ${ENV_VAR} for credentials (go2rtc substitutes at runtime).
+#      a non-null go2rtc_source in the DB. The ${ENV_VAR} placeholders in the
+#      source URL are resolved by go2rtc at runtime from docker-compose env vars.
 #
-# The boundary between sections is the marker line:
-#   "# VIDEO RELAY STREAMS"
-# Everything above (inclusive of marker header) is preserved.
-# Everything below the marker block is regenerated.
+# Boundary marker: "# VIDEO RELAY STREAMS"
+# Everything above (inclusive) is preserved; everything below is regenerated.
 #
-# Source URL examples by type:
+# Source URL formats stored in DB (go2rtc_source column):
 #   Neolink/Baichuan:  rtsp://neolink:8554/{serial}/mainStream
 #   Reolink RTSP:      rtsp://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@{host}/h264Preview_01_main
 #   Eufy:              eufy://${NVR_EUFY_BRIDGE_USERNAME}:${NVR_EUFY_BRIDGE_PASSWORD}@{serial}
-#   Amcrest:           rtsp://${NVR_AMCREST_LOBBY_USERNAME}:${NVR_AMCREST_LOBBY_PASSWORD}@{host}/cam/realmonitor?channel=1&subtype=0
+#   Amcrest:           rtsp://${NVR_AMCREST_LOBBY_USERNAME}:${NVR_AMCREST_LOBBY_PASSWORD}@{host}/...
 #   SV3C:              rtsp://admin:${NVR_SV3C_PASSWORD}@{host}:554/stream1
-#   UniFi:             null (token-based, not configured here)
+#   UniFi:             NULL (token-based auth, handled separately)
 #
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-CAMERAS_JSON="${PROJECT_DIR}/config/cameras.json"
 GO2RTC_YAML="${PROJECT_DIR}/config/go2rtc.yaml"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-echo -e "${CYAN}Updating go2rtc.yaml video relay streams...${NC}"
-
-if [[ ! -f "$CAMERAS_JSON" ]]; then
-    echo -e "${RED}Error: cameras.json not found at $CAMERAS_JSON${NC}"
-    exit 1
-fi
+echo -e "${CYAN}Updating go2rtc.yaml video relay streams from DB...${NC}"
 
 if [[ ! -f "$GO2RTC_YAML" ]]; then
     echo -e "${RED}Error: go2rtc.yaml not found at $GO2RTC_YAML${NC}"
@@ -54,33 +48,41 @@ if [[ ! -f "$GO2RTC_YAML" ]]; then
     exit 1
 fi
 
-# Extract all cameras that have a non-null go2rtc_source field.
-# go2rtc_source is the URL template go2rtc uses to connect to the camera.
-# The ${ENV_VAR} substitutions in the URL are resolved by go2rtc at runtime
-# from environment variables injected by docker-compose.
-CAMERAS=$(jq -r '
-    .devices | to_entries[] |
-    select(.value.go2rtc_source != null and .value.go2rtc_source != "") |
-    {
-        serial: .key,
-        name: .value.name,
-        source: .value.go2rtc_source
-    } | @json
-' "$CAMERAS_JSON")
+# ============================================================================
+# Fetch camera data from DB via docker exec psql
+# ============================================================================
+# Query: serial, name, go2rtc_source for all cameras with a configured source.
+# Output: tab-separated rows (psql -A -t = unaligned, tuples-only).
+DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+    -c "SELECT serial, COALESCE(name, serial), go2rtc_source
+        FROM cameras
+        WHERE go2rtc_source IS NOT NULL AND go2rtc_source <> ''
+        ORDER BY name;" 2>/dev/null) || {
+    echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
+    exit 1
+}
 
-# Marker line separating static from auto-generated section
+if [[ -z "$DB_ROWS" ]]; then
+    echo -e "${YELLOW}No cameras with go2rtc_source found in DB — nothing to generate.${NC}"
+    CAMERA_COUNT=0
+else
+    CAMERA_COUNT=$(echo "$DB_ROWS" | grep -c '^' || true)
+fi
+
+echo -e "${CYAN}Found $CAMERA_COUNT camera(s) with go2rtc_source in DB${NC}"
+
+# ============================================================================
+# Preserve the static section of go2rtc.yaml
+# ============================================================================
 MARKER="# VIDEO RELAY STREAMS"
-
-# Find the line number of the marker
 MARKER_LINE=$(grep -n "$MARKER" "$GO2RTC_YAML" | head -1 | cut -d: -f1)
 
 if [[ -z "$MARKER_LINE" ]]; then
-    echo -e "${YELLOW}Warning: Marker '$MARKER' not found in go2rtc.yaml${NC}"
-    echo -e "${YELLOW}Appending video relay section to end of file${NC}"
+    echo -e "${YELLOW}Warning: Marker '$MARKER' not found in go2rtc.yaml — appending to end${NC}"
     STATIC_PART=$(cat "$GO2RTC_YAML")
 else
-    # Walk backwards from marker to find the start of the separator block
-    # (the "# ===" line immediately before the marker)
+    # Walk backwards from the marker to find the start of the separator block
+    # (the "  # ===" line immediately before the marker group)
     HEADER_START=$((MARKER_LINE - 1))
     while [[ $HEADER_START -gt 0 ]]; do
         LINE=$(sed -n "${HEADER_START}p" "$GO2RTC_YAML")
@@ -97,56 +99,34 @@ else
     fi
 fi
 
-# Count cameras
-if [[ -z "$CAMERAS" ]]; then
-    CAMERA_COUNT=0
-else
-    CAMERA_COUNT=$(echo "$CAMERAS" | wc -l)
-fi
-
-echo -e "${CYAN}Found $CAMERA_COUNT camera(s) with go2rtc_source configured${NC}"
-
-# Write the static section (preserved as-is)
+# ============================================================================
+# Write updated go2rtc.yaml
+# ============================================================================
 echo "$STATIC_PART" > "$GO2RTC_YAML"
 echo "" >> "$GO2RTC_YAML"
 
-# Write the auto-generated video relay section header
 cat >> "$GO2RTC_YAML" << 'EOF'
   # =========================================================================
   # VIDEO RELAY STREAMS (auto-generated by scripts/update_go2rtc_config.sh)
   # =========================================================================
   # DO NOT EDIT BELOW THIS LINE — changes will be overwritten on restart
   #
-  # Each camera with a go2rtc_source in cameras.json gets an entry here.
-  # go2rtc connects to the camera (single consumer per camera) and re-exports:
-  #   - WebRTC → browser (low-latency, DTLS-SRTP for iOS)
+  # Source of truth: DB cameras.go2rtc_source column.
+  # go2rtc connects to each camera (single consumer) and re-exports:
+  #   - WebRTC → browser (DTLS-SRTP, works on iOS)
   #   - RTSP :8555/{serial} → FFmpeg for recording + motion detection
-  #   - HLS :1984/api/... → iOS fallback if WebRTC fails
+  #   - HLS :1984/ → iOS fallback if WebRTC fails
   #
-  # Credential placeholders (${ENV_VAR}) are resolved by go2rtc at runtime
-  # from environment variables injected by docker-compose.
-  #
-  # Source URL formats:
-  #   Neolink/Baichuan:  rtsp://neolink:8554/{serial}/mainStream
-  #   Reolink RTSP:      rtsp://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@{host}/h264Preview_01_main
-  #   Eufy P2P:          eufy://${NVR_EUFY_BRIDGE_USERNAME}:${NVR_EUFY_BRIDGE_PASSWORD}@{serial}
-  #   Amcrest:           rtsp://${NVR_AMCREST_LOBBY_USERNAME}:${NVR_AMCREST_LOBBY_PASSWORD}@{host}/...
-  #   SV3C:              rtsp://admin:${NVR_SV3C_PASSWORD}@{host}:554/stream1
+  # ${ENV_VAR} placeholders are resolved by go2rtc at runtime from env vars.
 EOF
 
-# Add each camera as a video relay stream
-if [[ -n "$CAMERAS" ]]; then
-    echo "$CAMERAS" | while read -r camera_json; do
-        serial=$(echo "$camera_json" | jq -r '.serial')
-        name=$(echo "$camera_json" | jq -r '.name')
-        source=$(echo "$camera_json" | jq -r '.source')
-
+if [[ -n "$DB_ROWS" ]]; then
+    while IFS='|' read -r serial name source; do
         printf "\n  # %s (%s)\n" "$name" "$serial" >> "$GO2RTC_YAML"
         printf "  %s:\n" "$serial" >> "$GO2RTC_YAML"
         printf '    - "%s"\n' "$source" >> "$GO2RTC_YAML"
-
         echo -e " ${GREEN}+${NC} $name ($serial)"
-    done
+    done <<< "$DB_ROWS"
 fi
 
 echo -e "${GREEN}Done! go2rtc.yaml updated with $CAMERA_COUNT video relay stream(s)${NC}"

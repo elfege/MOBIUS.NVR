@@ -224,19 +224,37 @@ def sync_cameras_json_to_db(cameras_json_path: str = './config/cameras.json') ->
         )
         warnings = len(only_in_db)
 
-    # For cameras that exist in both JSON and DB, sync infrastructure fields
-    # that the generate scripts need BEFORE the app starts (go2rtc_source,
-    # streaming_hub). These are the seed file's responsibility — runtime
-    # changes via UI update the DB directly and don't touch cameras.json.
+    # For cameras that exist in both JSON and DB, seed infrastructure fields
+    # (go2rtc_source, streaming_hub) from cameras.json ONLY when the DB value
+    # is NULL or empty. This ensures:
+    #   - First-time setup: cameras.json seeds the DB
+    #   - UI changes: preserved across restarts (DB is source of truth)
+    #   - cameras.json edits: only take effect if DB field was never set
     INFRA_FIELDS = ['go2rtc_source', 'streaming_hub']
     existing = json_serials & db_serials
     infra_updated = 0
+
+    # Fetch current DB values for infra fields
+    try:
+        resp = requests.get(
+            f"{POSTGREST_URL}/cameras",
+            params={'select': ','.join(['serial'] + INFRA_FIELDS)},
+            timeout=5
+        )
+        db_infra = {row['serial']: row for row in resp.json()} if resp.status_code == 200 else {}
+    except Exception:
+        db_infra = {}
+
     for serial in existing:
         config = json_devices[serial]
+        db_row = db_infra.get(serial, {})
         updates = {}
         for field in INFRA_FIELDS:
-            if field in config and config[field] is not None:
-                updates[field] = config[field]
+            json_val = config.get(field)
+            db_val = db_row.get(field)
+            # Only seed from JSON if DB is NULL/empty and JSON has a value
+            if (db_val is None or db_val == '') and json_val:
+                updates[field] = json_val
         if updates:
             try:
                 resp = requests.patch(
@@ -247,8 +265,9 @@ def sync_cameras_json_to_db(cameras_json_path: str = './config/cameras.json') ->
                 )
                 if resp.status_code in (200, 204):
                     infra_updated += 1
+                    logger.info(f"  Seeded infra fields for {serial}: {list(updates.keys())}")
             except Exception as e:
-                logger.warning(f"Failed to sync infra fields for {serial}: {e}")
+                logger.warning(f"Failed to seed infra fields for {serial}: {e}")
 
     already = len(existing)
 

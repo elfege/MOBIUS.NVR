@@ -28,6 +28,7 @@ import traceback
 import time
 from threading import Thread
 
+import psycopg2
 import requests
 from flask import Blueprint, jsonify, request, Response
 from flask_login import login_required, current_user
@@ -130,26 +131,33 @@ def api_put_camera_order():
         return jsonify({'error': 'order must be an array of camera serials'}), 400
 
     try:
-        # Upsert one row per camera with its new display_order index
-        rows = [
-            {
-                'user_id': current_user.id,
-                'camera_serial': serial,
-                'display_order': idx
-            }
-            for idx, serial in enumerate(order)
-        ]
-        response = shared._postgrest_session.post(
-            f"{shared.POSTGREST_URL}/user_camera_preferences",
-            json=rows,
-            headers={'Prefer': 'resolution=merge-duplicates'},
-            timeout=5
+        # Direct psycopg2 upsert — handles the NOT NULL preferred_stream_type
+        # constraint by pulling the camera's default stream_type for new rows.
+        # ON CONFLICT preserves existing preferred_stream_type, only updates display_order.
+        conn = psycopg2.connect(
+            host=os.getenv('POSTGRES_HOST', 'postgres'),
+            port=os.getenv('POSTGRES_PORT', '5432'),
+            dbname=os.getenv('POSTGRES_DB', 'nvr'),
+            user=os.getenv('POSTGRES_USER', 'nvr_api'),
+            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+            connect_timeout=5
         )
-        if response.status_code in (200, 201):
-            return jsonify({'status': 'saved', 'count': len(rows)})
-        logger.error(f"Failed to save camera order: {response.status_code} {response.text}")
-        return jsonify({'error': 'Failed to save order'}), 500
-    except requests.RequestException as e:
+        conn.autocommit = True
+        cur = conn.cursor()
+        for idx, serial in enumerate(order):
+            cur.execute("""
+                INSERT INTO user_camera_preferences
+                    (user_id, camera_serial, preferred_stream_type, display_order)
+                SELECT %s, %s, stream_type, %s
+                FROM cameras WHERE serial = %s
+                ON CONFLICT (user_id, camera_serial)
+                DO UPDATE SET display_order = EXCLUDED.display_order,
+                              updated_at = NOW()
+            """, (current_user.id, serial, idx, serial))
+        cur.close()
+        conn.close()
+        return jsonify({'status': 'saved', 'count': len(order)})
+    except Exception as e:
         logger.error(f"Error saving camera order: {e}")
         return jsonify({'error': str(e)}), 500
 
@@ -1219,7 +1227,8 @@ def api_camera_credentials_get(camera_serial):
     go2rtc_user, go2rtc_pass = cred_db.get_credential(camera_serial, 'go2rtc')
     go2rtc_result = {
         'has_credentials': bool(go2rtc_user and go2rtc_pass),
-        'username': go2rtc_user if go2rtc_user else None
+        'username': go2rtc_user if go2rtc_user else None,
+        'password': go2rtc_pass if go2rtc_pass else None
     }
 
     return jsonify({**main_result, 'go2rtc_credentials': go2rtc_result})

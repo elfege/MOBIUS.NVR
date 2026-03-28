@@ -9,7 +9,7 @@
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/the_eye.png') }}">
 
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/recording-modal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/camera-settings-modal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/timeline-modal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/storage-status.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/hubitat-picker.css') }}">
@@ -365,7 +365,7 @@
             {% if info.stream_type == 'MJPEG' or info.stream_type == 'mjpeg_proxy' %}
 
             <!-- MJPEG Stream (uses img element) -->
-            <img class="stream-video" style="object-fit: cover; width: 100%; height: 100%;" alt="MJPEG Stream">
+            <img class="stream-video" style="object-fit: cover; width: 100%; height: 100%;" alt="">
             {% else %}
             <!-- HLS Stream (uses video element) -->
             <video class="stream-video" muted playsinline></video>
@@ -580,18 +580,18 @@
                     {% endif %}
                 </div>
                 <!-- Stream type selector row -->
+                {% set hub = info.get('streaming_hub', 'mediamtx') %}
                 <div class="control-row stream-type-row" data-camera-serial="{{ serial }}">
                     <span class="stream-type-current-label">Type:</span>
                     <button class="stream-type-option" data-type="WEBRTC">WebRTC</button>
+                    {% if hub != 'go2rtc' %}
                     <button class="stream-type-option" data-type="HLS">HLS</button>
                     <button class="stream-type-option" data-type="LL_HLS">LL-HLS</button>
+                    {% endif %}
                     <button class="stream-type-option" data-type="MJPEG">MJPEG</button>
-                    {% if info.type == 'reolink' %}
+                    {% if hub != 'go2rtc' and info.type == 'reolink' %}
                     <button class="stream-type-option" data-type="NEOLINK">Neolink</button>
                     <button class="stream-type-option" data-type="NEOLINK_LL_HLS">Neo-LLHLS</button>
-                    {% endif %}
-                    {% if info.stream_type == 'NEOLINK' or info.stream_type == 'NEOLINK_LL_HLS' or info.stream_type == 'GO2RTC' %}
-                    <button class="stream-type-option" data-type="GO2RTC" title="Low-latency via go2rtc (bypasses FFmpeg+MediaMTX)">go2rtc</button>
                     {% endif %}
                 </div>
             </div>
@@ -681,15 +681,23 @@
 
 
     <!-- Settings Overlay -->
-    <div id="settings-overlay" class="settings-overlay">
-        <div class="settings-panel">
-            <div class="settings-header">
+    <div id="global-settings-overlay" class="global-settings-overlay">
+        <div class="global-settings-panel">
+            <div class="global-settings-header">
                 <h2><i class="fas fa-cog"></i> Settings</h2>
-                <button id="settings-close" class="settings-close-btn">
+                <div id="global-settings-header-actions" style="display:flex; align-items:center; gap:8px; margin-left:auto; margin-right:12px;">
+                    <button id="global-settings-cancel" class="setting-btn setting-btn-secondary" style="font-size:12px; padding:5px 12px;">
+                        Cancel
+                    </button>
+                    <button id="global-settings-save" class="setting-btn setting-btn-primary" style="font-size:12px; padding:5px 12px;">
+                        <i class="fas fa-check"></i> Save
+                    </button>
+                </div>
+                <button id="global-settings-close" class="global-settings-close-btn">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="settings-content">
+            <div class="global-settings-content">
                 <!-- Settings will be dynamically populated here -->
             </div>
         </div>
@@ -700,6 +708,11 @@
         <div class="recording-modal-content">
             <div class="recording-modal-header">
                 <h3><i class="fas fa-cog"></i> Camera Settings - <span id="modal-camera-name"></span></h3>
+                <div class="recording-modal-header-actions" id="main-form-actions">
+                    <button type="button" class="recording-btn recording-btn-secondary" id="cancel-settings-btn">Cancel</button>
+                    <span class="settings-actions-divider">|</span>
+                    <button type="submit" form="recording-settings-form" class="recording-btn recording-btn-primary" id="save-settings-btn">Save</button>
+                </div>
                 <button class="recording-modal-close" aria-label="Close">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1001,11 +1014,11 @@
 
     <!-- Settings scripts (ES6 modules) - MUST be loaded as modules -->
     <script type="module" src="{{ url_for('static', filename='js/settings/fullscreen-handler.js') }}"></script>
-    <script type="module" src="{{ url_for('static', filename='js/settings/settings-ui.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/modals/global-settings-modal.js') }}?v={{ range(1,99999)|random }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/streaming/flv-stream.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/settings/settings-manager.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/modals/camera-settings-modal.js') }}"></script>
-    <script type="module" src="{{ url_for('static', filename='js/forms/recording-settings-form.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/forms/camera-settings-form.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/recording-controls.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/modals/timeline-playback-modal.js') }}"></script>

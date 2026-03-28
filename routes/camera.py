@@ -30,7 +30,7 @@ from threading import Thread
 
 import psycopg2
 import requests
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, session
 from flask_login import login_required, current_user
 
 import routes.shared as shared
@@ -1225,10 +1225,15 @@ def api_camera_credentials_get(camera_serial):
 
     # ── go2rtc credentials (per-camera, credential_type='go2rtc') ────────────
     go2rtc_user, go2rtc_pass = cred_db.get_credential(camera_serial, 'go2rtc')
+    # Only return password if user authenticated via password (not trusted device auto-login)
+    auth_method = session.get('auth_method', 'unknown')
+    show_password = auth_method == 'password'
+
     go2rtc_result = {
         'has_credentials': bool(go2rtc_user and go2rtc_pass),
         'username': go2rtc_user if go2rtc_user else None,
-        'password': go2rtc_pass if go2rtc_pass else None
+        'password': go2rtc_pass if (go2rtc_pass and show_password) else None,
+        'requires_reauth': not show_password
     }
 
     return jsonify({**main_result, 'go2rtc_credentials': go2rtc_result})
@@ -1393,3 +1398,31 @@ def api_camera_speaker_volume(camera_serial):
         'camera_serial': camera_serial,
         'speaker_volume': volume
     })
+
+
+# ===== Admin: Application Restart =====
+
+@camera_bp.route('/api/admin/restart', methods=['POST'])
+@csrf_exempt
+@login_required
+def api_admin_restart():
+    """
+    Trigger graceful application restart.
+
+    Used by the UI after streaming infrastructure changes (go2rtc_source,
+    streaming_hub) that require go2rtc.yaml regeneration and process restart.
+
+    The restart runs in a daemon thread: streams are stopped, bridges cleaned up,
+    then os._exit(1) lets Docker's restart policy restart the container.
+    """
+    data = request.get_json() or {}
+    reason = data.get('reason', 'UI requested restart')
+
+    if not shared.restart_handler:
+        return jsonify({'success': False, 'error': 'Restart handler not initialized'}), 500
+
+    logger.info(f"[Admin] Restart requested: {reason}")
+    shared.restart_handler.restart_app(reason)
+
+    # Response sent before exit (restart_app runs in daemon thread with 5s delay)
+    return jsonify({'success': True, 'message': 'Restart initiated'})

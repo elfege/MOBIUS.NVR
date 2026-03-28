@@ -56,22 +56,17 @@ class CameraRepository:
         # Track which source we loaded from
         self._source = 'none'
 
-        # Load camera data: DB first, JSON fallback
+        # Load camera data from database ONLY.
+        # cameras.json is a brand schema template for the "Add Camera" form,
+        # NOT a data store. The database is the sole source of truth.
         self.cameras_data = self._load_cameras_from_db()
         if self.cameras_data.get('devices'):
             self._source = 'database'
             logger.info(
                 f"Loaded {self.get_camera_count(include_hidden=True)} cameras from database")
         else:
-            # DB unavailable or empty: fall back to JSON
-            self.cameras_data = self._load_json(self.cameras_file, {})
-            if self.cameras_data.get('devices'):
-                self._source = 'json'
-                logger.warning(
-                    f"Database unavailable, loaded {self.get_camera_count(include_hidden=True)} "
-                    f"cameras from {self.cameras_file}")
-            else:
-                logger.error("No camera data available from database or JSON")
+            self._source = 'database'
+            logger.warning("No cameras found in database. Add cameras via the UI.")
 
         # Vendor configs always from JSON (static infrastructure config)
         self.unifi_config = self._load_json(self.unifi_config_file, {})
@@ -401,12 +396,9 @@ class CameraRepository:
                 db_success = False
 
         if not db_success:
-            logger.warning("Some cameras failed to save to database, saving JSON as backup")
+            logger.warning("Some cameras failed to save to database")
 
-        # Always save JSON as backup
-        json_success = self._save_json(self.cameras_file, cameras_data)
-
-        return db_success or json_success
+        return db_success
 
     def update_camera_setting(self, serial: str, key: str, value) -> bool:
         """
@@ -451,13 +443,10 @@ class CameraRepository:
             extra[key] = value
             db_ok = self._update_camera_in_db(serial, {'extra_config': extra})
 
-        # Also save to JSON as backup
-        json_ok = self._save_json(self.cameras_file, self.cameras_data)
-
         if not db_ok:
-            logger.warning(f"DB update failed for {serial}.{key}, JSON backup saved")
+            logger.warning(f"DB update failed for {serial}.{key}")
 
-        return db_ok or json_ok
+        return db_ok
 
     def update_camera_ptz_reversal(self, serial: str, reversed_pan: bool = None, reversed_tilt: bool = None) -> bool:
         """
@@ -489,11 +478,7 @@ class CameraRepository:
 
         # Update DB directly with specific fields
         db_ok = self._update_camera_in_db(serial, updates) if updates else True
-
-        # Save JSON backup
-        json_ok = self._save_json(self.cameras_file, self.cameras_data)
-
-        return db_ok or json_ok
+        return db_ok
 
     def get_camera_ptz_reversal(self, serial: str) -> Dict[str, bool]:
         """

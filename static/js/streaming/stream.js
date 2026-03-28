@@ -3157,8 +3157,9 @@ export class MultiStreamManager {
                 // Manual refresh button calls forceRefreshStream directly - we should too
                 console.log(`[Recovery] ${cameraId}: Using ${streamType} forceRefreshStream (same as manual refresh - NO delay)`);
                 this.setStreamStatus($streamItem, 'loading', `Refreshing ${streamType}...`);
-                if (streamType === 'GO2RTC') {
-                    // go2rtc: stop then restart via go2rtc API
+                const recoveryHub = $streamItem.data('streaming-hub') || 'mediamtx';
+                if (streamType === 'GO2RTC' || recoveryHub === 'go2rtc') {
+                    // go2rtc camera: stop then restart via go2rtc API
                     this.webrtcManager.stopStream(cameraId);
                     await this.webrtcManager.startGo2rtcStream(cameraId, videoElement);
                 } else {

@@ -721,7 +721,7 @@ export class RecordingSettingsForm {
                 return [
                     { scheme: 'rtsp',     label: 'rtsp:// — standard RTSP (API credentials)',                      requiresAdmin: false },
                     { scheme: 'reolink',  label: 'reolink:// — native Reolink API (admin credentials, motion events)', requiresAdmin: true  },
-                    { scheme: 'baichuan', label: 'baichuan:// — E1 Baichuan protocol (admin credentials)',          requiresAdmin: true  },
+                    { scheme: 'neolink',  label: 'neolink:// — E1 Baichuan via go2rtc built-in neolink (admin credentials)', requiresAdmin: true  },
                 ];
             case 'eufy':
                 return [
@@ -759,8 +759,8 @@ export class RecordingSettingsForm {
                 return `rtsp://${u}:${p}@${h}`;
             case 'reolink':
                 return `reolink://${u}:${p}@${h}`;
-            case 'baichuan':
-                return `baichuan://${u}:${p}@${h}`;
+            case 'neolink':
+                return `neolink://${u}:${p}@${h}`;
             case 'eufy':
                 // eufy:// uses a different auth mechanism — leave as a placeholder note
                 return `eufy://${u}:${p}@${h}`;

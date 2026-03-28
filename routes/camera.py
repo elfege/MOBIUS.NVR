@@ -229,6 +229,22 @@ def api_put_stream_preference(camera_serial):
             if rows:
                 return jsonify(rows[0])
             return jsonify({'status': 'saved'})
+        elif response.status_code == 409:
+            # Row exists — update via PATCH
+            patch_resp = shared._postgrest_session.patch(
+                f"{shared.POSTGREST_URL}/user_camera_preferences",
+                params={
+                    'user_id': f'eq.{current_user.id}',
+                    'camera_serial': f'eq.{camera_serial}'
+                },
+                json={'preferred_stream_type': stream_type},
+                timeout=5
+            )
+            if patch_resp.status_code in (200, 204):
+                return jsonify({'status': 'saved'})
+            else:
+                logger.error(f"Failed to update stream preference: {patch_resp.status_code} {patch_resp.text}")
+                return jsonify({'error': 'Failed to update stream preference'}), 500
         else:
             logger.error(f"Failed to save stream preference: {response.status_code} {response.text}")
             return jsonify({'error': 'Failed to save stream preference'}), 500
@@ -1205,7 +1221,7 @@ def api_camera_credentials_get(camera_serial):
 
     username, password = cred_db.get_credential(camera_serial, 'camera')
     if username and password:
-        main_result = {'has_credentials': True, 'username': username, 'source': 'db', 'scope': 'camera'}
+        main_result = {'has_credentials': True, 'username': username, 'password': password, 'source': 'db', 'scope': 'camera'}
     else:
         camera = shared.camera_repo.get_camera(camera_serial)
         if camera:
@@ -1221,19 +1237,15 @@ def api_camera_credentials_get(camera_serial):
             if service_key:
                 username, password = cred_db.get_credential(service_key, 'service')
                 if username and password:
-                    main_result = {'has_credentials': True, 'username': username, 'source': 'db', 'scope': 'brand'}
+                    main_result = {'has_credentials': True, 'username': username, 'password': password, 'source': 'db', 'scope': 'brand'}
 
     # ── go2rtc credentials (per-camera, credential_type='go2rtc') ────────────
     go2rtc_user, go2rtc_pass = cred_db.get_credential(camera_serial, 'go2rtc')
-    # Only return password if user authenticated via password (not trusted device auto-login)
-    auth_method = session.get('auth_method', 'unknown')
-    show_password = auth_method == 'password'
 
     go2rtc_result = {
         'has_credentials': bool(go2rtc_user and go2rtc_pass),
         'username': go2rtc_user if go2rtc_user else None,
-        'password': go2rtc_pass if (go2rtc_pass and show_password) else None,
-        'requires_reauth': not show_password
+        'password': go2rtc_pass if go2rtc_pass else None,
     }
 
     return jsonify({**main_result, 'go2rtc_credentials': go2rtc_result})

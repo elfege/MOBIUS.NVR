@@ -50,9 +50,26 @@ def _get_encryption_key() -> bytes:
 
     secret = os.environ.get('NVR_SECRET_KEY', '')
     if not secret:
+        # Fallback: read from nvr_settings table (set by app.py on first boot)
+        try:
+            import requests as _req
+            postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
+            resp = _req.get(
+                f"{postgrest_url}/nvr_settings",
+                params={'key': 'eq.NVR_SECRET_KEY', 'select': 'value'},
+                timeout=3
+            )
+            if resp.status_code == 200:
+                rows = resp.json()
+                if rows:
+                    secret = rows[0].get('value', '')
+        except Exception:
+            pass
+
+    if not secret:
         raise RuntimeError(
             "NVR_SECRET_KEY is required for credential encryption. "
-            "Set it in .env or via start.sh."
+            "Not found in env or nvr_settings table."
         )
     _enc_key = hashlib.sha256(secret.encode('utf-8')).digest()
     return _enc_key

@@ -754,34 +754,38 @@ export class MultiStreamManager {
                         setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
                     });
 
-            } else if (streamType === 'WEBRTC') {
-                this._logStreamReloadStep($streamItem, 'Closing WebRTC peer connection and ICE candidates...', 'info');
-                this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
+            } else if (streamType === 'WEBRTC' || streamType === 'GO2RTC') {
+                const refreshHub = $streamItem.data('streaming-hub') || 'mediamtx';
+                const useGo2rtc = streamType === 'GO2RTC' || refreshHub === 'go2rtc';
 
-                Promise.resolve(this.webrtcManager.forceRefreshStream(cameraId, videoElement))
-                    .then(() => {
-                        this._logStreamReloadStep($streamItem, 'WebRTC peer connection established — stream live!', 'success');
-                        this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
-                    })
-                    .catch((err) => {
-                        this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
-                        setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
-                    });
+                if (useGo2rtc) {
+                    this._logStreamReloadStep($streamItem, 'Closing go2rtc WebRTC connection...', 'info');
+                    this._logStreamReloadStep($streamItem, 'Reconnecting via go2rtc API...', 'info');
 
-            } else if (streamType === 'GO2RTC') {
-                this._logStreamReloadStep($streamItem, 'Closing go2rtc WebRTC connection...', 'info');
-                this._logStreamReloadStep($streamItem, 'Reconnecting via go2rtc API...', 'info');
+                    this.webrtcManager.stopStream(cameraId);
+                    Promise.resolve(this.webrtcManager.startGo2rtcStream(cameraId, videoElement))
+                        .then(() => {
+                            this._logStreamReloadStep($streamItem, 'go2rtc WebRTC stream live!', 'success');
+                            this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
+                        })
+                        .catch((err) => {
+                            this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
+                            setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
+                        });
+                } else {
+                    this._logStreamReloadStep($streamItem, 'Closing WebRTC peer connection and ICE candidates...', 'info');
+                    this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
 
-                this.webrtcManager.stopStream(cameraId);
-                Promise.resolve(this.webrtcManager.startGo2rtcStream(cameraId, videoElement))
-                    .then(() => {
-                        this._logStreamReloadStep($streamItem, 'go2rtc WebRTC stream live!', 'success');
-                        this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
-                    })
-                    .catch((err) => {
-                        this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
-                        setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
-                    });
+                    Promise.resolve(this.webrtcManager.forceRefreshStream(cameraId, videoElement))
+                        .then(() => {
+                            this._logStreamReloadStep($streamItem, 'WebRTC peer connection established — stream live!', 'success');
+                            this._hideStreamReloadOverlay($streamItem, /* waking= */ true);
+                        })
+                        .catch((err) => {
+                            this._logStreamReloadStep($streamItem, `Refresh failed: ${err.message}`, 'error');
+                            setTimeout(() => this._hideStreamReloadOverlay($streamItem), 3000);
+                        });
+                }
 
             } else {
                 // Stream type not supported for client-side refresh
@@ -892,16 +896,19 @@ export class MultiStreamManager {
                             `Reconnecting ${streamType} player (attempt ${attempt}/${maxRetries})...`, 'info');
                         console.log(`[Restart] ${cameraId}: Reconnecting (attempt ${attempt}/${maxRetries})...`);
 
+                        const retryHub = $streamItem.data('streaming-hub') || 'mediamtx';
+
                         if (streamType === 'HLS' || streamType === 'LL_HLS' || streamType === 'NEOLINK' || streamType === 'NEOLINK_LL_HLS') {
                             this._logStreamReloadStep($streamItem, 'Rebuilding HLS.js instance and requesting fresh playlist...', 'info');
                             await this.hlsManager.forceRefreshStream(cameraId, videoElement);
-                        } else if (streamType === 'WEBRTC') {
-                            this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
-                            await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
-                        } else if (streamType === 'GO2RTC') {
+                        } else if (streamType === 'GO2RTC' || (streamType === 'WEBRTC' && retryHub === 'go2rtc')) {
+                            // go2rtc camera: reconnect via go2rtc WebRTC API (not MediaMTX WHEP)
                             this._logStreamReloadStep($streamItem, 'Reconnecting via go2rtc WebRTC API...', 'info');
                             this.webrtcManager.stopStream(cameraId);
                             await this.webrtcManager.startGo2rtcStream(cameraId, videoElement);
+                        } else if (streamType === 'WEBRTC') {
+                            this._logStreamReloadStep($streamItem, 'Initiating new WebRTC offer/answer handshake with MediaMTX...', 'info');
+                            await this.webrtcManager.forceRefreshStream(cameraId, videoElement);
                         }
 
                         // Success — exit retry loop
@@ -910,7 +917,7 @@ export class MultiStreamManager {
                         console.warn(`[Restart] ${cameraId}: Attempt ${attempt} failed: ${retryError.message}`);
                         if (attempt < maxRetries) {
                             this._logStreamReloadStep($streamItem,
-                                `Attempt ${attempt} failed — MediaMTX path not ready yet. Retrying in ${retryDelay / 1000} s...`, 'warn');
+                                `Attempt ${attempt} failed — stream not ready yet. Retrying in ${retryDelay / 1000} s...`, 'warn');
                             console.log(`[Restart] ${cameraId}: Waiting ${retryDelay}ms before retry...`);
                             await new Promise(r => setTimeout(r, retryDelay));
                         } else {

@@ -923,6 +923,21 @@ def api_stream_restart(camera_serial):
 
         logger.info(f"[RESTART] Restarting stream for {camera_name} ({camera_serial})")
 
+        # go2rtc cameras: no FFmpeg to restart — go2rtc manages its own connections.
+        # Just return success so the frontend reconnects via go2rtc WebRTC API.
+        from services.streaming_hub import get_streaming_hub
+        hub = get_streaming_hub(camera)
+        if hub == 'go2rtc':
+            logger.info(f"[RESTART] {camera_name} uses go2rtc hub — no FFmpeg restart needed")
+            return jsonify({
+                'success': True,
+                'camera_serial': camera_serial,
+                'camera_name': camera_name,
+                'message': f'go2rtc manages {camera_name} — reconnecting player',
+                'streaming_hub': 'go2rtc',
+                'stream_url': f'/api/streams/{camera_serial}/playlist.m3u8'
+            })
+
         # Clear watchdog cooldown so it doesn't block this manual restart
         try:
             shared.stream_watchdog.clear_cooldown(camera_serial)

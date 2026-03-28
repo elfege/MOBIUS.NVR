@@ -843,14 +843,19 @@ export class MultiStreamManager {
 
             // Show overlay immediately — the restart takes several seconds and the
             // user needs to know something is happening from the first click.
+            const restartHub = $streamItem.data('streaming-hub') || 'mediamtx';
             this._showStreamReloadOverlay($streamItem, 'restart');
-            this._logStreamReloadStep($streamItem, 'Backend restart requested — preparing to terminate FFmpeg process...', 'info');
+            if (restartHub === 'go2rtc') {
+                this._logStreamReloadStep($streamItem, 'Reconnecting go2rtc stream...', 'info');
+            } else {
+                this._logStreamReloadStep($streamItem, 'Backend restart requested — preparing to terminate FFmpeg process...', 'info');
+            }
 
             // Mark this camera as undergoing manual restart.
             // This prevents WebSocket stream_restarted events from triggering
             // the auto-recovery path and interfering with our controlled flow.
             this.manualRestartInProgress.add(cameraId);
-            console.log(`[Restart] ${cameraId}: Initiating backend FFmpeg restart...`);
+            console.log(`[Restart] ${cameraId}: Initiating ${restartHub} restart...`);
             this.setStreamStatus($streamItem, 'loading', 'Restarting...');
 
             try {
@@ -3442,14 +3447,15 @@ export class MultiStreamManager {
      *   'restart' = backend FFmpeg kill + respawn (slower, multi-step)
      */
     _showStreamReloadOverlay($streamItem, mode) {
+        const hub = $streamItem.data('streaming-hub') || 'mediamtx';
         const labels = {
             refresh: {
                 title:    'Refreshing Stream',
-                subtitle: 'Client-side HLS.js reconnect'
+                subtitle: hub === 'go2rtc' ? 'go2rtc WebRTC reconnect' : 'Client-side HLS.js reconnect'
             },
             restart: {
                 title:    'Restarting Stream',
-                subtitle: 'Backend FFmpeg process restart'
+                subtitle: hub === 'go2rtc' ? 'go2rtc stream reconnect' : 'Backend FFmpeg process restart'
             }
         };
         const cfg = labels[mode] || labels.refresh;

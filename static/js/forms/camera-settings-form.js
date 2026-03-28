@@ -599,9 +599,22 @@ export class RecordingSettingsForm {
                     Credentials go2rtc uses to connect directly to this camera.
                     Required when <code>go2rtc_source</code> contains
                     <code>\${go2rtc_username}</code> / <code>\${go2rtc_password}</code> placeholders.
+                    <strong>Note:</strong> Some protocols require the camera's native admin account
+                    (e.g. <code>reolink://</code> needs admin, not the API user).
                 </span>
 
                 <div id="go2rtc-credentials-status" style="margin-bottom: 14px;"></div>
+
+                <div class="credential-scope-selector">
+                    <label>
+                        <input type="radio" name="go2rtc_credential_scope" value="go2rtc" checked>
+                        Per-Camera (this camera only)
+                    </label>
+                    <label>
+                        <input type="radio" name="go2rtc_credential_scope" value="go2rtc_brand">
+                        Brand-Level (all ${(this._credentialsCameraType || 'unknown').charAt(0).toUpperCase() + (this._credentialsCameraType || 'unknown').slice(1)} cameras)
+                    </label>
+                </div>
 
                 <div class="recording-form-group">
                     <label for="go2rtc-cred-username">Username</label>
@@ -1561,6 +1574,7 @@ export class RecordingSettingsForm {
     async _saveGo2rtcCredentials() {
         const username = $('#go2rtc-cred-username').val().trim();
         const password = $('#go2rtc-cred-password').val();
+        const scope    = $('input[name="go2rtc_credential_scope"]:checked').val() || 'go2rtc';
         const $status  = $('#go2rtc-credentials-save-status');
 
         if (!username || !password) {
@@ -1578,7 +1592,7 @@ export class RecordingSettingsForm {
             const response = await axios.put(`/api/camera/${this.currentCameraId}/credentials`, {
                 username,
                 password,
-                scope: 'go2rtc'
+                scope
             });
 
             if (response.data.success) {

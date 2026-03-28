@@ -1752,3 +1752,35 @@ Steps remaining (backend + frontend + generate script update):
 - `./deploy.sh` (all flags, no prompts) or `./start.sh` can be run freely
 - Migration 023 will apply automatically on next `./start.sh`
 - Current state: mediamtx hub working for all cameras; go2rtc hub only for Cat Feeders (Neolink timeout — needs baichuan:// test)
+
+---
+
+## Session: March 28, 2026 ~12:00-13:30 EDT
+
+**Branch:** `go2rtc_migration_March_27_2026_b` | Commit: `e5dd9b6`
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `scripts/seed_credentials.py` | Added `vendor` field to CREDENTIAL_MAP + INSERT (fixed NOT NULL violation). Changed Reolink per-camera go2rtc seeding to use `reolink_admin` (not `reolink_api`) — baichuan:// and reolink:// require admin credentials. Added `seed_per_camera_go2rtc_credentials()`. |
+| `scripts/generate_go2rtc_config.py` | Added `load_go2rtc_credentials()`. Per-camera loop now builds per-cam subs dict with `${go2rtc_username}`/`${go2rtc_password}` resolved first, global `${NVR_*}` fallback. Updated docstring. |
+| `routes/camera.py` | GET `/api/camera/<serial>/credentials` now returns `go2rtc_credentials: {has_credentials, username}`. PUT handles `scope='go2rtc'` storing `(serial, 'go2rtc')`. |
+| `static/js/forms/camera-settings-form.js` | go2rtc Credentials block in Credentials tab (shown when go2rtc_source set). Source Protocol Helper in Advanced tab with per-type dropdown (rtsp/reolink/baichuan/eufy), Apply template, eufy warning with privacy note. |
+| `static/js/streaming/stream.js` | Restart path now checks `streaming_hub` for WEBRTC streams — routes to go2rtcStream for go2rtc-hub cameras (was wrongly going to MediaMTX WHEP). |
+
+### Outstanding Issues
+
+- **Cat Feeders stream routing**: stream.js restart path was fixed. But need to verify Cat Feeders actually streams via go2rtc baichuan:// after next `./start.sh` — go2rtc.yaml was manually regenerated with baichuan URL. The seed now uses admin creds for Reolink, so the `${go2rtc_username}` placeholder will resolve to the admin user.
+
+- **go2rtc.yaml pre-generate DB sync**: `generate_go2rtc_config.py` runs before `camera_config_sync.py` (inside container). Fix: either move generate post-startup or add a host-side cameras.json→DB sync for go2rtc fields. Not yet implemented.
+
+- **Per-camera go2rtc credentials need to exist in DB before next start.sh**: The existing `(95270000YPTKLLD6, 'go2rtc')` entry was seeded from `reolink_api/service` (wrong — API user, not admin). On next start.sh, `seed_per_camera_go2rtc_credentials()` uses `NOT EXISTS` guard so it won't overwrite. User must manually delete this entry or update it via UI Credentials tab. Command: `docker exec nvr-postgres psql -U nvr_api -d nvr -c "DELETE FROM camera_credentials WHERE credential_key='95270000YPTKLLD6' AND credential_type='go2rtc';"` — then next start.sh will re-seed with admin creds.
+
+### TODO
+
+- [ ] Delete stale `(95270000YPTKLLD6, 'go2rtc')` credential entry seeded with wrong (API user) creds, re-run start.sh so admin creds get seeded
+- [ ] Verify Cat Feeders connects via baichuan:// natively (check go2rtc logs for "baichuan" not "neolink timeout")
+- [ ] Set go2rtc credentials per-camera via UI for Reolink cameras that use reolink:// or baichuan://
+- [ ] Fix pre-generate DB sync ordering (generate runs before camera_config_sync)
+- [ ] Test WEBRTC→go2rtcStream routing (restart fix in stream.js)

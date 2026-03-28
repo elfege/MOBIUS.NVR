@@ -84,7 +84,6 @@ if [[ -n "$_detected_ip" ]]; then
 else
     echo -e "${YELLOW}WARNING: Could not auto-detect host IP via ip route. Using .env value: ${NVR_LOCAL_HOST_IP:-unset}${NC}"
 fi
-reolink://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@192.168.10.186
 
 echo "=========================================="
 echo "  Unified NVR - Container Startup"
@@ -164,23 +163,31 @@ if [[ -f scripts/seed_credentials.py ]]; then
 	stop_spinner
 fi
 
-if [[ -f scripts/update_mediamtx_paths.sh && -f packager/mediamtx.yml ]]; then
-	start_spinner 20 "$CYAN Updating packager/mediamtx.yml"
-	scripts/update_mediamtx_paths.sh >/dev/null
-	stop_spinner
-fi
+# Generate MediaMTX + go2rtc configs in parallel (both pre-populate all cameras
+# so hub switching is instant — no restart needed, just change DB field).
+echo -e "${CYAN}Generating streaming configs (MediaMTX + go2rtc) in parallel...${NC}"
+_config_pids=()
 
-if [[ -f scripts/update_neolink_config.sh && -f config/neolink.toml ]]; then
-	start_spinner 20 "$CYAN Updating config/neolink.toml"
-	scripts/update_neolink_config.sh >/dev/null
-	stop_spinner
+if [[ -f scripts/update_mediamtx_paths.sh && -f packager/mediamtx.yml ]]; then
+	scripts/update_mediamtx_paths.sh >/dev/null &
+	_config_pids+=($!)
 fi
 
 if [[ -f scripts/generate_go2rtc_config.py && -f config/go2rtc.yaml ]]; then
-	start_spinner 20 "$CYAN Generating config/go2rtc.yaml video relay streams (DB credentials)"
-	venv/bin/python3 scripts/generate_go2rtc_config.py
-	stop_spinner
+	venv/bin/python3 scripts/generate_go2rtc_config.py &
+	_config_pids+=($!)
 fi
+
+if [[ -f scripts/update_neolink_config.sh && -f config/neolink.toml ]]; then
+	scripts/update_neolink_config.sh >/dev/null &
+	_config_pids+=($!)
+fi
+
+# Wait for all config generators to finish
+for _pid in "${_config_pids[@]}"; do
+	wait "$_pid"
+done
+echo -e "${GREEN}✓${NC} Streaming configs generated"
 
 if [[ -f scripts/update_recording_settings.sh && -f config/recording_settings.json ]]; then
 	start_spinner 20 "$CYAN Syncing recording_settings.json with cameras"

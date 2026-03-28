@@ -496,9 +496,24 @@ export class WebRTCStreamManager {
                 console.log(`[go2rtc] ${cameraId}: Received track: ${event.track.kind}`);
                 if (event.track.kind === 'video') {
                     videoElement.srcObject = event.streams[0];
-                    videoElement.play().catch(err => {
-                        console.warn(`[go2rtc] ${cameraId}: Autoplay prevented:`, err);
-                    });
+                    // Per https://developer.chrome.com/blog/play-request-was-interrupted
+                    // Wait for loadedmetadata before calling play() to avoid AbortError
+                    // when a new load request interrupts a pending play() promise.
+                    const playWhenReady = () => {
+                        videoElement.play().catch(err => {
+                            if (err.name === 'AbortError') {
+                                // New load interrupted — will retry on next track event
+                                console.log(`[go2rtc] ${cameraId}: play() aborted (new load), will retry`);
+                            } else {
+                                console.warn(`[go2rtc] ${cameraId}: Autoplay prevented:`, err);
+                            }
+                        });
+                    };
+                    if (videoElement.readyState >= 2) {
+                        playWhenReady();
+                    } else {
+                        videoElement.addEventListener('loadedmetadata', playWhenReady, { once: true });
+                    }
                 }
             };
 

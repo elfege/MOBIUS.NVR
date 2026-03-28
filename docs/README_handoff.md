@@ -15,15 +15,160 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 27, 2026 16:30 EDT*
+*Last updated: March 28, 2026 00:51 EDT*
 
-**Branch:** `fix_unifi_catfeeders_March_27_2026_a`
+**Branch:** `go2rtc_migration_March_27_2026_a`
 
-**Previous Branch:** `app_modularization_MAR_20_2026_a`
+**Previous Branch:** `fix_unifi_catfeeders_March_27_2026_a`
 
 ---
 
-## Current Session: March 27, 2026 (15:50 - 16:30 EDT)
+## Current Session: March 28, 2026 (00:00–00:51 EDT) — go2rtc Migration Phase 1
+
+**Branch:** `go2rtc_migration_March_27_2026_a`
+
+### go2rtc as Streaming Hub — Phase 1 Implementation
+
+**Goal:** Migrate Cat Feeders (Baichuan-only camera, `95270000YPTKLLD6`) to go2rtc as single streaming hub. Fix all related infrastructure so go2rtc cameras work end-to-end.
+
+**Target Architecture (clarified this session):**
+- `start.sh` calls scripts that configure ALL cameras in BOTH go2rtc.yaml AND mediamtx.yml
+- Settings UI: per-camera `streaming_hub` toggle + global override toggle (global wins)
+- go2rtc is always the single consumer; MediaMTX sources from go2rtc RTSP re-export for `streaming_hub=mediamtx` cameras
+
+**Root Bug Found & Fixed:**
+- `camera_repository._db_row_to_camera_config()` had its own `direct_fields` list missing `streaming_hub`
+- The field was in the DB but never loaded into in-memory cache → `is_go2rtc_camera()` always returned False
+- Fix: added `streaming_hub` to `direct_fields` in `camera_repository.py` (commit `a16bf12`)
+
+**Files Modified This Branch:**
+
+| File | What Changed | Commit |
+|------|-------------|--------|
+| `services/camera_repository.py` | Added `streaming_hub` to `direct_fields` in `_db_row_to_camera_config()` | `a16bf12` |
+| `services/camera_state_tracker.py` | Added `_poll_go2rtc_api()` — polls go2rtc API every 5s so go2rtc cameras get `publisher_active=True`. Extended `wait_for_publisher_ready()` to support go2rtc API. | `cbf48b0` |
+| `services/stream_watchdog.py` | Added `_is_go2rtc_camera()` helper. go2rtc cameras (streaming_hub=go2rtc / GO2RTC/NEOLINK types) skip watchdog restart — go2rtc self-heals. | `cbf48b0` |
+| `static/js/streaming/stream.js` | Restart flow: go2rtc cameras skip "Waiting for FFmpeg to publish to MediaMTX" — show go2rtc-specific message + 1s wait. Stream type switcher: go2rtc cameras route all non-MJPEG selections to go2rtc WebRTC. Path check: go2rtc cameras warn but don't block on "stream not ready". | `cbf48b0` |
+| `CLAUDE.md` | Added Data Architecture section (cameras.json=seed, DB=runtime truth), Streaming Hub section, Credential Architecture section. Updated RULE 11 for streaming_hub abstraction. | (prev session) |
+| `packager/mediamtx.yml` | Added missing camera paths (UniFi, Reolink Office, Amcrest, SV3C, Eufy Doorbell) from script run | this commit |
+
+**Phase 0 Validated:**
+- `rtsp://nvr-go2rtc:8555/95270000YPTKLLD6` → H.264 High 2304x1296 + PCM audio confirmed working
+- go2rtc API format documented: `{serial: {producers: [...], consumers: [...]}}`
+
+**Next Branch Work: `go2rtc_migration_March_27_2026_b`**
+
+Goal: All cameras configured in BOTH hubs on startup (the "supposed to" architecture).
+
+1. Add `go2rtc_source` field to `cameras.json` for ALL cameras (URL template with `${ENV_VAR}` credentials)
+2. Add `go2rtc_source` DB column via migration + `DIRECT_FIELDS` in `camera_config_sync.py` + `direct_fields` in `camera_repository.py`
+3. Update `scripts/update_go2rtc_config.sh` — use `go2rtc_source` for ALL camera types (not just Neolink)
+4. Update `scripts/update_mediamtx_paths.sh` — cover ALL cameras; for `streaming_hub=go2rtc`: `source: rtsp://nvr-go2rtc:8555/{serial}` instead of `source: publisher`
+5. Settings UI: per-camera `streaming_hub` toggle + global override
+6. `stream_manager.py`: skip FFmpeg launch for go2rtc cameras (go2rtc is the consumer; FFmpeg only for recording)
+
+**go2rtc_source values by camera type:**
+- Reolink (direct RTSP): `rtsp://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@{host}/h264Preview_01_main`
+- Reolink (Baichuan via Neolink): `rtsp://neolink:8554/{serial}/mainStream`
+- Eufy: `eufy://${NVR_EUFY_BRIDGE_USERNAME}:${NVR_EUFY_BRIDGE_PASSWORD}@{serial}`
+- Amcrest: `rtsp://${NVR_AMCREST_LOBBY_USERNAME}:${NVR_AMCREST_LOBBY_PASSWORD}@{host}/cam/realmonitor?channel=1&subtype=0`
+- SV3C: `rtsp://admin:${NVR_SV3C_PASSWORD}@{host}:554/stream1`
+- UniFi: complex (Protect RTSPS token URL) — handle separately
+
+---
+
+## Previous Session: March 27–28, 2026 (15:50 EDT – 00:50 EDT)
+
+### Fullscreen 2D Navigation — Swipe + Arrow Keys (17:05 EDT)
+
+**Goal:** Navigate between cameras while in fullscreen using swipe (touch) and arrow keys (PC), respecting the actual grid layout.
+
+**Design:**
+- **PC**: Arrow keys (←→↑↓) in fullscreen → navigate to the camera in that direction within the grid.
+- **Touch**: Swipe left/right → navigate horizontally; swipe up/down → navigate vertically. Minimum 60px travel, 1.2:1 dominance ratio to avoid PTZ gesture conflicts.
+- **Pac-Man wrapping**: left edge → wraps to last tile in same row; right edge → wraps to first tile. Top row → wraps to bottom row (and vice versa). Up/down chooses the tile in the target row with the closest horizontal centre.
+
+**Algorithm (`_navigateFullscreen2D`):**
+1. Snapshot `getBoundingClientRect()` of all `.stream-item` tiles.
+2. Cluster into rows by vertical-centre proximity (ROW_TOLERANCE = 30px).
+3. Sort rows top→bottom, tiles left→right within each row.
+4. Locate current fullscreen camera by element reference.
+5. Resolve neighbour with Pac-Man wrap; for up/down picks closest-cx tile in target row.
+6. `forceExitFullscreen()` (sync CSS removal) → `setTimeout 80ms` → `openFullscreen()`.
+
+**Files Modified:**
+
+1. **`static/js/streaming/stream.js`** (17:05 EDT)
+   - `setupEventListeners()`: extended `keydown` handler for ArrowLeft/Right/Up/Down; added `touchstart.fullscreenSwipe` / `touchend.fullscreenSwipe` document-level listeners.
+   - `_navigateFullscreen2D(direction)`: new method implementing the 2D grid navigation algorithm with Pac-Man wrap.
+
+**Status:** Code complete. Requires `./start.sh` restart (frontend-only change, hard refresh sufficient after browser cache clear).
+
+---
+
+### Camera Settings Modal — Tabbed UI + Advanced + Credentials (16:37 EDT)
+
+**Goal:** Reorganize camera settings modal into tabbed layout, add editable Advanced tab exposing all `cameras.json` fields with (?) help tooltips, and add Credentials tab for per-camera username/password management.
+
+**Files Modified:**
+
+1. **`routes/camera.py`** (16:37 EDT) — New generic settings update endpoint
+   - Added `PUT /api/camera/<serial>/settings` — accepts JSON object of key-value pairs
+   - Whitelist of editable keys; rejects immutable keys (`serial`, `camera_id`, `id`)
+   - Uses `camera_repo.update_camera_setting()` for each key (handles DB + JSON + cache)
+
+2. **`static/css/components/recording-modal.css`** (16:37 EDT) — Tab and advanced styles
+   - Tab navigation bar (`.settings-tabs`, `.settings-tab-btn`, active state)
+   - Tab panel show/hide (`.settings-tab-panel`)
+   - Help tooltip button (`.setting-help-btn`) — blue (?) circle
+   - Help modal overlay (`.setting-help-overlay/.setting-help-content`)
+   - Advanced tab: collapsible JSON editors, monospace inputs, section toggles
+   - Credentials tab: scope radio selector
+   - Modal body padding moved to tab panels (tabs render full-width)
+   - Added `input[type="text"]` and `input[type="password"]` to form input rules
+
+3. **`static/js/forms/recording-settings-form.js`** (16:37 EDT) — Complete rewrite
+   - Form now organized into **6 tabs**: General, Recording, Snapshots, Power, Credentials, Advanced
+   - **General tab:** Camera rename + serial + video fit mode (existing logic preserved)
+   - **Recording tab:** Motion + continuous recording (existing logic preserved)
+   - **Snapshots tab:** Periodic snapshot settings (existing logic preserved)
+   - **Power tab:** Power cycle management (existing logic preserved)
+   - **Credentials tab:** NEW — load/save/delete credentials via existing `/api/camera/<serial>/credentials` endpoints; supports per-camera or per-brand scope; password visibility toggle
+   - **Advanced tab:** NEW — dynamically renders every field from `cameras.json` config:
+     - Scalar fields: text/number/checkbox inputs
+     - Object/array fields: collapsible JSON textarea editors
+     - 30+ settings with plain-English help definitions + dependency notes
+     - (?) buttons open a help overlay modal explaining each setting
+     - Only sends changed values on save; validates JSON before submission
+   - `helpFor(key)` static method: dictionary of all camera config keys with title, description, dependencies
+   - Fixed jQuery `.each()` scoping bug (`.bind(this)` would break `$(this)`)
+   - Tab switching hides main Save/Cancel on Advanced and Credentials tabs (they have their own save buttons)
+
+**Status:** Code complete, syntax-verified (Node ES module parse). **Requires `./start.sh` restart to load new Python route.**
+
+---
+
+### Fix Eufy Bridge Credential Injection (16:35 EDT)
+
+**Problem:** All Eufy PTZ cameras dead — bridge process crashes immediately on startup with `NVR_EUFY_BRIDGE_USERNAME: unbound variable`. The `eufy_bridge.sh` script uses `set -euo pipefail`, and line 92 references `$NVR_EUFY_BRIDGE_USERNAME` (bare, no default) before the null-check on line 95. Since `secrets.env` was removed during the DB credential migration, the env var is never set.
+
+**Root cause:** Credential migration moved bridge credentials to DB (`camera_credentials` table, key='eufy_bridge', type='service'), but the shell script subprocess wasn't receiving them. The Python `EufyBridge.start()` launches the shell script via `subprocess.Popen` without injecting DB-sourced credentials into the environment.
+
+**Files Modified:**
+
+1. **`services/eufy/eufy_bridge.sh`** (16:35 EDT)
+   - Line 92: `$NVR_EUFY_BRIDGE_USERNAME` → `${NVR_EUFY_BRIDGE_USERNAME:-NOT SET}` (prevent `set -u` crash)
+   - Lines 95, 101: `${NVR_EUFY_BRIDGE_USERNAME}` → `${NVR_EUFY_BRIDGE_USERNAME:-}` (safe empty check)
+
+2. **`services/eufy/eufy_bridge.py`** (16:35 EDT)
+   - Added `_load_bridge_env()` method: reads bridge credentials from DB via `EufyCredentialProvider.get_bridge_credentials()`, injects into env dict
+   - Modified `start()`: calls `_load_bridge_env()` and passes result as `env=bridge_env` to `subprocess.Popen`
+
+**Status:** Code changes committed. **Requires `./start.sh` restart to take effect.**
+
+**Stream stability note:** Streams dying is cross-vendor (Eufy, SV3C, Reolink), not Eufy-specific. The stream watchdog is recovering them successfully. This is normal RTSP behavior.
+
+---
 
 ### Public Repo History Push — BFG/filter-repo Scrub + git-crypt Encryption
 
@@ -1331,7 +1476,7 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 ---
 
-## Next Session TODO — Updated 2026-03-27 15:50 EDT
+## Next Session TODO — Updated 2026-03-28 00:50 EDT
 
 ### Stakeholder: Elfege (manual testing & decisions)
 
@@ -1344,6 +1489,7 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 - [ ] Test E1 PTZ responsiveness — should be ~100ms per cached command
 
 **UI testing (after hard refresh):**
+- [ ] Test fullscreen 2D navigation: arrow keys + swipe (all 4 directions + Pac-Man wrap) ← ADDED 2026-03-28
 - [ ] Test golden ratio tile layout (13/8 aspect ratio)
 - [ ] Test video fit mode toggle (per-user default + per-camera override)
 - [ ] Test tile rearrange: long-press → jiggle → drag → Done pill
@@ -1352,7 +1498,7 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 
 **Prior sessions — still untested:**
 - [ ] Test Eufy preset save/overwrite (T8419P0024110C6A)
-- [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart)
+- [ ] Test Eufy PTZ self-healing (kill bridge, verify auto-restart) ← bridge credential injection FIXED 2026-03-27, needs `./start.sh`
 - [ ] Test camera rename, stream reload overlay
 - [ ] Test trusted devices: login, cookie, trust toggle, auto-login
 - [ ] Fix `~/.cache/nvr_secrets.env` — deduplicate POSTGRES_PASSWORD entries
@@ -1382,6 +1528,7 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 - [x] Fix STAIRS stream — UniFi token alias from DB (commit `7feec21`)
 - [x] Fix CSRF exemption — register blueprints with `csrf.exempt()` (commit `5c413d5`)
 - [x] Fix SV3C MJPEG auth — credentials from DB (commit `5d0ec28`)
+- [x] Fix Eufy bridge credential injection — DB creds into subprocess env (2026-03-27 16:35)
 - [x] Fix path-status 500 — CameraRepository instance method (commit `7feec21`)
 
 **Known limitations (stream type switching):**

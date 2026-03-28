@@ -111,7 +111,12 @@ DB: user_camera_preferences table (per-user overrides)
 - **`user_camera_preferences`** stores per-user overrides (stream_type, display_order, visibility)
 - **`get_effective_stream_type(serial, user_id)`** resolves: user preference first → camera default fallback
 - **NEVER read cameras.json directly in app code** — always use `camera_repository.get_camera()`
-- **New fields** must be added to: cameras.json schema, DB migration, AND `DIRECT_FIELDS` in camera_config_sync.py
+- **New fields** must be added to ALL FOUR places or the field silently disappears at runtime:
+  1. `cameras.json` — seed schema (source for startup sync)
+  2. DB migration file (`migrations/0XX_add_field.sql`) — adds column to `cameras` table
+  3. `DIRECT_FIELDS` in `camera_config_sync.py` — copies cameras.json → DB on startup
+  4. `direct_fields` in `camera_repository._db_row_to_camera_config()` — DB → in-memory cache
+- **CRITICAL:** `camera_repository` has its OWN `direct_fields` list separate from `camera_config_sync.py`. Missing from #4 = field exists in DB but `camera.get('field')` returns None everywhere in the app. This was the root cause of `streaming_hub` not working (fixed commit `a16bf12`).
 
 **Credential Architecture:**
 

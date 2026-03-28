@@ -1482,8 +1482,9 @@ export class RecordingSettingsForm {
                         </div>
                     `);
                     $('#go2rtc-cred-username').val(go2rtc.username);
-                    // Show placeholder bullets to indicate a password exists (don't reveal it)
-                    $('#go2rtc-cred-password').attr('placeholder', '••••••••  (saved)');
+                    if (go2rtc.password) {
+                        $('#go2rtc-cred-password').val(go2rtc.password);
+                    }
                 } else {
                     $g2Status.html(`
                         <div class="recording-alert recording-alert-warning" style="margin-bottom: 0;">

@@ -877,8 +877,10 @@ export class RecordingSettingsForm {
                     const cameraType = config.type || '';
                     const cameraHost = config.host || '';
                     const protocolOptions = this._getGo2rtcProtocolOptions(cameraType);
+                    // Detect current scheme from go2rtc_source value to pre-select dropdown
+                    const currentScheme = (displayVal.match(/^(\w+):\/\//) || [])[1] || 'rtsp';
                     const optionsHtml = protocolOptions
-                        .map(o => `<option value="${o.scheme}">${o.label}</option>`)
+                        .map(o => `<option value="${o.scheme}" ${o.scheme === currentScheme ? 'selected' : ''}>${o.label}</option>`)
                         .join('');
                     protocolHelper = `
                         <div id="go2rtc-protocol-helper" style="margin-top:8px; padding:10px 12px; background:#111827; border:1px solid #1f2d42; border-radius:6px;">

@@ -30,11 +30,16 @@ Boundary marker: '# VIDEO RELAY STREAMS'
     Everything at or below it is regenerated.
 
 Credential mapping (go2rtc_source placeholder -> camera_credentials lookup):
-    ${NVR_EUFY_BRIDGE_USERNAME/PASSWORD}    -> ('eufy_bridge',  'service')
-    ${NVR_REOLINK_API_USER/PASSWORD}        -> ('reolink_api',  'service')
-    ${NVR_REOLINK_USERNAME/PASSWORD}        -> ('reolink_admin','service')  # admin, for reolink:// protocol
-    ${NVR_SV3C_USERNAME/PASSWORD}           -> ('sv3c',         'service')
-    ${NVR_AMCREST_LOBBY_USERNAME/PASSWORD}  -> ('amcrest',      'service')
+
+    Per-camera (resolved first, set via UI Credentials tab):
+    ${go2rtc_username} / ${go2rtc_password} -> (camera_serial, 'go2rtc')
+
+    Global service-level fallbacks (legacy ${NVR_*} style):
+    ${NVR_EUFY_BRIDGE_USERNAME/PASSWORD}    -> ('eufy_bridge',   'service')
+    ${NVR_REOLINK_API_USER/PASSWORD}        -> ('reolink_api',   'service')
+    ${NVR_REOLINK_USERNAME/PASSWORD}        -> ('reolink_admin', 'service')  # admin, for reolink:// protocol
+    ${NVR_SV3C_USERNAME/PASSWORD}           -> ('sv3c',          'service')
+    ${NVR_AMCREST_LOBBY_USERNAME/PASSWORD}  -> ('amcrest',       'service')
 """
 
 import os
@@ -140,6 +145,26 @@ def load_credentials() -> dict:
         except Exception as e:
             print(f"{YELLOW}WARNING: Could not decrypt credentials for '{key}': {e}{NC}", file=sys.stderr)
     return creds
+
+
+def load_go2rtc_credentials(creds: dict) -> dict:
+    """
+    Extract per-camera go2rtc credentials from the already-loaded credentials dict.
+
+    These are stored as (camera_serial, 'go2rtc') in camera_credentials — set via
+    the UI Credentials tab → go2rtc Credentials section.
+
+    Args:
+        creds: Full credentials dict from load_credentials()
+
+    Returns:
+        dict mapping camera_serial -> (username, password)
+    """
+    go2rtc_creds = {}
+    for (key, ctype), pair in creds.items():
+        if ctype == 'go2rtc':
+            go2rtc_creds[key] = pair
+    return go2rtc_creds
 
 
 def build_substitution_map(creds: dict) -> dict:
@@ -265,9 +290,11 @@ def main():
 
     # ── Load + decrypt credentials ───────────────────────────────────────────
     print(f"{CYAN}Loading credentials from camera_credentials table...{NC}")
-    creds = load_credentials()
-    subs  = build_substitution_map(creds)
-    print(f"{GREEN}✓{NC} {len(creds)} credential entries loaded, {len(subs)} substitutions mapped")
+    creds      = load_credentials()
+    subs       = build_substitution_map(creds)      # global service-level placeholders
+    go2rtc_creds = load_go2rtc_credentials(creds)   # per-camera go2rtc credentials
+    print(f"{GREEN}✓{NC} {len(creds)} credential entries loaded, {len(subs)} global substitutions, "
+          f"{len(go2rtc_creds)} per-camera go2rtc credential(s)")
     print()
 
     # ── Query cameras with go2rtc_source ─────────────────────────────────────
@@ -316,7 +343,23 @@ def main():
             print(f"{YELLOW}WARNING: Unexpected row format: {row}{NC}", file=sys.stderr)
             continue
         serial, name, source = parts
-        resolved = resolve_source(source, subs)
+
+        # Build per-camera substitution map: global subs + per-camera go2rtc credentials.
+        # Per-camera ${go2rtc_username} / ${go2rtc_password} take precedence — they are set
+        # via the UI Credentials tab and allow different credentials per camera.
+        # Falls back to legacy ${NVR_*} global placeholders if no per-camera creds are set.
+        per_cam_subs = dict(subs)
+        if serial in go2rtc_creds:
+            user, pw = go2rtc_creds[serial]
+            per_cam_subs['${go2rtc_username}'] = user
+            per_cam_subs['${go2rtc_password}'] = pw
+        else:
+            # No per-camera go2rtc creds — warn only if the source URL uses the placeholders
+            if '${go2rtc_username}' in source or '${go2rtc_password}' in source:
+                print(f"{YELLOW}WARNING: {name} ({serial}) uses ${{go2rtc_username}}/${{go2rtc_password}} "
+                      f"but no per-camera go2rtc credentials are set in the DB{NC}", file=sys.stderr)
+
+        resolved = resolve_source(source, per_cam_subs)
         auto_lines.extend([
             '',
             f'  # {name} ({serial})',

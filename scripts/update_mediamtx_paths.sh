@@ -73,16 +73,38 @@ echo
 # ============================================================================
 echo -e "${YELLOW}Querying DB for camera streaming_hub configuration...${NC}"
 
-# Fetch all cameras from DB: serial, name, streaming_hub (default mediamtx if null)
-DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
-    -c "SELECT serial,
-               COALESCE(name, serial),
-               COALESCE(streaming_hub, 'mediamtx')
-        FROM cameras
-        ORDER BY name;" 2>/dev/null) || {
-    echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
-    exit 1
-}
+# Check for global hub override in nvr_settings.
+# If set, all cameras use that hub regardless of per-camera streaming_hub.
+GLOBAL_HUB=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+    -c "SELECT value FROM nvr_settings WHERE key = 'streaming_hub_global';" 2>/dev/null | tr -d '[:space:]')
+
+if [[ -n "$GLOBAL_HUB" && "$GLOBAL_HUB" != "null" ]]; then
+    echo -e "${CYAN}Global hub override: ${GLOBAL_HUB} (overrides per-camera settings)${NC}"
+else
+    GLOBAL_HUB=""
+    echo -e "${CYAN}No global hub override — using per-camera streaming_hub${NC}"
+fi
+
+# Fetch all cameras from DB.
+# If global hub is set, use it for all cameras; otherwise use per-camera streaming_hub.
+if [[ -n "$GLOBAL_HUB" ]]; then
+    DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+        -c "SELECT serial, COALESCE(name, serial), '${GLOBAL_HUB}'
+            FROM cameras ORDER BY name;" 2>/dev/null) || {
+        echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
+        exit 1
+    }
+else
+    DB_ROWS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
+        -c "SELECT serial,
+                   COALESCE(name, serial),
+                   COALESCE(streaming_hub, 'mediamtx')
+            FROM cameras
+            ORDER BY name;" 2>/dev/null) || {
+        echo -e "${RED}Error: Could not query DB (is nvr-postgres running?). Aborting.${NC}"
+        exit 1
+    }
+fi
 
 if [[ -z "$DB_ROWS" ]]; then
     echo -e "${YELLOW}No cameras found in DB${NC}"

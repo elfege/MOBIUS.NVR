@@ -1777,6 +1777,48 @@ Steps remaining (backend + frontend + generate script update):
 
 - **Per-camera go2rtc credentials need to exist in DB before next start.sh**: The existing `(95270000YPTKLLD6, 'go2rtc')` entry was seeded from `reolink_api/service` (wrong — API user, not admin). On next start.sh, `seed_per_camera_go2rtc_credentials()` uses `NOT EXISTS` guard so it won't overwrite. User must manually delete this entry or update it via UI Credentials tab. Command: `docker exec nvr-postgres psql -U nvr_api -d nvr -c "DELETE FROM camera_credentials WHERE credential_key='95270000YPTKLLD6' AND credential_type='go2rtc';"` — then next start.sh will re-seed with admin creds.
 
+---
+
+## Session: March 28, 2026 ~04:00–05:15 EDT
+
+**Branch:** `go2rtc_migration_March_27_2026_b`
+
+### Global Settings Modal Fixes (continued from previous compacted session)
+
+| File | Change |
+|------|--------|
+| `routes/config.py` | Added `GET /api/settings/advanced` + `PATCH /api/settings/advanced/<key>` Flask endpoints (replaced PostgREST). Added display_order sort in `streams_page()`. |
+| `static/js/modals/global-settings-modal.js` | Removed Advanced Settings tab (was redundant — per-camera advanced is in camera settings modal). Added Network tab with trusted network toggle. Renamed tab label. Removed MJPEG alt text. |
+| `static/js/modals/camera-settings-modal.js` | Disabled backdrop-click and Escape-key close — modal only closes via X, Cancel, or Save. |
+
+### Tile Position Persistence (05:00 EDT)
+
+**Problem:** Camera tiles rearranged via drag-and-drop never persisted across page loads. Infrastructure existed (DB column, save endpoint, JS) but two gaps:
+- **Save side**: PostgREST upsert omitted `preferred_stream_type` (NOT NULL) — failed for cameras without an existing preference row
+- **Load side**: `streams_page()` never read `display_order` from DB
+
+**Fix:**
+| File | Change |
+|------|--------|
+| `routes/camera.py` | Replaced PostgREST upsert in `api_put_camera_order()` with psycopg2 `INSERT ... SELECT stream_type FROM cameras ... ON CONFLICT DO UPDATE display_order`. Handles NOT NULL constraint by pulling camera's default stream_type for new rows. |
+| `routes/config.py` | `streams_page()` now fetches user's `display_order` from `user_camera_preferences` and sorts cameras dict before passing to Jinja template. Non-fatal on DB error. |
+
+### MOBIUS.PROXY 502 Fix (05:10 EDT)
+
+**Problem:** `proxy-nginx` (MOBIUS.PROXY on dellserver) showed bare nginx 502 during NVR restart — no error interception, no static fallback.
+
+**Fix:**
+| File | Change |
+|------|--------|
+| `~/0_MOBIUS.PROXY/html/reloading.html` | **New file** — self-contained static page (dark theme, spinner, polls `/api/health` every 2s, auto-redirects when server recovers). No external deps. |
+| `~/0_MOBIUS.PROXY/nginx/nginx.conf` | Added `proxy_intercept_errors on` + `error_page 502 503 504 /reloading.html` to `mobius.nvr` server block only. |
+| `~/0_MOBIUS.PROXY/docker-compose.yml` | Added `./html:/usr/share/nginx/html:ro` volume mount. |
+
+### Pending Restarts
+
+- NVR: `./start.sh` (tile persistence backend changes)
+- MOBIUS.PROXY: `cd ~/0_MOBIUS.PROXY && docker compose up -d --force-recreate proxy-nginx`
+
 ### TODO
 
 - [ ] Delete stale `(95270000YPTKLLD6, 'go2rtc')` credential entry seeded with wrong (API user) creds, re-run start.sh so admin creds get seeded
@@ -1784,3 +1826,47 @@ Steps remaining (backend + frontend + generate script update):
 - [ ] Set go2rtc credentials per-camera via UI for Reolink cameras that use reolink:// or baichuan://
 - [ ] Fix pre-generate DB sync ordering (generate runs before camera_config_sync)
 - [ ] Test WEBRTC→go2rtcStream routing (restart fix in stream.js)
+- [ ] Verify tile ordering after start.sh: rearrange → reload → order persists
+- [ ] Verify MOBIUS.PROXY reloading page: restart NVR → browse mobius.nvr → custom page → auto-redirect on recovery
+
+---
+
+## Session: March 28, 2026 ~12:00-17:00 EDT (Opus 1M)
+
+**Branch:** `go2rtc_migration_March_28_2026_a` → `go2rtc_migration_March_28_2026_b`
+
+### Key Discoveries
+
+- **go2rtc 1.9.14 does NOT support `baichuan://` or `neolink://` schemes** — these are invalid. Reolink E1 must use Neolink container as Baichuan→RTSP bridge: `rtsp://neolink:8554/{serial}/mainStream`
+- **Eufy has native `eufy://` P2P in go2rtc** — this was the "native protocol" discovery, NOT Reolink E1 (false memory trap, documented in Anamnesis)
+- **`credential_db_service` was broken** — `_get_encryption_key()` only checked env var, never DB. All UI credential saves were silently failing. Fixed with PostgREST fallback to `nvr_settings` table.
+- **PostgREST `merge-duplicates` upsert doesn't work** — added PATCH fallback on 409 conflict
+- **`camera_config_sync` only INSERTs, never UPDATEs** — added seed-only sync for infra fields (`go2rtc_source`, `streaming_hub`): sets value only when DB field is NULL/empty
+- **E1 Cat Feeders black frame**: go2rtc RTSP client times out (5s) before Neolink delivers first frame. ICE disconnects. Unsolved — needs investigation (go2rtc timeout config or Neolink optimization)
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `services/credentials/credential_db_service.py` | NVR_SECRET_KEY DB fallback + PATCH on 409 upsert |
+| `services/camera_config_sync.py` | Seed-only sync for go2rtc_source/streaming_hub (NULL/empty only) |
+| `routes/camera.py` | GET returns go2rtc password; PUT handles `scope='go2rtc'` and `scope='go2rtc_brand'` |
+| `static/js/forms/camera-settings-form.js` | go2rtc creds block with brand-level scope selector, protocol helper renamed baichuan→neolink, admin note, password pre-fill |
+| `static/js/streaming/stream.js` | Fixed 5 WEBRTC→go2rtc routing paths (startup, restart, recovery, retry, manual refresh); extended recovery timeout 15s for go2rtc |
+| `static/js/streaming/webrtc-stream.js` | play() race fix per Chrome spec (wait for loadedmetadata) |
+| `scripts/generate_go2rtc_config.py` | Per-camera + brand-level go2rtc credential resolution chain; query includes cam_type |
+| `scripts/seed_credentials.py` | vendor field fix; seed from reolink_admin (not reolink_api) for baichuan/reolink protocols |
+| `config/cameras.json` | Cat Feeders go2rtc_source corrected to neolink:// (invalid) then reverted to rtsp://neolink... |
+| `config/go2rtc.yaml` | Tracked; removed default_query timeout experiment |
+
+### TODO (next session)
+
+- [ ] Auto-set streaming_hub when go2rtc_source saved (+ clear when source cleared)
+- [ ] "Backend restart required" modal after infra field changes (needs AppRestartHandler HTTP endpoint)
+- [ ] Button bar adapts to streaming_hub (hide irrelevant stream types for go2rtc cameras)
+- [ ] Protocol selector: lock for E1 + info text ("This camera uses Baichuan protocol via Neolink bridge")
+- [ ] E1 Cat Feeders black frame (Neolink RTSP timing — go2rtc times out before first frame)
+- [ ] Re-auth for credential viewing on trusted devices (security)
+- [ ] AppRestartHandler HTTP endpoint for UI "Restart Now" button
+- [ ] OOP refactor of streaming hub dispatch (single getStreamMethod() dispatcher)
+- [ ] cameras.json header comment about seed file role vs DB runtime truth

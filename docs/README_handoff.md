@@ -15,65 +15,109 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 28, 2026 00:51 EDT*
+*Last updated: March 28, 2026 02:56 EDT*
 
-**Branch:** `go2rtc_migration_March_27_2026_a`
+**Branch:** `go2rtc_migration_March_27_2026_b`
 
-**Previous Branch:** `fix_unifi_catfeeders_March_27_2026_a`
+**Previous Branch:** `go2rtc_migration_March_27_2026_a`
 
 ---
 
-## Current Session: March 28, 2026 (00:00–00:51 EDT) — go2rtc Migration Phase 1
+## Current Session: March 28, 2026 (02:00–02:55 EDT) — go2rtc Migration Phase 2
 
-**Branch:** `go2rtc_migration_March_27_2026_a`
+**Branch:** `go2rtc_migration_March_27_2026_b`
 
-### go2rtc as Streaming Hub — Phase 1 Implementation
+### Dual-Hub Startup Configuration + DB as Source of Truth
 
-**Goal:** Migrate Cat Feeders (Baichuan-only camera, `95270000YPTKLLD6`) to go2rtc as single streaming hub. Fix all related infrastructure so go2rtc cameras work end-to-end.
+**Goal:** All cameras configured in BOTH go2rtc and MediaMTX on startup. Settings control which hub is used per camera + global override.
 
-**Target Architecture (clarified this session):**
-- `start.sh` calls scripts that configure ALL cameras in BOTH go2rtc.yaml AND mediamtx.yml
-- Settings UI: per-camera `streaming_hub` toggle + global override toggle (global wins)
-- go2rtc is always the single consumer; MediaMTX sources from go2rtc RTSP re-export for `streaming_hub=mediamtx` cameras
-
-**Root Bug Found & Fixed:**
-- `camera_repository._db_row_to_camera_config()` had its own `direct_fields` list missing `streaming_hub`
-- The field was in the DB but never loaded into in-memory cache → `is_go2rtc_camera()` always returned False
-- Fix: added `streaming_hub` to `direct_fields` in `camera_repository.py` (commit `a16bf12`)
+**Architecture confirmed:**
+- `start.sh` generates BOTH `config/go2rtc.yaml` AND `packager/mediamtx.yml` for ALL cameras
+- `streaming_hub` per-camera field (DB) + `nvr_settings.streaming_hub_global` global override
+- Scripts now read from DB, not cameras.json (cameras.json is legacy/import-export only)
+- Global hub resolution: `streaming_hub_global` → per-camera `streaming_hub` → `mediamtx` (default)
 
 **Files Modified This Branch:**
 
 | File | What Changed | Commit |
 |------|-------------|--------|
-| `services/camera_repository.py` | Added `streaming_hub` to `direct_fields` in `_db_row_to_camera_config()` | `a16bf12` |
-| `services/camera_state_tracker.py` | Added `_poll_go2rtc_api()` — polls go2rtc API every 5s so go2rtc cameras get `publisher_active=True`. Extended `wait_for_publisher_ready()` to support go2rtc API. | `cbf48b0` |
-| `services/stream_watchdog.py` | Added `_is_go2rtc_camera()` helper. go2rtc cameras (streaming_hub=go2rtc / GO2RTC/NEOLINK types) skip watchdog restart — go2rtc self-heals. | `cbf48b0` |
-| `static/js/streaming/stream.js` | Restart flow: go2rtc cameras skip "Waiting for FFmpeg to publish to MediaMTX" — show go2rtc-specific message + 1s wait. Stream type switcher: go2rtc cameras route all non-MJPEG selections to go2rtc WebRTC. Path check: go2rtc cameras warn but don't block on "stream not ready". | `cbf48b0` |
-| `CLAUDE.md` | Added Data Architecture section (cameras.json=seed, DB=runtime truth), Streaming Hub section, Credential Architecture section. Updated RULE 11 for streaming_hub abstraction. | (prev session) |
-| `packager/mediamtx.yml` | Added missing camera paths (UniFi, Reolink Office, Amcrest, SV3C, Eufy Doorbell) from script run | this commit |
+| `psql/migrations/020_add_go2rtc_source.sql` | Added `go2rtc_source TEXT` column to cameras table | `5d41065` |
+| `psql/migrations/021_seed_go2rtc_source.sql` | Seeded `go2rtc_source` for all 18 existing cameras (STAIRS/UniFi left null) | `8eee909` |
+| `psql/migrations/022_streaming_hub_global.sql` | Added `streaming_hub_global` to `nvr_settings` (null=per-camera); ALTERed value column to allow NULL | `c86896d` |
+| `services/camera_config_sync.py` | Added `go2rtc_source` to `DIRECT_FIELDS` (seeds new cameras from cameras.json) | `5d41065` |
+| `services/camera_repository.py` | Added `go2rtc_source` to `direct_fields` in `_db_row_to_camera_config()` | `5d41065` |
+| `scripts/update_go2rtc_config.sh` | Rewritten: queries DB (`go2rtc_source` column) via `docker exec psql` instead of cameras.json | `8eee909` |
+| `scripts/update_mediamtx_paths.sh` | Rewritten: queries DB (`streaming_hub` column) via `docker exec psql`; respects `streaming_hub_global` override | `c86896d` |
+| `services/streaming_hub.py` | Added `get_global_hub()` with 30s TTL cache; `get_streaming_hub()` now checks global first; added `invalidate_global_hub_cache()` for UI integration | `c86896d` |
 
-**Phase 0 Validated:**
-- `rtsp://nvr-go2rtc:8555/95270000YPTKLLD6` → H.264 High 2304x1296 + PCM audio confirmed working
-- go2rtc API format documented: `{serial: {producers: [...], consumers: [...]}}`
+**Key design decisions:**
+- `go2rtc_source` values use `${ENV_VAR}` placeholders resolved by go2rtc at runtime from docker-compose env
+- STAIRS (UniFi) has null `go2rtc_source` — token-based Protect RTSPS, handled separately
+- DTLS setting still reads from cameras.json (TODO: migrate to `nvr_settings`)
+- UI team has spec for the global toggle (see summary for UI team below)
 
-**Next Branch Work: `go2rtc_migration_March_27_2026_b`**
+**UI Team Spec — streaming hub toggle:**
+- PostgREST PATCH to set global: `PATCH /nvr_settings?key=eq.streaming_hub_global` `{"value": "go2rtc" | "mediamtx" | null}`
+- PostgREST PATCH for per-camera: `PATCH /cameras?serial=eq.{serial}` `{"streaming_hub": "go2rtc" | "mediamtx"}`
+- After writing global, call Python `invalidate_global_hub_cache()` or wait ≤30s for cache expiry
+- Changing hub via UI does NOT regenerate yaml configs — takes effect immediately for stream routing but config files need `./start.sh`
 
-Goal: All cameras configured in BOTH hubs on startup (the "supposed to" architecture).
+### Connected Devices modal — "Failed to load devices" + IP bug (03:00 EDT)
 
-1. Add `go2rtc_source` field to `cameras.json` for ALL cameras (URL template with `${ENV_VAR}` credentials)
-2. Add `go2rtc_source` DB column via migration + `DIRECT_FIELDS` in `camera_config_sync.py` + `direct_fields` in `camera_repository.py`
-3. Update `scripts/update_go2rtc_config.sh` — use `go2rtc_source` for ALL camera types (not just Neolink)
-4. Update `scripts/update_mediamtx_paths.sh` — cover ALL cameras; for `streaming_hub=go2rtc`: `source: rtsp://nvr-go2rtc:8555/{serial}` instead of `source: publisher`
-5. Settings UI: per-camera `streaming_hub` toggle + global override
-6. `stream_manager.py`: skip FFmpeg launch for go2rtc cameras (go2rtc is the consumer; FFmpeg only for recording)
+**Bug 1:** Modal showed "Failed to load devices" — PostgREST returned `permission denied for table trusted_devices`.
+- Root cause: `psql/migrations/015_trusted_devices.sql` created table + RLS policy but omitted `GRANT` to `nvr_anon`. Every other migration includes the grants.
+- Fix: Ran grants directly on `nvr-postgres`; patched migration for future DB recreations.
 
-**go2rtc_source values by camera type:**
-- Reolink (direct RTSP): `rtsp://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@{host}/h264Preview_01_main`
-- Reolink (Baichuan via Neolink): `rtsp://neolink:8554/{serial}/mainStream`
-- Eufy: `eufy://${NVR_EUFY_BRIDGE_USERNAME}:${NVR_EUFY_BRIDGE_PASSWORD}@{serial}`
-- Amcrest: `rtsp://${NVR_AMCREST_LOBBY_USERNAME}:${NVR_AMCREST_LOBBY_PASSWORD}@{host}/cam/realmonitor?channel=1&subtype=0`
-- SV3C: `rtsp://admin:${NVR_SV3C_PASSWORD}@{host}:554/stream1`
-- UniFi: complex (Protect RTSPS token URL) — handle separately
+**Bug 2:** Connected device IP showed Docker bridge IP (`172.22.0.8`) instead of real LAN IP (`192.168.10.110`).
+- Root cause: `routes/auth.py` used `request.remote_addr` in 3 places (login, `/api/device/register`, `/api/device/heartbeat`) instead of `_get_client_ip()` which reads `X-Forwarded-For`.
+- Consequence: "Trust this network" subnet check was comparing Docker IPs — useless.
+- Fix: Imported and used `_get_client_ip()` in all 3 auth.py callsites. Requires `./start.sh`.
+
+**Files modified:**
+- `psql/migrations/015_trusted_devices.sql` — added missing GRANT statements
+- `routes/auth.py` — replaced `request.remote_addr` with `_get_client_ip()` (3 sites)
+
+### Per-camera Streaming Hub toggle in Settings UI (03:05 EDT)
+
+**Goal:** User-facing toggle to switch a camera between `mediamtx` and `go2rtc` in the General tab (not buried in Advanced).
+
+- `routes/camera.py` — added `streaming_hub` to `EDITABLE_KEYS`
+- `static/js/modals/camera-settings-modal.js` — fetches `/api/cameras/<id>` in initial `Promise.all`; passes `streamingHub` + `go2rtcSource` to `generateForm`; pre-caches config (eliminates duplicate fetch for Advanced tab)
+- `static/js/forms/recording-settings-form.js` — General tab now shows **MediaMTX / go2rtc** segmented button pair (only when camera has `go2rtc_source` set); immediate PUT on click; added `streaming_hub` + `go2rtc_source` tooltip help text
+
+### JS modularization — global settings moved to modals/ (03:08 EDT)
+
+- `static/js/settings/settings-ui.js` → **deleted**
+- `static/js/modals/global-settings-modal.js` → **new** (import paths updated to `../settings/`)
+- `static/js/settings/settings-manager.js` — import updated to `../modals/global-settings-modal.js`
+- `templates/streams.html` — `<script>` tag updated
+
+---
+
+## UI Session: March 28, 2026 (~02:00–02:56 EDT) — Dark Theme Unification + File Renames
+
+**Branch:** `go2rtc_migration_March_27_2026_b`
+
+### All Settings Modals — Dark Theme + File Renames
+
+**Files Modified:**
+
+| File | What Changed |
+|------|-------------|
+| `static/css/components/settings-overlay.css` | Panel: `90vw × 90vh` (no max-width cap). Tab panels: `display:flex; flex-direction:column; gap:12px; padding:16px` — uniform across all tabs. Comment refs updated. |
+| `static/css/components/user-management.css` | Full dark rewrite: `#1a1a1a` bg, gradient header, blue border, `#222` rows. Role badges: outline. Circular icon buttons: fixed left-shift (`gap:0; line-height:1; i{display:block}`). |
+| `static/css/components/device-management.css` | Full dark rewrite. Colored left borders (green=online, grey=offline, blue=current). Same icon-centering fix. |
+| `static/css/components/storage-status.css` | Full dark rewrite. Transparent container, `#1e1e1e` tier cards, `#333` progress track. Bar semantic colors kept. Outline buttons. |
+| `static/js/forms/camera-settings-form.js` | **Renamed from `recording-settings-form.js`**. Added "Set as new global default" button in Video Fit section → `PUT /api/my-preferences {default_video_fit}` + live apply to all tiles. |
+| `static/css/components/camera-settings-modal.css` | **Renamed from `recording-modal.css`**. Docstring updated. |
+| `templates/streams.html` | `<link>` + `<script>` tags updated to new filenames. |
+| `static/js/modals/camera-settings-modal.js` | Import updated to `camera-settings-form.js`. |
+
+**Deleted:** `recording-settings-form.js`, `recording-modal.css`
+
+**Note:** CSS class names (`.recording-modal`, `.recording-btn`, etc.) intentionally NOT renamed — 100+ occurrences, purely internal.
+
+**Requires:** Hard refresh only.
 
 ---
 
@@ -200,7 +244,16 @@ Goal: All cameras configured in BOTH hubs on startup (the "supposed to" architec
 - git-crypt key file at: `dellserver:~/0_MOBIUS.NVR-prod/.git/git-crypt/keys/default`
 - Key file structure: `\x00GITCRYPTKEY\x00` header, AES key at offset 0x28 (32 bytes), HMAC key at offset 0x50 (64 bytes)
 
-**Open question for next session:** Need a deployment script to keep public repo synced with dev repo on future pushes. Check if `.github/workflows/` or hooks already handle this.
+**Fork exposure concern (2026-03-28):**
+- Public repo was forked **before** git-crypt was added (Mar 20). Those forks have plaintext source code.
+- GitHub API shows 0 forks now — GitHub detaches forks when repo goes private, making them independent repos.
+- No detached forks found in public GitHub search — may be private or deleted.
+- Cannot retroactively protect copies made before encryption. Risk documented; legal recourse via DMCA if needed.
+
+**Sync script (DEFERRED):** Need a repeatable script for future dev→public pushes:
+- Every sync must be a full mirror replace (histories permanently diverged due to blob encryption)
+- Script must: clone mirror → scrub certs/junk → encrypt blobs → disable main protection → force-push → re-enable
+- git-crypt key stable location needed (currently `/tmp/git-crypt-key` — ephemeral)
 
 ---
 
@@ -1558,3 +1611,38 @@ Both transient startup race conditions. No code changes. MSG-181 RESOLVED. MSG-1
 - [ ] Issue 5: Older iPad stream stalling
 - [ ] Issue 6: Frozen stream diagnostics
 - [ ] Issue 7: Device capability assessment
+
+---
+
+## Session: March 27–28, 2026 (16:30–03:10 EDT) — UI Fixes + Camera Settings Modal
+
+### HD + Pinned Window Controls Fix
+
+**Problems found and fixed:**
+
+1. **Controls invisible in HD + pinned mode** — `.stream-hd-btn` and `.stream-pin-btn` base style is `display:none`, only revealed for `.expanded`/`.css-fullscreen`. Added `.stream-item.pinned-window` to show rules in `fullscreen.css`. Same for `.stream-more-btn` in `mobile-controls.css`.
+
+2. **HD/pin button clicks dead in pinned mode** — All button handlers delegated on `this.$container`. When `.stream-item` detaches to `<body>`, events stop bubbling. Changed `.stream-hd-btn` and `.stream-pin-btn` handlers from `this.$container.on(...)` to `$(document).on(...)`.
+
+3. **Background streams not pausing in HD + pinned** — SD pinned calls `_pauseBackgroundStreamsForPin()` (camera is `.expanded`). HD pinned skips that branch. `pinnedWindowManager._pauseBackgroundStreams()` IS called but only targets `<video>` — WebRTC tracks ignore `video.pause()`. Visual blur (`has-pinned-at-home`) still applies. Known gap.
+
+**Files:** `fullscreen.css`, `mobile-controls.css`, `stream.js`
+
+---
+
+### Camera Settings Modal — Save/Cancel in Header
+
+- **`templates/streams.html`** — Added `.recording-modal-header-actions#main-form-actions` between `<h3>` and `×`. Save uses `type="submit" form="recording-settings-form"`.
+- **`recording-settings-form.js`** — Removed buttons from tab bar and bottom. Fixed latent XSS: textarea now uses `escapedJson` not raw `jsonStr`. Removed unused `help` variable.
+- **`recording-modal.css`** — New `.recording-modal-header-actions` (flex, `margin-left:auto`). Buttons text-only, no icons. Save=`#5dade2`, Cancel=`rgba(255,255,255,0.5)`, `|` separator.
+
+---
+
+### `.modal-close-btn` Global Bleed Fix
+
+**Root cause:** `camera-selector.css` had `.modal-close-btn { position: absolute }` unscoped — bled into Connected Devices modal, stacking × on top of refresh button.
+
+**Fix:** Scoped to `.camera-selector-modal .modal-close-btn` (both default and mobile `@media`).
+
+**File:** `static/css/components/camera-selector.css`
+

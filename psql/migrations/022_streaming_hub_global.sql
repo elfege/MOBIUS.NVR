@@ -20,3 +20,7 @@ ALTER TABLE nvr_settings ALTER COLUMN value DROP NOT NULL;
 INSERT INTO nvr_settings (key, value)
 VALUES ('streaming_hub_global', NULL)
 ON CONFLICT (key) DO NOTHING;
+
+-- Grant PostgREST anon role read + update access so the UI can fetch and change this setting.
+-- nvr_anon is the PGRST_DB_ANON_ROLE used for all browser-initiated PostgREST requests.
+GRANT SELECT, UPDATE ON nvr_settings TO nvr_anon;

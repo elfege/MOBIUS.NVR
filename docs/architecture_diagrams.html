@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS.NVR — Architecture Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d1117;
+            color: #c9d1d9;
+            padding: 2rem;
+        }
+        h1 { color: #58a6ff; margin-bottom: 0.5rem; font-size: 1.8rem; }
+        h2 { color: #7ee787; margin: 2.5rem 0 1rem; font-size: 1.3rem; border-bottom: 1px solid #21262d; padding-bottom: 0.5rem; }
+        .subtitle { color: #8b949e; margin-bottom: 2rem; font-size: 0.9rem; }
+        .diagram-container {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            overflow-x: auto;
+        }
+        .mermaid { text-align: center; }
+        .note {
+            background: #1c2128;
+            border-left: 3px solid #58a6ff;
+            padding: 0.8rem 1rem;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+            color: #8b949e;
+            border-radius: 0 4px 4px 0;
+        }
+    </style>
+</head>
+<body>
+
+<h1>MOBIUS.NVR — Architecture Diagrams</h1>
+<p class="subtitle">Auto-generated 2026-03-29 · Branch: settings_refactor_March_29_2026_a</p>
+
+<!-- ============================================================ -->
+<h2>1. Database Schema (Entity Relationship)</h2>
+<!-- ============================================================ -->
+
+<div class="diagram-container">
+<pre class="mermaid">
+erDiagram
+    users {
+        bigint id PK
+        varchar username UK
+        varchar password_hash
+        varchar role
+        boolean must_change_password
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    cameras {
+        varchar serial PK
+        varchar name
+        varchar type
+        varchar camera_id
+        varchar host
+        varchar mac
+        varchar packager_path
+        varchar stream_type
+        varchar streaming_hub
+        text go2rtc_source
+        varchar rtsp_alias
+        int max_connections
+        jsonb capabilities
+        int onvif_port
+        boolean true_mjpeg
+        varchar power_supply
+        boolean hidden
+        boolean ui_health_monitor
+        boolean reversed_pan
+        boolean reversed_tilt
+        jsonb ll_hls
+        jsonb mjpeg_snap
+        jsonb neolink
+        jsonb player_settings
+        jsonb rtsp_input
+        jsonb rtsp_output
+        jsonb two_way_audio
+        jsonb power_cycle_on_failure
+        int power_supply_device_id
+        jsonb extra_config
+        text notes
+        varchar video_fit_mode
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    camera_credentials {
+        bigint id PK
+        varchar credential_key
+        varchar credential_type
+        varchar vendor
+        text username_enc
+        text password_enc
+        varchar label
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    nvr_settings {
+        text key PK
+        text value
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    user_camera_preferences {
+        bigint id PK
+        bigint user_id FK
+        varchar camera_serial FK
+        varchar preferred_stream_type
+        boolean visible
+        int display_order
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    trusted_devices {
+        int id PK
+        uuid device_token UK
+        int user_id FK
+        text device_name
+        text ip_address
+        text user_agent
+        boolean is_trusted
+        timestamptz first_seen
+        timestamptz last_seen
+    }
+
+    users ||--o{ user_camera_preferences : "has preferences"
+    users ||--o{ trusted_devices : "has devices"
+    cameras ||--o{ user_camera_preferences : "preferred by"
+    cameras ||--o{ camera_credentials : "credential_key = serial"
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>2. Settings Class Architecture (Python)</h2>
+<!-- ============================================================ -->
+
+<div class="diagram-container">
+<pre class="mermaid">
+classDiagram
+    class Settings {
+        -str _url
+        -Session _session
+        +get_global(key, default) str
+        +set_global(key, value) bool
+        +get_all_globals(exclude_keys) Dict
+        +get_camera_setting(serial, key) Any
+        +set_camera(serial, key, value) bool
+        +set_camera_bulk(serial, updates) bool
+        +get_user_preference(user_id, serial, key) Any
+        +set_user_preference(user_id, serial, key, value) bool
+        -_upsert(table, data, conflict_filters) bool
+        -_patch(table, filters, data) bool
+        -_get(table, filters, select, single) Any
+    }
+
+    class CameraRepository {
+        -dict cameras_data
+        -str _source
+        +get_camera(serial) Dict
+        +get_all_cameras() Dict
+        +get_streaming_cameras() Dict
+        +update_camera_setting(serial, key, value) bool
+        +get_effective_stream_type(serial, user_id) str
+        +reload() void
+        -_load_cameras_from_db() dict
+        -_db_row_to_camera_config(row) dict
+        -_update_camera_in_db(serial, updates) bool
+    }
+
+    class CredentialDBService {
+        -bytes _enc_key
+        -dict _cache
+        +get_credential(key, type) Tuple
+        +store_credential(key, user, pass, vendor, type, label) bool
+        +delete_credential(key, type) bool
+        +load_all_credentials() Dict
+        -_encrypt(plaintext) str
+        -_decrypt(encrypted_b64) str
+        -_get_encryption_key() bytes
+    }
+
+    class StreamingHub {
+        +get_streaming_hub(camera_config) str
+        +get_rtsp_source_url(camera_id, config) str
+        +get_global_hub() str
+        +invalidate_global_hub_cache() void
+        +is_go2rtc_camera(config) bool
+    }
+
+    class AppRestartHandler {
+        -StreamManager stream_manager
+        -BridgeWatchdog bridge_watchdog
+        -EufyBridge eufy_bridge
+        +restart_app(reason) void
+    }
+
+    Settings --> CameraRepository : "delegates camera writes"
+    Settings --> CredentialDBService : "credentials stay separate"
+    CameraRepository --> Settings : "will delegate to (Phase 3)"
+    StreamingHub --> Settings : "reads global hub"
+    AppRestartHandler --> Settings : "reads/writes restart state"
+
+    note for Settings "Single point of access for all NVR settings.\n_upsert() handles 409 conflict ONCE."
+    note for CredentialDBService "Encryption is a separate concern.\nNot merged into Settings."
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>3. Streaming Architecture (Data Flow)</h2>
+<!-- ============================================================ -->
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart TB
+    subgraph Cameras["Physical Cameras"]
+        EUFY["Eufy (9x)<br/>RTSP :554/live0"]
+        REOLINK["Reolink (6x)<br/>RTSP :554/h264Preview"]
+        E1["Reolink E1 (1x)<br/>Baichuan :9000"]
+        AMCREST["Amcrest (1x)<br/>RTSP :554"]
+        SV3C["SV3C (1x)<br/>RTSP :554"]
+        UNIFI["UniFi (1x)<br/>RTSP :7447"]
+    end
+
+    subgraph Bridges["Protocol Bridges"]
+        NEOLINK["nvr-neolink<br/>Baichuan→RTSP :8554"]
+    end
+
+    subgraph Hubs["Streaming Hubs (both pre-populated)"]
+        GO2RTC["nvr-go2rtc<br/>WebRTC :8556<br/>RTSP re-export :8555<br/>API :1984"]
+        MEDIAMTX["nvr-packager (MediaMTX)<br/>WebRTC WHEP :8889<br/>HLS :8888<br/>RTSP :8554"]
+    end
+
+    subgraph Processing["Backend Processing"]
+        FFMPEG["FFmpeg<br/>Transcode + Publish"]
+        RECORDING["Recording Service<br/>Motion / Continuous"]
+        MOTION["Motion Detector<br/>FFmpeg scene filter"]
+        SNAPSHOT["Snapshot Service"]
+    end
+
+    subgraph Frontend["Browser"]
+        WEBRTC_VIEW["WebRTC Player"]
+        HLS_VIEW["HLS.js Player"]
+        MJPEG_VIEW["MJPEG img"]
+    end
+
+    E1 -->|Baichuan| NEOLINK
+    NEOLINK -->|RTSP| GO2RTC
+
+    EUFY -->|RTSP| FFMPEG
+    REOLINK -->|RTSP| FFMPEG
+    AMCREST -->|RTSP| FFMPEG
+    SV3C -->|RTSP| FFMPEG
+    UNIFI -->|RTSP| FFMPEG
+
+    EUFY -.->|RTSP| GO2RTC
+    REOLINK -.->|RTSP or reolink://| GO2RTC
+
+    FFMPEG -->|Publish| MEDIAMTX
+
+    GO2RTC -->|WebRTC| WEBRTC_VIEW
+    GO2RTC -->|RTSP :8555| RECORDING
+    GO2RTC -->|RTSP :8555| MOTION
+
+    MEDIAMTX -->|WHEP| WEBRTC_VIEW
+    MEDIAMTX -->|HLS| HLS_VIEW
+    MEDIAMTX -->|RTSP| RECORDING
+    MEDIAMTX -->|RTSP| MOTION
+
+    SNAPSHOT -.->|HTTP snap| MJPEG_VIEW
+
+    style GO2RTC fill:#1a4d1a,stroke:#7ee787,color:#fff
+    style MEDIAMTX fill:#1a3d5c,stroke:#58a6ff,color:#fff
+    style FFMPEG fill:#5c3a1a,stroke:#f0883e,color:#fff
+    style E1 fill:#5c1a1a,stroke:#f85149,color:#fff
+</pre>
+</div>
+
+<div class="note">
+    <strong>Solid lines:</strong> active data flow (current default: MediaMTX hub).<br>
+    <strong>Dashed lines:</strong> go2rtc direct connections (active when streaming_hub=go2rtc).<br>
+    Both hubs are pre-populated — switching is instant, no restart needed.
+</div>
+
+<!-- ============================================================ -->
+<h2>4. Settings Data Flow (Read/Write Paths)</h2>
+<!-- ============================================================ -->
+
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart LR
+    subgraph Browser["Browser (JavaScript)"]
+        UI_GLOBAL["SettingsUI<br/>(global-settings-modal.js)"]
+        UI_CAMERA["RecordingSettingsForm<br/>(camera-settings-form.js)"]
+        UI_STREAM["StreamManager<br/>(stream.js)"]
+    end
+
+    subgraph API["Flask Routes"]
+        R_SETTINGS["routes/settings.py<br/>(NEW — Phase 2)"]
+        R_CAMERA["routes/camera.py"]
+        R_CONFIG["routes/config.py"]
+    end
+
+    subgraph Services["Python Services"]
+        SETTINGS["Settings<br/>(services/settings.py)"]
+        REPO["CameraRepository<br/>(camera_repository.py)"]
+        CREDS["CredentialDBService<br/>(credential_db_service.py)"]
+    end
+
+    subgraph DB["PostgreSQL via PostgREST"]
+        T_NVR["nvr_settings"]
+        T_CAM["cameras"]
+        T_PREF["user_camera_preferences"]
+        T_CRED["camera_credentials"]
+    end
+
+    UI_GLOBAL -->|"PUT /api/settings/global/*"| R_CONFIG
+    UI_CAMERA -->|"PUT /api/camera/*/settings"| R_CAMERA
+    UI_STREAM -->|"PUT /api/user/stream-preferences/*"| R_CAMERA
+
+    R_CONFIG --> SETTINGS
+    R_CAMERA --> SETTINGS
+    R_CAMERA --> CREDS
+    R_SETTINGS --> SETTINGS
+
+    SETTINGS -->|"_upsert / _patch / _get"| T_NVR
+    SETTINGS -->|"_upsert / _patch / _get"| T_CAM
+    SETTINGS -->|"_upsert / _patch / _get"| T_PREF
+
+    REPO -->|"read-through cache"| SETTINGS
+    CREDS -->|"AES-256-GCM"| T_CRED
+
+    style SETTINGS fill:#1a4d1a,stroke:#7ee787,color:#fff
+    style R_SETTINGS fill:#1a3d5c,stroke:#58a6ff,color:#fff,stroke-dasharray: 5
+</pre>
+</div>
+
+<div class="note">
+    <strong>Dashed border:</strong> routes/settings.py is Phase 2 (not yet implemented).<br>
+    Currently routes/camera.py and routes/config.py call PostgREST directly — will be migrated to Settings class.
+</div>
+
+<!-- ============================================================ -->
+<h2>5. JavaScript Class Hierarchy</h2>
+<!-- ============================================================ -->
+
+<div class="diagram-container">
+<pre class="mermaid">
+classDiagram
+    class SettingsManager {
+        +init()
+        +openSettings()
+        +closeSettings()
+    }
+
+    class SettingsUI {
+        +init()
+        +render()
+        +show() / hide() / toggle()
+        +loadGlobalHubSetting()
+        +saveGlobalHubSetting(value)
+        +loadNetworkSettings()
+    }
+
+    class CameraSettingsModal {
+        +init()
+        +show(cameraId, name, caps, type, streamType)
+        +hide()
+        +onSave(cameraId, formData)
+        +attachCameraButtonEvents()
+    }
+
+    class RecordingSettingsForm {
+        +generateForm(cameraId, settings, ...)
+        +attachEvents(onSave, onCancel)
+        +handleSubmit()
+        +handleRename()
+        +renderAdvancedFields(config)
+        -_saveAdvancedSettings()
+        -_saveCredentials()
+        -_saveGo2rtcCredentials()
+        -_loadCredentials(cameraId)
+        -_showRestartRequiredModal()
+    }
+
+    class RecordingController {
+        +getSettings(cameraId)
+        +updateSettings(cameraId, data)
+        +startRecording(cameraId, duration)
+        +stopRecording(recordingId)
+    }
+
+    class MultiStreamManager {
+        +startAllStreams()
+        +startStream(cameraId, element, type)
+        +switchStreamType(serial, newType)
+        +loadUserStreamPreferences()
+        -_showStreamReloadOverlay()
+    }
+
+    class WebRTCStreamManager {
+        +startStream(cameraId, videoEl, quality)
+        +startGo2rtcStream(cameraId, videoEl)
+        +stopStream(cameraId)
+        +forceRefreshStream(cameraId, videoEl)
+    }
+
+    class HLSStreamManager {
+        +startStream(cameraId, videoEl, quality)
+        +stopStream(cameraId)
+        +forceRefreshStream(cameraId, videoEl)
+    }
+
+    class MJPEGStreamManager {
+        +startStream(cameraId, element, type, quality)
+        +stopStream(cameraId)
+    }
+
+    SettingsManager --> SettingsUI : delegates
+    CameraSettingsModal --> RecordingSettingsForm : renders form
+    CameraSettingsModal --> RecordingController : loads/saves
+    MultiStreamManager --> WebRTCStreamManager : video
+    MultiStreamManager --> HLSStreamManager : video
+    MultiStreamManager --> MJPEGStreamManager : images
+
+    note for RecordingSettingsForm "Misleading name — handles ALL\ncamera settings, not just recording"
+</pre>
+</div>
+
+<!-- ============================================================ -->
+<h2>6. Credential Encryption Flow</h2>
+<!-- ============================================================ -->
+
+<div class="diagram-container">
+<pre class="mermaid">
+sequenceDiagram
+    participant UI as Browser UI
+    participant Route as routes/camera.py
+    participant Cred as CredentialDBService
+    participant DB as camera_credentials
+
+    Note over UI,DB: Save Credentials
+    UI->>Route: PUT /api/camera/{serial}/credentials<br/>{username, password, scope}
+    Route->>Cred: store_credential(key, user, pass, vendor, type)
+    Cred->>Cred: _get_encryption_key()<br/>SHA-256(NVR_SECRET_KEY)
+    Cred->>Cred: _encrypt(username) → AES-256-GCM → base64
+    Cred->>Cred: _encrypt(password) → AES-256-GCM → base64
+    Cred->>DB: POST /camera_credentials<br/>{credential_key, username_enc, password_enc}
+    alt 409 Conflict
+        Cred->>DB: PATCH /camera_credentials<br/>WHERE key=serial AND type=scope
+    end
+    DB-->>Cred: 200 OK
+    Cred-->>Route: True
+    Route-->>UI: {success: true}
+
+    Note over UI,DB: Generate go2rtc.yaml (startup)
+    participant Gen as generate_go2rtc_config.py
+    participant SHM as /dev/shm (tmpfs)
+    Gen->>DB: SELECT credential_key, username_enc, password_enc
+    Gen->>Gen: _decrypt(username_enc) → plaintext
+    Gen->>Gen: _decrypt(password_enc) → plaintext
+    Gen->>Gen: resolve ${go2rtc_username} → plaintext
+    Gen->>SHM: Write go2rtc.yaml (RAM only, never disk)
+</pre>
+</div>
+
+<script>
+    mermaid.initialize({
+        startOnLoad: true,
+        theme: 'dark',
+        themeVariables: {
+            darkMode: true,
+            background: '#161b22',
+            primaryColor: '#1f6feb',
+            primaryTextColor: '#c9d1d9',
+            primaryBorderColor: '#30363d',
+            lineColor: '#58a6ff',
+            secondaryColor: '#21262d',
+            tertiaryColor: '#161b22',
+            edgeLabelBackground: '#161b22'
+        },
+        flowchart: { curve: 'basis', htmlLabels: true },
+        er: { useMaxWidth: true },
+        sequence: { useMaxWidth: true }
+    });
+</script>
+
+</body>
+</html>

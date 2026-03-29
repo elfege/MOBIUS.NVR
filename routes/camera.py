@@ -210,47 +210,17 @@ def api_put_stream_preference(camera_serial):
     if stream_type not in VALID_STREAM_TYPES:
         return jsonify({'error': f'Invalid stream type. Must be one of: {", ".join(sorted(VALID_STREAM_TYPES))}'}), 400
 
-    try:
-        response = shared._postgrest_session.post(
-            f"{shared.POSTGREST_URL}/user_camera_preferences",
-            json={
-                'user_id': current_user.id,
-                'camera_serial': camera_serial,
-                'preferred_stream_type': stream_type
-            },
-            headers={
-                'Prefer': 'resolution=merge-duplicates,return=representation',
-            },
-            timeout=5
+    # Use unified Settings class — handles upsert + 409 fallback
+    if shared.settings:
+        success = shared.settings.set_user_preference(
+            current_user.id, camera_serial,
+            'preferred_stream_type', stream_type
         )
-
-        if response.status_code in (200, 201):
-            rows = response.json()
-            if rows:
-                return jsonify(rows[0])
+        if success:
             return jsonify({'status': 'saved'})
-        elif response.status_code == 409:
-            # Row exists — update via PATCH
-            patch_resp = shared._postgrest_session.patch(
-                f"{shared.POSTGREST_URL}/user_camera_preferences",
-                params={
-                    'user_id': f'eq.{current_user.id}',
-                    'camera_serial': f'eq.{camera_serial}'
-                },
-                json={'preferred_stream_type': stream_type},
-                timeout=5
-            )
-            if patch_resp.status_code in (200, 204):
-                return jsonify({'status': 'saved'})
-            else:
-                logger.error(f"Failed to update stream preference: {patch_resp.status_code} {patch_resp.text}")
-                return jsonify({'error': 'Failed to update stream preference'}), 500
-        else:
-            logger.error(f"Failed to save stream preference: {response.status_code} {response.text}")
-            return jsonify({'error': 'Failed to save stream preference'}), 500
-    except requests.RequestException as e:
-        logger.error(f"Error saving stream preference: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to save stream preference'}), 500
+
+    return jsonify({'error': 'Settings service not initialized'}), 500
 
 
 # ===== MediaMTX Routes =====
@@ -545,14 +515,24 @@ def api_camera_settings_update(camera_serial):
         if blocked:
             return jsonify({'error': f'Cannot modify immutable keys: {", ".join(blocked)}'}), 400
 
-        # Filter to editable keys only; unknown keys go into extra_config
-        updated = []
-        for key, value in data.items():
-            success = shared.camera_repo.update_camera_setting(camera_serial, key, value)
+        # Use Settings class for DB writes (handles direct columns vs extra_config)
+        if shared.settings:
+            success = shared.settings.set_camera_bulk(camera_serial, data)
             if success:
-                updated.append(key)
+                # Update in-memory cache
+                for key, value in data.items():
+                    camera[key] = value
+                updated = list(data.keys())
             else:
-                logger.warning(f"Failed to update {camera_serial}.{key}")
+                updated = []
+        else:
+            # Fallback to repository (legacy path)
+            updated = []
+            for key, value in data.items():
+                if shared.camera_repo.update_camera_setting(camera_serial, key, value):
+                    updated.append(key)
+                else:
+                    logger.warning(f"Failed to update {camera_serial}.{key}")
 
         if not updated:
             return jsonify({'error': 'No settings were updated'}), 500

@@ -270,7 +270,9 @@ def load_static_section(yaml_path: str) -> str:
             break
         sep_idx -= 1
 
-    return ''.join(lines[:sep_idx])
+    # Strip trailing blank lines from static section
+    result = ''.join(lines[:sep_idx]).rstrip('\n') + '\n'
+    return result
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

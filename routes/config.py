@@ -53,7 +53,7 @@ def index():
 def streams_page():
     """Multi-stream viewing page"""
     try:
-        cameras = shared.camera_repo.get_streaming_cameras()
+        cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
         ui_health = _ui_health_from_env()
 
         # Apply global streaming hub override (if set) to all cameras.
@@ -169,118 +169,42 @@ def api_trusted_network_put():
     data = request.get_json()
     enabled = str(data.get('enabled', False)).lower()
 
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=5
-        )
-        conn.autocommit = True
-        cur = conn.cursor()
-        cur.execute("SELECT upsert_setting(%s, %s);", ('TRUSTED_NETWORK_ENABLED', enabled))
-        cur.close()
-        conn.close()
-
-        # Invalidate cache
+    success = shared.settings.set_global('TRUSTED_NETWORK_ENABLED', enabled)
+    if success:
         _trusted_network_cache['enabled'] = enabled == 'true'
         _trusted_network_cache['checked_at'] = 0
-
         return jsonify({'success': True, 'enabled': enabled == 'true'}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Failed to update trusted network setting'}), 500
 
 
 @config_bp.route('/api/settings/global-hub', methods=['GET'])
 @login_required
 def api_global_hub_get():
-    """
-    Get the current global streaming hub override.
-
-    Returns:
-        { "value": "go2rtc" | "mediamtx" | null }
-        null means no global override — each camera uses its own streaming_hub setting.
-    """
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=5
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT value FROM nvr_settings WHERE key = 'streaming_hub_global';")
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        value = row[0] if row else None
-        # Empty string stored in DB is treated as null (no override)
-        return jsonify({'value': value or None}), 200
-    except Exception as e:
-        logger.error(f"[GlobalHub] GET failed: {e}")
-        return jsonify({'error': str(e)}), 500
+    """Get the current global streaming hub override."""
+    value = shared.settings.get_global('streaming_hub_global') if shared.settings else None
+    return jsonify({'value': value or None}), 200
 
 
 @config_bp.route('/api/settings/global-hub', methods=['PUT'])
 @csrf_exempt
 @login_required
 def api_global_hub_put():
-    """
-    Set or clear the global streaming hub override. Admin only.
-
-    Body: { "value": "go2rtc" | "mediamtx" | null }
-    null or omitted clears the override (per-camera setting applies).
-
-    Also invalidates the in-process hub cache so the change takes effect
-    immediately rather than waiting for the 30s TTL.
-    """
+    """Set or clear the global streaming hub override. Admin only."""
     if current_user.role != 'admin':
         return jsonify({'error': 'Admin access required'}), 403
 
     data = request.get_json() or {}
-    value = data.get('value')  # None, 'go2rtc', or 'mediamtx'
+    value = data.get('value')
 
-    # Validate
     if value is not None and value not in ('go2rtc', 'mediamtx'):
         return jsonify({'error': f"Invalid value '{value}'. Must be 'go2rtc', 'mediamtx', or null."}), 400
 
-    try:
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=5
-        )
-        conn.autocommit = True
-        cur = conn.cursor()
-        # Store NULL in DB for "no override"; upsert_setting takes TEXT so we
-        # use direct UPDATE/INSERT here to handle NULL cleanly.
-        cur.execute(
-            """
-            INSERT INTO nvr_settings (key, value, updated_at)
-            VALUES ('streaming_hub_global', %s, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
-            """,
-            (value,)
-        )
-        cur.close()
-        conn.close()
-
-        # Immediately expire the in-process cache so the next stream request
-        # picks up the new value without waiting for the 30s TTL.
+    success = shared.settings.set_global('streaming_hub_global', value or '')
+    if success:
         invalidate_global_hub_cache()
-
         logger.info(f"[GlobalHub] Global hub set to: {value!r} by user {current_user.id}")
         return jsonify({'success': True, 'value': value}), 200
-    except Exception as e:
-        logger.error(f"[GlobalHub] PUT failed: {e}")
-        return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Failed to update global hub'}), 500
 
 
 @config_bp.route('/api/settings/advanced', methods=['GET'])

@@ -27,7 +27,7 @@ export class FullscreenHandler {
         this.settings = {
             autoFullscreenEnabled: false,
             autoFullscreenDelay: 3,
-            gridStyle: 'spaced'
+            gridStyle: 'attached'
         };
 
         // Internal state tracking

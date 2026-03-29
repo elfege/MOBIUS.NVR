@@ -32,7 +32,6 @@ from routes.helpers import (
     _trusted_network_cache,
 )
 from services.license_service import license, validate_license
-from services.streaming_hub import invalidate_global_hub_cache
 
 logger = logging.getLogger(__name__)
 
@@ -55,15 +54,6 @@ def streams_page():
     try:
         cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
         ui_health = _ui_health_from_env()
-
-        # Apply global streaming hub override (if set) to all cameras.
-        # This ensures the template renders correct data-streaming-hub attributes
-        # and the frontend routes streams to the right hub.
-        from services.streaming_hub import get_global_hub
-        global_hub = get_global_hub()
-        if global_hub:
-            for serial in cameras:
-                cameras[serial]['streaming_hub'] = global_hub
 
         # Filter cameras based on user's access permissions
         allowed = _get_allowed_camera_serials(current_user)
@@ -177,34 +167,57 @@ def api_trusted_network_put():
     return jsonify({'error': 'Failed to update trusted network setting'}), 500
 
 
-@config_bp.route('/api/settings/global-hub', methods=['GET'])
+@config_bp.route('/api/settings/streaming-hubs', methods=['GET'])
 @login_required
-def api_global_hub_get():
-    """Get the current global streaming hub override."""
-    value = shared.settings.get_global('streaming_hub_global') if shared.settings else None
-    return jsonify({'value': value or None}), 200
+def api_streaming_hubs_get():
+    """Get per-camera streaming hub assignments. Returns two lists: mediamtx and go2rtc cameras."""
+    cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
+    mediamtx_list = []
+    go2rtc_list = []
+    for serial, cam in cameras.items():
+        entry = {'serial': serial, 'name': cam.get('name', serial)}
+        hub = (cam.get('streaming_hub') or 'mediamtx').lower()
+        if hub == 'go2rtc':
+            go2rtc_list.append(entry)
+        else:
+            mediamtx_list.append(entry)
+    mediamtx_list.sort(key=lambda c: c['name'].lower())
+    go2rtc_list.sort(key=lambda c: c['name'].lower())
+    return jsonify({'mediamtx': mediamtx_list, 'go2rtc': go2rtc_list}), 200
 
 
-@config_bp.route('/api/settings/global-hub', methods=['PUT'])
+@config_bp.route('/api/settings/streaming-hubs', methods=['PUT'])
 @csrf_exempt
 @login_required
-def api_global_hub_put():
-    """Set or clear the global streaming hub override. Admin only."""
+def api_streaming_hubs_put():
+    """
+    Bulk-update streaming hub for multiple cameras.
+
+    Request body: {"cameras": {"SERIAL1": "go2rtc", "SERIAL2": "mediamtx", ...}}
+    Each value must be 'go2rtc' or 'mediamtx'.
+    """
     if current_user.role != 'admin':
         return jsonify({'error': 'Admin access required'}), 403
 
     data = request.get_json() or {}
-    value = data.get('value')
+    assignments = data.get('cameras', {})
+    if not assignments or not isinstance(assignments, dict):
+        return jsonify({'error': 'Body must include "cameras": {"serial": "hub", ...}'}), 400
 
-    if value is not None and value not in ('go2rtc', 'mediamtx'):
-        return jsonify({'error': f"Invalid value '{value}'. Must be 'go2rtc', 'mediamtx', or null."}), 400
+    updated = []
+    errors = []
+    for serial, hub in assignments.items():
+        if hub not in ('go2rtc', 'mediamtx'):
+            errors.append(f"{serial}: invalid hub '{hub}'")
+            continue
+        success = shared.camera_repo.update_camera_setting(serial, 'streaming_hub', hub)
+        if success:
+            updated.append(serial)
+        else:
+            errors.append(f"{serial}: update failed")
 
-    success = shared.settings.set_global('streaming_hub_global', value or '')
-    if success:
-        invalidate_global_hub_cache()
-        logger.info(f"[GlobalHub] Global hub set to: {value!r} by user {current_user.id}")
-        return jsonify({'success': True, 'value': value}), 200
-    return jsonify({'error': 'Failed to update global hub'}), 500
+    logger.info(f"[StreamingHubs] Bulk update by user {current_user.id}: {len(updated)} updated, {len(errors)} errors")
+    return jsonify({'updated': updated, 'errors': errors}), 200
 
 
 @config_bp.route('/api/settings/advanced', methods=['GET'])

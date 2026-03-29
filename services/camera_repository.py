@@ -70,7 +70,7 @@ class CameraRepository:
 
         # Vendor configs always from JSON (static infrastructure config)
         self.unifi_config = self._load_json(self.unifi_config_file, {})
-        self.eufy_config = self._load_json(self.eufy_config_file, {})
+        self.eufy_config = {}  # Eufy bridge config no longer read from JSON file
         self.reolink_config = self._load_json(self.reolink_config_file, {})
         self.amcrest_config = self._load_json(self.amcrest_config_file, {})
 
@@ -581,7 +581,7 @@ class CameraRepository:
 
         # Vendor configs always from JSON
         self.unifi_config = self._load_json(self.unifi_config_file, {})
-        self.eufy_config = self._load_json(self.eufy_config_file, {})
+        self.eufy_config = {}  # Eufy bridge config no longer read from JSON file
         self.reolink_config = self._load_json(self.reolink_config_file, {})
         self.amcrest_config = self._load_json(self.amcrest_config_file, {})
 

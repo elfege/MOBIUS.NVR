@@ -380,6 +380,14 @@ export class MultiStreamManager {
         // This clears PTZ panels, audio unmute, stream controls, talkback buttons
         this.resetAllControlStates();
 
+        // Format camera names for display: underscores→spaces, title case.
+        // Display-only transform — DB values unchanged.
+        document.querySelectorAll('.stream-title').forEach(el => {
+            el.textContent = el.textContent
+                .replace(/_/g, ' ')
+                .replace(/\b\w+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+        });
+
         this.setupLayout();
         this.setupEventListeners();
         this.updateStreamCount();

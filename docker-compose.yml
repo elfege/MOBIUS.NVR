@@ -146,7 +146,7 @@ services:
     container_name: nvr-go2rtc
     restart: unless-stopped
     volumes:
-      - ./config/go2rtc.yaml:/config/go2rtc.yaml:ro
+      - /dev/shm/nvr-go2rtc:/config
     ports:
       - "1984:1984"    # Web UI and API
       - "8555:8555"    # RTSP server

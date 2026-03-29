@@ -73,14 +73,6 @@ def api_settings_global_set(key):
 
     success = settings.set_global(key, str(value))
 
-    # Special handling: invalidate streaming hub cache when global hub changes
-    if key == 'streaming_hub_global' and success:
-        try:
-            from services.streaming_hub import invalidate_global_hub_cache
-            invalidate_global_hub_cache()
-        except ImportError:
-            pass
-
     if success:
         logger.info(f"[Settings] Global setting updated: {key}")
         return jsonify({'success': True, 'key': key, 'value': value})

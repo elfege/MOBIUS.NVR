@@ -63,8 +63,7 @@ export class SettingsUI {
         this.$saveBtn.on('click', async () => {
             const activeTab = this.$content.find('.settings-tab-btn.active').data('tab');
             if (activeTab === 'streaming') {
-                const val = $('#global-hub-select').val();
-                await this.saveGlobalHubSetting(val === '' ? null : val);
+                await this._saveHubAssignments();
             } else {
                 await this._saveAllPending();
             }
@@ -149,11 +148,13 @@ export class SettingsUI {
 
         // ── Streaming ─────────────────────────────────────────────────────
 
-        // Global streaming hub override — persisted to nvr_settings table via PostgREST
-        this.$content.on('change', '#global-hub-select', (e) => {
-            const val = $(e.currentTarget).val();
-            // Empty string means "per-camera" (null in DB)
-            this.saveGlobalHubSetting(val === '' ? null : val);
+        // Per-camera hub assignment — click a camera to move it to the other list
+        this.$content.on('click', '.hub-camera-item', (e) => {
+            const $item = $(e.currentTarget);
+            const serial = $item.data('serial');
+            const currentHub = $item.data('hub');
+            const newHub = currentHub === 'mediamtx' ? 'go2rtc' : 'mediamtx';
+            this._moveCamera(serial, newHub);
         });
 
         this.$content.on('change', '#fullscreen-stream-type-toggle', (e) => {
@@ -246,7 +247,7 @@ export class SettingsUI {
         this.$overlay.addClass('active');
         this.render();
         // Load async DB value after render so the select is in the DOM
-        this.loadGlobalHubSetting();
+        this.loadHubAssignments();
     }
 
     hide() {
@@ -412,22 +413,29 @@ export class SettingsUI {
 
             <div class="setting-row">
                 <div class="setting-top">
-                    <div class="setting-label"><i class="fas fa-server"></i> Global Streaming Hub</div>
-                    <div class="setting-control">
-                        <select id="global-hub-select" class="setting-select">
-                            <option value="">Per-camera (default)</option>
-                            <option value="mediamtx">MediaMTX — all cameras</option>
-                            <option value="go2rtc">go2rtc — all cameras</option>
-                        </select>
-                    </div>
+                    <div class="setting-label"><i class="fas fa-server"></i> Camera Streaming Hubs</div>
                 </div>
                 <span id="hub-save-status" style="font-size:12px;padding:2px 0 4px 0;display:block;"></span>
                 <div class="setting-description">
-                    Override the streaming relay for every camera globally.<br>
-                    <strong>Per-camera:</strong> Each camera uses its individually configured hub.<br>
-                    <strong>MediaMTX:</strong> Force all cameras through MediaMTX (FFmpeg-based, stable).<br>
-                    <strong>go2rtc:</strong> Force all cameras through go2rtc (lower latency, WebRTC-native).<br>
-                    Takes effect within ~30s (server-side cache). Current streams reconnect on next playback.
+                    Assign each camera to a streaming hub. Move cameras between lists to change their hub.<br>
+                    <strong>MediaMTX:</strong> FFmpeg-based, stable, supports LL-HLS fallback.<br>
+                    <strong>go2rtc:</strong> Lower latency, WebRTC-native. Two-way audio always uses go2rtc regardless.
+                </div>
+                <div class="hub-assignment-container" style="display:flex;gap:12px;margin-top:8px;">
+                    <div class="hub-list-panel" style="flex:1;">
+                        <div class="hub-list-header" style="font-weight:600;font-size:13px;color:#7ec8e3;margin-bottom:6px;">
+                            <i class="fas fa-broadcast-tower"></i> MediaMTX
+                            <span id="mediamtx-count" style="opacity:0.6;font-weight:400;"></span>
+                        </div>
+                        <div id="hub-list-mediamtx" class="hub-camera-list" style="max-height:260px;overflow-y:auto;border:1px solid #333;border-radius:4px;padding:4px;"></div>
+                    </div>
+                    <div class="hub-list-panel" style="flex:1;">
+                        <div class="hub-list-header" style="font-weight:600;font-size:13px;color:#2ecc71;margin-bottom:6px;">
+                            <i class="fas fa-bolt"></i> go2rtc
+                            <span id="go2rtc-count" style="opacity:0.6;font-weight:400;"></span>
+                        </div>
+                        <div id="hub-list-go2rtc" class="hub-camera-list" style="max-height:260px;overflow-y:auto;border:1px solid #333;border-radius:4px;padding:4px;"></div>
+                    </div>
                 </div>
             </div>
 
@@ -578,42 +586,97 @@ export class SettingsUI {
     }
 
     /**
-     * Fetch the current global streaming hub override from the DB and populate the select.
-     * Called after render() so the DOM element exists. Runs async — non-blocking.
-     * Flask endpoint: GET /api/settings/global-hub
-     * Returns { value: 'go2rtc' | 'mediamtx' | null }
+     * Fetch per-camera hub assignments from the DB and render dual lists.
+     * Flask endpoint: GET /api/settings/streaming-hubs
+     * Returns { mediamtx: [{serial, name}], go2rtc: [{serial, name}] }
      */
-    async loadGlobalHubSetting() {
+    async loadHubAssignments() {
         try {
-            const resp = await fetch('/api/settings/global-hub');
+            const resp = await fetch('/api/settings/streaming-hubs');
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
-            const current = data.value || '';
-            $('#global-hub-select').val(current);
-            console.log('[SettingsUI] Global hub setting loaded:', current || '(per-camera)');
+            this._hubAssignments = {};
+            (data.mediamtx || []).forEach(c => { this._hubAssignments[c.serial] = { name: c.name, hub: 'mediamtx' }; });
+            (data.go2rtc || []).forEach(c => { this._hubAssignments[c.serial] = { name: c.name, hub: 'go2rtc' }; });
+            this._renderHubLists();
+            console.log('[SettingsUI] Hub assignments loaded:', Object.keys(this._hubAssignments).length, 'cameras');
         } catch (err) {
-            console.warn('[SettingsUI] Failed to load global hub setting:', err);
+            console.warn('[SettingsUI] Failed to load hub assignments:', err);
         }
     }
 
     /**
-     * Persist the global streaming hub override via PostgREST PATCH.
-     * @param {string|null} value - 'mediamtx', 'go2rtc', or null (per-camera)
-     * Flask endpoint: PUT /api/settings/global-hub
-     * Body: { value: 'go2rtc' | 'mediamtx' | null }
+     * Render the dual hub camera lists from the in-memory _hubAssignments map.
      */
-    async saveGlobalHubSetting(value) {
+    _renderHubLists() {
+        const mediamtx = [];
+        const go2rtc = [];
+        for (const [serial, info] of Object.entries(this._hubAssignments || {})) {
+            const entry = { serial, name: info.name };
+            if (info.hub === 'go2rtc') go2rtc.push(entry);
+            else mediamtx.push(entry);
+        }
+        mediamtx.sort((a, b) => a.name.localeCompare(b.name));
+        go2rtc.sort((a, b) => a.name.localeCompare(b.name));
+
+        const renderItem = (cam, hub) =>
+            `<div class="hub-camera-item" data-serial="${cam.serial}" data-hub="${hub}"
+                  style="padding:4px 8px;cursor:pointer;border-radius:3px;font-size:12px;margin:2px 0;
+                         background:rgba(255,255,255,0.05);transition:background 0.15s;"
+                  title="Click to move to ${hub === 'mediamtx' ? 'go2rtc' : 'MediaMTX'}">
+                <i class="fas fa-exchange-alt" style="opacity:0.3;margin-right:6px;font-size:10px;"></i>
+                ${cam.name}
+            </div>`;
+
+        $('#hub-list-mediamtx').html(mediamtx.map(c => renderItem(c, 'mediamtx')).join('') || '<div style="opacity:0.4;padding:8px;font-size:12px;">No cameras</div>');
+        $('#hub-list-go2rtc').html(go2rtc.map(c => renderItem(c, 'go2rtc')).join('') || '<div style="opacity:0.4;padding:8px;font-size:12px;">No cameras</div>');
+        $('#mediamtx-count').text(`(${mediamtx.length})`);
+        $('#go2rtc-count').text(`(${go2rtc.length})`);
+    }
+
+    /**
+     * Move a camera to a different hub in the in-memory map and re-render.
+     * Does NOT save to DB until the Save button is clicked.
+     */
+    _moveCamera(serial, newHub) {
+        if (!this._hubAssignments || !this._hubAssignments[serial]) return;
+        this._hubAssignments[serial].hub = newHub;
+        this._hubDirty = true;
+        this._renderHubLists();
+        $('#hub-save-status').text('Unsaved changes').css('color', '#f39c12');
+    }
+
+    /**
+     * Persist all pending hub assignments to the DB in one bulk request.
+     * Flask endpoint: PUT /api/settings/streaming-hubs
+     * Body: { cameras: { serial: hub, ... } }
+     */
+    async _saveHubAssignments() {
+        if (!this._hubDirty) {
+            $('#hub-save-status').text('No changes').css('color', '#aaa');
+            setTimeout(() => $('#hub-save-status').text(''), 1500);
+            return;
+        }
+        const cameras = {};
+        for (const [serial, info] of Object.entries(this._hubAssignments || {})) {
+            cameras[serial] = info.hub;
+        }
         const $status = $('#hub-save-status');
         $status.text('Saving…').css('color', '#aaa');
         try {
-            const resp = await fetch('/api/settings/global-hub', {
+            const resp = await fetch('/api/settings/streaming-hubs', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ value: value })
+                body: JSON.stringify({ cameras })
             });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            $status.text('Saved').css('color', '#2ecc71');
-            setTimeout(() => $status.text(''), 2500);
+            const result = await resp.json();
+            this._hubDirty = false;
+            const msg = result.errors && result.errors.length
+                ? `Saved ${result.updated.length}, ${result.errors.length} errors`
+                : `Saved (${result.updated.length} cameras)`;
+            $status.text(msg).css('color', result.errors?.length ? '#f39c12' : '#2ecc71');
+            setTimeout(() => $status.text(''), 3000);
         } catch (err) {
             $status.text(err.message).css('color', '#e74c3c');
         }

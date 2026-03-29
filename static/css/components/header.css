@@ -13,17 +13,17 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 55px;
+    height: 36px;
     background: rgba(20, 20, 28, 0.95);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     display: flex;
     align-items: center;
-    padding: 0 16px;
-    gap: 12px;
+    padding: 0 8px;
+    gap: 6px;
     z-index: 1000;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    box-shadow: 0 1px 10px rgba(0, 0, 0, 0.3);
 }
 
 /* ============================================================================
@@ -31,13 +31,13 @@
    ============================================================================ */
 
 .navbar-hamburger {
-    width: 44px;
-    height: 44px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 20px;
+    width: 32px;
+    height: 32px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 16px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -47,8 +47,8 @@
 }
 
 .navbar-hamburger:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
 }
 
 .navbar-hamburger:active {
@@ -60,10 +60,7 @@
    ============================================================================ */
 
 .navbar-logo-section {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    display: none; /* Logo moved to slide-in drawer header */
 }
 
 .navbar-logo {
@@ -148,44 +145,44 @@
 .navbar-actions {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
     flex-shrink: 0;
     margin-left: auto;
 }
 
-/* Navbar action buttons (filter, settings) */
+/* Navbar action buttons — icon-only, minimal chrome */
 .navbar-action-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    color: rgba(255, 255, 255, 0.85);
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.7);
     font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s ease;
-    white-space: nowrap;
+    transition: all 0.15s ease;
 }
 
 .navbar-action-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
     color: #fff;
 }
 
 .navbar-action-btn:active {
-    transform: scale(0.95);
+    transform: scale(0.92);
 }
 
 .navbar-action-btn i {
     font-size: 14px;
 }
 
+/* Hide text labels — icon-only in slim navbar */
 .navbar-action-btn span {
-    font-size: 13px;
-    font-weight: 500;
+    display: none;
 }
 
 /* ============================================================================

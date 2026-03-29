@@ -402,7 +402,11 @@ class CameraRepository:
 
     def update_camera_setting(self, serial: str, key: str, value) -> bool:
         """
-        Update a single setting for a camera. Writes to DB and updates cache.
+        Update a single setting for a camera. Writes to DB via Settings class
+        and updates in-memory cache.
+
+        The Settings class handles direct columns vs extra_config routing
+        via CAMERA_DIRECT_COLUMNS (defined once in services/settings.py).
 
         Args:
             serial: Camera serial number
@@ -417,33 +421,27 @@ class CameraRepository:
             logger.error(f"Camera not found: {serial}")
             return False
 
-        # Update in-memory cache
-        camera[key] = value
-
-        # Determine if this is a direct DB column or goes into extra_config
-        db_columns = {
-            'serial', 'name', 'type', 'camera_id', 'host', 'mac',
-            'packager_path', 'stream_type', 'streaming_hub', 'go2rtc_source',
-            'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
-            'hidden', 'ui_health_monitor', 'reversed_pan', 'reversed_tilt',
-            'notes', 'power_supply_device_id', 'true_mjpeg', 'capabilities',
-            'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
-            'rtsp_input', 'rtsp_output', 'two_way_audio',
-            'power_cycle_on_failure',
-        }
-
-        if key in db_columns:
-            # Direct column update
+        # Delegate DB write to unified Settings class (via shared singleton)
+        try:
+            from routes.shared import settings as shared_settings
+            if shared_settings:
+                db_ok = shared_settings.set_camera(serial, key, value)
+            else:
+                # Settings not yet initialized (early startup) — direct fallback
+                from services.settings import CAMERA_DIRECT_COLUMNS
+                if key in CAMERA_DIRECT_COLUMNS:
+                    db_ok = self._update_camera_in_db(serial, {key: value})
+                else:
+                    extra = camera.get('extra_config', {}) or {}
+                    extra[key] = value
+                    db_ok = self._update_camera_in_db(serial, {'extra_config': extra})
+        except Exception as e:
+            logger.error(f"Settings delegation failed for {serial}.{key}: {e}")
             db_ok = self._update_camera_in_db(serial, {key: value})
-        else:
-            # Update extra_config JSONB field
-            extra = camera.get('extra_config', {})
-            if not isinstance(extra, dict):
-                extra = {}
-            extra[key] = value
-            db_ok = self._update_camera_in_db(serial, {'extra_config': extra})
 
-        if not db_ok:
+        if db_ok:
+            camera[key] = value
+        else:
             logger.warning(f"DB update failed for {serial}.{key}")
 
         return db_ok
@@ -476,9 +474,16 @@ class CameraRepository:
             updates['reversed_tilt'] = reversed_tilt
             logger.info(f"Set reversed_tilt={reversed_tilt} for camera {serial}")
 
-        # Update DB directly with specific fields
-        db_ok = self._update_camera_in_db(serial, updates) if updates else True
-        return db_ok
+        # Delegate to Settings class
+        if not updates:
+            return True
+        try:
+            from routes.shared import settings as shared_settings
+            if shared_settings:
+                return shared_settings.set_camera_bulk(serial, updates)
+        except Exception:
+            pass
+        return self._update_camera_in_db(serial, updates)
 
     def get_camera_ptz_reversal(self, serial: str) -> Dict[str, bool]:
         """

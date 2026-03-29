@@ -45,6 +45,7 @@ from services.eufy.eufy_bridge_watchdog import BridgeWatchdog
 from services.unifi_protect_service import UniFiProtectService
 from services.unifi_service_resource_monitor import UniFiServiceResourceMonitor
 from services.app_restart_handler import AppRestartHandler
+from services.settings import Settings
 from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
 from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
@@ -1120,6 +1121,10 @@ except Exception as e:
     print(f"⚠️  ONVIF pre-warming warning: {e}")
 
 # ===== Initialize Monitoring Services =====
+# ── Unified Settings Manager ──────────────────────────────────────────────
+settings = Settings()
+print("✅ Settings manager initialized")
+
 try:
     restart_handler = AppRestartHandler(stream_manager, bridge_watchdog, eufy_bridge)
 
@@ -1158,6 +1163,7 @@ _shared.set_services(
     unifi_poe_service=unifi_poe_service,
     presence_service=presence_service,
     restart_handler=restart_handler,
+    settings=settings,
     app_state=app_state,
     socketio=socketio,
     reolink_mjpeg_capture_service=reolink_mjpeg_capture_service,

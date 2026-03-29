@@ -7,8 +7,8 @@
    We use 56px (55px + 1px gap) as the default margin-top.
 */
 .streams-container {
-    margin-top: 56px;
-    height: calc(100vh - 56px);
+    margin-top: 36px;
+    height: calc(100vh - 36px);
     padding: 1rem;
     overflow: auto;
     display: grid;
@@ -23,8 +23,8 @@
 /* Phone: navbar is 48px */
 @media (max-width: 768px) {
     .streams-container {
-        margin-top: 49px;
-        height: calc(100vh - 49px);
+        margin-top: 36px;
+        height: calc(100vh - 36px);
     }
 }
 

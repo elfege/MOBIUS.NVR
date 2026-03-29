@@ -44,14 +44,14 @@
 .streams-container.grid-attached {
     gap: 0;
     padding: 0;
-    margin-top: 56px; /* preserve navbar offset */
-    height: calc(100vh - 56px);
+    margin-top: 36px;
+    height: calc(100vh - 36px);
 }
 
 @media (max-width: 768px) {
     .streams-container.grid-attached {
-        margin-top: 49px;
-        height: calc(100vh - 49px);
+        margin-top: 36px;
+        height: calc(100vh - 36px);
     }
 }
 

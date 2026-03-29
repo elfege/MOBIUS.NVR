@@ -3,14 +3,11 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Config files (contain credentials) - track only .example and code files
+# Config files — contain credentials and real device data. NEVER track.
+# Only the template (no secrets) and the loader script are tracked.
 # -----------------------------------------------------------------------------
 config/
-!config/cameras.json.example
-!config/recording_settings.json.example
-!config/go2rtc.yaml.example
-!config/go2rtc.yaml
-!config/cameras_json_notes.json
+!config/go2rtc.yaml.template
 !config/recording_config_loader.py
 
 # -----------------------------------------------------------------------------

@@ -48,22 +48,13 @@ echo
 # ============================================================================
 # DTLS/WebRTC Encryption Setting
 # ============================================================================
-# Read enable_dtls from nvr_settings DB table, default false
-ENABLE_DTLS=$(docker exec nvr-postgres psql -U nvr_api -d nvr -A -t \
-    -c "SELECT COALESCE(value, 'false') FROM nvr_settings WHERE key='enable_dtls';" 2>/dev/null || echo "false")
-ENABLE_DTLS="${ENABLE_DTLS:-false}"
-
-if [[ "$ENABLE_DTLS" == "true" ]]; then
-    WEBRTC_ENCRYPTION="yes"
-    echo -e "${GREEN}✓${NC} DTLS enabled (iOS Safari WebRTC support)"
-else
-    WEBRTC_ENCRYPTION="no"
-    echo -e "${YELLOW}!${NC} DTLS disabled (iOS will fall back to HLS)"
-fi
+# DTLS is UNCONDITIONAL — required for WebRTC (iOS Safari mandates it).
+# Not a toggle. Not optional. Always on.
+WEBRTC_ENCRYPTION="yes"
 
 if grep -q "^webrtcEncryption:" "$MEDIAMTX_YML"; then
-    sed -i "s/^webrtcEncryption:.*/webrtcEncryption: ${WEBRTC_ENCRYPTION} # Controlled by cameras.json webrtc_global_settings.enable_dtls (TODO: move to nvr_settings)/" "$MEDIAMTX_YML"
-    echo -e "${GREEN}✓${NC} Updated webrtcEncryption: ${WEBRTC_ENCRYPTION}"
+    sed -i "s/^webrtcEncryption:.*/webrtcEncryption: yes # DTLS is unconditional — required for WebRTC/" "$MEDIAMTX_YML"
+    echo -e "${GREEN}✓${NC} webrtcEncryption: yes (DTLS unconditional)"
 else
     echo -e "${YELLOW}⚠${NC} webrtcEncryption line not found in mediamtx.yml"
 fi

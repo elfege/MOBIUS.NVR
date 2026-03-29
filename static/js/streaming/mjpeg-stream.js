@@ -29,9 +29,23 @@ export class MJPEGStreamManager {
         console.log(`[MJPEG] startStream called: cameraId=${cameraId}, cameraType=${cameraType}, stream=${stream}`);
         console.log(`[MJPEG] Element type: ${streamElement ? streamElement.tagName : 'null'}`);
 
-        // MJPEG requires <img> element - warn if we got a <video>
+        // MJPEG requires <img> element — if we got a <video>, swap it
         if (streamElement && streamElement.tagName === 'VIDEO') {
-            console.warn(`[MJPEG] WARNING: Got <video> element instead of <img>! MJPEG will not work.`);
+            console.log(`[MJPEG] Got <video> element — creating <img> for MJPEG`);
+            streamElement.style.display = 'none';
+            const streamItem = streamElement.closest('.stream-item');
+            let imgEl = streamItem ? streamItem.querySelector('img.mjpeg-stream') : null;
+            if (!imgEl) {
+                imgEl = document.createElement('img');
+                imgEl.className = 'mjpeg-stream stream-video';
+                imgEl.style.width = '100%';
+                imgEl.style.height = '100%';
+                imgEl.style.objectFit = 'contain';
+                streamElement.parentNode.appendChild(imgEl);
+            } else {
+                imgEl.style.display = '';
+            }
+            streamElement = imgEl;
         }
 
         // Build URL based on mjpeg_source config (if set) or camera type

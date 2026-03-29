@@ -280,15 +280,32 @@ def load_static_section(yaml_path: str) -> str:
 def main():
     script_dir  = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
-    yaml_path   = os.path.join(project_dir, 'config', 'go2rtc.yaml')
+
+    # Write to tmpfs (/dev/shm) so decrypted credentials never touch disk.
+    # The go2rtc container bind-mounts /dev/shm/nvr-go2rtc as /config.
+    shm_dir = '/dev/shm/nvr-go2rtc'
+    os.makedirs(shm_dir, exist_ok=True)
+    yaml_path = os.path.join(shm_dir, 'go2rtc.yaml')
+
+    # Static template (hand-maintained ONVIF/API/WebRTC settings) lives in config/
+    template_path = os.path.join(project_dir, 'config', 'go2rtc.yaml.template')
+    # Fallback to example file if template doesn't exist
+    if not os.path.exists(template_path):
+        template_path = os.path.join(project_dir, 'go2rtc.yaml.example')
 
     print(f"{CYAN}=== Generate go2rtc.yaml video relay streams from DB ==={NC}")
     print()
 
-    if not os.path.exists(yaml_path):
-        print(f"{RED}ERROR: go2rtc.yaml not found at {yaml_path}{NC}", file=sys.stderr)
-        print(f"{YELLOW}Hint: Copy config/go2rtc.yaml.example to config/go2rtc.yaml{NC}", file=sys.stderr)
+    if not os.path.exists(template_path):
+        print(f"{RED}ERROR: go2rtc.yaml template not found at {template_path}{NC}", file=sys.stderr)
+        print(f"{YELLOW}Hint: Create config/go2rtc.yaml.template with static settings{NC}", file=sys.stderr)
         sys.exit(1)
+
+    # If tmpfs output doesn't exist yet, seed from template
+    if not os.path.exists(yaml_path):
+        import shutil
+        shutil.copy2(template_path, yaml_path)
+        print(f"{GREEN}✓{NC} Seeded go2rtc.yaml from template")
 
     # ── Load + decrypt credentials ───────────────────────────────────────────
     print(f"{CYAN}Loading credentials from camera_credentials table...{NC}")

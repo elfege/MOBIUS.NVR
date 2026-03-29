@@ -1909,3 +1909,46 @@ Steps remaining (backend + frontend + generate script update):
 - [ ] "Add Camera" UI button (cameras.json no longer used for new cameras)
 - [ ] Python rewrite of mediamtx bash script
 - [ ] OOP refactor of streaming hub dispatch in stream.js
+
+---
+
+## Session: March 28-29, 2026 ~20:00-01:00 EDT (Opus 1M continued)
+
+**Branch:** `go2rtc_migration_March_28_2026_b` → `settings_refactor_March_29_2026_a`
+
+### Critical Fixes
+- **Migration 021 overwriting go2rtc_source** on every start.sh — added `IS NULL` guard. Eufy cameras switched from `eufy://` to `rtsp://` direct local.
+- **`enable_dtls` lost when cameras.json removed** — script defaulted to false → MediaMTX WHEP switched to HTTP → nginx proxy to HTTPS = 502 for ALL WebRTC. Fixed: seeded `enable_dtls=true` in `nvr_settings`.
+- **nvr-edge nginx `error_page` at server level** overrode location-level settings — moved into `location /` only. Streaming paths now pass through raw errors.
+- **Stream restart endpoint** returning 500 for go2rtc cameras — added hub-aware no-op response.
+- **MJPEG video→img swap** — auto-creates `<img>` when `startStream` gets wrong element type.
+- **Eufy cameras missing `rtsp` config** in `extra_config` — populated for all 9 cameras.
+- **Stream preference save 409 conflict** — added PATCH fallback.
+
+### Security
+- **Purged from ENTIRE git history** (both repos, all branches): `config/go2rtc.yaml` (decrypted passwords), `config/cameras.json` (device IPs/MACs/serials), `config/cameras.json.example`, `config/go2rtc.yaml.example`, `config/eufy_bridge.json`
+- **go2rtc.yaml moved to tmpfs** (`/dev/shm/nvr-go2rtc/`) — decrypted credentials never touch disk
+- **eufy_bridge.json removed from runtime** — Eufy stream handler never used vendor_config
+- **.gitignore cleaned** — only `go2rtc.yaml.template` and `recording_config_loader.py` allowed from config/
+
+### Architecture Changes
+- **cameras.json removed from runtime** entirely — DB is sole source of truth
+- **Both hubs pre-populated** — go2rtc.yaml has ALL cameras, not just go2rtc-hub ones. Instant hub switching.
+- **Parallel config generation** in start.sh (MediaMTX + go2rtc + neolink)
+- **Global hub override** applied to template rendering
+- **Unified Settings class** created (`services/settings.py`) — Phase 1 of OOP refactor
+
+### Settings Refactor (Phase 1 complete, Phases 2-4 pending)
+- `services/settings.py` — `Settings` class with `_upsert()` handling 409 fallback once
+- Wired into `app.py` → `shared.settings`
+- Pending: route migration (Phase 2), CameraRepository integration (Phase 3), JS SettingsAPI (Phase 4)
+
+### TODO (next session)
+- [ ] Settings refactor Phases 2-4 (route migration, repo integration, JS API)
+- [ ] Investigate go2rtc ICE disconnection (blocker for go2rtc rollout)
+- [ ] Stream manager: use streaming_hub.get_rtsp_source_url() for FFmpeg source
+- [ ] Eufy `rtsp` config → proper DB column (not extra_config hack)
+- [ ] Reolink/Amcrest/SV3C/UniFi vendor configs → migrate from JSON to DB
+- [ ] "Add Camera" UI button
+- [ ] Re-auth for credential viewing on trusted devices
+- [ ] E1 detection by camera property, not URL pattern

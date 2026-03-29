@@ -1,0 +1,60 @@
+# go2rtc Configuration for NVR System
+#
+# Two roles:
+#   1. ONVIF AudioBackChannel (two-way audio) for cameras that support it
+#      Browser -> Flask WebSocket -> go2rtc API -> ONVIF Backchannel -> Camera
+#
+#   2. Low-latency video relay for Neolink cameras (Reolink E1 etc.)
+#      Camera -> Neolink (Baichuan->RTSP) -> go2rtc (RTSP in, WebRTC out) -> Browser
+#      Bypasses FFmpeg + MediaMTX for dramatically lower latency (~1-2s vs ~12s).
+#      Neolink produces broken DTS=0 timestamps; go2rtc handles this gracefully.
+#
+# Documentation: https://github.com/AlexxIT/go2rtc
+
+api:
+  listen: ":1984"           # Web UI and API
+  origin: "*"               # Allow CORS for NVR integration
+
+rtsp:
+  listen: ":8555"           # RTSP server (internal use)
+
+webrtc:
+  listen: ":8556"           # WebRTC signaling
+  ice_servers:
+    - urls: ["stun:stun.l.google.com:19302"]
+
+# Stream definitions for cameras with ONVIF AudioBackChannel
+# Note: Credentials are injected via environment variables in docker-compose
+#
+# IMPORTANT: We only configure ONVIF here for backchannel (two-way audio).
+# Video/RTSP is handled by MediaMTX - do NOT add RTSP sources here as it would
+# create a second connection to cameras that only support one RTSP session.
+streams:
+  # SV3C Living Room (C6F0SgZ0N0PoL2)
+  # Confirmed two-way audio via admin UI (has output volume setting)
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  sv3c_living:
+    - "onvif://admin:${NVR_SV3C_PASSWORD}@192.168.10.90:8080"
+
+  # Amcrest Lobby (AMC043145A67EFBF79)
+  # ONVIF backchannel support expected
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  amcrest_lobby:
+    - "onvif://${NVR_AMCREST_LOBBY_USERNAME}:${NVR_AMCREST_LOBBY_PASSWORD}@192.168.10.34:80"
+
+  # Reolink E1 Zoom - LAUNDRY ROOM (95270001NT3KNA67)
+  # Indoor PTZ camera with confirmed speaker capability
+  # ONVIF-only: backchannel for two-way audio, no RTSP (MediaMTX handles video)
+  laundry_room:
+    - "onvif://${NVR_REOLINK_API_USER}:${NVR_REOLINK_API_PASSWORD}@192.168.10.118:8000"
+
+# Note: UniFi camera (68d49398005cf203e400043f) is NOT included here
+# because it's accessed via UniFi Protect controller (192.168.10.3), not direct RTSP/ONVIF.
+# UniFi Protect has its own two-way audio mechanism that would need
+# separate implementation via the Protect API.
+
+  # Eufy Doorbell (T821451024233587) - "Entrance door"
+  # Uses go2rtc native Eufy P2P support - no HomeBase required
+  # This provides RTSP output at rtsp://go2rtc:8555/entrance_door
+  entrance_door:
+    - "eufy://${NVR_EUFY_BRIDGE_USERNAME}:${NVR_EUFY_BRIDGE_PASSWORD}@T821451024233587"

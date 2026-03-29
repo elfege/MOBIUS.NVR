@@ -86,6 +86,7 @@ from routes.ptz import ptz_bp
 from routes.recording import recording_bp
 from routes.storage import storage_bp
 from routes.streaming import streaming_bp, init_socketio as _init_streaming_socketio
+from routes.settings_routes import settings_bp
 from routes.talkback import talkback_bp, init_socketio as _init_talkback_socketio
 
 # Flask-SocketIO for WebSocket MJPEG multiplexing
@@ -172,6 +173,7 @@ app.register_blueprint(recording_bp)
 app.register_blueprint(storage_bp)
 app.register_blueprint(streaming_bp)
 app.register_blueprint(talkback_bp)
+app.register_blueprint(settings_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).

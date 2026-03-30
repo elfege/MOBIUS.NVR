@@ -541,12 +541,27 @@ def api_talkback_capabilities(camera_serial):
 
         camera_type = camera.get('type', '').lower()
 
+        # Check Eufy cloud connectivity for P2P
+        eufy_cloud_ok = False
+        eufy_bridge_alive = shared.eufy_bridge is not None and shared.eufy_bridge.is_running()
+        if camera_type == 'eufy':
+            try:
+                import requests as http_req
+                resp = http_req.get('https://mysecurity.eufylife.com', timeout=3)
+                eufy_cloud_ok = resp.status_code == 200
+            except Exception:
+                eufy_cloud_ok = False
+
         # Capability matrix
         capabilities = {
             'eufy': {
                 'supported': True,
                 'method': 'p2p',
-                'ready': shared.eufy_bridge is not None and shared.eufy_bridge.is_running()
+                'ready': eufy_bridge_alive,
+                'cloud_reachable': eufy_cloud_ok,
+                'cloud_required': True,
+                'cloud_info': 'Eufy P2P backchannel requires cloud access for session key exchange. '
+                              'Cameras must have WAN access (check firewall rules).'
             },
             'reolink': {
                 'supported': False,  # Not yet implemented
@@ -581,3 +596,30 @@ def api_talkback_capabilities(camera_serial):
     except Exception as e:
         logger.error(f"[Talkback] Capabilities error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@talkback_bp.route('/api/eufy/cloud-status')
+@login_required
+def api_eufy_cloud_status():
+    """Check Eufy cloud connectivity + bridge status.
+    Used by talkback modal and PTZ controls to show cloud dependency status."""
+    bridge_alive = shared.eufy_bridge is not None and shared.eufy_bridge.is_running()
+
+    cloud_reachable = False
+    try:
+        import requests as http_req
+        resp = http_req.get('https://mysecurity.eufylife.com', timeout=3)
+        cloud_reachable = resp.status_code == 200
+    except Exception:
+        cloud_reachable = False
+
+    return jsonify({
+        'bridge_running': bridge_alive,
+        'cloud_reachable': cloud_reachable,
+        'p2p_available': bridge_alive and cloud_reachable,
+        'message': (
+            'Eufy cloud and bridge ready' if bridge_alive and cloud_reachable
+            else 'Bridge not running' if not bridge_alive
+            else 'Eufy cloud unreachable — cameras need WAN access for P2P'
+        )
+    })

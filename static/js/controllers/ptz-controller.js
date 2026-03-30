@@ -57,6 +57,9 @@ export class PTZController {
         // Load reverse pan settings for all PTZ cameras
         this.loadReversePanSettingsForAllCameras();
 
+        // Check Eufy cloud status for PTZ-capable Eufy cameras
+        this._checkEufyCloudForPTZ();
+
         // Initialize digital zoom for all cameras (works for any camera, not just PTZ)
         this.initializeDigitalZoomForAllCameras();
 
@@ -538,6 +541,43 @@ export class PTZController {
                 delay += staggerMs;
             }
         });
+    }
+
+    /**
+     * Check Eufy cloud status and update PTZ cloud indicators.
+     * Eufy PTZ commands require P2P (cloud), but presets use local cache.
+     */
+    async _checkEufyCloudForPTZ() {
+        const $eufyIndicators = $('.ptz-cloud-status[data-camera-type="eufy"]');
+        if ($eufyIndicators.length === 0) return;
+
+        try {
+            const resp = await fetch('/api/eufy/cloud-status');
+            const data = await resp.json();
+
+            $eufyIndicators.each(function () {
+                const $el = $(this);
+                const $text = $el.find('.ptz-cloud-text');
+                $el.show();
+
+                if (data.p2p_available) {
+                    $el.css({ background: 'rgba(39, 174, 96, 0.3)', color: '#27ae60' });
+                    $el.find('i').removeClass().addClass('fas fa-cloud');
+                    $text.text('Cloud OK');
+                    $el.attr('title', 'Eufy cloud connected — PTZ commands available');
+                } else {
+                    $el.css({ background: 'rgba(231, 76, 60, 0.3)', color: '#e74c3c' });
+                    $el.find('i').removeClass().addClass('fas fa-cloud-slash');
+                    $text.text('Cloud down — PTZ unavailable');
+                    $el.attr('title', data.message || 'Eufy cloud unreachable — PTZ commands need P2P. Presets still work (cached).');
+                }
+            });
+        } catch (err) {
+            console.warn('[PTZ] Cloud status check failed:', err);
+        }
+
+        // Re-check every 60 seconds
+        setTimeout(() => this._checkEufyCloudForPTZ(), 60000);
     }
 
     /**

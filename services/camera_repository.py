@@ -54,21 +54,17 @@ class CameraRepository:
         self.amcrest_config_file = os.path.join(config_dir, 'amcrest.json')
 
         # Track which source we loaded from
-        self._source = 'none'
-        # Cache invalidation flag — set True after any DB write,
-        # cleared after reload. Ensures reads always reflect DB state.
-        self._cache_dirty = False
+        self._source = 'database'
 
-        # Load camera data from database ONLY.
+        # NO CACHE. Every read hits the DB directly via PostgREST.
         # cameras.json is a brand schema template for the "Add Camera" form,
         # NOT a data store. The database is the sole source of truth.
-        self.cameras_data = self._load_cameras_from_db()
-        if self.cameras_data.get('devices'):
-            self._source = 'database'
+        # Initial load just to verify DB connectivity at startup.
+        startup_data = self._load_cameras_from_db()
+        if startup_data.get('devices'):
             logger.info(
-                f"Loaded {self.get_camera_count(include_hidden=True)} cameras from database")
+                f"DB connected: {len(startup_data['devices'])} cameras found")
         else:
-            self._source = 'database'
             logger.warning("No cameras found in database. Add cameras via the UI.")
 
         # Vendor configs always from JSON (static infrastructure config)
@@ -128,14 +124,6 @@ class CameraRepository:
         except requests.RequestException as e:
             logger.warning(f"Cannot reach database for camera loading: {e}")
             return {}
-
-    def _reload_from_db(self):
-        """Reload camera data from DB and clear dirty flag."""
-        fresh = self._load_cameras_from_db()
-        if fresh.get('devices'):
-            self.cameras_data = fresh
-            logger.debug(f"Cache reloaded from DB: {len(fresh['devices'])} cameras")
-        self._cache_dirty = False
 
     def _db_row_to_camera_config(self, row: dict) -> dict:
         """
@@ -304,15 +292,25 @@ class CameraRepository:
 
     def get_camera(self, serial: str) -> Optional[Dict]:
         """Get single camera configuration by serial number.
-        Always reads from DB to ensure UI/backend never shows stale data."""
-        if self._cache_dirty:
-            self._reload_from_db()
-        return self.cameras_data.get('devices', {}).get(serial)
+        Always reads directly from DB — no cache."""
+        try:
+            resp = requests.get(
+                f"{POSTGREST_URL}/cameras",
+                params={'serial': f'eq.{serial}'},
+                timeout=5
+            )
+            if resp.status_code == 200:
+                rows = resp.json()
+                if rows:
+                    return self._db_row_to_camera_config(rows[0])
+            return None
+        except requests.RequestException as e:
+            logger.error(f"DB read failed for camera {serial}: {e}")
+            return None
 
     def get_all_cameras(self, include_hidden: bool = False) -> Dict[str, Dict]:
         """
-        Get all camera configurations.
-        Reloads from DB if cache has been invalidated by a write.
+        Get all camera configurations directly from DB — no cache.
 
         Args:
             include_hidden: If True, include hidden cameras. Default False.
@@ -320,9 +318,8 @@ class CameraRepository:
         Returns:
             Dictionary of cameras {serial: config}
         """
-        if self._cache_dirty:
-            self._reload_from_db()
-        all_cameras = self.cameras_data.get('devices', {})
+        data = self._load_cameras_from_db()
+        all_cameras = data.get('devices', {})
         return self._filter_hidden(all_cameras, include_hidden)
 
     def get_cameras_by_type(self, camera_type: str, include_hidden: bool = False) -> Dict[str, Dict]:
@@ -456,10 +453,7 @@ class CameraRepository:
             logger.error(f"Settings delegation failed for {serial}.{key}: {e}")
             db_ok = self._update_camera_in_db(serial, {key: value})
 
-        if db_ok:
-            # Mark cache dirty so next read reloads from DB
-            self._cache_dirty = True
-        else:
+        if not db_ok:
             logger.warning(f"DB update failed for {serial}.{key}")
 
         return db_ok
@@ -496,16 +490,10 @@ class CameraRepository:
         try:
             from routes.shared import settings as shared_settings
             if shared_settings:
-                result = shared_settings.set_camera_bulk(serial, updates)
-                if result:
-                    self._cache_dirty = True
-                return result
+                return shared_settings.set_camera_bulk(serial, updates)
         except Exception:
             pass
-        result = self._update_camera_in_db(serial, updates)
-        if result:
-            self._cache_dirty = True
-        return result
+        return self._update_camera_in_db(serial, updates)
 
     def get_camera_ptz_reversal(self, serial: str) -> Dict[str, bool]:
         """

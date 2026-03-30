@@ -170,28 +170,13 @@ def api_trusted_network_put():
 @config_bp.route('/api/settings/streaming-hubs', methods=['GET'])
 @login_required
 def api_streaming_hubs_get():
-    """Get per-camera streaming hub assignments directly from DB (never cache)."""
-    # Always query DB directly — UI must reflect DB truth, not in-memory cache.
-    import os
-    import requests as http_requests
-    postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
-    try:
-        resp = http_requests.get(
-            f"{postgrest_url}/cameras",
-            params={'select': 'serial,name,streaming_hub'},
-            timeout=5
-        )
-        resp.raise_for_status()
-        rows = resp.json()
-    except Exception as e:
-        logger.error(f"[StreamingHubs] DB query failed: {e}")
-        return jsonify({'error': 'Failed to query DB'}), 500
-
+    """Get per-camera streaming hub assignments — always fresh from DB."""
+    cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
     mediamtx_list = []
     go2rtc_list = []
-    for row in rows:
-        entry = {'serial': row['serial'], 'name': row.get('name', row['serial'])}
-        hub = (row.get('streaming_hub') or 'mediamtx').lower()
+    for serial, cam in cameras.items():
+        entry = {'serial': serial, 'name': cam.get('name', serial)}
+        hub = (cam.get('streaming_hub') or 'mediamtx').lower()
         if hub == 'go2rtc':
             go2rtc_list.append(entry)
         else:

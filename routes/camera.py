@@ -399,9 +399,8 @@ def api_mediamtx_create_path(camera_serial):
 @camera_bp.route('/api/cameras/<camera_id>')
 @login_required
 def api_camera_detail(camera_id):
-    """Get single camera configuration"""
+    """Get single camera configuration — always fresh from DB."""
     try:
-        # Get camera from repository
         camera = shared.camera_repo.get_camera(camera_id)
 
         if not camera:
@@ -519,14 +518,11 @@ def api_camera_settings_update(camera_serial):
         if shared.settings:
             success = shared.settings.set_camera_bulk(camera_serial, data)
             if success:
-                # Update in-memory cache
-                for key, value in data.items():
-                    camera[key] = value
                 updated = list(data.keys())
             else:
                 updated = []
         else:
-            # Fallback to repository (legacy path)
+            # Fallback to repository (legacy path — also marks cache dirty)
             updated = []
             for key, value in data.items():
                 if shared.camera_repo.update_camera_setting(camera_serial, key, value):

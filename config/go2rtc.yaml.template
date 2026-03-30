@@ -20,6 +20,8 @@ rtsp:
 
 webrtc:
   listen: ":8556"           # WebRTC signaling
+  candidates:
+    - "${NVR_HOST_IP}:8557"  # Host IP + mapped UDP port — browser needs this to reach go2rtc media
   ice_servers:
     - urls: ["stun:stun.l.google.com:19302"]
 

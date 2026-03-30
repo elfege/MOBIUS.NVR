@@ -160,6 +160,7 @@ services:
         required: false
     environment:
       - TZ=America/New_York
+      - NVR_HOST_IP=${NVR_HOST_IP}
     networks:
       - nvr-net
 

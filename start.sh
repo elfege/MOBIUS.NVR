@@ -163,17 +163,8 @@ mkdir -p logs streams config
 # Ensure entrypoint.sh is executable (bind mount overrides Docker build chmod)
 chmod +x entrypoint.sh 2>/dev/null || true
 
-# Check if config/cameras.json exists
-if [[ ! -f config/cameras.json ]]; then
-	if [[ -f config/cameras.json.example ]]; then
-		echo -e "${YELLOW}No cameras.json found — copying from example template${NC}"
-		cp config/cameras.json.example config/cameras.json
-		echo -e "${YELLOW}Edit config/cameras.json with your camera details before adding cameras${NC}"
-	else
-		echo -e "${RED}ERROR: No cameras.json or cameras.json.example found in config/${NC}"
-		exit 1
-	fi
-fi
+# Database is the sole source of truth for camera configuration.
+# cameras.json is NOT used at runtime. Add cameras via the UI.
 
 # =============================================================================
 # Stop existing container if running

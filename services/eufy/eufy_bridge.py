@@ -343,10 +343,15 @@ class EufyBridge:
         ready_detected = False
         try:
             for line in iter(self.process.stdout.readline, ''):
+                line = line.rstrip()
                 # Stale thread check: a newer generation has started, exit silently
                 if generation != self._generation:
                     print(f"[EUFY BRIDGE MONITOR] Stale thread (gen {generation} vs current {self._generation}), exiting")
                     return
+
+                # Log ALL bridge output so we can see crash reasons
+                if line:
+                    print(f"[EUFY BRIDGE] {line}")
 
                 # Phase 1: Detect server readiness
                 if not ready_detected:
@@ -357,6 +362,10 @@ class EufyBridge:
 
                 # Check if process exited while we were reading
                 if self.process and self.process.poll() is not None:
+                    # Drain remaining output
+                    remaining = self.process.stdout.read()
+                    if remaining:
+                        print(f"[EUFY BRIDGE] (final output) {remaining.rstrip()}")
                     if generation == self._generation:
                         self._mark_bridge_dead(
                             f"Bridge process exited (code {self.process.returncode})"

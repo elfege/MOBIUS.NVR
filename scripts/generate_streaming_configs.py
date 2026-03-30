@@ -199,8 +199,6 @@ def generate_go2rtc_config(cameras, creds, subs, project_dir):
 
     # Seed from template if first run
     template_path = os.path.join(project_dir, 'config', 'go2rtc.yaml.template')
-    if not os.path.exists(template_path):
-        template_path = os.path.join(project_dir, 'go2rtc.yaml.example')
     if not os.path.exists(yaml_path):
         if os.path.exists(template_path):
             import shutil

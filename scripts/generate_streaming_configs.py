@@ -233,9 +233,12 @@ def generate_go2rtc_config(cameras, creds, subs, project_dir):
         'eufy':    'eufy_go2rtc',
     }
 
-    # Read static section from template — ${NVR_HOST_IP} is resolved by
-    # go2rtc itself from its container environment (set via docker-compose).
+    # Read static section from template and resolve ${NVR_HOST_IP}.
+    # go2rtc only resolves env vars in stream sources, not in webrtc config.
     static_part = load_go2rtc_static_section(template_path)
+    host_ip = _resolve_host_ip()
+    static_part = static_part.replace('${NVR_HOST_IP}', host_ip)
+    print(f"  WebRTC ICE candidate: {host_ip}:8557")
 
     auto_lines = [
         '',

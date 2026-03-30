@@ -160,6 +160,10 @@ echo ""
 echo "Creating directories..."
 mkdir -p logs streams config
 
+# Host IP for go2rtc WebRTC ICE candidates — browser needs this to reach media UDP port
+export NVR_HOST_IP=$(hostname -I | awk '{print $1}')
+echo -e "${GREEN}✓${NC} NVR_HOST_IP=${NVR_HOST_IP}"
+
 # Ensure entrypoint.sh is executable (bind mount overrides Docker build chmod)
 chmod +x entrypoint.sh 2>/dev/null || true
 

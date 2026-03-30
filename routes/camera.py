@@ -515,20 +515,31 @@ def api_camera_settings_update(camera_serial):
             return jsonify({'error': f'Cannot modify immutable keys: {", ".join(blocked)}'}), 400
 
         # Use Settings class for DB writes (handles direct columns vs extra_config)
+        logger.info(f"[Settings PUT] {camera_serial}: shared.settings={shared.settings is not None}, data={data}")
         if shared.settings:
             success = shared.settings.set_camera_bulk(camera_serial, data)
+            logger.info(f"[Settings PUT] {camera_serial}: set_camera_bulk returned {success}")
             if success:
                 updated = list(data.keys())
             else:
                 updated = []
         else:
-            # Fallback to repository (legacy path — also marks cache dirty)
-            updated = []
-            for key, value in data.items():
-                if shared.camera_repo.update_camera_setting(camera_serial, key, value):
-                    updated.append(key)
-                else:
-                    logger.warning(f"Failed to update {camera_serial}.{key}")
+            # Fallback: direct PostgREST PATCH (no Settings class available)
+            logger.warning(f"[Settings PUT] {camera_serial}: shared.settings is None, using direct PATCH")
+            import os, requests as http_req
+            postgrest_url = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
+            resp = http_req.patch(
+                f"{postgrest_url}/cameras",
+                params={'serial': f'eq.{camera_serial}'},
+                json=data,
+                timeout=5
+            )
+            if resp.status_code in (200, 204):
+                updated = list(data.keys())
+                logger.info(f"[Settings PUT] {camera_serial}: direct PATCH success")
+            else:
+                updated = []
+                logger.error(f"[Settings PUT] {camera_serial}: direct PATCH failed {resp.status_code}: {resp.text}")
 
         if not updated:
             return jsonify({'error': 'No settings were updated'}), 500

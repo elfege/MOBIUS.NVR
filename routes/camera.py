@@ -1496,8 +1496,16 @@ def api_admin_restart():
     if not shared.restart_handler:
         return jsonify({'success': False, 'error': 'Restart handler not initialized'}), 500
 
-    logger.info(f"[Admin] Restart requested: {reason}")
-    shared.restart_handler.restart_app(reason)
+    # mode: 'full' = SSH to host, run start.sh (regenerates configs)
+    #        'container' = os._exit(1), Docker restarts container only
+    mode = data.get('mode', 'full')
+    logger.info(f"[Admin] Restart requested (mode={mode}): {reason}")
 
-    # Response sent before exit (restart_app runs in daemon thread with 5s delay)
-    return jsonify({'success': True, 'message': 'Restart initiated'})
+    if mode == 'full':
+        success = shared.restart_handler.restart_full(reason)
+        if not success:
+            return jsonify({'success': False, 'error': 'Restart already in progress'}), 409
+        return jsonify({'success': True, 'message': 'Full restart initiated (start.sh on host)'})
+    else:
+        shared.restart_handler.restart_app(reason)
+        return jsonify({'success': True, 'message': 'Container restart initiated'})

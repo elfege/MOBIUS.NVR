@@ -55,6 +55,9 @@ class CameraRepository:
 
         # Track which source we loaded from
         self._source = 'none'
+        # Cache invalidation flag — set True after any DB write,
+        # cleared after reload. Ensures reads always reflect DB state.
+        self._cache_dirty = False
 
         # Load camera data from database ONLY.
         # cameras.json is a brand schema template for the "Add Camera" form,
@@ -125,6 +128,14 @@ class CameraRepository:
         except requests.RequestException as e:
             logger.warning(f"Cannot reach database for camera loading: {e}")
             return {}
+
+    def _reload_from_db(self):
+        """Reload camera data from DB and clear dirty flag."""
+        fresh = self._load_cameras_from_db()
+        if fresh.get('devices'):
+            self.cameras_data = fresh
+            logger.debug(f"Cache reloaded from DB: {len(fresh['devices'])} cameras")
+        self._cache_dirty = False
 
     def _db_row_to_camera_config(self, row: dict) -> dict:
         """
@@ -292,12 +303,16 @@ class CameraRepository:
     # ===== Camera CRUD Operations =====
 
     def get_camera(self, serial: str) -> Optional[Dict]:
-        """Get single camera configuration by serial number."""
+        """Get single camera configuration by serial number.
+        Always reads from DB to ensure UI/backend never shows stale data."""
+        if self._cache_dirty:
+            self._reload_from_db()
         return self.cameras_data.get('devices', {}).get(serial)
 
     def get_all_cameras(self, include_hidden: bool = False) -> Dict[str, Dict]:
         """
         Get all camera configurations.
+        Reloads from DB if cache has been invalidated by a write.
 
         Args:
             include_hidden: If True, include hidden cameras. Default False.
@@ -305,6 +320,8 @@ class CameraRepository:
         Returns:
             Dictionary of cameras {serial: config}
         """
+        if self._cache_dirty:
+            self._reload_from_db()
         all_cameras = self.cameras_data.get('devices', {})
         return self._filter_hidden(all_cameras, include_hidden)
 
@@ -440,7 +457,8 @@ class CameraRepository:
             db_ok = self._update_camera_in_db(serial, {key: value})
 
         if db_ok:
-            camera[key] = value
+            # Mark cache dirty so next read reloads from DB
+            self._cache_dirty = True
         else:
             logger.warning(f"DB update failed for {serial}.{key}")
 
@@ -465,12 +483,10 @@ class CameraRepository:
 
         updates = {}
         if reversed_pan is not None:
-            camera['reversed_pan'] = reversed_pan
             updates['reversed_pan'] = reversed_pan
             logger.info(f"Set reversed_pan={reversed_pan} for camera {serial}")
 
         if reversed_tilt is not None:
-            camera['reversed_tilt'] = reversed_tilt
             updates['reversed_tilt'] = reversed_tilt
             logger.info(f"Set reversed_tilt={reversed_tilt} for camera {serial}")
 
@@ -480,10 +496,16 @@ class CameraRepository:
         try:
             from routes.shared import settings as shared_settings
             if shared_settings:
-                return shared_settings.set_camera_bulk(serial, updates)
+                result = shared_settings.set_camera_bulk(serial, updates)
+                if result:
+                    self._cache_dirty = True
+                return result
         except Exception:
             pass
-        return self._update_camera_in_db(serial, updates)
+        result = self._update_camera_in_db(serial, updates)
+        if result:
+            self._cache_dirty = True
+        return result
 
     def get_camera_ptz_reversal(self, serial: str) -> Dict[str, bool]:
         """

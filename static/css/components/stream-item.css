@@ -33,6 +33,39 @@
     /* Allows grid item to shrink below content size */
 }
 
+/* ============================================================================
+   SERVER-HIDDEN CAMERAS
+   Cameras with hidden=true in DB. Hidden by default, revealed with dimmed
+   overlay when "Show Hidden" toggle is active.
+   ============================================================================ */
+
+/* Hidden by default — not rendered in grid */
+.stream-item.server-hidden {
+    display: none;
+}
+
+/* When "Show Hidden" is toggled on, reveal them with a dimmed overlay */
+.streams-container.show-hidden-cameras .stream-item.server-hidden {
+    display: block;
+}
+
+/* Dimmed overlay on server-hidden cameras */
+.stream-item.server-hidden::after {
+    content: 'HIDDEN';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    color: rgba(255, 255, 255, 0.35);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+    pointer-events: none;
+}
+
 /* Hover effect on stream item - DESKTOP ONLY
    On touch devices, :hover is "sticky" after tap and the transform: scale()
    causes layout shifts that make tap-to-expand unreliable. */

@@ -8,8 +8,8 @@ echo "=========================================="
 echo "  Unified NVR - Starting with Gunicorn"
 echo "=========================================="
 echo "  Workers: 1 (single process for shared state)"
-echo "  Threads: 200 (handles concurrent MJPEG streams)"
-echo "  Timeout: 600s (long-lived streaming connections)"
+echo "  Threads: 200 (handles concurrent streams)"
+echo "  Timeout: 9900s (long-lived streaming connections)"
 echo "=========================================="
 
 # Gunicorn configuration:

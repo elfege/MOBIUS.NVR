@@ -75,6 +75,8 @@ services:
       NVR_HLS_MAX_SEGMENTS: ${NVR_HLS_MAX_SEGMENTS:-6}
       # Host IP (auto-detected by start.sh)
       NVR_LOCAL_HOST_IP: ${NVR_LOCAL_HOST_IP:-}
+      # Admin console port (host systemd service for restart-from-UI)
+      NVR_ADMIN_PORT: ${NVR_ADMIN_PORT:-9100}
       # PostgreSQL Database Configuration
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"

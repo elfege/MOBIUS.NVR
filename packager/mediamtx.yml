@@ -108,7 +108,7 @@ hlsAlwaysRemux: yes # stable timing even if source timestamps wobble
 #
 webrtc: yes
 webrtcAddress: :8889 # HTTP endpoint for WHEP signaling
-webrtcEncryption: yes # Controlled by cameras.json webrtc_global_settings.enable_dtls (TODO: move to nvr_settings)
+webrtcEncryption: yes # DTLS is unconditional — required for WebRTC
 webrtcServerKey: /certs/privkey.pem
 webrtcServerCert: /certs/fullchain.pem
 webrtcAllowOrigin: "*" # Allow browser clients

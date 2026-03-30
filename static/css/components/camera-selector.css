@@ -158,7 +158,8 @@
     color: rgba(255, 255, 255, 0.9);
 }
 
-.select-all-label {
+.select-all-label,
+.show-hidden-label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -168,11 +169,18 @@
     cursor: pointer;
 }
 
-.select-all-label input[type="checkbox"] {
+.select-all-label input[type="checkbox"],
+.show-hidden-label input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
     accent-color: #2196F3;
+}
+
+.show-hidden-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.8rem;
+    margin-right: 2.5rem;
 }
 
 /* =============================================================================
@@ -250,6 +258,24 @@
 /* Dim camera name when unchecked (hidden) */
 .camera-item.camera-hidden .camera-name {
     color: rgba(255, 255, 255, 0.4);
+}
+
+/* Server-hidden camera badge in selector list */
+.server-hidden-badge {
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: rgba(255, 160, 0, 0.7);
+    background: rgba(255, 160, 0, 0.12);
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* Dim server-hidden items in the selector list */
+.camera-item.server-hidden-item {
+    opacity: 0.6;
 }
 
 /* =============================================================================

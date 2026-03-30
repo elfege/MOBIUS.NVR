@@ -117,6 +117,13 @@
             <button id="settings-btn" class="navbar-action-btn" title="Settings">
                 <i class="fas fa-cog"></i>
             </button>
+
+            <!-- Admin restart button — shiny red orb -->
+            {% if current_user.role == 'admin' %}
+            <button id="restart-btn" class="navbar-restart-btn" title="Restart NVR">
+                <i class="fas fa-power-off"></i>
+            </button>
+            {% endif %}
         </div>
     </nav>
 
@@ -195,6 +202,10 @@
             <label class="select-all-label">
                 <input type="checkbox" id="select-all-cameras" checked>
                 Select All
+            </label>
+            <label class="show-hidden-label" title="Reveal server-hidden cameras (dimmed) so you can access their settings">
+                <input type="checkbox" id="show-hidden-cameras-toggle">
+                Show Hidden
             </label>
         </div>
         <div class="camera-selector-list" id="camera-selector-list">
@@ -355,12 +366,13 @@
     <div id="streams-container" class="streams-container">
         <!-- rest of your template stays the same -->
         {% for serial, info in cameras.items() %}
-        <div class="stream-item" data-camera-serial="{{ serial }}" data-camera-name="{{ info.name }}"
+        <div class="stream-item{% if info.get('hidden', False) %} server-hidden{% endif %}" data-camera-serial="{{ serial }}" data-camera-name="{{ info.name }}"
             data-camera-type="{{ info.type }}" data-stream-type="{{ info.stream_type }}"
             data-streaming-hub="{{ info.get('streaming_hub', 'mediamtx') }}"
             data-mjpeg-source="{{ info.get('mjpeg_source', '') }}"
             data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}"
-            data-video-fit="{{ info.get('video_fit_mode') or '' }}">
+            data-video-fit="{{ info.get('video_fit_mode') or '' }}"
+            data-hidden="{{ info.get('hidden', False)|lower }}">
 
             {% if info.stream_type == 'MJPEG' or info.stream_type == 'mjpeg_proxy' %}
 
@@ -1057,6 +1069,35 @@
             window.location.reload()
         }, 60 * 60 * 1000)
     </script>
+
+    {% if current_user.role == 'admin' %}
+    <script>
+        // Admin restart button — calls /api/admin/restart then redirects to reloading page
+        document.getElementById('restart-btn')?.addEventListener('click', () => {
+            if (!confirm('Restart NVR?\n\nAll streams will stop and reconnect after restart.')) return;
+
+            // Save current URL for return after restart
+            localStorage.setItem('nvr_return_url', window.location.pathname + window.location.search);
+
+            fetch('/api/admin/restart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: 'Admin restart via navbar button', mode: 'full' })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/reloading';
+                } else {
+                    alert('Restart failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Restart request failed: ' + err.message);
+            });
+        });
+    </script>
+    {% endif %}
 
     <!-- Arrange Tiles button — wires navbar button to TileArrangeManager -->
     <script type="module">

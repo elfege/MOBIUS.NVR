@@ -1881,6 +1881,15 @@ export class RecordingSettingsForm {
                     if (this.fullCameraConfig) this.fullCameraConfig[k] = v;
                 }
 
+                // ── Hidden toggle: reload page to update grid ──
+                if ('hidden' in updates) {
+                    setTimeout(() => {
+                        if (confirm('Camera visibility changed. Reload page to update the grid?')) {
+                            window.location.reload();
+                        }
+                    }, 500);
+                }
+
                 // ── Step 1: Auto-set streaming_hub when go2rtc_source changes ──
                 if ('go2rtc_source' in updates || 'streaming_hub' in updates) {
                     const newSource = updates.go2rtc_source ?? this.fullCameraConfig?.go2rtc_source;

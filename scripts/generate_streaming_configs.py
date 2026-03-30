@@ -444,6 +444,8 @@ push_notifications = false
             f.write(section)
         if not camera_sections:
             f.write('# No cameras assigned to neolink hub.\n')
+            f.write('# Empty cameras array required to prevent neolink crash.\n')
+            f.write('cameras = []\n')
 
     return count
 

@@ -3652,7 +3652,16 @@ export class MultiStreamManager {
                 }
 
                 // Attempt main stream
-                if (useWebRTC) {
+                // go2rtc cameras: use go2rtc WebRTC (native resolution, no sub/main distinction)
+                const streamingHub = ($streamItem.data('streaming-hub') || 'mediamtx').toLowerCase();
+                if (streamingHub === 'go2rtc') {
+                    await this.webrtcManager.startGo2rtcStream(cameraId, videoEl);
+                    console.log(`[Fullscreen] ${cameraId}: ✓ go2rtc WebRTC stream started (attempt ${attempt + 1})`);
+                    $streamItem.data('fullscreen-stream-type', 'go2rtc');
+                    $streamItem.data('switched-to-main', true);
+                    $streamItem.data('fullscreen-quality', 'main');
+                    return { success: true, streamType: 'go2rtc', quality: 'main' };
+                } else if (useWebRTC) {
                     const dtlsEnabled = await isDTLSEnabled();
                     if (dtlsEnabled || !isIOSDevice()) {
                         await this.webrtcManager.startStream(cameraId, videoEl, 'main');
@@ -3877,10 +3886,17 @@ export class MultiStreamManager {
                 return; // Don't process other stream type switches
             }
 
-            // GO2RTC: already native resolution (no sub/main split) - just enter fullscreen as-is
-            if (streamType === 'GO2RTC') {
-                console.log(`[Fullscreen] ${cameraId}: GO2RTC already at native resolution, entering fullscreen`);
-                $streamItem.data('switched-to-main', false);
+            // go2rtc hub cameras: already native resolution (no sub/main split).
+            // Re-start go2rtc WebRTC to ensure connection is fresh for fullscreen.
+            const hubType = ($streamItem.data('streaming-hub') || 'mediamtx').toLowerCase();
+            if (hubType === 'go2rtc' || streamType === 'GO2RTC') {
+                console.log(`[Fullscreen] ${cameraId}: go2rtc hub — native resolution, using go2rtc WebRTC`);
+                const $video = $streamItem.find('.stream-video');
+                const videoEl = $video[0];
+                this.webrtcManager.stopStream(cameraId);
+                await this.webrtcManager.startGo2rtcStream(cameraId, videoEl);
+                $streamItem.data('switched-to-main', true);
+                $streamItem.data('fullscreen-stream-type', 'go2rtc');
                 return;
             }
 

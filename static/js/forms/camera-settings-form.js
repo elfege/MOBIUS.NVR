@@ -1243,8 +1243,11 @@ export class RecordingSettingsForm {
         });
 
         // ── Streaming Hub toggle (only rendered when go2rtc_source is set) ──
-        $('.hub-select-btn').on('click', async function() {
+        // Use .off() first to prevent duplicate handlers from modal re-opens
+        $(document).off('click.hubToggle').on('click.hubToggle', '.hub-select-btn', async function() {
             const hub = $(this).data('hub');
+            const cameraId = self.currentCameraId;
+            if (!cameraId) return;
             if (hub === self._streamingHub) return; // Already selected — no-op
 
             // Swap active style immediately for responsiveness
@@ -1255,16 +1258,24 @@ export class RecordingSettingsForm {
             $status.show().html('<span style="color: #aaa;"><i class="fas fa-spinner fa-spin"></i> Saving...</span>');
 
             try {
-                const resp = await fetch(`/api/camera/${self.currentCameraId}/settings`, {
+                const resp = await fetch(`/api/camera/${cameraId}/settings`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ streaming_hub: hub })
                 });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 self._streamingHub = hub;
-                // Keep fullCameraConfig in sync for the Advanced tab
                 if (self.fullCameraConfig) self.fullCameraConfig.streaming_hub = hub;
-                $status.html('<span style="color: #27ae60;"><i class="fas fa-check-circle"></i> Saved — restart stream to apply</span>');
+                // Read back from DB to confirm write
+                const verifyResp = await fetch(`/api/cameras/${cameraId}`);
+                const verifyData = await verifyResp.json();
+                const dbHub = verifyData.streaming_hub || 'mediamtx';
+                if (dbHub !== hub) {
+                    console.error(`[StreamingHub] DB verify failed: expected ${hub}, got ${dbHub}`);
+                    throw new Error(`DB verify failed: saved ${hub} but DB returned ${dbHub}`);
+                }
+                console.log(`[StreamingHub] ${cameraId} → ${hub} saved and verified in DB`);
+                $status.html('<span style="color: #27ae60;"><i class="fas fa-check-circle"></i> Saved — restart required to apply</span>');
             } catch (err) {
                 console.error('[StreamingHub] Save failed:', err);
                 // Revert button style on failure

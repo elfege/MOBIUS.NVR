@@ -133,7 +133,11 @@ fi
 # - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
 # =============================================================================
 if declare -f get_cameras_credentials >/dev/null 2>&1; then
-	get_cameras_credentials
+	get_cameras_credentials &>/dev/null || {
+		echo -e "${YELLOW}WARNING: Failed to load camera credentials from secrets.env${NC}"
+		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
+		exit 1
+	}
 fi
 
 # Detect host IP early (needed for LAN-cache decision + container env).
@@ -225,30 +229,12 @@ if [[ -f scripts/seed_credentials.py ]]; then
 	stop_spinner
 fi
 
-# Generate MediaMTX + go2rtc configs in parallel (both pre-populate all cameras
-# so hub switching is instant — no restart needed, just change DB field).
-echo -e "${CYAN}Generating streaming configs (MediaMTX + go2rtc) in parallel...${NC}"
-_config_pids=()
-
-if [[ -f scripts/update_mediamtx_paths.sh && -f packager/mediamtx.yml ]]; then
-	scripts/update_mediamtx_paths.sh >/dev/null &
-	_config_pids+=($!)
+# Generate streaming configs for all three hubs (exclusive assignment).
+# Each camera appears in exactly ONE hub's config based on DB streaming_hub field.
+echo -e "${CYAN}Generating streaming configs (MediaMTX + go2rtc + neolink)...${NC}"
+if [[ -f scripts/generate_streaming_configs.py ]]; then
+	venv/bin/python3 scripts/generate_streaming_configs.py
 fi
-
-if [[ -f scripts/generate_go2rtc_config.py && -f config/go2rtc.yaml ]]; then
-	venv/bin/python3 scripts/generate_go2rtc_config.py &
-	_config_pids+=($!)
-fi
-
-if [[ -f scripts/update_neolink_config.sh && -f config/neolink.toml ]]; then
-	scripts/update_neolink_config.sh >/dev/null &
-	_config_pids+=($!)
-fi
-
-# Wait for all config generators to finish
-for _pid in "${_config_pids[@]}"; do
-	wait "$_pid"
-done
 echo -e "${GREEN}✓${NC} Streaming configs generated"
 
 if [[ -f scripts/update_recording_settings.sh && -f config/recording_settings.json ]]; then

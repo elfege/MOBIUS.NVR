@@ -133,8 +133,13 @@ fi
 # - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
 # =============================================================================
 if declare -f get_cameras_credentials >/dev/null 2>&1; then
-	get_cameras_credentials &>/dev/null || {
+	get_cameras_credentials --temp=/tmp/nvr.credentials &>/dev/null || {
 		echo -e "${YELLOW}WARNING: Failed to load camera credentials from secrets.env${NC}"
+		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
+		exit 1
+	}
+	. /tmp/nvr.credentials &>/dev/null || {
+		echo -e "${YELLOW}WARNING: Failed to source camera credentials from secrets.env${NC}"
 		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
 		exit 1
 	}

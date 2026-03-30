@@ -19,9 +19,11 @@ rtsp:
   listen: ":8555"           # RTSP server (internal use)
 
 webrtc:
-  listen: ":8556"           # WebRTC signaling
+  listen: ":8557"           # WebRTC signaling + media (must match Docker port mapping)
   candidates:
-    - "${NVR_HOST_IP}:8557"  # Host IP + mapped UDP port — browser needs this to reach go2rtc media
+    - "${NVR_HOST_IP}:8557"  # Host IP + mapped UDP port — browser needs this to reach go2rtc
+  filters:
+    candidates: []           # Suppress Docker internal IPs (172.x) — only advertise manual candidate
   ice_servers:
     - urls: ["stun:stun.l.google.com:19302"]
 

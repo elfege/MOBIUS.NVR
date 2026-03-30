@@ -152,8 +152,8 @@ services:
     ports:
       - "1984:1984"    # Web UI and API
       - "8555:8555"    # RTSP server
-      - "8556:8556"    # WebRTC signaling
-      - "8557:8557/udp"  # WebRTC media UDP
+      - "8557:8557/tcp"  # WebRTC signaling + media (TCP)
+      - "8557:8557/udp"  # WebRTC media (UDP)
     env_file:
       # go2rtc.yaml uses ${NVR_*} env var interpolation for credentials
       - path: ./secrets.env

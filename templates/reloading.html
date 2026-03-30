@@ -7,196 +7,404 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/the_eye.png') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/the_eye.png') }}">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            background: #0a0a12;
             color: #e0e0e0;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            overflow: hidden;
         }
+
+        /* ── Animated background gradient ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(60, 20, 100, 0.3) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 50%, rgba(20, 60, 120, 0.25) 0%, transparent 60%),
+                radial-gradient(ellipse at 50% 100%, rgba(180, 60, 30, 0.15) 0%, transparent 50%);
+            animation: bgPulse 8s ease-in-out infinite alternate;
+            z-index: 0;
+        }
+
+        @keyframes bgPulse {
+            0%   { opacity: 0.6; transform: scale(1); }
+            100% { opacity: 1;   transform: scale(1.05); }
+        }
+
         .container {
+            position: relative;
+            z-index: 1;
             text-align: center;
             padding: 2rem;
             max-width: 500px;
         }
-        .spinner {
-            width: 60px;
-            height: 60px;
-            border: 4px solid rgba(255,255,255,0.1);
-            border-top-color: #ff9800;
+
+        /* ── 3D Orbiting rings animation ── */
+        .orbit-container {
+            width: 140px;
+            height: 140px;
+            margin: 0 auto 2rem;
+            position: relative;
+            perspective: 600px;
+        }
+
+        .ring {
+            position: absolute;
+            inset: 0;
             border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 1.5rem;
+            border: 3px solid transparent;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+
+        .ring-1 {
+            border-top-color: #e74c3c;
+            border-bottom-color: rgba(231, 76, 60, 0.3);
+            animation: orbit3d 2.4s cubic-bezier(0.37, 0, 0.63, 1) infinite;
         }
+
+        .ring-2 {
+            inset: 15px;
+            border-left-color: #3498db;
+            border-right-color: rgba(52, 152, 219, 0.3);
+            animation: orbit3d 1.8s cubic-bezier(0.37, 0, 0.63, 1) infinite reverse;
+        }
+
+        .ring-3 {
+            inset: 30px;
+            border-top-color: #f39c12;
+            border-bottom-color: rgba(243, 156, 18, 0.3);
+            animation: orbit3d 3s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+            animation-delay: -0.5s;
+        }
+
+        .ring-4 {
+            inset: 45px;
+            border-left-color: rgba(255, 255, 255, 0.6);
+            border-right-color: rgba(255, 255, 255, 0.15);
+            animation: orbit3d 2s cubic-bezier(0.37, 0, 0.63, 1) infinite reverse;
+            animation-delay: -1s;
+        }
+
+        @keyframes orbit3d {
+            0%   { transform: rotateX(70deg) rotateZ(0deg); }
+            100% { transform: rotateX(70deg) rotateZ(360deg); }
+        }
+
+        /* Glowing core */
+        .core {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 12px; height: 12px;
+            margin: -6px 0 0 -6px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #fff 0%, #f39c12 40%, transparent 70%);
+            box-shadow: 0 0 20px rgba(243, 156, 18, 0.6), 0 0 60px rgba(243, 156, 18, 0.2);
+            animation: corePulse 2s ease-in-out infinite;
+        }
+
+        @keyframes corePulse {
+            0%, 100% { transform: scale(1);   opacity: 0.8; }
+            50%      { transform: scale(1.4); opacity: 1; }
+        }
+
         h1 {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
             font-weight: 500;
             margin-bottom: 0.5rem;
             color: #fff;
+            letter-spacing: 0.5px;
         }
+
         .silly-message {
             font-style: italic;
-            color: #ffb74d;
+            color: #f39c12;
             min-height: 1.5em;
             margin-bottom: 0.5rem;
             opacity: 1;
-            transition: opacity 0.3s ease;
+            transition: opacity 0.4s ease;
         }
-        .silly-message.fade {
-            opacity: 0;
-        }
+
+        .silly-message.fade { opacity: 0; }
+
         .status {
-            color: #888;
+            color: #666;
+            font-size: 0.85rem;
             margin-bottom: 1.5rem;
         }
+
         .countdown {
             display: inline-block;
-            background: rgba(255, 152, 0, 0.2);
-            color: #ff9800;
-            padding: 0.5rem 1rem;
+            background: rgba(243, 156, 18, 0.12);
+            color: #f39c12;
+            padding: 0.4rem 1rem;
             border-radius: 20px;
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            border: 1px solid rgba(243, 156, 18, 0.2);
         }
+
         .progress-bar {
             width: 100%;
-            height: 4px;
-            background: rgba(255,255,255,0.1);
+            height: 3px;
+            background: rgba(255,255,255,0.06);
             border-radius: 2px;
             overflow: hidden;
-            margin-top: 1rem;
+            margin-top: 1.2rem;
         }
+
         .progress-fill {
             height: 100%;
-            background: #ff9800;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #3498db);
+            background-size: 200% 100%;
             width: 0%;
             transition: width 1s linear;
+            animation: gradientShift 3s linear infinite;
         }
+
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
         .retry-count {
-            font-size: 0.8rem;
-            color: #666;
-            margin-top: 1rem;
+            font-size: 0.75rem;
+            color: #444;
+            margin-top: 0.8rem;
         }
-        .manual-retry {
-            margin-top: 1.5rem;
-        }
+
+        .manual-retry { margin-top: 1.5rem; }
+
         .manual-retry button {
             background: transparent;
-            border: 1px solid #ff9800;
-            color: #ff9800;
-            padding: 0.5rem 1.5rem;
+            border: 1px solid rgba(243, 156, 18, 0.4);
+            color: #f39c12;
+            padding: 0.45rem 1.5rem;
             border-radius: 20px;
             cursor: pointer;
-            font-size: 0.9rem;
-            transition: all 0.2s;
+            font-size: 0.85rem;
+            transition: all 0.25s;
         }
+
         .manual-retry button:hover {
-            background: #ff9800;
+            background: rgba(243, 156, 18, 0.15);
+            border-color: #f39c12;
+        }
+
+        /* Log tail command box */
+        .log-box {
+            margin-top: 1.5rem;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            text-align: left;
+        }
+
+        .log-box-label {
+            font-size: 0.7rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.4rem;
+        }
+
+        .log-box-cmd {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .log-box-cmd code {
+            flex: 1;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.75rem;
+            color: #8be9fd;
+            background: rgba(0,0,0,0.3);
+            padding: 0.4rem 0.6rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .copy-btn {
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #aaa;
+            padding: 0.3rem 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255,255,255,0.15);
             color: #fff;
+        }
+
+        .copy-btn.copied {
+            color: #50fa7b;
+            border-color: rgba(80, 250, 123, 0.3);
+        }
+
+        /* Floating particles */
+        .particle {
+            position: fixed;
+            width: 2px; height: 2px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 50%;
+            animation: float linear infinite;
+            z-index: 0;
+        }
+
+        @keyframes float {
+            0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+            10%  { opacity: 1; }
+            90%  { opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
         }
     </style>
 </head>
 <body>
+    <!-- Floating particles -->
+    <div class="particle" style="left:10%;animation-duration:8s;animation-delay:0s;"></div>
+    <div class="particle" style="left:25%;animation-duration:12s;animation-delay:2s;"></div>
+    <div class="particle" style="left:40%;animation-duration:9s;animation-delay:4s;"></div>
+    <div class="particle" style="left:55%;animation-duration:11s;animation-delay:1s;"></div>
+    <div class="particle" style="left:70%;animation-duration:10s;animation-delay:3s;"></div>
+    <div class="particle" style="left:85%;animation-duration:7s;animation-delay:5s;"></div>
+    <div class="particle" style="left:15%;animation-duration:13s;animation-delay:6s;"></div>
+    <div class="particle" style="left:60%;animation-duration:8s;animation-delay:7s;"></div>
+
     <div class="container">
-        <div class="spinner"></div>
-        <h1>NVR server restarting...</h1>
+        <div class="orbit-container">
+            <div class="ring ring-1"></div>
+            <div class="ring ring-2"></div>
+            <div class="ring ring-3"></div>
+            <div class="ring ring-4"></div>
+            <div class="core"></div>
+        </div>
+        <h1>NVR Restarting</h1>
         <p class="silly-message" id="silly">Reconnecting to server...</p>
-        <p class="status">Waiting for server to come back online.</p>
-        <div class="countdown">Retrying in <span id="seconds">3</span>s</div>
+        <p class="status" id="status-msg">Regenerating configs and restarting services.</p>
+        <p class="status" id="error-msg" style="color:#e74c3c; display:none;"></p>
+        <div class="countdown">Elapsed: <span id="seconds">0</span>s</div>
         <div class="progress-bar">
             <div class="progress-fill" id="progress"></div>
         </div>
-        <p class="retry-count">Attempt <span id="attempt">1</span></p>
+        <p class="retry-count" id="poll-status">Waiting for server...</p>
         <div class="manual-retry">
             <button onclick="window.location.replace(window.location.pathname + '?_t=' + Date.now())">Retry Now</button>
+        </div>
+
+        <div class="log-box">
+            <div class="log-box-label">Follow restart logs</div>
+            <div class="log-box-cmd">
+                <code id="tail-cmd">tail -f ~/0_MOBIUS.NVR/restart_from_app.log</code>
+                <button class="copy-btn" id="copy-tail-btn" title="Copy to clipboard">Copy</button>
+            </div>
         </div>
     </div>
 
     <script>
         (function() {
-            // Silly loading messages for reconnection
             const sillyMessages = [
                 "Reconnecting to server...",
-                "Waiting for NVR to wake up...",
-                "Server took a quick coffee break...",
+                "Regenerating go2rtc config...",
+                "Waiting for MediaMTX to initialize...",
                 "Pinging the mothership...",
-                "Asking the server to come back...",
-                "Server is doing push-ups...",
-                "Waiting for Docker to finish its nap...",
-                "MediaMTX is stretching...",
-                "Cameras are playing hide and seek...",
+                "Cameras are waking up...",
+                "Docker is doing its thing...",
                 "Server is counting to 10...",
-                "Rebooting the matrix...",
-                "Server is tying its shoelaces...",
-                "Waiting for the hamsters to wake up...",
-                "Server is checking its email...",
-                "Almost there, hopefully..."
+                "Rebuilding the matrix...",
+                "Almost there, probably...",
+                "PostgreSQL is stretching...",
+                "FFmpeg is warming up...",
+                "Negotiating with RTSP...",
+                "WebRTC handshake in progress...",
+                "start.sh is running on the host...",
+                "Just a moment longer..."
             ];
 
             let messageIndex = 0;
             const sillyEl = document.getElementById('silly');
 
-            // Rotate silly messages every 2 seconds with fade
             setInterval(() => {
                 sillyEl.classList.add('fade');
                 setTimeout(() => {
                     messageIndex = (messageIndex + 1) % sillyMessages.length;
                     sillyEl.textContent = sillyMessages[messageIndex];
                     sillyEl.classList.remove('fade');
-                }, 300);
-            }, 2000);
+                }, 400);
+            }, 2500);
 
-            // Get retry count from localStorage (persists across page loads)
-            let attempt = parseInt(localStorage.getItem('nvr_reconnect_attempt')) || 1;
-            document.getElementById('attempt').textContent = attempt;
-
-            // Countdown timer (shorter for reconnection)
-            const totalSeconds = 3;
-            let seconds = totalSeconds;
+            // Elapsed time counter (no page reload — health check handles redirect)
+            let elapsedSeconds = 0;
             const countdownEl = document.getElementById('seconds');
             const progressEl = document.getElementById('progress');
 
-            // Update progress bar with countdown
-            const updateProgress = () => {
-                const progress = ((totalSeconds - seconds) / totalSeconds) * 100;
-                progressEl.style.width = progress + '%';
-            };
-
-            // Start with 0% progress
-            updateProgress();
-
             const timer = setInterval(() => {
-                seconds--;
-                countdownEl.textContent = seconds;
-                updateProgress();
-                if (seconds <= 0) {
-                    clearInterval(timer);
-                    // Increment attempt and reload
-                    localStorage.setItem('nvr_reconnect_attempt', attempt + 1);
-                    location.reload();
-                }
+                elapsedSeconds++;
+                countdownEl.textContent = elapsedSeconds;
+                // Progress bar loops every 60s
+                progressEl.style.width = ((elapsedSeconds % 60) / 60) * 100 + '%';
             }, 1000);
 
-            // Aggressive health check - polls every second
+            // Copy tail command to clipboard
+            document.getElementById('copy-tail-btn').addEventListener('click', function() {
+                const cmd = document.getElementById('tail-cmd').textContent;
+                navigator.clipboard.writeText(cmd).then(() => {
+                    this.textContent = 'Copied';
+                    this.classList.add('copied');
+                    setTimeout(() => {
+                        this.textContent = 'Copy';
+                        this.classList.remove('copied');
+                    }, 2000);
+                });
+            });
+
+            // Two-phase health check:
+            // Phase 1: Wait for the server to go DOWN (confirms restart began)
+            // Phase 2: Wait for the server to come BACK UP (restart complete)
+            let serverWentDown = false;
+            const statusEl = document.getElementById('status-msg');
+            const errorEl = document.getElementById('error-msg');
+
+            // Poll the admin console host service for restart progress
+            // Runs on the host (not a container), accessible even when NVR is down
+            const adminHost = window.location.hostname;
+            const adminUrl = `http://${adminHost}:9100/restart/status`;
+
+            const adminPoll = setInterval(() => {
+                fetch(adminUrl, { method: 'GET', cache: 'no-store' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'running' && data.step) {
+                            statusEl.textContent = `Step: ${data.step}`;
+                        } else if (data.status === 'failed') {
+                            clearInterval(adminPoll);
+                            statusEl.style.display = 'none';
+                            errorEl.style.display = 'block';
+                            errorEl.textContent = `Restart failed at "${data.step}": ${data.error}`;
+                        }
+                    })
+                    .catch(() => {});
+            }, 1500);
+
             const healthCheck = setInterval(() => {
                 fetch('/api/status', { method: 'GET', cache: 'no-store' })
                     .then(r => {
-                        if (r.ok) {
-                            // App is up, clear attempt counter and return to main app
+                        if (r.ok && serverWentDown) {
+                            // Phase 2 complete — server is back
                             clearInterval(healthCheck);
+                            clearInterval(adminPoll);
                             localStorage.removeItem('nvr_reconnect_attempt');
-                            // Go back to where we came from (stored in localStorage)
-                            // Add cache-busting param for iOS Safari
                             let returnUrl = localStorage.getItem('nvr_return_url') || '/';
                             localStorage.removeItem('nvr_return_url');
                             const url = new URL(returnUrl, window.location.origin);
@@ -204,7 +412,13 @@
                             window.location.replace(url.pathname + url.search);
                         }
                     })
-                    .catch(() => {});
+                    .catch(() => {
+                        // Server is down — phase 1 complete
+                        if (!serverWentDown) {
+                            serverWentDown = true;
+                            document.getElementById('poll-status').textContent = 'Server down — waiting for restart...';
+                        }
+                    });
             }, 1000);
         })();
     </script>

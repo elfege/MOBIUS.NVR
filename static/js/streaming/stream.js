@@ -2279,6 +2279,12 @@ export class MultiStreamManager {
             const cameraType = $item.data('camera-type');
             const streamType = $item.data('stream-type');
 
+            // Skip server-hidden cameras (hidden in DB, only shown via "Show Hidden" toggle)
+            if ($item.hasClass('server-hidden')) {
+                console.log(`[StartAll] Skipping server-hidden camera: ${cameraId}`);
+                continue;
+            }
+
             // Skip hidden cameras (filtered by camera selector)
             if (hiddenCameras.includes(cameraId)) {
                 console.log(`[StartAll] Skipping hidden camera: ${cameraId}`);

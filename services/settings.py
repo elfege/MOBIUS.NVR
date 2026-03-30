@@ -157,8 +157,9 @@ class Settings:
             if resp.status_code in (200, 201):
                 return True
 
-            # 409 = conflict (row exists) → fall back to PATCH
-            if resp.status_code == 409 and conflict_filters:
+            # 409 = conflict (row exists), 401 = anon role lacks INSERT permission
+            # Either way, the row likely exists — fall back to PATCH update
+            if resp.status_code in (409, 401) and conflict_filters:
                 return self._patch(table, conflict_filters, data)
 
             logger.error(f"[Settings] UPSERT {table} returned {resp.status_code}: {resp.text}")

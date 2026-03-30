@@ -84,7 +84,8 @@ class CameraSelectorController {
                 serial: $item.data('camera-serial'),
                 name: $item.data('camera-name'),
                 type: $item.data('camera-type'),
-                streamType: $item.data('stream-type')
+                streamType: $item.data('stream-type'),
+                serverHidden: $item.hasClass('server-hidden')
             });
         });
     }
@@ -109,9 +110,12 @@ class CameraSelectorController {
             // Check if camera supports HD toggle (has main/sub quality options)
             // MJPEG and SNAPSHOT streams don't have quality levels
             const supportsHD = this._supportsHDToggle(camera.streamType);
+            const hiddenBadge = camera.serverHidden
+                ? '<span class="server-hidden-badge" title="Hidden in DB (Advanced settings)">hidden</span>'
+                : '';
 
             const $item = $(`
-                <div class="camera-item" data-serial="${camera.serial}" data-stream-type="${camera.streamType}">
+                <div class="camera-item${camera.serverHidden ? ' server-hidden-item' : ''}" data-serial="${camera.serial}" data-stream-type="${camera.streamType}">
                     <div class="camera-item-left">
                         <input type="checkbox"
                                id="camera-check-${camera.serial}"
@@ -119,6 +123,7 @@ class CameraSelectorController {
                                data-serial="${camera.serial}"
                                checked>
                         <span class="camera-name" title="${camera.name}">${camera.name}</span>
+                        ${hiddenBadge}
                     </div>
                     ${supportsHD ? `
                     <button class="hd-toggle-btn"
@@ -185,8 +190,9 @@ class CameraSelectorController {
             $(`.stream-item[data-camera-serial="${serial}"]`).hide();
         });
 
-        // Update grid layout
-        const visibleCount = this.cameras.length - hiddenCameras.length;
+        // Server-hidden cameras don't count toward visible grid
+        const serverHiddenCount = this.cameras.filter(c => c.serverHidden).length;
+        const visibleCount = this.cameras.length - hiddenCameras.length - serverHiddenCount;
         this._updateGridLayout(visibleCount);
     }
 
@@ -247,6 +253,22 @@ class CameraSelectorController {
             }
 
             this._toggleHD(serial, $btn);
+        });
+
+        // Show Hidden toggle — reveals server-hidden cameras (dimmed) in the grid
+        // Persisted in localStorage as user preference
+        const showHiddenStored = localStorage.getItem('showHiddenCameras') === 'true';
+        $('#show-hidden-cameras-toggle').prop('checked', showHiddenStored);
+        if (showHiddenStored) {
+            $('#streams-container').addClass('show-hidden-cameras');
+        }
+
+        $('#show-hidden-cameras-toggle').on('change', (e) => {
+            const show = $(e.target).is(':checked');
+            localStorage.setItem('showHiddenCameras', show ? 'true' : 'false');
+            $('#streams-container').toggleClass('show-hidden-cameras', show);
+            // Recalculate grid layout to include/exclude hidden cameras
+            this._updateGridLayoutForShowHidden(show);
         });
 
         // Apply button
@@ -434,6 +456,19 @@ class CameraSelectorController {
             .addClass(`grid-${cols}`);
 
         console.log(`[CameraSelector] Grid layout updated: ${cols} columns for ${count} cameras`);
+    }
+
+    /**
+     * Recalculate grid layout when show-hidden toggle changes.
+     * When showing hidden cameras, they count toward the grid column calculation.
+     * @param {boolean} showHidden - Whether hidden cameras are being shown
+     */
+    _updateGridLayoutForShowHidden(showHidden) {
+        const hiddenCameras = this._getHiddenCameras();
+        const serverHiddenCount = $('.stream-item.server-hidden').length;
+        const totalVisible = this.cameras.length - hiddenCameras.length;
+        const effectiveCount = showHidden ? totalVisible + serverHiddenCount : totalVisible;
+        this._updateGridLayout(effectiveCount);
     }
 
     /**

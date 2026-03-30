@@ -22,9 +22,10 @@ class BridgeWatchdog:
         self.monitoring = False
         self.monitor_thread = None
         self.restart_attempts = 0
-        self.max_restart_attempts = 5
+        self.max_restart_attempts = 10  # Per cycle — resets after success
         self.check_interval = 10  # seconds
-        self.restart_cooldown = 30  # seconds between restart attempts
+        self.base_cooldown = 10  # seconds — grows with exponential backoff
+        self.max_cooldown = 300  # cap at 5 minutes
         
     def start_monitoring(self):
         if not self.monitoring:
@@ -55,18 +56,22 @@ class BridgeWatchdog:
                 
     def _handle_bridge_failure(self):
         if self.restart_attempts >= self.max_restart_attempts:
-            logger.critical(f"Bridge failed {self.max_restart_attempts} times, giving up")
-            self.monitoring = False
-            return
-            
+            # Don't give up permanently — reset counter and use max cooldown
+            logger.warning(f"Bridge failed {self.max_restart_attempts} times, resetting counter with max cooldown")
+            self.restart_attempts = 0
+            time.sleep(self.max_cooldown)
+
         self.restart_attempts += 1
-        logger.warning(f"Bridge not running, attempting restart {self.restart_attempts}/{self.max_restart_attempts}")
-        
+        # Exponential backoff: 10s, 20s, 40s, 80s, 160s, capped at 300s
+        cooldown = min(self.base_cooldown * (2 ** (self.restart_attempts - 1)), self.max_cooldown)
+        logger.warning(f"Bridge not running, attempting restart {self.restart_attempts}/{self.max_restart_attempts} "
+                       f"(backoff: {cooldown}s)")
+
         # Proper cleanup before restart
         self._force_cleanup_bridge()
-        
-        # Wait for cooldown
-        time.sleep(self.restart_cooldown)
+
+        # Wait for cooldown with exponential backoff
+        time.sleep(cooldown)
         
         # Attempt restart
         if self.bridge.start():

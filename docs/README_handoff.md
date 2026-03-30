@@ -2037,3 +2037,49 @@ See `.claude/plans/validated-brewing-treasure.md`:
 - Fixed remover.sh cache: all relative paths → full paths
 - Old config scripts deleted: `generate_go2rtc_config.py`, `update_mediamtx_paths.sh`, `update_neolink_configuration.sh`
 - New unified: `scripts/generate_streaming_configs.py` — exclusive hub assignment
+
+### Final Updates (March 30, 04:30 EDT)
+
+**go2rtc WebRTC FIXED:**
+- Root cause: Docker internal IPs (172.x) advertised as ICE candidates alongside host IP. Browser tried unreachable Docker IPs first, stuck at "checking".
+- Fix: `filters.candidates: []` in go2rtc.yaml suppresses auto-discovered Docker IPs. `listen: ":8557"` matches Docker port mapping. `NVR_HOST_IP` resolved by Python script, written directly to yaml.
+- Result: ICE reaches `connected`, video streams at ~238ms via go2rtc WebRTC.
+
+**Fullscreen routing fixed:**
+- `_startMainStreamWithRetry` now checks `streaming_hub` data attribute and routes go2rtc cameras to `startGo2rtcStream` instead of MediaMTX WHEP.
+- `openFullscreen` same fix — go2rtc cameras skip sub/main distinction (native resolution).
+
+**Neolink crash fix:**
+- Empty `cameras = []` in neolink.toml when no cameras assigned (neolink requires the field).
+
+**Known issues:**
+- go2rtc WebRTC has no audio (camera sends AAC, go2rtc not transcoding to Opus for WebRTC). MediaMTX cameras have audio (FFmpeg does AAC→Opus).
+- `reolink://` scheme unsupported in go2rtc v1.9.14 for LAUNDRY ROOM — may need `baichuan://` or URL-encoded password.
+- Cat Feeders source points to neolink container which crash-loops when empty.
+- ONVIF backchannel streams in go2rtc template use different names than auto-generated serial-based streams — potential confusion.
+
+---
+
+## TODO (next session)
+
+### Priority 1 — Functional
+- [ ] go2rtc audio: investigate why WebRTC doesn't include audio track (AAC→Opus transcoding)
+- [ ] Confirm modal on hub/stream-type change (plan Step 4)
+- [ ] Fix `reolink://` source for LAUNDRY ROOM (try `baichuan://` or URL-encode password)
+- [ ] Fix Cat Feeders source (points to neolink, needs direct RTSP or neolink assignment)
+- [ ] Test neolink hub assignment with a Reolink camera
+
+### Priority 2 — Architecture
+- [ ] Clean up ONVIF backchannel streams in go2rtc template (reconcile with auto-generated serial streams)
+- [ ] Hot-swap hub without restart (MediaMTX path add/delete API + go2rtc stream PATCH)
+- [ ] "Add Camera" UI (DB is sole source — no more cameras.json)
+- [ ] Settings refactor Phases 2-4 (route migration, repo integration, JS SettingsAPI)
+- [ ] Restart endpoint fix (app can trigger `start.sh` from host)
+
+### Priority 3 — Polish
+- [ ] Unhide cameras UI toggle
+- [ ] DTLS toggle with warning modal in advanced settings
+- [ ] Grid attached mode as default layout
+- [ ] Navbar logo placement
+- [ ] go2rtc WebRTC vs MSE fallback (use go2rtc's video-rtc.js pattern)
+- [ ] Investigate go2rtc Go fork for proper RTSP TEARDOWN on individual stream disconnect

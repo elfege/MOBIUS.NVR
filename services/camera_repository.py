@@ -163,10 +163,13 @@ class CameraRepository:
             if field in row and row[field] is not None:
                 config[field] = row[field]
 
-        # Merge extra_config fields back into the config dict
+        # Merge extra_config fields back into the config dict.
+        # Direct columns take precedence — only add keys NOT already set.
         extra = row.get('extra_config')
         if extra and isinstance(extra, dict):
-            config.update(extra)
+            for k, v in extra.items():
+                if k not in config:
+                    config[k] = v
 
         # Synthesize 'id' field — cameras.json has 'id' as alias for camera_id/serial.
         # Stream handlers use camera_config.get('id') as a fallback identifier.

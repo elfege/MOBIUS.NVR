@@ -191,21 +191,36 @@ def load_go2rtc_static_section(yaml_path: str) -> str:
     return ''.join(lines[:sep_idx]).rstrip('\n') + '\n'
 
 
+def _resolve_host_ip() -> str:
+    """Get the host IP for WebRTC ICE candidates.
+    Resolution order: NVR_HOST_IP env var → hostname -I first IP → fallback."""
+    host_ip = os.environ.get('NVR_HOST_IP', '')
+    if not host_ip:
+        try:
+            result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+            ips = result.stdout.strip().split()
+            if ips:
+                host_ip = ips[0]
+        except Exception:
+            pass
+    if not host_ip:
+        host_ip = '0.0.0.0'
+        print(f"{YELLOW}WARNING: Could not determine host IP for WebRTC candidates — using 0.0.0.0{NC}")
+    return host_ip
+
+
 def generate_go2rtc_config(cameras, creds, subs, project_dir):
     """Generate go2rtc.yaml with only go2rtc-hub cameras."""
     shm_dir = '/dev/shm/nvr-go2rtc'
     os.makedirs(shm_dir, exist_ok=True)
     yaml_path = os.path.join(shm_dir, 'go2rtc.yaml')
 
-    # Seed from template if first run
+    # Always read static section from template (not from previous output)
+    # so ${NVR_HOST_IP} and other placeholders are resolved fresh each time.
     template_path = os.path.join(project_dir, 'config', 'go2rtc.yaml.template')
-    if not os.path.exists(yaml_path):
-        if os.path.exists(template_path):
-            import shutil
-            shutil.copy2(template_path, yaml_path)
-        else:
-            print(f"{RED}ERROR: go2rtc.yaml template not found{NC}", file=sys.stderr)
-            return 0
+    if not os.path.exists(template_path):
+        print(f"{RED}ERROR: go2rtc.yaml template not found{NC}", file=sys.stderr)
+        return 0
 
     # Per-camera go2rtc credentials
     go2rtc_creds = {k: v for (k, t), v in creds.items() if t == 'go2rtc'}
@@ -218,7 +233,9 @@ def generate_go2rtc_config(cameras, creds, subs, project_dir):
         'eufy':    'eufy_go2rtc',
     }
 
-    static_part = load_go2rtc_static_section(yaml_path)
+    # Read static section from template — ${NVR_HOST_IP} is resolved by
+    # go2rtc itself from its container environment (set via docker-compose).
+    static_part = load_go2rtc_static_section(template_path)
 
     auto_lines = [
         '',

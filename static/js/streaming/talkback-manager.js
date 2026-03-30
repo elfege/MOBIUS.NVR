@@ -209,6 +209,49 @@ export class TalkbackManager {
     }
 
     /**
+     * Check Eufy cloud connectivity and show status in the talkback modal.
+     * Only applies to Eufy cameras — other brands use local ONVIF.
+     */
+    async _checkCloudStatus(cameraId) {
+        const cloudStatusEl = this._waitingModal?.querySelector('.talkback-cloud-status');
+        if (!cloudStatusEl) return;
+
+        try {
+            const resp = await fetch(`/api/talkback/${cameraId}/capabilities`);
+            const data = await resp.json();
+
+            // Only show cloud status for cloud-dependent protocols
+            if (!data.cloud_required) {
+                cloudStatusEl.style.display = 'none';
+                return;
+            }
+
+            cloudStatusEl.style.display = 'block';
+            const textEl = cloudStatusEl.querySelector('.cloud-status-text');
+
+            if (data.cloud_reachable && data.ready) {
+                cloudStatusEl.style.background = 'rgba(39, 174, 96, 0.2)';
+                cloudStatusEl.style.color = '#27ae60';
+                textEl.textContent = 'Cloud connected — P2P ready';
+            } else if (data.cloud_reachable && !data.ready) {
+                cloudStatusEl.style.background = 'rgba(243, 156, 18, 0.2)';
+                cloudStatusEl.style.color = '#f39c12';
+                textEl.textContent = 'Cloud reachable — bridge starting...';
+            } else {
+                cloudStatusEl.style.background = 'rgba(231, 76, 60, 0.2)';
+                cloudStatusEl.style.color = '#e74c3c';
+                textEl.textContent = 'Cloud unreachable — cameras need WAN access for P2P backchannel';
+            }
+        } catch (err) {
+            console.warn('[TalkbackManager] Cloud status check failed:', err);
+            cloudStatusEl.style.display = 'block';
+            cloudStatusEl.style.background = 'rgba(231, 76, 60, 0.2)';
+            cloudStatusEl.style.color = '#e74c3c';
+            cloudStatusEl.querySelector('.cloud-status-text').textContent = 'Could not check cloud status';
+        }
+    }
+
+    /**
      * Connect to the talkback WebSocket namespace.
      *
      * Creates a Socket.IO connection to /talkback for sending audio data.
@@ -316,6 +359,9 @@ export class TalkbackManager {
         const modalStartTime = Date.now();
 
         try {
+            // Check Eufy cloud connectivity for P2P-dependent cameras
+            await this._checkCloudStatus(cameraId);
+
             // Ensure we have microphone permission
             if (!this.mediaStream) {
                 const hasPermission = await this.requestMicrophonePermission();
@@ -799,6 +845,11 @@ export class TalkbackManager {
                         <span class="talkback-volume-value">100%</span>
                     </div>
                     <div class="talkback-volume-note">Adjusts audio output level to camera speaker</div>
+                </div>
+
+                <div class="talkback-cloud-status" style="margin: 8px 0; padding: 6px 10px; border-radius: 4px; font-size: 12px; display: none;">
+                    <i class="fas fa-cloud"></i>
+                    <span class="cloud-status-text">Checking cloud connectivity...</span>
                 </div>
 
                 <div class="talkback-waiting-status">Establishing P2P connection...</div>

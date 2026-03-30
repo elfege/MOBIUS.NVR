@@ -610,6 +610,14 @@
 
             {% if 'ptz' in info.capabilities %}
             <div class="ptz-controls">
+                {% if info.type == 'eufy' %}
+                <div class="ptz-cloud-status" data-camera-type="{{ info.type }}"
+                     style="font-size: 10px; padding: 2px 6px; margin-bottom: 4px; border-radius: 3px; text-align: center; display: none;"
+                     title="Eufy PTZ requires cloud access for P2P commands. Presets use local cache.">
+                    <i class="fas fa-cloud"></i>
+                    <span class="ptz-cloud-text">Checking...</span>
+                </div>
+                {% endif %}
                 <div class="ptz-grid">
                     <button class="ptz-btn" data-direction="up">
                         <i class="fas fa-chevron-up"></i>

@@ -1,6 +1,7 @@
 ---
 title: "Session Handoff Buffer"
 layout: default
+render_with_liquid: false
 ---
 
 <!-- markdownlint-disable MD025 -->

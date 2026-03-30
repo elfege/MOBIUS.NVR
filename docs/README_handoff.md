@@ -1952,3 +1952,80 @@ Steps remaining (backend + frontend + generate script update):
 - [ ] "Add Camera" UI button
 - [ ] Re-auth for credential viewing on trusted devices
 - [ ] E1 detection by camera property, not URL pattern
+
+---
+
+## Session: March 29-30, 2026 ~22:00-06:00 EDT (Opus 1M)
+
+**Branch:** `settings_refactor_March_29_2026_a`
+
+### Critical Fixes
+- **Camera repository cache eliminated** — `get_camera()` and `get_all_cameras()` now query PostgREST directly on every call. No more stale cache causing UI/DB desync.
+- **All settings saves write to DB** — PUT endpoints for camera settings, display, streaming hub all go through PostgREST PATCH. No more cache-only updates.
+- **DB value reverted** — Office Desk streaming_hub was incorrectly changed to go2rtc by Claude without permission, then reverted.
+
+### Architecture Decisions
+- **streaming_hub_global KILLED** — global hub override removed. Per-camera only via dual-list UI.
+- **Dual-list UI for hub assignment** — MediaMTX list / go2rtc list in global settings. Cameras move between lists. Already committed in prior session.
+- **DTLS unconditional** — mediamtx always `webrtcEncryption: yes`. Frontend `isDTLSEnabled()` still exists for iOS HLS fallback path.
+
+### Diagnosed Issues
+- **go2rtc WebRTC no-video** — connection establishes (latency badge shows ~200ms) but no video frames render. Issue predates this session. Blocker for go2rtc rollout.
+- **FFmpeg exit code 0/8** — caused by load storm (load avg 175) from Claude setting global hub to go2rtc while go2rtc container was down. All FFmpeg motion detectors crash-looped.
+- **generate_go2rtc_config.py adds ALL cameras** — go2rtc connects to all 18 cameras regardless of streaming_hub. Causes dual-consumer conflicts on single-consumer cameras.
+
+### Research Completed
+- **MediaMTX API**: Full runtime path control (add/delete/patch paths). Passive — `source: publisher` waits for FFmpeg.
+- **go2rtc API**: `PUT/DELETE/PATCH /api/streams`. On-demand by default. No RTSP TEARDOWN on individual disconnect (only on exit).
+- **Neolink**: Third hub for Reolink Baichuan cameras. Overlaps with go2rtc `reolink://` but user wants it kept.
+- **Both MediaMTX and go2rtc written in Go** — forkable for custom features.
+
+### TODO (next session)
+- [ ] **Merge config scripts**: `generate_go2rtc_config.py` + `update_mediamtx_paths.sh` + neolink → single `generate_streaming_configs.py`. Three exclusive hubs. DB-only (no cameras.json). Remove old scripts via `remover.sh`.
+- [ ] **Neolink constraint**: Only Reolink cameras can be assigned neolink hub.
+- [ ] **Confirm modal on hub change**: Stream view buttons + settings modal → "Requires restart" confirm dialog.
+- [ ] **go2rtc WebRTC no-video bug**: Debug ICE/DTLS/codec negotiation.
+- [ ] **Hot-swap via API** (future): Use MediaMTX add/delete path + go2rtc PATCH empty source to swap hubs without restart.
+- [ ] **Unhide cameras UI**: Toggle to show hidden cameras in grid.
+- [ ] **DTLS toggle with warning modal**: Advanced setting, big scary warning if disabled.
+- [ ] **Settings refactor Phases 2-4**: Route migration, repo integration, JS SettingsAPI.
+
+---
+
+## Session: March 30, 2026 ~00:00-06:00 EDT
+
+**Branch:** `settings_refactor_March_29_2026_a`
+**Model:** Claude Opus 4.6 (1M context)
+
+### Changes Made
+- **Camera repository cache ELIMINATED** — `get_camera()` and `get_all_cameras()` query PostgREST directly every call. No more stale cache.
+- **All write paths confirmed** — every PUT/PATCH endpoint writes to DB, no cache-only updates.
+- **Handoff + Anamnesis + Intercom updated** — 2 episodes ingested, intercom message posted + resolved.
+- **DTLS mediamtx script** — always `webrtcEncryption: yes`, committed.
+
+### Diagnosed Issues
+- **go2rtc WebRTC no-video** — connection establishes (latency badge ~200ms) but no frames. Pre-existing.
+- **generate_go2rtc_config.py adds ALL cameras** — causes dual-consumer on single-consumer cameras.
+- **Load storm** — Claude set global hub to go2rtc while go2rtc container was down → load 175 → all cameras died.
+
+### Research
+- **MediaMTX API**: runtime add/delete/patch paths, no restart needed.
+- **go2rtc API**: PUT/DELETE/PATCH streams, on-demand default, no TEARDOWN on individual disconnect.
+- **Both written in Go** — forkable.
+
+### Plan Approved (next session)
+See `.claude/plans/validated-brewing-treasure.md`:
+- Merge 3 config scripts → 1 `generate_streaming_configs.py`
+- Exclusive hub assignment (mediamtx/go2rtc/neolink)
+- Neolink restricted to Reolink cameras, reads from DB not cameras.json
+- Confirm modal on hub change in UI
+- Delete old scripts via remover.sh
+
+### TODO
+- [ ] Implement plan: `generate_streaming_configs.py` (exclusive hub configs)
+- [ ] Confirm modal on hub/stream-type change
+- [ ] go2rtc WebRTC no-video debug
+- [ ] Hot-swap via API (future)
+- [ ] Unhide cameras UI toggle
+- [ ] DTLS toggle with warning modal
+- [ ] Settings refactor Phases 2-4

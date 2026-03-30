@@ -2029,3 +2029,11 @@ See `.claude/plans/validated-brewing-treasure.md`:
 - [ ] Unhide cameras UI toggle
 - [ ] DTLS toggle with warning modal
 - [ ] Settings refactor Phases 2-4
+
+### Root Cleanup (March 30, 03:00 EDT)
+- Archived 31 dead files to `ARCHIVE/dead_root_files/`
+- Archived `DOCS/` (duplicate of `docs/`), `neolink/` source tree (Docker image used), `diagnostic_test/`, `diagnostics/`, `TESTS/`
+- Removed `cameras.json` fallback from `start.sh` — DB only
+- Fixed remover.sh cache: all relative paths → full paths
+- Old config scripts deleted: `generate_go2rtc_config.py`, `update_mediamtx_paths.sh`, `update_neolink_configuration.sh`
+- New unified: `scripts/generate_streaming_configs.py` — exclusive hub assignment

@@ -190,13 +190,16 @@ export class GridLayoutEngine {
     _pickOptimalCols(count) {
         if (count <= 1) return 1;
 
-        let bestCols = 1;
-        let bestWaste = count;
+        // Minimum columns: don't consider fewer than 2 (1-column is only for 1 camera).
+        // Also set a practical floor so we don't produce absurdly tall single-column layouts.
+        const minCols = count <= 4 ? 2 : 3;
+        let bestCols  = minCols;
+        let bestWaste = count; // worst case
 
-        for (let cols = 1; cols <= 6; cols++) {
+        for (let cols = minCols; cols <= 6; cols++) {
             const rows  = Math.ceil(count / cols);
             const waste = (rows * cols) - count;
-            // Prefer fewer waste cells; on tie prefer more columns
+            // Prefer fewer waste cells; on tie prefer more columns (wider tiles)
             if (waste < bestWaste || (waste === bestWaste && cols > bestCols)) {
                 bestWaste = waste;
                 bestCols  = cols;

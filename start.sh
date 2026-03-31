@@ -265,7 +265,52 @@ if [[ ! -f certs/dev/fullchain.pem ]] || [[ ! -f certs/dev/privkey.pem ]]; then
 	fi
 fi
 
-# Admin console sidecar REMOVED — restart-from-UI will use SSH to host instead.
+# =============================================================================
+# Restart Watcher — host systemd service for restart-from-UI
+# =============================================================================
+# Minimal daemon that watches /dev/shm/nvr-restart/trigger for "reboot".
+# Container writes "reboot" to trigger file → watcher runs start.sh.
+_WATCHER_UNIT="nvr-restart-watcher.service"
+_WATCHER_SCRIPT="${SCRIPT_DIR}scripts/nvr-restart-watcher.sh"
+
+if ! systemctl is-active --quiet "$_WATCHER_UNIT" 2>/dev/null; then
+	if [[ -f "$_WATCHER_SCRIPT" ]]; then
+		echo -e "${CYAN}Installing restart watcher service...${NC}"
+		sudo tee "/etc/systemd/system/${_WATCHER_UNIT}" > /dev/null <<-UNIT
+		[Unit]
+		Description=NVR Restart Watcher (file-based trigger)
+		After=network.target docker.service
+
+		[Service]
+		Type=simple
+		ExecStart=${_WATCHER_SCRIPT}
+		Restart=always
+		RestartSec=5
+		User=$(whoami)
+
+		[Install]
+		WantedBy=multi-user.target
+		UNIT
+
+		sudo systemctl daemon-reload
+		sudo systemctl enable "$_WATCHER_UNIT" 2>/dev/null
+		sudo systemctl start "$_WATCHER_UNIT"
+
+		if systemctl is-active --quiet "$_WATCHER_UNIT"; then
+			echo -e "${GREEN}✓${NC} Restart watcher service running"
+		else
+			echo -e "${RED}ERROR: ${_WATCHER_UNIT} failed to start${NC}"
+		fi
+	else
+		echo -e "${YELLOW}WARNING: nvr-restart-watcher.sh not found — restart button won't work${NC}"
+	fi
+else
+	echo -e "${GREEN}✓${NC} Restart watcher service already running"
+fi
+
+# Ensure trigger file exists and is idle
+mkdir -p /dev/shm/nvr-restart
+echo "idle" > /dev/shm/nvr-restart/trigger
 
 # =============================================================================
 # Docker network

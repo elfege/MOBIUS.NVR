@@ -95,6 +95,9 @@ services:
       - ${NVR_ALTERNATE_RECORDING_STORAGE:-/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP}:/recordings/ALTERNATE
       # Mount Python source code for hot-reloading
       - ./:/app
+      # Restart trigger — container writes "reboot" to trigger file,
+      # host watcher service picks it up and runs start.sh
+      - /dev/shm/nvr-restart:/dev/shm/nvr-restart
 
     restart: unless-stopped
 

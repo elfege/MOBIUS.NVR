@@ -2,17 +2,19 @@
 # services/app_restart_handler.py
 #
 # Handles graceful application restart via two modes:
-#   1. Full restart: POST to nvr-admin-console sidecar, which runs start.sh
+#   1. Full restart: SSH to host to run start.sh
 #      (regenerates configs, docker compose down/up — full rebuild)
 #   2. Container restart: os._exit(1), Docker restart policy restarts container only
+#
+# Inspired by OHVD_APP_PROD's Express admin container approach:
+# container SSHes to host to execute scripts, no sidecar needed.
 #
 
 import time
 import os
+import subprocess
 import threading
 import logging
-import urllib.request
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,7 @@ logger = logging.getLogger(__name__)
 class AppRestartHandler:
     """Handles graceful application restart."""
 
-    # The admin console is a host systemd service (not a container).
-    # NVR_LOCAL_HOST_IP is the host's LAN IP, injected via docker-compose env.
-    ADMIN_PORT = os.environ.get('NVR_ADMIN_PORT', '9100')
-    HOST_IP = os.environ.get('NVR_LOCAL_HOST_IP', '192.168.10.20')
+    TRIGGER_FILE = '/dev/shm/nvr-restart/trigger'
 
     def __init__(self, stream_manager, bridge_watchdog, eufy_bridge):
         self.stream_manager = stream_manager
@@ -51,12 +50,11 @@ class AppRestartHandler:
 
     def restart_full(self, reason):
         """
-        Full restart via admin console sidecar.
+        Full restart via trigger file.
 
-        Sends POST to nvr-admin-console:9100/restart, which runs start.sh
-        on the host (via Docker socket). start.sh regenerates go2rtc.yaml,
-        mediamtx.yml, then does docker compose down/up — rebuilding everything.
-        The sidecar survives because it uses restart: always.
+        Writes "reboot" to /dev/shm/nvr-restart/trigger. The host-side
+        nvr-restart-watcher systemd service picks it up and runs start.sh,
+        which does docker compose down/up — full rebuild.
         """
         if self.restart_requested:
             logger.warning("[Restart] Already in progress")
@@ -70,28 +68,15 @@ class AppRestartHandler:
                 self._graceful_stop()
                 time.sleep(1)
 
-                # Call the admin console sidecar — fire and forget.
-                # start.sh will docker compose down (killing this container),
-                # then docker compose up (bringing it back).
-                logger.info("[Restart] Calling admin console sidecar...")
-                payload = json.dumps({'reason': reason}).encode()
-                url = f'http://{self.HOST_IP}:{self.ADMIN_PORT}/restart'
-                req = urllib.request.Request(
-                    url,
-                    data=payload,
-                    headers={'Content-Type': 'application/json'},
-                    method='POST'
-                )
+                # Write trigger file — host watcher will pick it up and run start.sh
+                logger.info("[Restart] Writing reboot trigger...")
                 try:
-                    resp = urllib.request.urlopen(req, timeout=5)
-                    logger.info(f"[Restart] Sidecar responded: {resp.read().decode()}")
+                    with open(self.TRIGGER_FILE, 'w') as f:
+                        f.write('reboot')
+                    logger.info("[Restart] Trigger written. Host watcher will run start.sh.")
                 except Exception as e:
-                    logger.error(f"[Restart] Sidecar call failed: {e} — falling back to container restart")
+                    logger.error(f"[Restart] Failed to write trigger file: {e} — falling back to container restart")
                     os._exit(1)
-
-                # Sidecar will run start.sh which kills this container.
-                # Nothing more to do here.
-                logger.info("[Restart] Sidecar triggered. Waiting for container teardown...")
 
             except Exception as e:
                 logger.error(f"[Restart] Failed: {e} — falling back to container restart")

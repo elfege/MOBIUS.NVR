@@ -374,7 +374,9 @@ def generate_neolink_config(cameras, creds, project_dir):
 # NEOLINK CONFIGURATION - AUTO-GENERATED
 #
 # Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-# Source: DB cameras table (streaming_hub = 'neolink', type = 'reolink')
+# Source: DB cameras table
+#   - Cameras with streaming_hub = 'neolink' (explicit assignment)
+#   - Cameras whose go2rtc_source references neolink (bridge dependencies)
 # Script: scripts/generate_streaming_configs.py
 #
 # DO NOT EDIT MANUALLY — regenerated on every start.sh
@@ -395,10 +397,12 @@ log_level = "info"
         host = cam.get('host', '')
         neolink_cfg = cam.get('neolink', {}) or {}
 
-        # Per-camera credentials first, then reolink_admin fallback
+        # Neolink uses Baichuan protocol, which typically requires admin credentials.
+        # Priority: go2rtc creds (often set to admin) → reolink_admin → per-camera creds
+        go2rtc_cred = creds.get((serial, 'go2rtc'))
         per_cam_cred = creds.get((serial, 'camera'))
-        if per_cam_cred:
-            username, password = per_cam_cred
+        if go2rtc_cred:
+            username, password = go2rtc_cred
         elif reolink_admin:
             username, password = reolink_admin
         else:
@@ -531,8 +535,25 @@ def main():
             # mediamtx (default)
             mediamtx_cameras.append(cam)
 
+    # ── Neolink bridge dependencies ──────────────────────────────────────────
+    # Neolink is a PROTOCOL BRIDGE (Baichuan → RTSP), not a browser-facing hub.
+    # Any camera whose go2rtc_source references neolink must also appear in
+    # neolink.toml so neolink actually serves the RTSP stream that go2rtc pulls.
+    neolink_bridge_deps = []
+    for cam in go2rtc_cameras + mediamtx_cameras:
+        source = cam.get('go2rtc_source', '')
+        if 'neolink' in source.lower() and cam['type'].lower() == 'reolink':
+            if cam not in neolink_cameras:
+                neolink_bridge_deps.append(cam)
+                print(f"  {CYAN}↳{NC} {cam['name']} ({cam['serial']}) — neolink bridge dependency (source: {source})")
+
+    # Combine explicit neolink cameras + bridge dependencies for neolink config
+    all_neolink_cameras = neolink_cameras + neolink_bridge_deps
+
     total = len(go2rtc_cameras) + len(mediamtx_cameras) + len(neolink_cameras)
     print(f"{CYAN}Found {total} camera(s){NC}")
+    if neolink_bridge_deps:
+        print(f"{CYAN}  + {len(neolink_bridge_deps)} neolink bridge dependency(ies){NC}")
     print()
 
     # ── Generate configs ─────────────────────────────────────────────────────
@@ -556,10 +577,10 @@ def main():
         print(f"  (none)")
     print()
 
-    # Neolink
-    print(f"{CYAN}── Neolink ({len(neolink_cameras)} cameras) ──{NC}")
-    if neolink_cameras:
-        neolink_count = generate_neolink_config(neolink_cameras, creds, project_dir)
+    # Neolink (explicit + bridge dependencies)
+    print(f"{CYAN}── Neolink ({len(neolink_cameras)} cameras + {len(neolink_bridge_deps)} bridge deps) ──{NC}")
+    if all_neolink_cameras:
+        neolink_count = generate_neolink_config(all_neolink_cameras, creds, project_dir)
     else:
         neolink_count = generate_neolink_config([], creds, project_dir)
         print(f"  (none)")

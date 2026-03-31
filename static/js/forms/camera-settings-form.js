@@ -156,37 +156,32 @@ export class RecordingSettingsForm {
                     </div>
 
                     <!-- Display Settings -->
-                    <div class="recording-form-section">
+                    <div class="recording-form-section ${(window.GRID_LAYOUT_MODE || '') === 'masonry' ? 'setting-disabled' : ''}" id="video-fit-camera-section">
                         <h4><i class="fas fa-tv"></i> Display Settings</h4>
                         <div class="recording-form-group">
                             <label>Video Fit Mode (this camera)</label>
-                            <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
-                                <label class="setting-toggle" style="margin: 0;">
-                                    <input type="checkbox" id="video-fit-camera-toggle"
-                                           ${videoFitMode === 'fill' ? 'checked' : ''}>
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <span id="video-fit-camera-label" style="color: #ccc; font-size: 13px;">
-                                    ${videoFitMode === 'fill' ? 'Fill (stretch, no crop)' : 'Cover (crop edges, no deform)'}
-                                </span>
-                            </div>
+                            <select id="video-fit-camera-select" class="setting-select" style="margin-top: 6px; max-width: 280px;">
+                                <option value="" ${!videoFitMode ? 'selected' : ''}>Use account default</option>
+                                <option value="cover" ${videoFitMode === 'cover' ? 'selected' : ''}>Cover (crop edges)</option>
+                                <option value="contain" ${videoFitMode === 'contain' ? 'selected' : ''}>Contain (letterbox)</option>
+                                <option value="fill" ${videoFitMode === 'fill' ? 'selected' : ''}>Fill (stretch)</option>
+                            </select>
                             <span class="form-description" style="margin-top: 8px; display: block;">
-                                <strong>Off (Cover):</strong> Fills tile, crops edges — no image deformation.<br>
-                                <strong>On (Fill):</strong> Stretches to fit — no crop, may deform if camera aspect differs.<br>
-                                Set to blank to use your account default (see Settings panel).
+                                <strong>Cover:</strong> Fills tile, crops edges — no deformation.<br>
+                                <strong>Contain:</strong> Full image with letterbox bars — no crop, no deformation.<br>
+                                <strong>Fill:</strong> Stretches to fit — no crop, may deform.<br>
+                                "Use account default" inherits from your global setting.
                             </span>
                             <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-                                <button type="button" id="clear-video-fit-btn"
-                                        class="recording-btn recording-btn-secondary"
-                                        style="font-size: 12px; padding: 5px 10px;">
-                                    <i class="fas fa-times-circle"></i> Clear override (use default)
-                                </button>
                                 <button type="button" id="set-global-video-fit-btn"
                                         class="recording-btn recording-btn-secondary"
                                         style="font-size: 12px; padding: 5px 10px;">
                                     <i class="fas fa-globe"></i> Set as new global default
                                 </button>
                             </div>
+                            <span class="setting-disabled-reason" style="${(window.GRID_LAYOUT_MODE || '') === 'masonry' ? '' : 'display:none;'}">
+                                Managed by masonry layout — tiles are sized to camera aspect ratio.
+                            </span>
                             <div id="video-fit-status" style="display: none; margin-top: 6px;"></div>
                         </div>
                     </div>
@@ -1200,22 +1195,14 @@ export class RecordingSettingsForm {
             }
         });
 
-        // ── Video fit toggle ──
-        $('#video-fit-camera-toggle').on('change', async function() {
-            const isFill = $(this).is(':checked');
-            const fit = isFill ? 'fill' : 'cover';
-            $('#video-fit-camera-label').text(isFill ? 'Fill (stretch, no crop)' : 'Cover (crop edges, no deform)');
+        // ── Video fit select (3-option: cover / contain / fill, or blank for default) ──
+        $('#video-fit-camera-select').on('change', async function() {
+            const fit = $(this).val() || null; // empty string → null (use account default)
             await self._saveVideoFit(fit);
-        });
-        $('#clear-video-fit-btn').on('click', async () => {
-            await self._saveVideoFit(null);
-            $('#video-fit-camera-toggle').prop('checked', false);
-            $('#video-fit-camera-label').text('Cover (crop edges, no deform)  — using account default');
         });
 
         $('#set-global-video-fit-btn').on('click', async () => {
-            const isFill = $('#video-fit-camera-toggle').is(':checked');
-            const fit = isFill ? 'fill' : 'cover';
+            const fit = $('#video-fit-camera-select').val() || (window.VIDEO_FIT_DEFAULT || 'cover');
             // Persist as the account-wide default preference
             try {
                 await fetch('/api/my-preferences', {

@@ -112,14 +112,49 @@ export class SettingsUI {
 
         // ── View ──────────────────────────────────────────────────────────
 
+        // Grid style (spaced / attached) — also persist to DB now
         this.$content.on('change', '#grid-style-select', (e) => {
-            fullscreenHandler.setGridStyle($(e.currentTarget).val());
+            const style = $(e.currentTarget).val();
+            fullscreenHandler.setGridStyle(style);
+            fetch('/api/my-preferences', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ grid_style: style })
+            }).catch(err => console.warn('[SettingsUI] Failed to save grid style:', err));
         });
 
-        // Global video fit mode (cover vs fill) — persisted to DB preferences
-        this.$content.on('change', '#video-fit-toggle', (e) => {
-            const isFill = $(e.currentTarget).is(':checked');
-            const fit = isFill ? 'fill' : 'cover';
+        // Grid layout mode — 4 modes, persisted to DB user preferences
+        this.$content.on('change', '#grid-layout-mode-select', (e) => {
+            const mode = $(e.currentTarget).val();
+            window.GRID_LAYOUT_MODE = mode;
+
+            // Apply layout mode immediately via camera-selector-controller
+            if (window.cameraSelectorController) {
+                window.cameraSelectorController.setGridLayoutMode(mode);
+            }
+
+            // Persist to DB
+            fetch('/api/my-preferences', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ grid_layout_mode: mode })
+            }).catch(err => console.warn('[SettingsUI] Failed to save grid layout mode:', err));
+
+            // Toggle video fit disabled state when masonry is active
+            const $fitRow = this.$content.find('#video-fit-setting-row');
+            const $fitReason = $fitRow.find('.setting-disabled-reason');
+            if (mode === 'masonry') {
+                $fitRow.addClass('setting-disabled');
+                $fitReason.show();
+            } else {
+                $fitRow.removeClass('setting-disabled');
+                $fitReason.hide();
+            }
+        });
+
+        // Global video fit mode (cover / contain / fill) — persisted to DB preferences
+        this.$content.on('change', '#video-fit-select', (e) => {
+            const fit = $(e.currentTarget).val();
             window.VIDEO_FIT_DEFAULT = fit;
             fetch('/api/my-preferences', {
                 method: 'PUT',
@@ -316,19 +351,44 @@ export class SettingsUI {
 
             <div class="setting-row">
                 <div class="setting-top">
-                    <div class="setting-label"><i class="fas fa-expand-arrows-alt"></i> Video Fit Mode</div>
+                    <div class="setting-label"><i class="fas fa-grip-horizontal"></i> Grid Layout Mode</div>
                     <div class="setting-control">
-                        <label class="setting-toggle">
-                            <input type="checkbox" id="video-fit-toggle" ${this.isVideoFitFill() ? 'checked' : ''}>
-                            <span class="toggle-slider"></span>
-                        </label>
+                        <select id="grid-layout-mode-select" class="setting-select">
+                            <option value="uniform" ${(window.GRID_LAYOUT_MODE || 'uniform') === 'uniform' ? 'selected' : ''}>Uniform</option>
+                            <option value="last-row-stretch" ${(window.GRID_LAYOUT_MODE || '') === 'last-row-stretch' ? 'selected' : ''}>Last Row Stretch</option>
+                            <option value="auto-fit" ${(window.GRID_LAYOUT_MODE || '') === 'auto-fit' ? 'selected' : ''}>Auto-Fit</option>
+                            <option value="masonry" ${(window.GRID_LAYOUT_MODE || '') === 'masonry' ? 'selected' : ''}>Masonry</option>
+                        </select>
                     </div>
                 </div>
                 <div class="setting-description">
-                    <strong>Off (Cover):</strong> Fills tile, crops edges — no image deformation, slight edge loss.<br>
-                    <strong>On (Fill):</strong> Stretches to fit tile exactly — no cropping, image may deform if camera aspect differs.<br>
+                    <strong>Uniform:</strong> Standard grid — empty cells accepted in last row.<br>
+                    <strong>Last Row Stretch:</strong> Last-row items span wider to fill the row.<br>
+                    <strong>Auto-Fit:</strong> Picks column count (1-6) that minimizes empty cells.<br>
+                    <strong>Masonry:</strong> Pixel-perfect tile positioning — no wasted space.
+                </div>
+            </div>
+
+            <div class="setting-row ${(window.GRID_LAYOUT_MODE || '') === 'masonry' ? 'setting-disabled' : ''}" id="video-fit-setting-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-expand-arrows-alt"></i> Video Fit Mode</div>
+                    <div class="setting-control">
+                        <select id="video-fit-select" class="setting-select">
+                            <option value="cover" ${this.getVideoFitMode() === 'cover' ? 'selected' : ''}>Cover (crop edges)</option>
+                            <option value="contain" ${this.getVideoFitMode() === 'contain' ? 'selected' : ''}>Contain (letterbox)</option>
+                            <option value="fill" ${this.getVideoFitMode() === 'fill' ? 'selected' : ''}>Fill (stretch)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    <strong>Cover:</strong> Fills tile, crops edges — no deformation, slight edge loss.<br>
+                    <strong>Contain:</strong> Full image visible with letterbox bars — no crop, no deformation.<br>
+                    <strong>Fill:</strong> Stretches to fit tile exactly — no cropping, may deform.<br>
                     This is your default. Individual cameras can override it in their settings.
                 </div>
+                <span class="setting-disabled-reason" style="${(window.GRID_LAYOUT_MODE || '') === 'masonry' ? '' : 'display:none;'}">
+                    Managed by masonry layout — tiles are sized to camera aspect ratio.
+                </span>
             </div>
 
             <div class="setting-row">
@@ -793,6 +853,14 @@ export class SettingsUI {
      */
     isVideoFitFill() {
         return (window.VIDEO_FIT_DEFAULT || localStorage.getItem('videoFitMode') || 'cover') === 'fill';
+    }
+
+    /**
+     * Get the current video fit mode as a string: 'cover', 'contain', or 'fill'.
+     * Used to set the selected value of the video fit dropdown.
+     */
+    getVideoFitMode() {
+        return window.VIDEO_FIT_DEFAULT || localStorage.getItem('videoFitMode') || 'cover';
     }
 
     /**

@@ -455,7 +455,46 @@ class CameraSelectorController {
             .removeClass('grid-1 grid-2 grid-3 grid-4 grid-5')
             .addClass(`grid-${cols}`);
 
+        // Stretch last-row items to fill remaining columns.
+        // e.g., 5 cols, 17 items → last row has 2 items → span 3 + span 2 = 5.
+        this._stretchLastRow(count, cols);
+
         console.log(`[CameraSelector] Grid layout updated: ${cols} columns for ${count} cameras`);
+    }
+
+    /**
+     * Make last-row items span extra columns so the row fills the full grid width.
+     * Uses integer spans distributed as evenly as possible:
+     *   baseSpan  = floor(cols / lastRowCount)
+     *   remainder = cols % lastRowCount
+     *   first `remainder` items get (baseSpan + 1), rest get baseSpan.
+     *
+     * @param {number} count - Total visible camera count
+     * @param {number} cols  - Number of grid columns
+     */
+    _stretchLastRow(count, cols) {
+        // Reset any previous spans on all visible stream items
+        const $items = $('#streams-container .stream-item:visible');
+        $items.css('grid-column', '');
+
+        if (count === 0 || cols <= 1) return;
+
+        // How many items in the last row
+        const lastRowCount = count % cols;
+        // If the last row is full (remainder 0), nothing to stretch
+        if (lastRowCount === 0) return;
+
+        const baseSpan  = Math.floor(cols / lastRowCount);
+        const remainder = cols % lastRowCount;
+
+        // The last-row items are the last `lastRowCount` visible items
+        const startIdx = count - lastRowCount;
+        for (let i = 0; i < lastRowCount; i++) {
+            const span = (i < remainder) ? baseSpan + 1 : baseSpan;
+            $items.eq(startIdx + i).css('grid-column', `span ${span}`);
+        }
+
+        console.log(`[CameraSelector] Last row: ${lastRowCount} item(s), cols=${cols}, spans distributed`);
     }
 
     /**

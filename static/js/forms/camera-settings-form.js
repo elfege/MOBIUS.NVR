@@ -703,32 +703,29 @@ export class RecordingSettingsForm {
             $('#restart-required-modal').remove();
         });
 
-        $('#restart-now-btn').on('click', async () => {
-            const $btn = $('#restart-now-btn');
-            $btn.prop('disabled', true).html('<span class="recording-loading" style="width:14px;height:14px;border-width:2px;"></span> Restarting...');
-            try {
-                await axios.post('/api/admin/restart', { reason: 'Streaming config changed via UI' });
-                // App will exit — show message while it restarts
-                $('#restart-required-modal div:last-child').html(`
-                    <p style="color:#10b981; text-align:center; font-size:14px;">
-                        <i class="fas fa-spinner fa-spin" style="margin-right:8px;"></i>
-                        Restarting... page will reload automatically.
-                    </p>
-                `);
-                // Poll for app to come back
-                const pollRestart = setInterval(async () => {
-                    try {
-                        const resp = await axios.get('/api/status', { timeout: 2000 });
-                        if (resp.status === 200) {
-                            clearInterval(pollRestart);
-                            window.location.reload();
-                        }
-                    } catch (_) { /* still restarting */ }
-                }, 3000);
-            } catch (e) {
-                $btn.prop('disabled', false).html('<i class="fas fa-redo" style="margin-right:6px;"></i>Restart Now');
-                console.error('[Restart] Failed:', e);
-            }
+        $('#restart-now-btn').on('click', () => {
+            // Same flow as the navbar restart button (#restart-btn)
+            if (!confirm('Restart NVR?\n\nAll streams will stop and reconnect after restart.')) return;
+
+            // Save current URL for return after restart
+            localStorage.setItem('nvr_return_url', window.location.pathname + window.location.search);
+
+            fetch('/api/admin/restart', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reason: 'Streaming config changed via camera settings', mode: 'full' })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/reloading';
+                } else {
+                    alert('Restart failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(err => {
+                alert('Restart request failed: ' + err.message);
+            });
         });
     }
 

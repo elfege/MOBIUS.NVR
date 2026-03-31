@@ -265,50 +265,7 @@ if [[ ! -f certs/dev/fullchain.pem ]] || [[ ! -f certs/dev/privkey.pem ]]; then
 	fi
 fi
 
-# =============================================================================
-# Admin Console — host systemd service for restart-from-UI
-# =============================================================================
-_ADMIN_PORT="${NVR_ADMIN_PORT:-9100}"
-_ADMIN_UNIT="nvr-admin-console.service"
-_ADMIN_UNIT_PATH="/etc/systemd/system/${_ADMIN_UNIT}"
-_ADMIN_SERVER="${SCRIPT_DIR}restart-sidecar/server.py"
-
-# Install/update admin console in background — don't block container startup
-(
-	if [[ -f "$_ADMIN_SERVER" ]]; then
-		# Write/update the systemd unit file
-		sudo tee "$_ADMIN_UNIT_PATH" > /dev/null <<-UNIT
-		[Unit]
-		Description=NVR Admin Console (restart service)
-		After=network.target docker.service
-
-		[Service]
-		Type=simple
-		Environment=NVR_PROJECT_DIR=${SCRIPT_DIR%/}
-		Environment=NVR_ADMIN_PORT=${_ADMIN_PORT}
-		ExecStart=/usr/bin/python3 ${_ADMIN_SERVER}
-		Restart=always
-		RestartSec=3
-		User=$(whoami)
-
-		[Install]
-		WantedBy=multi-user.target
-		UNIT
-
-		sudo systemctl daemon-reload
-		sudo systemctl enable "$_ADMIN_UNIT" 2>/dev/null
-		sudo systemctl restart "$_ADMIN_UNIT"
-
-		if systemctl is-active --quiet "$_ADMIN_UNIT"; then
-			echo -e "${GREEN}✓${NC} Admin console running on port ${_ADMIN_PORT}"
-		else
-			echo -e "${RED}ERROR: ${_ADMIN_UNIT} failed to start${NC}"
-			echo "  Check: journalctl -u ${_ADMIN_UNIT} --no-pager -n 20"
-		fi
-	else
-		echo -e "${YELLOW}WARNING: Admin console server.py not found — restart button won't work${NC}"
-	fi
-) &
+# Admin console sidecar REMOVED — restart-from-UI will use SSH to host instead.
 
 # =============================================================================
 # Docker network

@@ -7,10 +7,12 @@
  * - Select All / Deselect All
  * - HD/SD quality toggle per camera
  * - Persistence via per-user database (with localStorage cache for fast load)
- * - Dynamic grid layout adjustment
+ * - Dynamic grid layout adjustment (delegated to GridLayoutEngine)
  *
  * @module controllers/camera-selector-controller
  */
+
+import { GridLayoutEngine } from '../layout/grid-layout-engine.js';
 
 class CameraSelectorController {
     constructor() {
@@ -32,6 +34,9 @@ class CameraSelectorController {
         this._hiddenCameras = [];
         this._hdCameras = [];
         this._prefsLoaded = false;
+
+        // Grid layout engine — owns all layout mode logic (uniform, stretch, auto-fit, masonry)
+        this._layoutEngine = new GridLayoutEngine($('#streams-container'));
 
         // localStorage keys (cache only - server is source of truth)
         this.HIDDEN_CAMERAS_KEY = 'hiddenCameras';
@@ -439,62 +444,23 @@ class CameraSelectorController {
     }
 
     /**
-     * Update the grid layout based on visible camera count
+     * Update the grid layout based on visible camera count.
+     * Delegates to GridLayoutEngine which handles all 4 layout modes.
      * @param {number} count - Number of visible cameras
      */
     _updateGridLayout(count) {
-        let cols;
-        if (count === 0) cols = 1;
-        else if (count === 1) cols = 1;
-        else if (count <= 4) cols = 2;
-        else if (count <= 9) cols = 3;
-        else if (count <= 16) cols = 4;
-        else cols = 5;
-
-        $('#streams-container')
-            .removeClass('grid-1 grid-2 grid-3 grid-4 grid-5')
-            .addClass(`grid-${cols}`);
-
-        // Stretch last-row items to fill remaining columns.
-        // e.g., 5 cols, 17 items → last row has 2 items → span 3 + span 2 = 5.
-        this._stretchLastRow(count, cols);
-
-        console.log(`[CameraSelector] Grid layout updated: ${cols} columns for ${count} cameras`);
+        this._layoutEngine.apply(count);
     }
 
     /**
-     * Make last-row items span extra columns so the row fills the full grid width.
-     * Uses integer spans distributed as evenly as possible:
-     *   baseSpan  = floor(cols / lastRowCount)
-     *   remainder = cols % lastRowCount
-     *   first `remainder` items get (baseSpan + 1), rest get baseSpan.
-     *
-     * @param {number} count - Total visible camera count
-     * @param {number} cols  - Number of grid columns
+     * Set the grid layout mode. Called from stream.js after loading user preferences.
+     * @param {string} mode - 'uniform' | 'last-row-stretch' | 'auto-fit' | 'masonry'
      */
-    _stretchLastRow(count, cols) {
-        // Reset any previous spans on all visible stream items
-        const $items = $('#streams-container .stream-item:visible');
-        $items.css('grid-column', '');
-
-        if (count === 0 || cols <= 1) return;
-
-        // How many items in the last row
-        const lastRowCount = count % cols;
-        // If the last row is full (remainder 0), nothing to stretch
-        if (lastRowCount === 0) return;
-
-        const baseSpan  = Math.floor(cols / lastRowCount);
-        const remainder = cols % lastRowCount;
-
-        // The last-row items are the last `lastRowCount` visible items
-        const startIdx = count - lastRowCount;
-        for (let i = 0; i < lastRowCount; i++) {
-            const span = (i < remainder) ? baseSpan + 1 : baseSpan;
-            $items.eq(startIdx + i).css('grid-column', `span ${span}`);
-        }
-
-        console.log(`[CameraSelector] Last row: ${lastRowCount} item(s), cols=${cols}, spans distributed`);
+    setGridLayoutMode(mode) {
+        this._layoutEngine.setMode(mode);
+        // Re-apply with current visible count
+        const visibleCount = this.$list.find('.camera-selector-item input:checked').length;
+        this._layoutEngine.apply(visibleCount);
     }
 
     /**

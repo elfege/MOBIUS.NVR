@@ -92,8 +92,8 @@ def api_put_camera_display(camera_serial):
         return jsonify({'error': 'No data provided'}), 400
 
     fit = data.get('video_fit_mode')
-    if fit is not None and fit not in ('cover', 'fill'):
-        return jsonify({'error': 'video_fit_mode must be "cover", "fill", or null'}), 400
+    if fit is not None and fit not in ('cover', 'contain', 'fill'):
+        return jsonify({'error': 'video_fit_mode must be "cover", "contain", "fill", or null'}), 400
 
     try:
         response = shared._postgrest_session.patch(

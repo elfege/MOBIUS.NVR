@@ -36,6 +36,52 @@
     grid-auto-rows: minmax(0, 1fr);
 }
 
+/* Auto-fit may choose 6 columns for certain camera counts */
+.grid-6 {
+    grid-template-columns: repeat(6, 1fr);
+    grid-auto-rows: minmax(0, 1fr);
+}
+
+/* ============================================================================
+   MASONRY LAYOUT MODE
+   Overrides CSS grid entirely — tiles are absolutely positioned by JS.
+   Applied/removed by GridLayoutEngine.
+   ============================================================================ */
+
+.streams-container.layout-masonry {
+    display: block;
+    position: relative;
+    overflow: hidden;
+}
+
+.streams-container.layout-masonry .stream-item {
+    position: absolute;
+    /* JS sets top/left/width/height inline.
+       Unset aspect-ratio so the explicit height from JS takes precedence. */
+    aspect-ratio: unset;
+}
+
+/* ============================================================================
+   DISABLED SETTING ROW (used when masonry mode makes a control irrelevant)
+   ============================================================================ */
+
+.setting-row.setting-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+    position: relative;
+}
+
+/* The explanation text inside a disabled setting is still readable and clickable */
+.setting-row.setting-disabled .setting-disabled-reason {
+    pointer-events: auto;
+    opacity: 1;
+    font-style: italic;
+    color: #f0ad4e;
+    font-size: 12px;
+    margin-top: 6px;
+    display: block;
+}
+
 /* ============================================================================
    GRID LAYOUT MODES
    ============================================================================ */

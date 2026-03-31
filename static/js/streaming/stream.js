@@ -418,6 +418,20 @@ export class MultiStreamManager {
                     });
                 }
 
+                // --- Grid layout mode ---
+                const layoutMode = prefs.grid_layout_mode || 'uniform';
+                window.GRID_LAYOUT_MODE = layoutMode;
+                // Apply to camera-selector-controller's layout engine if already initialized
+                if (window.cameraSelectorController) {
+                    window.cameraSelectorController.setGridLayoutMode(layoutMode);
+                }
+
+                // --- Grid style (spaced / attached) from DB ---
+                const gridStyle = prefs.grid_style;
+                if (gridStyle && window.fullscreenHandler) {
+                    window.fullscreenHandler.setGridStyle(gridStyle);
+                }
+
                 // --- Pinned camera: sync localStorage from DB (DB is source of truth) ---
                 const pinnedFromDB = prefs.pinned_camera || null;
                 if (pinnedFromDB) {

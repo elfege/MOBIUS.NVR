@@ -773,7 +773,7 @@ def api_get_my_preferences():
             f"{shared.POSTGREST_URL}/user_preferences",
             params={
                 'user_id': f'eq.{current_user.id}',
-                'select': 'hidden_cameras,hd_cameras,default_video_fit,pinned_camera,pinned_windows'
+                'select': 'hidden_cameras,hd_cameras,default_video_fit,pinned_camera,pinned_windows,grid_layout_mode,grid_style'
             },
             timeout=5
         )
@@ -784,10 +784,10 @@ def api_get_my_preferences():
                 return jsonify(rows[0])
 
         # No preferences saved yet - return defaults
-        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None, 'pinned_windows': {}})
+        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None, 'pinned_windows': {}, 'grid_layout_mode': 'uniform', 'grid_style': 'attached'})
     except requests.RequestException as e:
         print(f"Error fetching user preferences: {e}")
-        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None, 'pinned_windows': {}})
+        return jsonify({'hidden_cameras': [], 'hd_cameras': [], 'default_video_fit': 'cover', 'pinned_camera': None, 'pinned_windows': {}, 'grid_layout_mode': 'uniform', 'grid_style': 'attached'})
 
 
 @auth_bp.route('/api/my-preferences', methods=['PUT'])
@@ -808,9 +808,18 @@ def api_put_my_preferences():
     if 'hd_cameras' in data:
         payload['hd_cameras'] = data['hd_cameras']
     if 'default_video_fit' in data:
-        if data['default_video_fit'] not in ('cover', 'fill'):
-            return jsonify({'error': 'default_video_fit must be "cover" or "fill"'}), 400
+        if data['default_video_fit'] not in ('cover', 'contain', 'fill'):
+            return jsonify({'error': 'default_video_fit must be "cover", "contain", or "fill"'}), 400
         payload['default_video_fit'] = data['default_video_fit']
+    if 'grid_layout_mode' in data:
+        valid_modes = ('auto-fit', 'masonry', 'last-row-stretch', 'uniform')
+        if data['grid_layout_mode'] not in valid_modes:
+            return jsonify({'error': f'grid_layout_mode must be one of {valid_modes}'}), 400
+        payload['grid_layout_mode'] = data['grid_layout_mode']
+    if 'grid_style' in data:
+        if data['grid_style'] not in ('spaced', 'attached'):
+            return jsonify({'error': 'grid_style must be "spaced" or "attached"'}), 400
+        payload['grid_style'] = data['grid_style']
     if 'pinned_camera' in data:
         # Accept string serial or null to clear the pin
         val = data['pinned_camera']

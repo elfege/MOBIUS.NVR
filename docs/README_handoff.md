@@ -15,7 +15,7 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: March 31, 2026 17:27 EDT*
+*Last updated: March 31, 2026 18:01 EDT*
 
 **Branch:** `main` (committed directly — small change)
 
@@ -107,18 +107,48 @@ Added `_stretchLastRow()` to `camera-selector-controller.js`. Distributes intege
 
 `camera-settings-form.js` `_showRestartRequiredModal()` "Restart Now" button updated to match navbar restart flow: confirm → save return URL → POST `/api/admin/restart` → redirect `/reloading`. **User reverted this file** (CSS changes too) — only the JS grid stretch survived.
 
+### 5. Grid Layout Modes Feature (commits d76935d → fdec8e9 on `grid_optimization_March_31_2026_a`)
+
+Implemented 4 user-selectable grid layout modes + extended video fit from 2 to 3 options. All persisted as DB user preferences.
+
+**Layout modes:**
+- **Uniform** (default): Standard CSS grid, empty cells accepted
+- **Last-row stretch**: Last-row items span extra columns to fill width
+- **Auto-fit**: JS picks column count 1-6 that minimizes waste cells (dynamic, fully computed from count)
+- **Masonry**: Absolute positioning, pixel-perfect fill, no wasted space
+
+**Video fit extended:** cover (crop) / contain (letterbox) / fill (stretch)
+
+**Masonry grey-out:** When masonry is active, video fit controls are disabled at both locations (global settings modal + per-camera settings) with explanation message.
+
+**Files created/modified:**
+- `psql/migrations/026_add_grid_layout_prefs.sql` — DB migration
+- `static/js/layout/grid-layout-engine.js` — new layout engine module
+- `static/css/components/grid-modes.css` — grid-6, masonry, setting-disabled styles
+- `routes/auth.py` — /api/my-preferences GET/PUT widened
+- `routes/camera.py` — per-camera display validation widened
+- `static/js/controllers/camera-selector-controller.js` — delegates to engine
+- `static/js/streaming/stream.js` — reads grid prefs on init
+- `static/js/modals/global-settings-modal.js` — new layout mode dropdown + 3-option video fit
+- `static/js/forms/camera-settings-form.js` — per-camera 3-option video fit + masonry grey-out
+
+**Bug fixes during testing:**
+- `setGridLayoutMode` used wrong count source (selector modal list vs actual DOM) → 1-column layout on mode switch
+- Auto-fit `_pickOptimalCols` allowed 1 column (waste=0 but unusable) → added minCols floor (2 for ≤4 cams, 3 for >4)
+
+**User tested all 4 modes — working correctly.**
+
 ---
 
 ## TODO
 
-- [ ] **Grid space optimization** — user wants freed space from empty last-row cells redistributed to ALL tiles (both width and height), not just last-row width stretch. Bin-packing / absolute positioning approach needed.
+- [x] **Grid layout modes** — 4 modes implemented + video fit extended + masonry grey-out
 - [x] **Eufy doorbell with go2rtc** — DB fields fixed, needs `./start.sh` to regenerate go2rtc.yaml and test
 - [ ] **0_VIDEO_TRAFFIC_ANALYZER** — install deps, test cert gen, first MITM capture (see project's own handoff)
 - [ ] go2rtc audio (AAC→Opus transcoding for WebRTC — video works, no audio track)
 - [ ] Eufy PTZ on go2rtc hub (only works on mediamtx currently)
 - [ ] Confirm modal on hub/stream-type change
 - [ ] Page load speed (parallel stream starts in UI + backend)
-- [ ] Settings modal explanations + grey out incompatible options for go2rtc
 - [ ] "Add Camera" UI (DB is sole source, no cameras.json)
 - [ ] Hot-swap hub without restart (MediaMTX path add/delete API + go2rtc stream PATCH)
 - [ ] Unhide cameras UI toggle

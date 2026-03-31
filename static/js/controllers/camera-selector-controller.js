@@ -458,8 +458,9 @@ class CameraSelectorController {
      */
     setGridLayoutMode(mode) {
         this._layoutEngine.setMode(mode);
-        // Re-apply with current visible count
-        const visibleCount = this.$list.find('.camera-selector-item input:checked').length;
+        // Re-apply with current visible count — use actual DOM stream items, not the
+        // selector modal list (which may be empty or out of sync)
+        const visibleCount = $('#streams-container .stream-item:visible').length;
         this._layoutEngine.apply(visibleCount);
     }
 

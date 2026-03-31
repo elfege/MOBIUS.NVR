@@ -2083,3 +2083,33 @@ See `.claude/plans/validated-brewing-treasure.md`:
 - [ ] Navbar logo placement
 - [ ] go2rtc WebRTC vs MSE fallback (use go2rtc's video-rtc.js pattern)
 - [ ] Investigate go2rtc Go fork for proper RTSP TEARDOWN on individual stream disconnect
+
+---
+
+## Session: March 31, 2026 ~01:00-03:00 EDT
+
+**Branch:** `eufy_cloud_resilience_March_30_2026_a` → merged to main
+
+### Completed
+- **Eufy cloud connectivity check** — talkback modal shows cloud status (green/yellow/red) before starting P2P
+- **PTZ cloud indicator** — Eufy PTZ controls show cloud checkmark/cross, re-checks every 60s
+- **Bridge exponential backoff** — watchdog retries with 10s→300s backoff, never permanently gives up
+- **Restart watcher service** — replaced Python HTTP sidecar with 75-line bash systemd daemon. Container writes "reboot" to `/dev/shm/nvr-restart/trigger`, host watcher runs start.sh. Fire and forget.
+- **Bridge logging** — all eufy-security-server output now captured in container logs
+- **Hub toggle fix** — direct PostgREST fallback when shared.settings is None, DB verify after save
+- **extra_config precedence fix** — direct columns now override extra_config (was causing stale streaming_hub)
+- **Eufy P2P root cause found** — cameras need WAN access for P2P session key exchange (SonicWall rule #6)
+
+### Known Issues
+- **PTZ doesn't work for Eufy cameras on go2rtc** — only works on mediamtx
+- **go2rtc audio missing** — video works via WebRTC, no audio track sent
+- **E1 (Cat Feeders)** — needs neolink bridge, was working ~March 23, broke during go2rtc migration
+
+### TODO (next session: fix_e1_camera_March_31_2026_a)
+- [ ] Fix E1 camera (assign to neolink hub, verify neolink config generates correctly)
+- [ ] go2rtc audio (AAC→Opus transcoding for WebRTC)
+- [ ] Eufy PTZ on go2rtc hub (currently only works on mediamtx)
+- [ ] Confirm modal on hub/stream-type change
+- [ ] Page load speed (parallel stream starts)
+- [ ] Settings modal explanations + grey out incompatible options for go2rtc
+- [ ] "Add Camera" UI

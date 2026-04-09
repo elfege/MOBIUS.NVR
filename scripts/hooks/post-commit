@@ -1,0 +1,33 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────────────
+# post-commit hook: auto-push to public repo when committing on main
+#
+# Triggers after every `git commit`. If we're on main, pushes to the
+# `public` remote (MOBIUS.NVR, semi-open-source).
+#
+# Combined with post-merge, this ensures the public repo stays in sync
+# whether changes arrive via merge or direct commit on main.
+#
+# The push runs in the background (&) so it doesn't block the commit.
+#
+# SELF-PRESERVATION: Auto-copies itself to scripts/hooks/ if changed.
+# ─────────────────────────────────────────────────────────────────────
+
+HOOK_DIR="$(git rev-parse --show-toplevel)/.git/hooks"
+SCRIPT_DIR="$(git rev-parse --show-toplevel)/scripts/hooks"
+HOOK_NAME="post-commit"
+
+# ── Self-preservation: copy to tracked location if changed ────────
+if [ -d "$SCRIPT_DIR" ]; then
+    if ! cmp -s "$HOOK_DIR/$HOOK_NAME" "$SCRIPT_DIR/$HOOK_NAME" 2>/dev/null; then
+        cp "$HOOK_DIR/$HOOK_NAME" "$SCRIPT_DIR/$HOOK_NAME"
+        chmod +x "$SCRIPT_DIR/$HOOK_NAME"
+    fi
+fi
+
+# ── Main logic: push to public when on main ───────────────────────
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$branch" = "main" ]; then
+    git push public main &>/dev/null &
+fi

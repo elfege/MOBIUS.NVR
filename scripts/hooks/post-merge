@@ -1,0 +1,38 @@
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────────────
+# post-merge hook: auto-push to public repo when main is updated
+#
+# Triggers after any `git merge` completes. If we're on main, pushes
+# to the `public` remote (MOBIUS.NVR, semi-open-source).
+#
+# This ensures the public GitHub repo stays in sync with the dev repo's
+# main branch without manual intervention.
+#
+# The push runs in the background (&) so it doesn't block the merge.
+#
+# SELF-PRESERVATION: This hook auto-copies itself to scripts/hooks/
+# so it survives re-clones. The tracked copy is the canonical source.
+# To install after a fresh clone: scripts/hooks/install-hooks.sh
+# ─────────────────────────────────────────────────────────────────────
+
+HOOK_DIR="$(git rev-parse --show-toplevel)/.git/hooks"
+SCRIPT_DIR="$(git rev-parse --show-toplevel)/scripts/hooks"
+HOOK_NAME="post-merge"
+
+# ── Self-preservation: copy to tracked location if changed ────────
+if [ -d "$SCRIPT_DIR" ]; then
+    if ! cmp -s "$HOOK_DIR/$HOOK_NAME" "$SCRIPT_DIR/$HOOK_NAME" 2>/dev/null; then
+        cp "$HOOK_DIR/$HOOK_NAME" "$SCRIPT_DIR/$HOOK_NAME"
+        chmod +x "$SCRIPT_DIR/$HOOK_NAME"
+        echo "[post-merge] Hook updated in scripts/hooks/ (will be tracked on next commit)."
+    fi
+fi
+
+# ── Main logic: push to public when on main ───────────────────────
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$branch" = "main" ]; then
+    echo "[post-merge] On main — pushing to public repo..."
+    git push public main &>/dev/null &
+    echo "[post-merge] Push to public initiated (background)."
+fi

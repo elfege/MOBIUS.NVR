@@ -32,12 +32,12 @@ The database is the runtime source of truth — `cameras.json` is a seed file sy
 
 ```
                               +------------------------------------------------------+
-                              |                    Browser                            |
+                              |                    Browser                           |
                               |  +--------------+  +--------------+  +-------------+ |
                               |  |  WebRTC      |  |   HLS.js     |  |   MJPEG     | |
                               |  |  (~200ms)    |  |  (~2-4s)     |  |  (direct)   | |
                               |  +------+-------+  +------+-------+  +------+------+ |
-                              +---------+-----------------+------------------+--------+
+                              +---------+-----------------+------------------+-------+
                                         |                 |                  |
                               +---------v-----------------v------------------v--------+
                               |           Nginx (nvr-edge) - HTTPS/HTTP2              |
@@ -46,19 +46,19 @@ The database is the runtime source of truth — `cameras.json` is a seed file sy
                                                            |
                               +----------------------------v--------------------------+
                               |                 Flask (app.py:5000)                   |
-                              |          StreamManager + Camera Repository             |
-                              |              PostgreSQL (source of truth)              |
+                              |          StreamManager + Camera Repository            |
+                              |              PostgreSQL (source of truth)             |
                               +------+----------------------------+-------------------+
                                      |                            |
                     +----------------v-----------+   +------------v------------------+
-                    |     MediaMTX (packager)     |   |       go2rtc (hub)            |
+                    |     MediaMTX (packager)     |   |       go2rtc (hub)           |
                     |  HLS :8888 | WebRTC :8889   |   |  WebRTC :8556 | RTSP :8555   |
                     |  RTSP :8554 (internal)      |   |  API :1984                   |
                     +----------------+-----------+   +------------+------------------+
                                      |                            |
                     +----------------v----------------------------v------------------+
-                    |                     FFmpeg Processes                            |
-                    |      (transcode, publish to streaming hub, record)              |
+                    |                     FFmpeg Processes                           |
+                    |      (transcode, publish to streaming hub, record)             |
                     +----------------+----------------------------+------------------+
                                      |                            |
                     +----------------v-----------+   +------------v------------------+

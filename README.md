@@ -18,7 +18,6 @@ The Unified NVR abstracts vendor-specific camera protocols behind a common strea
 - **Health Monitoring**: Backend watchdog + frontend blank-frame detection
 - **Power Cycle Safety**: Optional auto power-cycle for Hubitat-connected cameras (disabled by default, 24h cooldown)
 - **Credential Security**: AWS Secrets Manager integration
-- **Config Sanitization**: Pre-commit hook auto-generates sanitized example configs
 - **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
 - **Docker Deployment**: Full containerization with docker-compose
 
@@ -418,10 +417,9 @@ python app.py
 ## Documentation
 
 - `docs/nvr_engineering_architecture.html` - Visual architecture diagrams
-- `docs/README_project_history.md` - Complete development history
-- `docs/README_handoff.md` - Recent session changes (for latest modifications)
-- `docs/README_Docker_Deployment_Guide.md` - Detailed deployment instructions
-- `docs/README_Motion_Detection_Recording_Architecture.md` - Recording system details
+- `docs/architecture_diagrams.html` - System architecture diagrams
+- `docs/DIAGRAMS/` - Component-level diagrams (health monitor, MJPEG flow)
+- `docs/EUFY_BRIDGE_DOC/` - Eufy security bridge documentation
 
 ## Known Limitations
 
@@ -432,16 +430,10 @@ python app.py
 
 ## License
 
-Copyright (c) 2024-2026 Elfege Leylavergne. All rights reserved.
+Copyright (c) 2024-2026 Elfege Leylavergne.
 
-This project is dual-licensed:
+Licensed under the [Business Source License 1.1](LICENSE).
 
-### Personal / Default License
-
-This software is proprietary and confidential. No part of this codebase may be reproduced, distributed, or transmitted in any form without prior written permission from the author. Unauthorized copying, modification, or distribution is strictly prohibited.
-
-### Commercial License
-
-A commercial license is available for organizations wishing to use, adapt, or integrate this system (or portions thereof) into their own products or infrastructure. Terms are negotiated on a case-by-case basis.
-
-For licensing inquiries, contact the author directly.
+- **Personal, educational, and non-commercial use**: Permitted without a commercial license.
+- **Commercial use**: Requires a paid license. Contact elfege@elfege.com.
+- **Change Date**: April 9, 2036 — on this date, the code converts to Apache License 2.0.

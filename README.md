@@ -1,71 +1,96 @@
-# Unified NVR System
+# MOBIUS.NVR
 
-A multi-vendor Network Video Recorder built with Flask, FFmpeg, and MediaMTX. Provides unified streaming, PTZ control, motion detection, and recording across Eufy, Reolink, UniFi, and Amcrest cameras.
+A multi-vendor Network Video Recorder built with Flask, PostgreSQL, FFmpeg, MediaMTX, and go2rtc. Provides unified streaming, PTZ control, motion detection, recording, and per-user preferences across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras.
 
 ## Overview
 
-The Unified NVR abstracts vendor-specific camera protocols behind a common streaming interface. Camera RTSP sources are ingested by FFmpeg, transcoded as needed, and packaged via MediaMTX for browser playback. The system supports 17+ cameras with multiple latency options: WebRTC (~200ms), Low-Latency HLS (~2s), or Classic HLS (~4s).
+MOBIUS.NVR abstracts vendor-specific camera protocols behind a common streaming interface. Each camera's streaming hub (MediaMTX or go2rtc) is configurable per-camera. The system supports 17+ cameras with multiple latency options: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS (~4s), MJPEG, or snapshot polling.
+
+The database is the runtime source of truth — `cameras.json` is a seed file synced to PostgreSQL on startup. All runtime configuration, credentials, and user preferences live in the database.
 
 ## Features
 
 - **Multi-Vendor Support**: Eufy, Reolink, UniFi Protect, Amcrest, SV3C cameras
-- **Streaming Protocols**: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS, MJPEG proxy
-- **Two-Way Audio**: Talkback support for Eufy cameras; ONVIF backchannel via go2rtc for SV3C/Amcrest
-- **Playback Volume Control**: Per-camera volume slider with mute toggle, persists across page reload
-- **PTZ Control**: ONVIF and vendor-specific (Amcrest CGI, Reolink Baichuan) pan/tilt/zoom
-- **Recording**: Continuous (24/7) and motion-triggered recording
-- **Snapshots**: Periodic JPEG capture from streams
-- **Health Monitoring**: Backend watchdog + frontend blank-frame detection
+- **Dual Streaming Hub**: Per-camera choice of MediaMTX or go2rtc as the streaming relay
+- **Streaming Protocols**: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS, MJPEG proxy, snapshot polling
+- **Neolink Bridge**: Baichuan-to-RTSP protocol bridge for Reolink E1 cameras via go2rtc
+- **Two-Way Audio**: Talkback for Eufy cameras; ONVIF backchannel via go2rtc for SV3C/Amcrest
+- **PTZ Control**: ONVIF, Amcrest CGI, Reolink Baichuan pan/tilt/zoom with preset caching
+- **Recording**: Continuous (24/7), motion-triggered, and manual recording with timeline playback
+- **Motion Detection**: Reolink Baichuan, ONVIF PullPoint, FFmpeg scene detection
+- **Health Monitoring**: Backend watchdog with exponential backoff + frontend blank-frame/stale-frame detection
+- **Per-User Preferences**: Stream type, display order, camera visibility, grid layout mode, video fit — all per-user in DB
+- **Grid Layout Modes**: Uniform, last-row stretch, auto-fit, masonry — with 3 video fit options (cover/contain/fill)
+- **User Authentication**: Login with bcrypt, per-user camera access control, trusted network auto-login, viewer role
+- **Monitor Standby Detection**: Page Visibility API tears down streams when tab hidden, auto-reloads on wake
+- **Credential Security**: AES-256-GCM encrypted credentials in PostgreSQL (AWS Secrets Manager for initial seeding)
 - **Power Cycle Safety**: Optional auto power-cycle for Hubitat-connected cameras (disabled by default, 24h cooldown)
-- **Credential Security**: AWS Secrets Manager integration
 - **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
-- **Docker Deployment**: Full containerization with docker-compose
+- **Docker Deployment**: Full containerization with docker-compose (7 services)
 
 ## Architecture
 
 ```
-                              ┌──────────────────────────────────────────────────────┐
-                              │                    Browser                            │
-                              │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
-                              │  │  WebRTC     │  │   HLS.js    │  │   MJPEG     │   │
-                              │  │  (~200ms)   │  │  (~2-4s)    │  │  (direct)   │   │
-                              │  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘   │
-                              └─────────┼────────────────┼────────────────┼──────────┘
-                                        │                │                │
-                              ┌─────────▼────────────────▼────────────────▼──────────┐
-                              │           Nginx (nvr-edge) - HTTPS/HTTP2              │
-                              │              :8443 (HTTPS) / :8081 (HTTP→301)         │
-                              └───────────────────────┬───────────────────────────────┘
-                                                      │
-                              ┌───────────────────────▼───────────────────────────────┐
-                              │                 Flask (app.py:5000)                   │
-                              │                   StreamManager                       │
-                              └───────────────────────┬───────────────────────────────┘
-                                                      │
-                              ┌───────────────────────▼───────────────────────────────┐
-                              │                  FFmpeg Processes                      │
-                              │    (transcode, split sub/main, publish to MediaMTX)   │
-                              └───────────────────────┬───────────────────────────────┘
-                                                      │
-                              ┌───────────────────────▼───────────────────────────────┐
-                              │              MediaMTX (nvr-packager)                   │
-                              │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐ │
-                              │  │  :8888   │  │  :8889   │  │      :8554           │ │
-                              │  │  HLS     │  │  WebRTC  │  │  RTSP (internal)     │ │
-                              │  │  LL-HLS  │  │  WHEP    │  │  motion/recording    │ │
-                              │  └──────────┘  └──────────┘  └──────────────────────┘ │
-                              └───────────────────────┬───────────────────────────────┘
-                                                      │
-                              ┌───────────────────────▼───────────────────────────────┐
-                              │                 IP Cameras (RTSP)                      │
-                              │      Eufy, Reolink, UniFi, Amcrest, SV3C, Neolink     │
-                              └───────────────────────────────────────────────────────┘
+                              +------------------------------------------------------+
+                              |                    Browser                            |
+                              |  +--------------+  +--------------+  +-------------+ |
+                              |  |  WebRTC      |  |   HLS.js     |  |   MJPEG     | |
+                              |  |  (~200ms)    |  |  (~2-4s)     |  |  (direct)   | |
+                              |  +------+-------+  +------+-------+  +------+------+ |
+                              +---------+-----------------+------------------+--------+
+                                        |                 |                  |
+                              +---------v-----------------v------------------v--------+
+                              |           Nginx (nvr-edge) - HTTPS/HTTP2              |
+                              |              :8443 (HTTPS) / :8081 (HTTP->301)        |
+                              +----------------------------+--------------------------+
+                                                           |
+                              +----------------------------v--------------------------+
+                              |                 Flask (app.py:5000)                   |
+                              |          StreamManager + Camera Repository             |
+                              |              PostgreSQL (source of truth)              |
+                              +------+----------------------------+-------------------+
+                                     |                            |
+                    +----------------v-----------+   +------------v------------------+
+                    |     MediaMTX (packager)     |   |       go2rtc (hub)            |
+                    |  HLS :8888 | WebRTC :8889   |   |  WebRTC :8556 | RTSP :8555   |
+                    |  RTSP :8554 (internal)      |   |  API :1984                   |
+                    +----------------+-----------+   +------------+------------------+
+                                     |                            |
+                    +----------------v----------------------------v------------------+
+                    |                     FFmpeg Processes                            |
+                    |      (transcode, publish to streaming hub, record)              |
+                    +----------------+----------------------------+------------------+
+                                     |                            |
+                    +----------------v-----------+   +------------v------------------+
+                    |      IP Cameras (RTSP)      |   |    Neolink (Baichuan->RTSP)   |
+                    | Eufy, Reolink, UniFi,       |   |    E1 cameras via go2rtc      |
+                    | Amcrest, SV3C               |   |    :8554 RTSP output          |
+                    +-----------------------------+   +-------------------------------+
 ```
 
 Key design patterns:
 - **Strategy Pattern**: Vendor-specific handlers implement common StreamHandler interface
+- **Streaming Hub Abstraction**: `streaming_hub.py` resolves RTSP source URLs based on per-camera hub assignment
+- **Database-Driven Config**: `cameras.json` seeds DB on startup; runtime reads from PostgreSQL via `camera_repository.py`
+- **Credential Providers**: Per-vendor classes read encrypted credentials from DB, with env var fallback
 - **Thread-Safe State**: RLock-protected stream dictionary with per-camera restart locks
-- **Credential Providers**: Per-vendor classes fetch credentials from AWS Secrets Manager
+
+## Data Architecture
+
+```
+cameras.json (seed file)
+    |
+    v  synced on startup by camera_config_sync.py
+DB: cameras table (RUNTIME SOURCE OF TRUTH)
+    |
+    v  overridden per-user at runtime
+DB: user_camera_preferences table (per-user overrides)
+```
+
+- **`cameras.json`** is a seed file, not the runtime source of truth
+- **DB `cameras` table** is what the app reads at runtime via `camera_repository.py`
+- **`camera_credentials` table** stores all credentials (AES-256-GCM encrypted)
+- **`user_camera_preferences`** stores per-user overrides (stream type, display order, visibility, grid layout)
 
 ## Quick Start
 
@@ -73,14 +98,15 @@ Key design patterns:
 
 - Docker Engine 20.10+
 - Docker Compose 2.0+
-- AWS credentials configured (for Secrets Manager)
+- AWS credentials configured (for initial credential seeding) or manual DB entry via UI
 - Network access to cameras
 
 ### Deployment
 
 1. **Clone and configure:**
    ```bash
-   cd ~/0_MOBIUS.NVR
+   git clone https://github.com/elfege/MOBIUS.NVR.git
+   cd MOBIUS.NVR
    cp config/cameras.json.example config/cameras.json
    # Edit cameras.json with your camera details
    ```
@@ -88,7 +114,7 @@ Key design patterns:
 2. **Set environment variables:**
    ```bash
    cp .env.example .env
-   # Edit .env with AWS credentials, ports, etc.
+   # Edit .env with ports, feature flags, etc.
    ```
 
 3. **Deploy:**
@@ -96,7 +122,12 @@ Key design patterns:
    ./deploy.sh
    ```
 
-4. **Access the interface:**
+4. **Install git hooks (for development):**
+   ```bash
+   ./scripts/hooks/install-hooks.sh
+   ```
+
+5. **Access the interface:**
    ```
    https://<server-ip>:8443/streams
    ```
@@ -104,50 +135,54 @@ Key design patterns:
 ## Directory Structure
 
 ```
-0_MOBIUS.NVR/
-├── app.py                      # Flask application entry point
+MOBIUS.NVR/
+├── app.py                         # Flask application entry point
 ├── config/
-│   ├── cameras.json            # Camera configurations
-│   ├── recording_settings.json # Recording parameters
-│   ├── eufy_bridge.json        # Eufy bridge config
-│   ├── unifi_protect.json      # UniFi Protect config
-│   └── reolink.json            # Reolink config
+│   ├── cameras.json               # Camera seed config (synced to DB on startup)
+│   ├── recording_settings.json    # Recording parameters
+│   └── go2rtc.yaml.template       # go2rtc config template
+├── routes/                        # Flask route blueprints
+│   ├── camera.py                  # Camera state, config, health APIs
+│   ├── streaming.py               # Stream start/stop/restart
+│   ├── recording.py               # Recording management
+│   ├── ptz.py                     # PTZ control
+│   ├── auth.py                    # Authentication, user management
+│   └── settings_routes.py         # User preferences API
 ├── streaming/
-│   ├── stream_manager.py       # Stream orchestration
-│   ├── stream_handler.py       # Base handler class
-│   ├── ffmpeg_params.py        # FFmpeg parameter builder
-│   └── handlers/
-│       ├── eufy_stream_handler.py
-│       ├── reolink_stream_handler.py
-│       ├── unifi_stream_handler.py
-│       └── amcrest_stream_handler.py
+│   ├── stream_manager.py          # Stream orchestration
+│   ├── stream_handler.py          # Base handler class
+│   ├── ffmpeg_params.py           # FFmpeg parameter builder
+│   └── handlers/                  # Vendor-specific stream handlers
 ├── services/
-│   ├── camera_repository.py    # Camera config access
-│   ├── credentials/            # Vendor credential providers
-│   ├── recording/
-│   │   ├── recording_service.py
-│   │   ├── snapshot_service.py
-│   │   └── storage_manager.py
-│   ├── motion/
-│   │   └── reolink_motion_service.py
-│   ├── ptz/
-│   │   ├── amcrest_ptz_handler.py
-│   │   └── ptz_validator.py
-│   ├── onvif/
-│   │   ├── onvif_ptz_handler.py
-│   │   └── onvif_event_listener.py
-│   └── eufy/
-│       ├── eufy_bridge.py
-│       └── eufy_bridge_watchdog.py
-├── static/js/
-│   ├── streaming/              # HLS, WebRTC, MJPEG, health modules
-│   ├── controllers/            # PTZ, recording controllers
-│   └── settings/               # UI settings handlers
+│   ├── camera_repository.py       # Camera config access (DB-backed)
+│   ├── camera_config_sync.py      # cameras.json -> DB sync on startup
+│   ├── camera_state_tracker.py    # Health state machine (ONLINE/DEGRADED/OFFLINE)
+│   ├── stream_watchdog.py         # Backend stream restart watchdog
+│   ├── streaming_hub.py           # RTSP source URL resolution (MediaMTX vs go2rtc)
+│   ├── credentials/               # Per-vendor credential providers (DB + env fallback)
+│   ├── recording/                 # Recording, snapshots, storage, timeline
+│   ├── motion/                    # Motion detection (Baichuan, ONVIF, FFmpeg)
+│   ├── ptz/                       # PTZ handlers (ONVIF, Amcrest, Baichuan)
+│   └── eufy/                      # Eufy bridge client and watchdog
+├── static/
+│   ├── css/components/            # Modular CSS (grid, fullscreen, PTZ, etc.)
+│   └── js/
+│       ├── streaming/             # WebRTC, HLS, MJPEG, health, visibility modules
+│       ├── controllers/           # PTZ, recording, camera selector, power
+│       ├── modals/                # Settings, timeline, user management modals
+│       ├── layout/                # Grid layout engine (4 modes)
+│       └── settings/              # Fullscreen handler, settings manager
 ├── templates/
-│   └── streams.html            # Main streaming interface
+│   └── streams.html               # Main streaming interface
+├── psql/
+│   ├── init-db.sql                # Database initialization
+│   └── migrations/                # Schema migrations (026+)
+├── scripts/
+│   ├── generate_streaming_configs.py  # MediaMTX + go2rtc + neolink config generator
+│   ├── hooks/                     # Git hooks (post-merge auto-push to public)
+│   └── ...                        # Credential seeding, recording indexing
 ├── docker-compose.yml
 ├── Dockerfile
-├── deploy.sh
 └── requirements.txt
 ```
 
@@ -155,79 +190,54 @@ Key design patterns:
 
 ### cameras.json
 
-Each camera entry requires:
+Each camera entry requires a serial number as its key:
 
 ```json
 {
-  "CAMERA_SERIAL": {
+  "T8416P0023352DA9": {
     "name": "Front Door",
     "type": "reolink",
-    "serial": "CAMERA_SERIAL",
+    "serial": "T8416P0023352DA9",
     "capabilities": ["streaming", "PTZ"],
-    "stream_type": "LL_HLS",
+    "stream_type": "WEBRTC",
+    "streaming_hub": "mediamtx",
     "rtsp": {
       "host": "192.168.1.100",
       "port": 554,
       "path": "/h264Preview_01_sub"
-    },
-    "rtsp_input": {
-      "rtsp_transport": "tcp",
-      "timeout": "30000000"
-    },
-    "rtsp_output": {
-      "c:v": "copy",
-      "resolution_sub": "320x240",
-      "resolution_main": "1280x720"
-    },
-    "ll_hls": {
-      "publisher": {
-        "protocol": "rtmp",
-        "host": "nvr-packager",
-        "port": 1935,
-        "path": "front_door"
-      },
-      "video": {
-        "c:v": "libx264",
-        "preset": "veryfast",
-        "tune": "zerolatency"
-      },
-      "audio": {
-        "enabled": false
-      }
     }
   }
 }
 ```
 
+### Streaming Hub Options
+
+| Hub | Config Value | Use Case |
+|-----|-------------|----------|
+| MediaMTX | `"streaming_hub": "mediamtx"` | Default. Camera -> FFmpeg -> MediaMTX -> browser |
+| go2rtc | `"streaming_hub": "go2rtc"` | Single-consumer cameras, Neolink/Baichuan devices |
+
 ### Vendor-Specific Configuration
 
 | Vendor | Auth Method | RTSP URL Format | Notes |
 |--------|-------------|-----------------|-------|
-| Eufy | Direct camera credentials | `rtsp://user:pass@cam:554/live0` | No PTZ (bridge removed due to authentication issues) |
+| Eufy | Camera credentials | `rtsp://user:pass@cam:554/live0` | PTZ cameras via RTSP; doorbell requires Home Base 3 |
 | Reolink | Camera credentials | `rtsp://user:pass@cam:554/h264Preview_01_sub` | Full PTZ via Baichuan protocol |
 | UniFi | Protect console API | `rtsps://console:7441/proxy_url` | Requires valid console session |
 | Amcrest | Camera credentials | `rtsp://user:pass@cam:554/cam/realmonitor` | PTZ via ONVIF or CGI |
+| SV3C | Camera credentials | `rtsp://user:pass@cam:554/stream1` | Budget cameras, single RTSP connection |
 
-### Environment Variables
+## Docker Services
 
-```bash
-# AWS Secrets Manager
-AWS_ACCESS_KEY_ID=xxx
-AWS_SECRET_ACCESS_KEY=xxx
-AWS_DEFAULT_REGION=us-east-1
-
-# Eufy Bridge
-USE_EUFY_BRIDGE=true
-USE_EUFY_BRIDGE_WATCHDOG=true
-
-# Health Monitoring
-UI_HEALTH_ENABLED=true
-UI_HEALTH_SAMPLE_INTERVAL_MS=2000
-UI_HEALTH_CONSECUTIVE_BLANK_NEEDED=10
-ENABLE_WATCHDOG=false
-
-# Server
-FLASK_PORT=5000
+```yaml
+services:
+  nvr-edge:           # Nginx reverse proxy - HTTPS (:8443), HTTP redirect (:8081)
+  unified-nvr:        # Flask application (:5000 internal)
+  nvr-packager:       # MediaMTX - HLS (:8888), WebRTC (:8889), RTSP (:8554)
+  nvr-go2rtc:         # go2rtc - WebRTC (:8556), RTSP (:8555), API (:1984)
+  nvr-neolink:        # Neolink Baichuan->RTSP bridge (:8554)
+  nvr-postgrest:      # PostgREST API (:3001)
+  nvr-postgres:       # PostgreSQL database (:5432)
 ```
 
 ## API Endpoints
@@ -239,8 +249,8 @@ FLASK_PORT=5000
 | `/api/stream/start/<camera_id>` | POST | Start camera stream |
 | `/api/stream/stop/<camera_id>` | POST | Stop camera stream |
 | `/api/stream/restart/<camera_id>` | POST | Restart camera stream |
-| `/api/streams/<camera_id>/playlist.m3u8` | GET | HLS playlist (classic) |
-| `/hls/<path>/index.m3u8` | GET | LL-HLS playlist (via MediaMTX) |
+| `/api/camera/state/<camera_id>` | GET | Camera health state (availability, backoff, errors) |
+| `/api/camera/states` | GET | Batch health state for all cameras |
 
 ### Recording
 
@@ -260,91 +270,23 @@ FLASK_PORT=5000
 | `/api/ptz/<camera_id>/preset/<preset_id>` | POST | Go to preset |
 | `/api/ptz/<camera_id>/presets` | GET | List presets |
 
-### System
+### User Preferences
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/status` | GET | System status |
-| `/api/cameras` | GET | Camera list |
-| `/api/cameras/<camera_id>` | GET | Camera details |
+| `/api/my-preferences` | GET/PUT | Get/set user preferences (grid layout, video fit) |
+| `/api/cameras/<id>/display` | PUT | Per-camera display settings (stream type, order, visibility) |
 
 ## Streaming Protocols
 
-### WebRTC (Lowest Latency)
-
-- Latency: ~200-500ms (sub-second)
-- Config: `"stream_type": "WEBRTC"` in cameras.json
-- Flow: Camera → FFmpeg → MediaMTX → WebRTC (WHEP) → Browser
-- Ports: 8889 (WHEP signaling), 8189/UDP (media)
-- Best for: Real-time monitoring, PTZ control, interactive use
-- Limitation: LAN-only (no STUN/TURN configured)
-
-### Low-Latency HLS
-
-- Latency: ~2-4 seconds
-- Config: `"stream_type": "LL_HLS"` in cameras.json
-- Flow: Camera → FFmpeg → MediaMTX (RTMP) → HLS.js
-- Best for: Multi-device viewing, more compatible than WebRTC
-
-### Classic HLS
-
-- Latency: 4-8 seconds
-- Config: `"stream_type": "HLS"` in cameras.json
-- Flow: Camera → FFmpeg → Local segments → Browser
-- Best for: Maximum compatibility, archive playback
-
-### MJPEG Proxy
-
-- Latency: Sub-second
-- Config: `"stream_type": "MJPEG"` in cameras.json
-- Use case: Legacy browsers, cameras with native MJPEG support (Reolink)
-
-### MJPEG for Mobile Grid View (Beta)
-
-- **Purpose**: Fast multi-camera grid loading on mobile devices
-- **Problem solved**: Browsers limit HTTP connections to ~6 per domain; with 16 cameras, 10 must wait
-- **Solution**: WebSocket-based MJPEG multiplexing - all cameras over single connection
-- **URL parameters**:
-  - `?forceMJPEG=true` - Use MJPEG instead of HLS/WebRTC
-  - `?useWebSocketMJPEG=true` - Use WebSocket multiplexing (recommended)
-- **Mobile**: `forceMJPEG` is automatic; only need `useWebSocketMJPEG=true`
-- **Example**: `https://server:8443/streams?forceMJPEG=true&useWebSocketMJPEG=true`
-
-## Audio Features
-
-### Playback Volume Control
-
-Click the speaker icon on any stream to access:
-- **Volume Slider**: Adjust playback volume (0-100%)
-- **Mute Toggle**: Quick mute/unmute
-- **Persistence**: Volume and mute state saved per-camera in localStorage
-
-### Two-Way Audio (Talkback)
-
-| Camera Type | Protocol | Status |
-| ----------- | -------- | ------ |
-| Eufy | Eufy P2P Bridge | Working - click mic icon to talk |
-| SV3C | ONVIF AudioBackChannel (via go2rtc) | Configured, needs testing |
-| Amcrest | ONVIF AudioBackChannel (via go2rtc) | Configured, needs testing |
-| Reolink | Baichuan (not yet implemented) | Future enhancement |
-| UniFi | Protect API (not yet implemented) | Future enhancement |
-
-**Architecture**: Browser → WebSocket → Flask → FFmpeg transcoder → Camera
-
-For ONVIF cameras, go2rtc handles the backchannel connection while MediaMTX continues serving video.
-
-## Docker Services
-
-```yaml
-services:
-  nvr-edge:           # Nginx reverse proxy - HTTPS (:8443), HTTP redirect (:8081)
-  unified-nvr:        # Flask application (:5000 internal)
-  nvr-packager:       # MediaMTX - HLS (:8888), WebRTC (:8889), RTSP (:8554)
-  nvr-go2rtc:         # go2rtc - ONVIF AudioBackChannel (:1984 API, :8555 RTSP, :8556 WebRTC)
-  nvr-neolink:        # Neolink Baichuan→RTSP bridge
-  nvr-postgrest:      # Recording metadata API
-  nvr-postgres:       # Recording database
-```
+| Protocol | Latency | Config | Best For |
+|----------|---------|--------|----------|
+| WebRTC (WHEP) | ~200ms | `"stream_type": "WEBRTC"` | Real-time monitoring, PTZ, interactive use |
+| Low-Latency HLS | ~2-4s | `"stream_type": "LL_HLS"` | Multi-device viewing, iOS compatibility |
+| Classic HLS | 4-8s | `"stream_type": "HLS"` | Maximum compatibility, archive playback |
+| MJPEG | Sub-second | `"stream_type": "MJPEG"` | Legacy browsers, budget cameras |
+| go2rtc WebRTC | ~200ms | `"stream_type": "GO2RTC"` | Single-consumer cameras, Neolink devices |
+| Snapshot | 1fps | `"stream_type": "SNAPSHOT"` | iOS grid view, minimal bandwidth |
 
 ## Troubleshooting
 
@@ -359,6 +301,9 @@ docker logs unified-nvr --tail 100 | grep -i stream
 
 # Verify MediaMTX paths
 curl http://localhost:8889/v3/paths/list
+
+# Check go2rtc streams
+curl http://localhost:1984/api/streams
 ```
 
 ### Camera connection failures
@@ -367,52 +312,28 @@ curl http://localhost:8889/v3/paths/list
 # Test RTSP directly
 ffprobe -rtsp_transport tcp rtsp://user:pass@camera:554/path
 
-# Check credential provider
-docker exec unified-nvr python -c "from services.credentials.reolink_credential_provider import ReolinkCredentialProvider; print(ReolinkCredentialProvider().get_credentials('camera_id'))"
+# Check camera health state
+curl http://localhost:5000/api/camera/state/CAMERA_SERIAL
 ```
-
-### High CPU usage
-
-- Reduce resolution in `rtsp_output.resolution_sub`
-- Use `"c:v": "copy"` instead of transcode when camera supports H.264
-- Decrease frame rate with `"r": 15` in rtsp_output
-
-### Blank frames in browser
-
-- Check `ui_health_monitor` settings in cameras.json
-- Verify MediaMTX is receiving stream: `curl http://localhost:8889/v3/paths/get/<path>`
-- Check browser console for HLS.js errors
-
-## Performance Considerations
-
-- **WebRTC for Lowest Latency**: Use `stream_type: "WEBRTC"` for ~200ms latency (vs 2-4s for LL-HLS)
-- **HLS Latency Floor**: Browser-based HLS has ~2s minimum latency due to segment buffering
-- **WebRTC LAN-Only**: Current config uses direct ICE without STUN/TURN (add STUN for remote access)
-- **Hardware Decoding**: Browser hardware acceleration is heuristic-based and cannot be forced
-- **Concurrent Streams**: Each camera spawns one FFmpeg process; monitor CPU/memory accordingly
-- **Audio Disable**: Set `"audio": {"enabled": false}` to reduce bandwidth and avoid codec issues
 
 ## Development
 
-### Running locally (non-Docker)
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start MediaMTX separately
-./mediamtx
-
-# Run Flask app
-python app.py
-```
-
 ### Adding a new vendor
 
-1. Create `streaming/handlers/<vendor>_stream_handler.py`
-2. Implement `StreamHandler` interface methods
-3. Create `services/credentials/<vendor>_credential_provider.py`
-4. Register handler in `StreamManager.__init__()`
+1. Create `streaming/handlers/<vendor>_stream_handler.py` implementing `StreamHandler`
+2. Create `services/credentials/<vendor>_credential_provider.py`
+3. Register handler in `StreamManager.__init__()`
+4. Add vendor type to `cameras.json` schema
+
+### Git hooks
+
+After cloning, install hooks for automatic public repo sync:
+
+```bash
+./scripts/hooks/install-hooks.sh
+```
+
+The `post-merge` hook automatically pushes `main` to the public repo when feature branches are merged.
 
 ## Documentation
 
@@ -423,8 +344,9 @@ python app.py
 
 ## Known Limitations
 
-- Dual-stream (simultaneous sub + main) requires composite key architecture (not yet stable)
-- Eufy cameras: Streaming works via direct RTSP, but PTZ is unavailable (bridge removed due to authentication issues)
+- Eufy Video Doorbell E340: Pure P2P device (no RTSP), requires Home Base 3 for streaming
+- go2rtc `eufy://` scheme not compiled in standard builds (requires CGO + native bindings)
+- Neolink E1 PTZ latency: ~4-5s per command (Baichuan protocol overhead)
 - ONVIF event listener partially implemented
 - UniFi Protect requires valid console session
 

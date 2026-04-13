@@ -135,9 +135,14 @@ def _encrypt(plaintext: str) -> str:
 
 # ── Upsert ────────────────────────────────────────────────────────────────────
 
-def upsert_credential(credential_key: str, credential_type: str,
-                      username: str, password: str, vendor: str,
-                      label: str = '') -> None:
+def seed_credential(credential_key: str, credential_type: str,
+                    username: str, password: str, vendor: str,
+                    label: str = '') -> bool:
+    """
+    Insert credential ONLY if it doesn't already exist.
+    Never overwrites existing credentials — UI-entered values take priority.
+    Returns True if inserted, False if already existed.
+    """
     user_enc = _encrypt(username)
     pass_enc = _encrypt(password)
     label_escaped = label.replace("'", "''")
@@ -146,14 +151,24 @@ def upsert_credential(credential_key: str, credential_type: str,
         "  (credential_key, credential_type, vendor, username_enc, password_enc, label) "
         f" VALUES ('{credential_key}', '{credential_type}', '{vendor}', "
         f"         '{user_enc}', '{pass_enc}', '{label_escaped}') "
-        "ON CONFLICT (credential_key, credential_type) DO UPDATE "
-        "  SET username_enc = EXCLUDED.username_enc, "
-        "      password_enc = EXCLUDED.password_enc, "
-        "      vendor = EXCLUDED.vendor, "
-        "      label = EXCLUDED.label;"
+        "ON CONFLICT (credential_key, credential_type) DO NOTHING;"
     )
-    _psql(query)
-    print(f"  {GREEN}✓{NC} {credential_key}/{credential_type}/{vendor} → seeded")
+    # DO NOTHING returns 0 rows affected when credential already exists
+    rows = _psql(query)
+    # Check if it was actually inserted by querying
+    check = _psql(
+        f"SELECT 1 FROM camera_credentials "
+        f"WHERE credential_key = '{credential_key}' "
+        f"  AND credential_type = '{credential_type}' "
+        f"  AND label LIKE '%seeded from env%';",
+        exit_on_error=False
+    )
+    if check:
+        print(f"  {GREEN}✓{NC} {credential_key}/{credential_type}/{vendor} → seeded (new)")
+        return True
+    else:
+        print(f"  {CYAN}·{NC} {credential_key}/{credential_type}/{vendor} → already exists, skipped")
+        return False
 
 
 # ── Per-camera Eufy credentials ──────────────────────────────────────────────
@@ -189,7 +204,7 @@ def seed_eufy_per_camera_credentials() -> int:
                   f"(NVR_EUFY_CAMERA_{serial}_USERNAME or _PASSWORD not set)")
             continue
 
-        upsert_credential(serial, 'camera', username, password, 'eufy',
+        seed_credential(serial, 'camera', username, password, 'eufy',
                           label=f'Eufy camera {serial} (seeded from env)')
         seeded += 1
 
@@ -316,7 +331,7 @@ def main():
             skipped += 1
             continue
 
-        upsert_credential(cred_key, cred_type, username, password, vendor,
+        seed_credential(cred_key, cred_type, username, password, vendor,
                           label=f'{vendor} service credential (seeded from env)')
         seeded += 1
 

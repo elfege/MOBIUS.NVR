@@ -64,6 +64,9 @@ CREDENTIAL_MAP = [
 # Pattern for per-camera Eufy credentials: NVR_EUFY_CAMERA_{SERIAL}_USERNAME
 EUFY_CAMERA_PATTERN = re.compile(r'^NVR_EUFY_CAMERA_([A-Z0-9]+)_USERNAME$')
 
+# Pattern for UniFi per-camera RTSP token alias: NVR_CAMERA_{SERIAL}_TOKEN_ALIAS
+UNIFI_TOKEN_PATTERN = re.compile(r'^NVR_CAMERA_([a-f0-9]+)_TOKEN_ALIAS$')
+
 
 # ── ANSI colours ─────────────────────────────────────────────────────────────
 
@@ -211,6 +214,42 @@ def seed_eufy_per_camera_credentials() -> int:
     return seeded
 
 
+# ── Per-camera UniFi RTSP token aliases ───────────────────────────────────────
+
+def seed_unifi_token_aliases() -> int:
+    """
+    Scan env vars for NVR_CAMERA_{SERIAL}_TOKEN_ALIAS patterns and seed them
+    as (serial, 'camera', 'unifi') credentials.
+
+    UniFi Protect uses RTSP token aliases (not username/password) for stream
+    authentication. The token alias is stored in the username_enc field;
+    password_enc is set to a placeholder since it's not used.
+
+    Returns the number of token aliases seeded.
+    """
+    seeded = 0
+
+    for env_key in sorted(os.environ.keys()):
+        match = UNIFI_TOKEN_PATTERN.match(env_key)
+        if not match:
+            continue
+
+        serial = match.group(1)
+        token_alias = os.environ.get(env_key, '').strip()
+
+        if not token_alias:
+            print(f"  {YELLOW}SKIP{NC} {serial}/camera/unifi "
+                  f"(NVR_CAMERA_{serial}_TOKEN_ALIAS is empty)")
+            continue
+
+        # Token alias stored as username, password is unused placeholder
+        seed_credential(serial, 'camera', token_alias, 'unused', 'unifi',
+                        label=f'UniFi RTSP token alias for {serial} (seeded from env)')
+        seeded += 1
+
+    return seeded
+
+
 # ── Per-camera go2rtc credentials ────────────────────────────────────────────
 
 def seed_per_camera_go2rtc_credentials() -> int:
@@ -344,14 +383,20 @@ def main():
     eufy_seeded = seed_eufy_per_camera_credentials()
     print(f"{GREEN}✓{NC} {eufy_seeded} per-camera Eufy credential(s) seeded")
 
-    # ── 3. Per-camera go2rtc credentials ──────────────────────────────────────
+    # ── 3. Per-camera UniFi RTSP token aliases ──────────────────────────────────
+    print()
+    print(f"{CYAN}Seeding per-camera UniFi RTSP token aliases from env...{NC}")
+    unifi_seeded = seed_unifi_token_aliases()
+    print(f"{GREEN}✓{NC} {unifi_seeded} per-camera UniFi token alias(es) seeded")
+
+    # ── 4. Per-camera go2rtc credentials ──────────────────────────────────────
     print()
     print(f"{CYAN}Seeding per-camera go2rtc credentials from global service creds...{NC}")
     go2rtc_seeded = seed_per_camera_go2rtc_credentials()
     print(f"{GREEN}✓{NC} {go2rtc_seeded} per-camera go2rtc credential(s) seeded")
 
     # ── Summary ───────────────────────────────────────────────────────────────
-    total = seeded + eufy_seeded + go2rtc_seeded
+    total = seeded + eufy_seeded + unifi_seeded + go2rtc_seeded
     print()
     print(f"{GREEN}✓{NC} Total: {total} credential(s) seeded into camera_credentials")
 

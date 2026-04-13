@@ -181,7 +181,8 @@ app.register_blueprint(settings_bp)
 # Flask-WTF only checks its internal _exempt_views/_exempt_blueprints sets,
 # so we must register exemptions via the CSRFProtect instance directly.
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
-           ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp]:
+           ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
+           external_api_bp]:
     csrf.exempt(bp)
 
 # ===== License Validation =====

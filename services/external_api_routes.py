@@ -908,9 +908,18 @@ def external_stream_whep(camera_id):
             status=resp.status_code,
             content_type=resp.headers.get('Content-Type', 'application/sdp')
         )
-        # Forward Location header (WHEP resource URL for PATCH/DELETE)
+        # Rewrite Location header from MediaMTX internal path to external API path.
+        # MediaMTX returns e.g. Location: /T8416P0023370398/whep/<uuid>
+        # Rewrite to: /api/external/stream/T8416P0023370398/whep/<uuid>
+        # so TILES can PATCH/DELETE through the same authenticated proxy.
         if 'Location' in resp.headers:
-            answer_resp.headers['Location'] = resp.headers['Location']
+            raw_location = resp.headers['Location']
+            # MediaMTX Location is relative: /<stream_path>/whep/<session_id>
+            # Prepend our external API base path
+            if raw_location.startswith('/'):
+                answer_resp.headers['Location'] = f"/api/external/stream{raw_location}"
+            else:
+                answer_resp.headers['Location'] = raw_location
         return answer_resp
 
     except http_requests.exceptions.ConnectionError:
@@ -922,6 +931,73 @@ def external_stream_whep(camera_id):
     except Exception as e:
         logger.error(f"External API WHEP {camera_id}: error: {e}")
         return jsonify({'error': f'WHEP proxy error: {e}'}), 500
+
+
+# ---------------------------------------------------------------------------
+# WHEP session management — PATCH (ICE candidates) and DELETE (teardown)
+# ---------------------------------------------------------------------------
+
+@external_api_bp.route(
+    '/api/external/stream/<camera_id>/whep/<session_id>',
+    methods=['PATCH', 'DELETE', 'OPTIONS']
+)
+@require_auth
+def external_stream_whep_session(camera_id, session_id):
+    """
+    Proxy WHEP session PATCH (ICE trickle) and DELETE (teardown) to MediaMTX.
+
+    After the initial POST /whep returns a Location header, the client uses
+    that URL for:
+        PATCH  — send additional ICE candidates (Content-Type: application/trickle-ice-sdpfrag)
+        DELETE — tear down the WebRTC session
+
+    The Location header was rewritten from MediaMTX's internal path to
+    /api/external/stream/<camera_id>/whep/<session_id>, so we reverse
+    that here and proxy to MediaMTX's original path.
+    """
+    if _camera_repo is None:
+        return jsonify({'error': 'Camera repository not initialized'}), 503
+
+    # Reconstruct MediaMTX internal URL
+    # External: /api/external/stream/<camera_id>/whep/<session_id>
+    # MediaMTX: /<camera_id>/whep/<session_id>
+    mediamtx_url = f"https://nvr-packager:8889/{camera_id}/whep/{session_id}"
+
+    try:
+        if request.method == 'PATCH':
+            resp = http_requests.patch(
+                mediamtx_url,
+                data=request.get_data(),
+                headers={
+                    'Content-Type': request.content_type or 'application/trickle-ice-sdpfrag',
+                    'If-Match': request.headers.get('If-Match', '*'),
+                },
+                verify=False,
+                timeout=10
+            )
+        elif request.method == 'DELETE':
+            resp = http_requests.delete(
+                mediamtx_url,
+                verify=False,
+                timeout=10
+            )
+        else:
+            return Response('', status=405)
+
+        return Response(
+            resp.content,
+            status=resp.status_code,
+            content_type=resp.headers.get('Content-Type', 'text/plain')
+        )
+
+    except http_requests.exceptions.ConnectionError:
+        logger.error(f"External API WHEP session {camera_id}/{session_id}: cannot reach MediaMTX")
+        return jsonify({'error': 'MediaMTX unreachable'}), 502
+    except http_requests.exceptions.Timeout:
+        return jsonify({'error': 'MediaMTX timeout'}), 504
+    except Exception as e:
+        logger.error(f"External API WHEP session {camera_id}/{session_id}: error: {e}")
+        return jsonify({'error': f'WHEP session proxy error: {e}'}), 500
 
 
 # ---------------------------------------------------------------------------

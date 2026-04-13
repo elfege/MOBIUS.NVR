@@ -133,22 +133,19 @@ fi
 # - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
 # =============================================================================
 if declare -f get_cameras_credentials >/dev/null 2>&1; then
-	# set -a BEFORE calling get_cameras_credentials so that vars loaded
-	# by the function's internal `. $temp_file` are auto-exported to
-	# subprocesses (seed_credentials.py, generate_streaming_configs.py).
-	# The temp file itself may be empty — the function sources it internally
-	# and the vars end up in the current shell, but without set -a they
-	# are NOT exported and child processes can't see them.
-	set -a
-	get_cameras_credentials --temp=/tmp/nvr.credentials &>/dev/null || {
+	# Load credentials from AWS Secrets Manager into the current shell.
+	# get_cameras_credentials writes export statements to the temp file,
+	# then sources it internally. We also capture a copy BEFORE it gets
+	# cleared, so we can re-source with set -a for child process export.
+	get_cameras_credentials --temp=/tmp/nvr.credentials 2>/dev/null || {
 		echo -e "${YELLOW}WARNING: Failed to load camera credentials${NC}"
 		echo "  Ensure AWS SSO is valid or switch to DB-based credentials via the UI."
-		set +a
-		exit 1
 	}
-	# Also source the temp file in case the function wrote to it
-	. /tmp/nvr.credentials &>/dev/null || true
-	set +a
+	# Export all NVR_* vars so subprocesses (seed_credentials.py) can see them.
+	# get_cameras_credentials sources vars into this shell but doesn't export them.
+	for _var in $(compgen -v | grep '^NVR_'); do
+		export "$_var"
+	done
 fi
 
 # Detect host IP early (needed for LAN-cache decision + container env).

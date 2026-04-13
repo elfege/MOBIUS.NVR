@@ -103,13 +103,18 @@ def _table_exists(table_name: str) -> bool:
 # ── Encryption ────────────────────────────────────────────────────────────────
 
 def _get_encryption_key() -> bytes:
-    secret = os.environ.get('NVR_SECRET_KEY', '')
+    # ALWAYS read from DB first — env may have a DIFFERENT NVR_SECRET_KEY
+    # from AWS Secrets Manager that doesn't match the one the app uses.
+    # The DB value is the canonical encryption key set by app.py on first run.
+    secret = ''
+    rows = _psql("SELECT value FROM nvr_settings WHERE key='NVR_SECRET_KEY';",
+                  exit_on_error=False)
+    if rows:
+        secret = rows[0].strip()
     if not secret:
-        rows = _psql("SELECT value FROM nvr_settings WHERE key='NVR_SECRET_KEY';")
-        if rows:
-            secret = rows[0].strip()
+        secret = os.environ.get('NVR_SECRET_KEY', '')
     if not secret:
-        print(f"{RED}ERROR: NVR_SECRET_KEY not found in env or nvr_settings.{NC}", file=sys.stderr)
+        print(f"{RED}ERROR: NVR_SECRET_KEY not found in DB or env.{NC}", file=sys.stderr)
         sys.exit(1)
     return hashlib.sha256(secret.encode('utf-8')).digest()
 

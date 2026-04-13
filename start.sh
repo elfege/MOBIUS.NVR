@@ -133,16 +133,22 @@ fi
 # - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
 # =============================================================================
 if declare -f get_cameras_credentials >/dev/null 2>&1; then
+	# set -a BEFORE calling get_cameras_credentials so that vars loaded
+	# by the function's internal `. $temp_file` are auto-exported to
+	# subprocesses (seed_credentials.py, generate_streaming_configs.py).
+	# The temp file itself may be empty — the function sources it internally
+	# and the vars end up in the current shell, but without set -a they
+	# are NOT exported and child processes can't see them.
+	set -a
 	get_cameras_credentials --temp=/tmp/nvr.credentials &>/dev/null || {
-		echo -e "${YELLOW}WARNING: Failed to load camera credentials from secrets.env${NC}"
-		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
+		echo -e "${YELLOW}WARNING: Failed to load camera credentials${NC}"
+		echo "  Ensure AWS SSO is valid or switch to DB-based credentials via the UI."
+		set +a
 		exit 1
 	}
-	. /tmp/nvr.credentials &>/dev/null || {
-		echo -e "${YELLOW}WARNING: Failed to source camera credentials from secrets.env${NC}"
-		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
-		exit 1
-	}
+	# Also source the temp file in case the function wrote to it
+	. /tmp/nvr.credentials &>/dev/null || true
+	set +a
 fi
 
 # Detect host IP early (needed for LAN-cache decision + container env).

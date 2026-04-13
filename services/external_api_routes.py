@@ -197,6 +197,11 @@ def require_auth(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # CORS preflight (OPTIONS) must pass without auth — browsers never
+        # send Authorization headers on preflight requests.
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         if _api_token:
             # Production mode: Bearer token required
             if _check_bearer_token():

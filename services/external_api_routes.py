@@ -108,9 +108,25 @@ def _add_cors_headers(response):
     Authorization header is included for Bearer token auth.
     """
     response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, If-Match'
     return response
+
+
+@external_api_bp.before_request
+def _handle_preflight():
+    """
+    Handle CORS preflight (OPTIONS) at the blueprint level.
+    Returns 204 with CORS headers before auth or routing runs.
+    Browsers never send Authorization on preflight — this must be unauthed.
+    """
+    if request.method == 'OPTIONS':
+        resp = Response('', status=204)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, DELETE, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, If-Match'
+        resp.headers['Access-Control-Max-Age'] = '3600'
+        return resp
 
 
 # ---------------------------------------------------------------------------

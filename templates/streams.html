@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-reload-overlay.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/tile-arrange.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/pinned-window.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/cert-install.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -113,6 +114,11 @@
                 <i class="fas fa-th"></i>
             </button>
 
+            <!-- Install Certificate -->
+            <a href="/install-cert" id="cert-install-btn" class="navbar-action-btn" title="Install Certificate" style="text-decoration: none; color: inherit;">
+                <i class="fas fa-shield-alt"></i>
+            </a>
+
             <!-- Settings gear -->
             <button id="settings-btn" class="navbar-action-btn" title="Settings">
                 <i class="fas fa-cog"></i>
@@ -176,6 +182,10 @@
                 <span>Manage Devices</span>
             </button>
             {% endif %}
+            <a href="/install-cert" class="nav-menu-item" style="text-decoration: none; color: inherit;">
+                <i class="fas fa-shield-alt"></i>
+                <span>Install Certificate</span>
+            </a>
         </div>
 
         <div class="nav-menu-footer">
@@ -1175,6 +1185,17 @@
 
     <!-- Pinned window manager (HD + pin → floating draggable window) -->
     <script type="module" src="{{ url_for('static', filename='js/streaming/pinned-window-manager.js') }}"></script>
+
+
+    <!-- Certificate install banner (shows once on HTTPS if cert not yet trusted) -->
+    <script src="{{ url_for('static', filename='js/cert-install.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.CertInstall) {
+                window.CertInstall.showBannerIfNeeded('#main-navbar');
+            }
+        });
+    </script>
 
 </body>
 

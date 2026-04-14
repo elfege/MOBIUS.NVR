@@ -129,24 +129,7 @@ else
 	exit 1
 fi
 
-# =============================================================================
-# - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
-# =============================================================================
-if declare -f get_cameras_credentials >/dev/null 2>&1; then
-	# Load credentials from AWS Secrets Manager into the current shell.
-	# get_cameras_credentials writes export statements to the temp file,
-	# then sources it internally. We also capture a copy BEFORE it gets
-	# cleared, so we can re-source with set -a for child process export.
-	get_cameras_credentials --temp=/tmp/nvr.credentials 2>/dev/null || {
-		echo -e "${YELLOW}WARNING: Failed to load camera credentials${NC}"
-		echo "  Ensure AWS SSO is valid or switch to DB-based credentials via the UI."
-	}
-	# Export all NVR_* vars so subprocesses (seed_credentials.py) can see them.
-	# get_cameras_credentials sources vars into this shell but doesn't export them.
-	for _var in $(compgen -v | grep '^NVR_'); do
-		export "$_var"
-	done
-fi
+
 
 # Detect host IP early (needed for LAN-cache decision + container env).
 # Only export if detection succeeds — if it fails, docker compose falls back to .env value.
@@ -187,6 +170,25 @@ if docker ps 2>/dev/null | grep -q unified-nvr; then
 	echo ""
 	echo "Stopping existing containers..."
 	docker compose down --remove-orphans
+fi
+
+# =============================================================================
+# - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
+# =============================================================================
+if declare -f get_cameras_credentials >/dev/null 2>&1; then
+	# Load credentials from AWS Secrets Manager into the current shell.
+	# get_cameras_credentials writes export statements to the temp file,
+	# then sources it internally. We also capture a copy BEFORE it gets
+	# cleared, so we can re-source with set -a for child process export.
+	get_cameras_credentials --temp=/tmp/nvr.credentials 2>/dev/null || {
+		echo -e "${YELLOW}WARNING: Failed to load camera credentials${NC}"
+		echo "  Ensure AWS SSO is valid or switch to DB-based credentials via the UI."
+	}
+	# Export all NVR_* vars so subprocesses (seed_credentials.py) can see them.
+	# get_cameras_credentials sources vars into this shell but doesn't export them.
+	for _var in $(compgen -v | grep '^NVR_'); do
+		export "$_var"
+	done
 fi
 
 # =============================================================================

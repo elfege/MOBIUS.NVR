@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS.NVR — Light</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/the_eye.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/the_eye.png') }}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MOBIUS.NVR">
+    <style>
+        /* ===== Minimal inline CSS — no external sheets, no backdrop-filter, no animations ===== */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html, body {
+            height: 100%; overflow: hidden;
+            background: #0a0a0a;
+            color: #ccc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* --- Full-viewport layout: topbar + grid + pagination, no scroll --- */
+        body {
+            display: flex; flex-direction: column;
+        }
+
+        /* --- Top bar --- */
+        .topbar {
+            flex-shrink: 0;
+            height: 40px;
+            background: #111;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 10px;
+            border-bottom: 1px solid #222;
+        }
+        .topbar-title {
+            font-size: 14px; font-weight: 600; color: #eee;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .topbar-title img { height: 22px; width: auto; }
+        .topbar-actions { display: flex; gap: 8px; align-items: center; }
+        .topbar-btn {
+            background: none; border: 1px solid #333; color: #aaa;
+            padding: 4px 10px; border-radius: 4px; font-size: 12px;
+            cursor: pointer; white-space: nowrap;
+        }
+        .topbar-btn:active { background: #222; }
+        .topbar-btn.active { color: #4caf50; border-color: #4caf50; }
+
+        /* --- Grid: fills remaining space between topbar and pagination --- */
+        /* Columns/rows set dynamically by JS (applyGridCSS) based on user's grid choice */
+        .grid {
+            flex: 1; min-height: 0;
+            padding: 4px;
+            display: grid;
+            gap: 4px;
+        }
+
+        /* --- Camera tile: stretches to fill grid cell --- */
+        .tile {
+            position: relative;
+            background: #111;
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: pointer;
+            /* No aspect-ratio — grid rows size the tiles to fit viewport */
+        }
+        .tile img {
+            width: 100%; height: 100%;
+            object-fit: fill;  /* stretch to fill — no cropping, no letterbox */
+            display: block;
+        }
+        .tile-label {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.65);
+            color: #eee; font-size: 11px;
+            padding: 3px 6px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tile-error {
+            position: absolute; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            color: #555; font-size: 12px;
+        }
+
+        /* ---- Stream modal (single camera, swipeable) ---- */
+        .fs-backdrop {
+            display: none;
+            position: fixed; inset: 0; z-index: 290;
+            background: rgba(0,0,0,0.75);
+        }
+        .fs-backdrop.active { display: block; }
+        .fs-overlay {
+            display: none;
+            position: fixed; z-index: 300;
+            top: 5vh; left: 4vw; right: 4vw; bottom: 5vh;
+            background: #000;
+            border-radius: 8px;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .fs-overlay.active { display: flex; }
+        .fs-img {
+            flex: 1; width: 100%; object-fit: fill; min-height: 0;
+        }
+        .fs-bar {
+            flex-shrink: 0;
+            background: #111;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 10px;
+        }
+        .fs-name { color: #eee; font-size: 13px; }
+        .fs-counter { color: #888; font-size: 11px; }
+        .fs-close {
+            position: absolute; top: 6px; right: 6px; z-index: 310;
+            background: rgba(0,0,0,0.6); border: none; color: #fff;
+            width: 32px; height: 32px; border-radius: 50%;
+            font-size: 16px; cursor: pointer; line-height: 32px; text-align: center;
+        }
+        .fs-close:active { background: rgba(255,255,255,0.2); }
+
+        /* --- Pagination: compact, fixed at bottom --- */
+        .pagination {
+            flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            gap: 10px; padding: 6px 8px;
+        }
+        .page-btn {
+            background: #1a1a1a; border: 1px solid #333; color: #ccc;
+            padding: 6px 16px; border-radius: 4px; font-size: 13px;
+            cursor: pointer; min-width: 70px; text-align: center;
+        }
+        .page-btn:active { background: #333; }
+        .page-btn:disabled { opacity: 0.3; cursor: default; }
+        .page-info { font-size: 13px; color: #888; }
+
+        /* --- Landscape: tighter spacing --- */
+        @media (orientation: landscape) {
+            .topbar { height: 34px; }
+            .topbar-title { font-size: 12px; }
+            .topbar-btn { font-size: 11px; padding: 3px 8px; }
+            .grid { gap: 3px; padding: 3px; }
+            .pagination { padding: 4px 6px; }
+            .page-btn { padding: 4px 12px; font-size: 12px; }
+            .tile-label { font-size: 10px; padding: 2px 4px; }
+        }
+
+        /* Larger tablets / desktops */
+        @media (min-width: 900px) {
+            .grid { max-width: 960px; margin-left: auto; margin-right: auto; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Top bar — minimal, no hamburger menus or modals -->
+<div class="topbar">
+    <div class="topbar-title">
+        <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="">
+        NVR Light
+    </div>
+    <div class="topbar-actions">
+        <button class="topbar-btn" id="grid-btn" title="Change grid size">2x2</button>
+        <button class="topbar-btn" id="pause-btn" title="Pause snapshot refresh">Pause</button>
+        <a href="/streams" class="topbar-btn" title="Switch to full UI">Full UI</a>
+        <form method="POST" action="/logout" style="margin:0;">
+            <button type="submit" class="topbar-btn">Logout</button>
+        </form>
+    </div>
+</div>
+
+<!-- Camera grid — only the current page's 4 tiles are in DOM -->
+<div class="grid" id="grid"></div>
+
+<!-- Pagination -->
+<div class="pagination" id="pagination">
+    <button class="page-btn" id="prev-btn" disabled>&larr; Prev</button>
+    <span class="page-info" id="page-info">1 / 1</span>
+    <button class="page-btn" id="next-btn" disabled>Next &rarr;</button>
+</div>
+
+<!-- Stream modal — single camera, swipe left/right to navigate all cameras -->
+<div class="fs-backdrop" id="fs-backdrop"></div>
+<div class="fs-overlay" id="fs-overlay">
+    <button class="fs-close" id="fs-close">&times;</button>
+    <img class="fs-img" id="fs-img" alt="">
+    <div class="fs-bar">
+        <span class="fs-name" id="fs-name"></span>
+        <span class="fs-counter" id="fs-counter"></span>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    /* ===== Camera data from server (serialised once, no AJAX needed) ===== */
+    var ALL_CAMERAS = [
+        {% for serial, info in cameras.items() %}
+        { id: '{{ serial }}', name: '{{ info.name|e }}' },
+        {% endfor %}
+    ];
+
+    /* Grid size options: cols x rows */
+    var GRID_SIZES = [
+        { cols: 2, rows: 2, label: '2x2' },
+        { cols: 3, rows: 3, label: '3x3' },
+        { cols: 4, rows: 4, label: '4x4' }
+    ];
+    var gridSizeIdx = parseInt(localStorage.getItem('nvr_light_grid') || '0', 10);
+    if (gridSizeIdx < 0 || gridSizeIdx >= GRID_SIZES.length) gridSizeIdx = 0;
+
+    function currentGrid() { return GRID_SIZES[gridSizeIdx]; }
+    function perPage() { return currentGrid().cols * currentGrid().rows; }
+
+    var totalPages = Math.ceil(ALL_CAMERAS.length / perPage()) || 1;
+    var curPage    = 0;
+    var paused     = false;
+    var timers     = {};     /* cameraId -> intervalId */
+
+    /* Fullscreen state */
+    var fsActive   = false;  /* is fullscreen overlay showing? */
+    var fsIndex    = 0;      /* index into ALL_CAMERAS for fullscreen view */
+    var fsTimer    = null;   /* snapshot polling timer for fullscreen camera */
+
+    var grid       = document.getElementById('grid');
+    var prevBtn    = document.getElementById('prev-btn');
+    var nextBtn    = document.getElementById('next-btn');
+    var pageInfo   = document.getElementById('page-info');
+    var pauseBtn   = document.getElementById('pause-btn');
+    var gridBtn    = document.getElementById('grid-btn');
+
+    /* Fullscreen overlay elements */
+    var fsOverlay  = document.getElementById('fs-overlay');
+    var fsImg      = document.getElementById('fs-img');
+    var fsName     = document.getElementById('fs-name');
+    var fsCounter  = document.getElementById('fs-counter');
+    var fsCloseBtn = document.getElementById('fs-close');
+
+    /* Set grid button label to current size */
+    gridBtn.textContent = currentGrid().label;
+
+    /* ===== Snapshot URL (same endpoint the full UI uses) ===== */
+    function snapUrl(cameraId) {
+        return '/api/snap/' + encodeURIComponent(cameraId) + '?_t=' + Date.now();
+    }
+
+    /* ===== Apply grid CSS based on current size ===== */
+    function applyGridCSS() {
+        var g = currentGrid();
+        grid.style.gridTemplateColumns = 'repeat(' + g.cols + ', 1fr)';
+        grid.style.gridTemplateRows    = 'repeat(' + g.rows + ', 1fr)';
+    }
+
+    /* ===== Render current page ===== */
+    function render() {
+        /* Stop all running snapshot timers */
+        Object.keys(timers).forEach(function (k) { clearInterval(timers[k]); });
+        timers = {};
+
+        /* Recalculate pagination */
+        totalPages = Math.ceil(ALL_CAMERAS.length / perPage()) || 1;
+        if (curPage >= totalPages) curPage = totalPages - 1;
+
+        /* Apply grid layout */
+        applyGridCSS();
+
+        /* Clear grid */
+        grid.innerHTML = '';
+
+        var start = curPage * perPage();
+        var slice = ALL_CAMERAS.slice(start, start + perPage());
+
+        slice.forEach(function (cam) {
+            var tile = document.createElement('div');
+            tile.className = 'tile';
+            tile.dataset.id = cam.id;
+
+            var img = document.createElement('img');
+            img.alt = cam.name;
+            img.src = snapUrl(cam.id);
+            img.onerror = function () {
+                /* Show placeholder on error — don't keep retrying broken URL */
+                if (!tile.querySelector('.tile-error')) {
+                    var err = document.createElement('div');
+                    err.className = 'tile-error';
+                    err.textContent = 'No signal';
+                    tile.appendChild(err);
+                }
+                img.style.display = 'none';
+            };
+            img.onload = function () {
+                img.style.display = 'block';
+                var err = tile.querySelector('.tile-error');
+                if (err) err.remove();
+            };
+
+            var label = document.createElement('div');
+            label.className = 'tile-label';
+            label.textContent = cam.name;
+
+            tile.appendChild(img);
+            tile.appendChild(label);
+            grid.appendChild(tile);
+
+            /* Double-tap to enter fullscreen for this camera */
+            (function (camObj, tileEl) {
+                var lastTap = 0;
+                tileEl.addEventListener('click', function (e) {
+                    var now = Date.now();
+                    if (now - lastTap < 350) {
+                        /* Double-tap detected — open fullscreen */
+                        e.preventDefault();
+                        var idx = ALL_CAMERAS.indexOf(camObj);
+                        if (idx >= 0) openFullscreen(idx);
+                    }
+                    lastTap = now;
+                });
+            })(cam, tile);
+
+            /* Start snapshot polling for this tile (every 2s — light on CPU vs 1s) */
+            if (!paused) {
+                timers[cam.id] = setInterval(function () {
+                    img.src = snapUrl(cam.id);
+                }, 2000);
+            }
+        });
+
+        /* Update pagination controls */
+        prevBtn.disabled = (curPage <= 0);
+        nextBtn.disabled = (curPage >= totalPages - 1);
+        pageInfo.textContent = (curPage + 1) + ' / ' + totalPages;
+    }
+
+    /* ===== Fullscreen mode ===== */
+
+    var fsBackdrop = document.getElementById('fs-backdrop');
+
+    function openFullscreen(index) {
+        fsIndex = index;
+        fsActive = true;
+        updateFullscreenView();
+        fsOverlay.classList.add('active');
+        fsBackdrop.classList.add('active');
+    }
+
+    function closeFullscreen() {
+        fsActive = false;
+        fsOverlay.classList.remove('active');
+        fsBackdrop.classList.remove('active');
+        if (fsTimer) { clearInterval(fsTimer); fsTimer = null; }
+    }
+
+    function updateFullscreenView() {
+        if (fsIndex < 0) fsIndex = ALL_CAMERAS.length - 1;
+        if (fsIndex >= ALL_CAMERAS.length) fsIndex = 0;
+
+        var cam = ALL_CAMERAS[fsIndex];
+        fsImg.src = snapUrl(cam.id);
+        fsName.textContent = cam.name;
+        fsCounter.textContent = (fsIndex + 1) + ' / ' + ALL_CAMERAS.length;
+
+        /* Restart snapshot polling for this single camera */
+        if (fsTimer) clearInterval(fsTimer);
+        if (!paused) {
+            fsTimer = setInterval(function () {
+                fsImg.src = snapUrl(cam.id);
+            }, 2000);
+        }
+    }
+
+    function fsNavigate(direction) {
+        /* direction: -1 = prev, +1 = next */
+        fsIndex += direction;
+        updateFullscreenView();
+    }
+
+    /* Close button */
+    fsCloseBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeFullscreen();
+    });
+
+    /* Swipe left/right on fullscreen overlay to navigate cameras */
+    var fsTouchStartX = 0;
+    var fsTouchStartY = 0;
+    fsOverlay.addEventListener('touchstart', function (e) {
+        fsTouchStartX = e.touches[0].clientX;
+        fsTouchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    fsOverlay.addEventListener('touchend', function (e) {
+        var dx = e.changedTouches[0].clientX - fsTouchStartX;
+        var dy = e.changedTouches[0].clientY - fsTouchStartY;
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            /* Swipe left = next camera, swipe right = prev camera */
+            fsNavigate(dx < 0 ? 1 : -1);
+        }
+    }, { passive: true });
+
+    /* Click backdrop to close modal */
+    fsBackdrop.addEventListener('click', function () {
+        if (fsActive) closeFullscreen();
+    });
+
+    /* ===== Pagination handlers ===== */
+    prevBtn.addEventListener('click', function () {
+        if (curPage > 0) { curPage--; render(); }
+    });
+    nextBtn.addEventListener('click', function () {
+        if (curPage < totalPages - 1) { curPage++; render(); }
+    });
+
+    /* ===== Swipe support (touch) ===== */
+    var touchStartX = 0;
+    var touchStartY = 0;
+    grid.addEventListener('touchstart', function (e) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    grid.addEventListener('touchend', function (e) {
+        if (fsActive) return; /* fullscreen has its own swipe handler */
+        var dx = e.changedTouches[0].clientX - touchStartX;
+        var dy = e.changedTouches[0].clientY - touchStartY;
+        /* Only register horizontal swipes (|dx| > 60px and |dx| > |dy|) */
+        if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            if (dx < 0 && curPage < totalPages - 1) { curPage++; render(); }
+            if (dx > 0 && curPage > 0) { curPage--; render(); }
+        }
+    }, { passive: true });
+
+    /* ===== Pause / resume ===== */
+    pauseBtn.addEventListener('click', function () {
+        paused = !paused;
+        pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+        pauseBtn.classList.toggle('active', paused);
+        if (paused) {
+            Object.keys(timers).forEach(function (k) { clearInterval(timers[k]); });
+            timers = {};
+        } else {
+            render();
+        }
+    });
+
+    /* ===== Grid size cycle ===== */
+    gridBtn.addEventListener('click', function () {
+        gridSizeIdx = (gridSizeIdx + 1) % GRID_SIZES.length;
+        localStorage.setItem('nvr_light_grid', gridSizeIdx);
+        gridBtn.textContent = currentGrid().label;
+        render();
+    });
+
+    /* ===== Keyboard navigation ===== */
+    document.addEventListener('keydown', function (e) {
+        if (fsActive) {
+            /* In fullscreen: arrows navigate cameras, Escape exits */
+            if (e.key === 'ArrowLeft')  { fsNavigate(-1); return; }
+            if (e.key === 'ArrowRight') { fsNavigate(1);  return; }
+            if (e.key === 'Escape')     { closeFullscreen(); return; }
+            return;
+        }
+        if (e.key === 'ArrowLeft' && curPage > 0) { curPage--; render(); }
+        if (e.key === 'ArrowRight' && curPage < totalPages - 1) { curPage++; render(); }
+    });
+
+    /* ===== Visibility API — pause when tab hidden, resume when visible ===== */
+    document.addEventListener('visibilitychange', function () {
+        if (document.hidden && !paused) {
+            Object.keys(timers).forEach(function (k) { clearInterval(timers[k]); });
+            timers = {};
+        } else if (!document.hidden && !paused) {
+            render();
+        }
+    });
+
+    /* ===== Init ===== */
+    render();
+})();
+</script>
+
+</body>
+</html>

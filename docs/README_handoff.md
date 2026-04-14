@@ -65,10 +65,15 @@ Added 4 entry points to the `/install-cert` page (route + template already exist
 - `start.sh` — moved `get_cameras_credentials` block after `docker compose down`
 - Added `certs/` to `.gitignore` (contains private keys)
 
+### Cert Banner Fix (continued)
+
+Banner was rendering behind fixed navbar (z-index issue). Fixed: `position: fixed; top: 44px; z-index: 1100` — floating overlay, centered, glassmorphism background. No longer pushes content.
+
 ### Commits
 
 - `c4ee334` — feat: add certificate install UI entry points + fix banner positioning
 - `443a5ff` — fix: add missing mediamtx paths + move credential loading after docker compose down
+- `38ecdd1` — fix: cert banner as fixed overlay + add lightweight stream viewer
 
 ---
 

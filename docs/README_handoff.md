@@ -15,15 +15,55 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: April 13, 2026 17:10 EDT*
+*Last updated: April 24, 2026 21:45 EDT*
 
 **Branch:** `external_stream_api_APR_13_2026_a`
 
-**Previous session:** See `docs/README_project_history.md` last ~200 lines for April 9 repo consolidation + March 31 E1 camera fix + grid layout modes.
+**Previous session:** See April 13 section below for cert install UI + HTTPS redirect + proxy cert re-sign work.
 
 ---
 
-## Current Session: April 13, 2026 (16:55–17:10 EDT) — Certificate Install UI + HTTPS Redirect
+## Current Session: April 24, 2026 (~00:00–22:00 EDT) — Amcrest Lobby fix + /light view + APK + credentials race
+
+### Amcrest Lobby stream dead — root cause chain
+
+Three compounding bugs. All fixed.
+
+**1. `/dev/shm/nvr-go2rtc/` owned by `root:root` after boot.** On reboot, tmpfs is wiped. Docker's `restart: unless-stopped` on the `nvr-go2rtc` service starts the container before `start.sh` has a chance to prep the bind-mount target — so `dockerd` (root) auto-creates the dir. Later, `scripts/generate_streaming_configs.py` runs as `elfege` and hits `PermissionError` writing `go2rtc.yaml`. Timestamp proof: boot 23:37:45, dir created 23:40:35.
+
+**2. `start.sh` swallowed the generator failure** — called `venv/bin/python3 scripts/generate_streaming_configs.py` with no exit-code check. Post-reboot, the failure was silent for days. `/dev/shm/nvr-go2rtc/` stayed empty, go2rtc container had no config for any of its 5 cameras.
+
+**3. `pull_aws_secrets` race in `~/.bash_utils`.** When called with `--temp=` (as `get_cameras_credentials` does), the function backgrounded its AWS work and returned immediately instead of `wait`-ing. Outer `wait "${pids[@]}"` saw exited wrapper processes and moved on before AWS calls finished → `secrets.env` / temp file sourced empty → env-var path for creds broken. Independent of root cause 1 but overlapped with it in diagnosis.
+
+### Fixes (this repo)
+
+- **`start.sh` (early, ~line 152)** — unconditional `mkdir -p /dev/shm/nvr-go2rtc` + ownership check/fix every run (`sudo chown -R "$USER:$USER" /dev/shm/nvr-go2rtc` if stale).
+- **`start.sh` (~line 253)** — config regen now gated. Triggers: `--regenerate-configs` / `-r` / `--reset` flag, or `NVR_FROM_DEPLOY=1` env var, or missing `go2rtc.yaml`. Generator failure now aborts with red error. Otherwise live config is preserved (regen is expensive + invalidates tmpfs).
+- **`deploy.sh:133`** — now calls `NVR_FROM_DEPLOY=1 ./start.sh --regenerate-configs` (belt + suspenders).
+- **`scripts/generate_streaming_configs.py:382`** — header comment updated to reflect on-demand semantics.
+- **`packager/mediamtx.yml`** — regenerated output reflecting cameras that moved to go2rtc hub (AMC, T821451, T8419P, 95270001NT3KNA67, 95270000YPTKLLD6 removed from mediamtx paths).
+
+### Fixes (outside this repo)
+
+- **`~/.bash_utils` `pull_aws_secrets`** — lines ~8238-8250. Now always `wait $pid` on inner AWS subshell regardless of `caller_will_source` flag. Only the sourcing is conditional.
+- **`~/.bash_utils` `get_cameras_credentials`** — added full `--help`/`-h` block, cleaned up leftover debug echoes, prints temp file path at end (success + failure paths).
+
+### /light endpoint + WebView APK (earlier in same session, pre-existing in initial git status)
+
+- **`templates/streams_light.html`** — snapshot-based minimal viewer. 2x2/2x3/3x3/4x4 grid cycle + pagination + swipe. Double-tap → fullscreen modal with swipe-to-navigate across all cameras. Hourly auto-reload. localStorage memoization: grid size, last-fullscreen camera, stretch/fit toggle.
+- **`routes/config.py`** — `/streams` now auto-redirects mobile UAs (silk/, android, iphone, ipad, mobile, fire) to `/light` unless `?full=1` is explicitly passed.
+- **`templates/streams.html` + `static/images/apple-touch-icon.png`** — proper 180x180 Apple touch icon so iOS home-screen installs show the eye logo.
+- **WebView APK** built on dellserver using OpenJDK 17 + Android SDK cmdline-tools; installed on Fire tablet via ADB. Wraps `https://192.168.10.20:8444/light` in a chrome-less Android activity.
+
+### Off-project side work
+
+- **`server:~/0_HEALTH/`** initialized (canonical CLAUDE.md from `0_CLAUDE_IC/CLAUDE.md.standard.md` + 8 project-specific HEALTH-N rules). No git. Instance ID: `server-health`. Registry updated.
+- **`~/.bash_aliases`** — added `health`/`codehealth`; converted non-goto project aliases (`scripts`/`codescripts`/`academics`/`arduino`/`codearduino`) to goto/gotocode pattern.
+- **Intercom MSG-123** posted to `office-network` re: future secret-rotation framework, scoping + reusable pieces in codebase.
+
+---
+
+## Previous Session: April 13, 2026 (16:55–17:10 EDT) — Certificate Install UI + HTTPS Redirect
 
 ### Certificate Install UI Entry Points
 

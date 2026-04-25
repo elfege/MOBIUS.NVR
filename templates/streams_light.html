@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MOBIUS.NVR — Light</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/the_eye.png') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='images/the_eye.png') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='images/apple-touch-icon.png') }}">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MOBIUS.NVR">
@@ -69,7 +69,7 @@
         }
         .tile img {
             width: 100%; height: 100%;
-            object-fit: fill;  /* stretch to fill — no cropping, no letterbox */
+            /* object-fit set dynamically by JS (fitMode) */
             display: block;
         }
         .tile-label {
@@ -103,7 +103,8 @@
         }
         .fs-overlay.active { display: flex; }
         .fs-img {
-            flex: 1; width: 100%; object-fit: fill; min-height: 0;
+            flex: 1; width: 100%; min-height: 0;
+            /* object-fit set dynamically by JS (fitMode) */
         }
         .fs-bar {
             flex-shrink: 0;
@@ -147,10 +148,7 @@
             .tile-label { font-size: 10px; padding: 2px 4px; }
         }
 
-        /* Larger tablets / desktops */
-        @media (min-width: 900px) {
-            .grid { max-width: 960px; margin-left: auto; margin-right: auto; }
-        }
+        /* No max-width — use ALL available space on every screen size */
     </style>
 </head>
 <body>
@@ -163,8 +161,9 @@
     </div>
     <div class="topbar-actions">
         <button class="topbar-btn" id="grid-btn" title="Change grid size">2x2</button>
+        <button class="topbar-btn" id="fit-btn" title="Toggle stretch / proportional">Stretch</button>
         <button class="topbar-btn" id="pause-btn" title="Pause snapshot refresh">Pause</button>
-        <a href="/streams" class="topbar-btn" title="Switch to full UI">Full UI</a>
+        <a href="/streams?full=1" class="topbar-btn" title="Switch to full UI">Full UI</a>
         <form method="POST" action="/logout" style="margin:0;">
             <button type="submit" class="topbar-btn">Logout</button>
         </form>
@@ -242,6 +241,12 @@
     /* Set grid button label to current size */
     gridBtn.textContent = currentGrid().label;
 
+    /* Fit mode: 'fill' (stretch) or 'contain' (proportional) */
+    var fitBtn     = document.getElementById('fit-btn');
+    var fitMode    = localStorage.getItem('nvr_light_fit') || 'fill';
+    fitBtn.textContent = fitMode === 'fill' ? 'Stretch' : 'Fit';
+    if (fitMode !== 'fill') fitBtn.classList.add('active');
+
     /* ===== Snapshot URL (same endpoint the full UI uses) ===== */
     function snapUrl(cameraId) {
         return '/api/snap/' + encodeURIComponent(cameraId) + '?_t=' + Date.now();
@@ -280,6 +285,7 @@
 
             var img = document.createElement('img');
             img.alt = cam.name;
+            img.style.objectFit = fitMode;
             img.src = snapUrl(cam.id);
             img.onerror = function () {
                 /* Show placeholder on error — don't keep retrying broken URL */
@@ -341,6 +347,8 @@
     function openFullscreen(index) {
         fsIndex = index;
         fsActive = true;
+        /* Persist so it survives hourly reload */
+        localStorage.setItem('nvr_light_fs_cam', ALL_CAMERAS[index].id);
         updateFullscreenView();
         fsOverlay.classList.add('active');
         fsBackdrop.classList.add('active');
@@ -351,6 +359,7 @@
         fsOverlay.classList.remove('active');
         fsBackdrop.classList.remove('active');
         if (fsTimer) { clearInterval(fsTimer); fsTimer = null; }
+        localStorage.removeItem('nvr_light_fs_cam');
     }
 
     function updateFullscreenView() {
@@ -358,6 +367,7 @@
         if (fsIndex >= ALL_CAMERAS.length) fsIndex = 0;
 
         var cam = ALL_CAMERAS[fsIndex];
+        fsImg.style.objectFit = fitMode;
         fsImg.src = snapUrl(cam.id);
         fsName.textContent = cam.name;
         fsCounter.textContent = (fsIndex + 1) + ' / ' + ALL_CAMERAS.length;
@@ -451,6 +461,18 @@
         render();
     });
 
+    /* ===== Fit mode toggle ===== */
+    fitBtn.addEventListener('click', function () {
+        fitMode = (fitMode === 'fill') ? 'contain' : 'fill';
+        localStorage.setItem('nvr_light_fit', fitMode);
+        fitBtn.textContent = fitMode === 'fill' ? 'Stretch' : 'Fit';
+        fitBtn.classList.toggle('active', fitMode !== 'fill');
+        /* Apply to all current tile images + modal image */
+        var imgs = grid.querySelectorAll('.tile img');
+        for (var i = 0; i < imgs.length; i++) imgs[i].style.objectFit = fitMode;
+        fsImg.style.objectFit = fitMode;
+    });
+
     /* ===== Keyboard navigation ===== */
     document.addEventListener('keydown', function (e) {
         if (fsActive) {
@@ -476,6 +498,22 @@
 
     /* ===== Init ===== */
     render();
+
+    /* Restore fullscreen modal if a camera was open before reload */
+    var savedFsCam = localStorage.getItem('nvr_light_fs_cam');
+    if (savedFsCam) {
+        for (var i = 0; i < ALL_CAMERAS.length; i++) {
+            if (ALL_CAMERAS[i].id === savedFsCam) {
+                openFullscreen(i);
+                break;
+            }
+        }
+    }
+
+    /* Auto-reload every hour (keeps WebView session fresh, clears memory leaks) */
+    setTimeout(function () {
+        window.location.reload();
+    }, 60 * 60 * 1000);
 })();
 </script>
 

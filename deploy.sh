@@ -130,7 +130,9 @@ if [[ $? -eq 0 ]]; then
 	echo ""
 	echo -e "${GREEN}Docker image built successfully${NC}"
 	echo ""
-	./start.sh
+	# Deploy always regenerates streaming configs (DB → go2rtc.yaml / mediamtx.yml / neolink.toml).
+	# NVR_FROM_DEPLOY is belt-and-suspenders with --regenerate-configs so either signal triggers it.
+	NVR_FROM_DEPLOY=1 ./start.sh --regenerate-configs
 else
 	echo -e "${RED}Docker build failed${NC}"
 	exit 1

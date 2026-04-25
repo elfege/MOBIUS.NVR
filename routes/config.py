@@ -50,7 +50,15 @@ def index():
 @config_bp.route('/streams')
 @login_required
 def streams_page():
-    """Multi-stream viewing page"""
+    """Multi-stream viewing page — redirects mobile/tablet to /light automatically."""
+    # Auto-redirect low-powered devices to /light unless user explicitly opts out
+    # via ?full=1 query param (the "Full UI" link in /light uses this)
+    if not request.args.get('full'):
+        ua = (request.headers.get('User-Agent') or '').lower()
+        # Fire tablets (Silk), generic Android tablets/phones, iOS devices
+        mobile_indicators = ['silk/', 'android', 'iphone', 'ipad', 'mobile', 'fire']
+        if any(token in ua for token in mobile_indicators):
+            return redirect('/light')
     try:
         cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
         ui_health = _ui_health_from_env()

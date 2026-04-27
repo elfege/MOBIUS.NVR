@@ -15,15 +15,72 @@ It serves as a buffer before content is transferred to `README_project_history.m
 
 ---
 
-*Last updated: April 24, 2026 21:45 EDT*
+*Last updated: April 27, 2026 01:45 EDT*
 
 **Branch:** `external_stream_api_APR_13_2026_a`
 
-**Previous session:** See April 13 section below for cert install UI + HTTPS redirect + proxy cert re-sign work.
+**Previous session:** See April 24 section below (Amcrest Lobby fix + /light view + APK + credentials race).
 
 ---
 
-## Current Session: April 24, 2026 (~00:00–22:00 EDT) — Amcrest Lobby fix + /light view + APK + credentials race
+## Current Session: April 27, 2026 (~00:00–01:45 EDT) — Timeline Playback UX + perf overhaul
+
+### Problems reported
+- Timeline modal closed on the slightest backdrop click — "any wrong mouse move I'm out and have to reload"
+- No state memoization — every reopen reset to last-24h default
+- Timeline scrolling didn't exist; couldn't browse past the explicit From/To window
+- Loading the timeline took tens of seconds for any non-trivial window
+- After my first round of fixes, memoization corrupted the user's `To:` time (AM/PM flip)
+
+### Backend perf fix — `services/recording/timeline_service.py`
+`get_timeline_segments()` was paying two filesystem costs **per recording row**:
+1. `os.path.exists(file_path)` — N stat syscalls (extra slow on `/mnt/THE_BIG_DRIVE`)
+2. `_check_audio_track(file_path)` — **`subprocess.run(['ffprobe', ...], timeout=10)` per row**
+
+For a 24h window with ~100 recordings this stacked to 30-60s of blocking I/O before the API responded. The frontend never reads `has_audio` for timeline render anyway.
+
+Fix: drop both checks in the list path. `has_audio=False` returned by default. Resolved on-demand when the user opens a segment for preview (`get_segment_by_id` retains the ffprobe call). Same fix applied in the filesystem-fallback scan path. Missing files now surface as a playback error at click-time instead of being filtered out invisibly.
+
+### Frontend UX overhaul — `static/js/modals/timeline-playback-modal.js`
+
+Added gestures:
+| Gesture | Action |
+|---|---|
+| Left-click + drag | Range selection (existing — for export) |
+| **Right-click + drag** | Pan timeline. Cursor: `grab` / `grabbing`. |
+| **Mouse wheel** | Zoom centered on cursor (timestamp under cursor stays fixed) |
+| **Shift + wheel** | Pan horizontally |
+| **Trackpad two-finger horizontal swipe** | Pan (auto-detected via `deltaX`) |
+| Esc | Close modal |
+| Backdrop click | **NO-OP** — modal stays open. User insisted twice. |
+
+Added auto-extend via `_extendRangeIfPannedPast()`: when the visible window crosses past the currently-loaded `timeRange`, it pads outward by half the visible window, refetches segments via the new `_fetchSegments()` helper, and adjusts `panOffset` so the user's view stays visually pinned.
+
+Added localStorage memoization (`nvr_timeline_state_v1` keyed per-camera): saves date / start time / end time / zoom level on every load, every zoom-button click, and 200ms after the last wheel event settles. Restores on `show()` if state is < 7 days old; otherwise falls back to last-24h default.
+
+### Bug introduced and fixed in same session
+First memoization version had `_extendRangeIfPannedPast()` writing back to the date/time input fields. When the extended window crossed midnight, `Date.toTimeString().slice(0,5)` returned the next-day wall-clock time (e.g. 18:15 → 03:15), and persistence saved the wrong values. User reported `To: 06:15 PM` reopening as `05:15 AM`.
+
+Fix: `_extendRangeIfPannedPast` no longer touches input fields and no longer calls `_savePersistedState`. The internal `timeRange` (loaded data window) and the user's input-field selection are now distinct — extension grows the loaded window invisibly; the inputs stay frozen at the user's last explicit choice. Persistence captures only what the user explicitly set.
+
+One-time cleanup needed for already-corrupted state:
+```js
+localStorage.removeItem('nvr_timeline_state_v1')
+```
+
+### Off-repo side work
+- Helped diagnose DBeaver SSH-tunnel auth failure on office: keys are in modern OpenSSH format, JSch-based DBeaver versions can't parse them. Created PEM-format copy at `office:~/.ssh/id_rsa_dellserver_pem` via `ssh-keygen -p -m PEM`.
+
+### Files modified this session (in this repo)
+- `services/recording/timeline_service.py` — drop per-row stat + ffprobe in list path
+- `static/js/modals/timeline-playback-modal.js` — backdrop close removed, memoization added, pan/wheel gestures, auto-extend, AM/PM bug fix
+
+### Backend change → container restart needed
+`./start.sh` (no flag — preserves the live go2rtc config; the on-demand regen logic from the April 24 session is intact).
+
+---
+
+## Previous Session: April 24, 2026 (~00:00–22:00 EDT) — Amcrest Lobby fix + /light view + APK + credentials race
 
 ### Amcrest Lobby stream dead — root cause chain
 

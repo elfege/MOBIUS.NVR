@@ -50,7 +50,15 @@ def index():
 @config_bp.route('/streams')
 @login_required
 def streams_page():
-    """Multi-stream viewing page"""
+    """Multi-stream viewing page — redirects mobile/tablet to /light automatically."""
+    # Auto-redirect low-powered devices to /light unless user explicitly opts out
+    # via ?full=1 query param (the "Full UI" link in /light uses this)
+    if not request.args.get('full'):
+        ua = (request.headers.get('User-Agent') or '').lower()
+        # Fire tablets (Silk), generic Android tablets/phones, iOS devices
+        mobile_indicators = ['silk/', 'android', 'iphone', 'ipad', 'mobile', 'fire']
+        if any(token in ua for token in mobile_indicators):
+            return redirect('/light')
     try:
         cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
         ui_health = _ui_health_from_env()
@@ -98,6 +106,61 @@ def streams_page():
     except Exception as e:
         print(f"Error loading streams page: {e}")
         return f"Error loading streams page: {e}", 500
+
+
+@config_bp.route('/light')
+@login_required
+def streams_light_page():
+    """
+    Lightweight stream viewer for low-powered devices (Fire tablets, etc.).
+    Snapshot-only, 4 cameras per page, no heavy JS/CSS, no health monitor.
+    """
+    try:
+        cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
+
+        # Filter cameras based on user's access permissions
+        allowed = _get_allowed_camera_serials(current_user)
+        cameras = _filter_cameras(cameras, allowed)
+
+        # Remove server-hidden cameras entirely (light mode = no admin debug)
+        cameras = {s: c for s, c in cameras.items() if not c.get('hidden', False)}
+
+        # Apply user's saved tile display order from DB
+        order_map = {}
+        try:
+            conn = psycopg2.connect(
+                host=os.getenv('POSTGRES_HOST', 'postgres'),
+                port=os.getenv('POSTGRES_PORT', '5432'),
+                dbname=os.getenv('POSTGRES_DB', 'nvr'),
+                user=os.getenv('POSTGRES_USER', 'nvr_api'),
+                password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+                connect_timeout=3
+            )
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT camera_serial, display_order "
+                "FROM user_camera_preferences "
+                "WHERE user_id = %s AND display_order IS NOT NULL",
+                (current_user.id,)
+            )
+            order_map = {serial: pos for serial, pos in cur.fetchall()}
+            cur.close()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"[streams_light_page] Could not load display order: {e}")
+
+        cameras = dict(sorted(
+            cameras.items(),
+            key=lambda item: (
+                order_map.get(item[0], float('inf')),
+                (item[1].get('name') or '').lower()
+            )
+        ))
+
+        return render_template('streams_light.html', cameras=cameras)
+    except Exception as e:
+        logger.error(f"Error loading light streams page: {e}")
+        return f"Error loading light streams page: {e}", 500
 
 
 @config_bp.route('/reloading')

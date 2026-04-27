@@ -371,10 +371,14 @@ class TimelineService:
                 if recording_types and recording_type not in recording_types:
                     continue
 
-                # Verify file exists
+                # Skip rows with no file_path. We deliberately do NOT stat the
+                # filesystem here — for a 24h window with hundreds of recordings,
+                # one stat per row plus an ffprobe subprocess (10s timeout) for
+                # has_audio used to make this endpoint take 30-60s. The timeline
+                # UI doesn't render has_audio, and missing files surface as a
+                # playback error at click-time, where the latency is acceptable.
                 file_path = rec.get('file_path')
-                if not file_path or not os.path.exists(file_path):
-                    logger.warning(f"Recording file not found: {file_path}")
+                if not file_path:
                     continue
 
                 segment = TimelineSegment(
@@ -386,7 +390,7 @@ class TimelineService:
                     file_path=file_path,
                     file_size_bytes=rec.get('file_size_bytes', 0),
                     recording_type=recording_type,
-                    has_audio=self._check_audio_track(file_path)
+                    has_audio=False  # resolved on-demand by get_segment_by_id when a segment is opened
                 )
                 segments.append(segment)
 
@@ -449,7 +453,7 @@ class TimelineService:
                         file_path=str(mp4_file),
                         file_size_bytes=mp4_file.stat().st_size,
                         recording_type=rec_type,
-                        has_audio=self._check_audio_track(str(mp4_file))
+                        has_audio=False  # resolved on-demand at preview time
                     )
                     segments.append(segment)
 

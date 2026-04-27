@@ -106,18 +106,15 @@ export class TimelinePlaybackModal {
     }
 
     /**
-     * Attach modal control events
+     * Attach modal control events.
+     *
+     * Backdrop clicks do NOT close the modal — by design. Closing is intentional
+     * only via the X button or the Escape key. Any other interaction (drag-select,
+     * pan, accidental click anywhere) must be safe.
      */
     attachModalEvents() {
         // Close button
         this.$modal.find('.timeline-modal-close').on('click', () => this.hide());
-
-        // Click outside modal to close
-        this.$modal.on('click', (e) => {
-            if ($(e.target).hasClass('timeline-modal')) {
-                this.hide();
-            }
-        });
 
         // Escape key to close
         $(document).on('keydown', (e) => {
@@ -147,6 +144,7 @@ export class TimelinePlaybackModal {
         $('#timeline-zoom-slider').on('input', (e) => {
             this.zoomLevel = parseInt(e.target.value);
             this.renderTimeline();
+            this._savePersistedState();
         });
 
         // Export button
@@ -248,17 +246,48 @@ export class TimelinePlaybackModal {
     }
 
     /**
-     * Attach canvas interaction events for drag selection
+     * Attach canvas interaction events for drag selection + pan + zoom.
+     *
+     * Gestures:
+     *   - Left-click + drag       → range selection (existing behavior)
+     *   - Right-click + drag      → pan timeline (new)
+     *   - Mouse wheel             → zoom centered on cursor (new)
+     *   - Shift + wheel           → pan horizontally (new)
+     *   - Trackpad horizontal swipe (wheel deltaX) → pan (new)
+     *
+     * When pan/zoom takes the visible window outside the currently loaded
+     * timeRange, _extendRangeIfPannedPast() refetches the surrounding data.
      */
     attachCanvasEvents() {
         if (!this.$canvas.length) return;
 
         const canvas = this.$canvas[0];
+        canvas.style.cursor = 'grab';
 
-        // Mouse down - start drag
+        // Pan-on-right-click state (kept in closures so it doesn't pollute `this`).
+        let _panActive = false;
+        let _panStartClientX = 0;
+        let _panStartOffset = 0;
+
+        // Disable the default context menu on the canvas — we use right-click for pan.
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // Mouse down — branch on button:
+        //   button 0 (left)  → start range-select drag
+        //   button 2 (right) → start pan
         canvas.addEventListener('mousedown', (e) => {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
+
+            if (e.button === 2) {
+                e.preventDefault();
+                _panActive = true;
+                _panStartClientX = e.clientX;
+                _panStartOffset = this.panOffset;
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+            if (e.button !== 0) return;
 
             this.isDragging = true;
             this.dragStart = x;
@@ -266,8 +295,20 @@ export class TimelinePlaybackModal {
             this.selection.end = null;
         });
 
-        // Mouse move - update selection
+        // Mouse move — pan if right-button-down, otherwise update selection.
         canvas.addEventListener('mousemove', (e) => {
+            if (_panActive) {
+                const rect      = canvas.getBoundingClientRect();
+                const totalMs   = this.timeRange ? (this.timeRange.end - this.timeRange.start) : 0;
+                if (totalMs <= 0) return;
+                const visibleMs = totalMs / this.zoomLevel;
+                const msPerPx   = visibleMs / rect.width;
+                const dxPx      = e.clientX - _panStartClientX;
+                // Drag right → reveal earlier time → panOffset decreases.
+                this.panOffset = _panStartOffset - dxPx * msPerPx;
+                this.renderTimeline();
+                return;
+            }
             if (!this.isDragging) return;
 
             const rect = canvas.getBoundingClientRect();
@@ -277,20 +318,85 @@ export class TimelinePlaybackModal {
             this.updateSelectionInfo();
         });
 
-        // Mouse up - finish drag
-        canvas.addEventListener('mouseup', () => {
+        // Mouse up — finish whichever gesture was active.
+        canvas.addEventListener('mouseup', (e) => {
+            if (_panActive) {
+                _panActive = false;
+                canvas.style.cursor = 'grab';
+                this._savePersistedState();
+                this._extendRangeIfPannedPast();
+                return;
+            }
             if (this.isDragging) {
                 this.isDragging = false;
                 this.finalizeSelection();
             }
         });
 
-        // Mouse leave - cancel drag if outside
+        // Mouse leave — cancel any in-progress gesture cleanly.
         canvas.addEventListener('mouseleave', () => {
+            if (_panActive) {
+                _panActive = false;
+                canvas.style.cursor = 'grab';
+                this._savePersistedState();
+                this._extendRangeIfPannedPast();
+            }
             if (this.isDragging) {
                 this.isDragging = false;
             }
         });
+
+        // Wheel — pan if Shift or horizontal trackpad swipe; otherwise zoom on cursor.
+        canvas.addEventListener('wheel', (e) => {
+            if (!this.timeRange) return;
+            e.preventDefault();
+
+            const rect      = canvas.getBoundingClientRect();
+            const totalMs   = this.timeRange.end - this.timeRange.start;
+            const visibleMs = totalMs / this.zoomLevel;
+
+            const isHorizontalGesture = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+            const isPan = e.shiftKey || isHorizontalGesture;
+
+            if (isPan) {
+                const delta   = isHorizontalGesture ? e.deltaX : e.deltaY;
+                const msPerPx = visibleMs / rect.width;
+                this.panOffset += delta * msPerPx;
+                this.renderTimeline();
+                clearTimeout(this._wheelSettleTimer);
+                this._wheelSettleTimer = setTimeout(() => {
+                    this._savePersistedState();
+                    this._extendRangeIfPannedPast();
+                }, 200);
+                return;
+            }
+
+            // Zoom centered on cursor: keep the timestamp under the cursor fixed.
+            const cursorX  = e.clientX - rect.left;
+            const cursorMs = this.timeRange.start.getTime() + this.panOffset
+                             + (cursorX / rect.width) * visibleMs;
+
+            const oldZoom  = this.zoomLevel;
+            const step     = e.deltaY < 0 ? 1 : -1;  // wheel-up = zoom in
+            const newZoom  = Math.max(1, Math.min(10, oldZoom + step));
+            if (newZoom === oldZoom) return;
+
+            this.zoomLevel = newZoom;
+            const newVisibleMs = totalMs / this.zoomLevel;
+            // Solve for new panOffset so cursorMs sits at the same cursor x.
+            this.panOffset = cursorMs - this.timeRange.start.getTime()
+                             - (cursorX / rect.width) * newVisibleMs;
+
+            const $slider = $('#timeline-zoom-slider');
+            if ($slider.length) $slider.val(this.zoomLevel);
+            this.renderTimeline();
+
+            clearTimeout(this._wheelSettleTimer);
+            this._wheelSettleTimer = setTimeout(() => {
+                this._savePersistedState();
+                this._extendRangeIfPannedPast();
+            }, 200);
+        }, { passive: false });
 
         // Touch events for mobile
         canvas.addEventListener('touchstart', (e) => {
@@ -322,6 +428,45 @@ export class TimelinePlaybackModal {
                 this.finalizeSelection();
             }
         });
+    }
+
+    /**
+     * localStorage key holding the last-viewed time range per camera.
+     * Bump the version suffix to invalidate cached state on schema changes.
+     */
+    _persistKey() { return 'nvr_timeline_state_v1'; }
+
+    /**
+     * Read the persisted state map ({cameraId: {date, startTime, endTime, zoomLevel}}).
+     */
+    _loadPersistedState() {
+        try {
+            const raw = localStorage.getItem(this._persistKey());
+            return raw ? JSON.parse(raw) : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    /**
+     * Persist the current camera's range/zoom for restore on next open.
+     * Called on every load + zoom change so the user never loses their position.
+     */
+    _savePersistedState() {
+        if (!this.currentCameraId) return;
+        try {
+            const all = this._loadPersistedState();
+            all[this.currentCameraId] = {
+                date:      $('#timeline-date').val(),
+                startTime: $('#timeline-start-time').val(),
+                endTime:   $('#timeline-end-time').val(),
+                zoomLevel: this.zoomLevel,
+                savedAt:   Date.now()
+            };
+            localStorage.setItem(this._persistKey(), JSON.stringify(all));
+        } catch (e) {
+            // Quota or serialization error — silent, this is a UX nicety not a contract.
+        }
     }
 
     /**
@@ -377,8 +522,25 @@ export class TimelinePlaybackModal {
         // Ensure video event listeners are attached (may not have been if modal wasn't in DOM during init)
         this.attachVideoEventListeners();
 
-        // Auto-load last 24 hours
-        this.setPresetRange(24);
+        // Restore last-viewed range for this camera if we have one (and it's not stale).
+        // Otherwise fall back to the default "last 24 hours" preset.
+        const persisted = this._loadPersistedState()[cameraId];
+        const STALE_AFTER_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+        const isUsable = persisted
+            && persisted.date && persisted.startTime && persisted.endTime
+            && (Date.now() - (persisted.savedAt || 0) < STALE_AFTER_MS);
+
+        if (isUsable) {
+            $('#timeline-date').val(persisted.date);
+            $('#timeline-start-time').val(persisted.startTime);
+            $('#timeline-end-time').val(persisted.endTime);
+            this.zoomLevel = persisted.zoomLevel || 1;
+            const $slider = $('#timeline-zoom-slider');
+            if ($slider.length) $slider.val(this.zoomLevel);
+            this.loadTimeline();
+        } else {
+            this.setPresetRange(24);
+        }
     }
 
     /**
@@ -447,10 +609,23 @@ export class TimelinePlaybackModal {
             end: endDate
         };
 
-        // Show loading
-        this.showSection('loading', true);
-        this.showSection('canvas', false);
-        this.showSection('empty', false);
+        // Persist this range so reopening the modal restores where we were.
+        this._savePersistedState();
+
+        await this._fetchSegments(startDate, endDate, /*showLoading=*/true);
+    }
+
+    /**
+     * Low-level: fetch segments for an arbitrary range and update state.
+     * Does not touch the date/time input fields — used by both loadTimeline()
+     * (which reads inputs) and the pan-extend path (which doesn't).
+     */
+    async _fetchSegments(startDate, endDate, showLoading = true) {
+        if (showLoading) {
+            this.showSection('loading', true);
+            this.showSection('canvas', false);
+            this.showSection('empty', false);
+        }
 
         try {
             const response = await fetch(
@@ -490,6 +665,51 @@ export class TimelinePlaybackModal {
                 `<i class="fas fa-exclamation-triangle"></i> Error: ${error.message}`
             );
         }
+    }
+
+    /**
+     * After right-click pan ends or wheel scroll lands, check whether the
+     * visible window now extends past the currently-loaded `timeRange`. If
+     * so, expand `timeRange` outward (with a small pad), refetch the segments,
+     * and adjust `panOffset` so the user's visual position stays put.
+     *
+     * IMPORTANT: this function does NOT touch the date/time input fields
+     * and does NOT call `_savePersistedState()`. Those fields represent the
+     * user's *explicit* choice (last "Load Timeline" they hit). Overwriting
+     * them with extended bounds — especially when extension wraps across
+     * midnight — flips AM/PM and corrupts the saved memoization.
+     *
+     * The internal `timeRange` (loaded data window) is allowed to grow past
+     * the user's chosen bounds; the inputs stay frozen at what they typed.
+     */
+    async _extendRangeIfPannedPast() {
+        if (!this.timeRange) return;
+
+        const totalMs   = this.timeRange.end - this.timeRange.start;
+        const visibleMs = totalMs / this.zoomLevel;
+        const visStart  = this.timeRange.start.getTime() + this.panOffset;
+        const visEnd    = visStart + visibleMs;
+
+        const loadedStart = this.timeRange.start.getTime();
+        const loadedEnd   = this.timeRange.end.getTime();
+
+        // Pad by half a visible window outward so the next pan in the same
+        // direction doesn't immediately re-trigger a fetch.
+        const pad = visibleMs * 0.5;
+        let newStart = loadedStart;
+        let newEnd   = loadedEnd;
+        let extend   = false;
+
+        if (visStart < loadedStart) { newStart = visStart - pad; extend = true; }
+        if (visEnd   > loadedEnd)   { newEnd   = visEnd   + pad; extend = true; }
+
+        if (!extend) return;
+
+        // Translate panOffset so the visible window stays where the user sees it.
+        this.panOffset = visStart - newStart;
+        this.timeRange = { start: new Date(newStart), end: new Date(newEnd) };
+
+        await this._fetchSegments(this.timeRange.start, this.timeRange.end, /*showLoading=*/false);
     }
 
     /**
@@ -780,6 +1000,7 @@ export class TimelinePlaybackModal {
         slider.val(level);
         this.zoomLevel = level;
         this.renderTimeline();
+        this._savePersistedState();
     }
 
     /**

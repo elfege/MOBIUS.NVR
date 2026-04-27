@@ -340,16 +340,24 @@
    Certificate install banner (for embedding in other pages)
    --------------------------------------------------------------------------- */
 .cert-banner {
+    position: fixed;
+    top: 44px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1100;
     display: flex;
     align-items: center;
     gap: 0.75rem;
     padding: 0.6rem 1rem;
-    background: rgba(79, 195, 247, 0.08);
-    border: 1px solid rgba(79, 195, 247, 0.2);
+    background: rgba(20, 20, 28, 0.95);
+    border: 1px solid rgba(79, 195, 247, 0.3);
     border-radius: 6px;
-    margin: 0.5rem;
     font-size: 0.85rem;
     color: #b0bec5;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    max-width: 90vw;
 }
 
 .cert-banner i.fa-shield-alt {

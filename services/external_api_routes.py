@@ -53,8 +53,10 @@ import io
 import ipaddress
 import logging
 import os
+import time
 from functools import wraps
 
+import requests as http_requests
 from flask import Blueprint, Response, jsonify, request
 
 logger = logging.getLogger(__name__)
@@ -106,9 +108,25 @@ def _add_cors_headers(response):
     Authorization header is included for Bearer token auth.
     """
     response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, If-Match'
     return response
+
+
+@external_api_bp.before_request
+def _handle_preflight():
+    """
+    Handle CORS preflight (OPTIONS) at the blueprint level.
+    Returns 204 with CORS headers before auth or routing runs.
+    Browsers never send Authorization on preflight — this must be unauthed.
+    """
+    if request.method == 'OPTIONS':
+        resp = Response('', status=204)
+        resp.headers['Access-Control-Allow-Origin'] = '*'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, DELETE, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, If-Match'
+        resp.headers['Access-Control-Max-Age'] = '3600'
+        return resp
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +213,11 @@ def require_auth(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # CORS preflight (OPTIONS) must pass without auth — browsers never
+        # send Authorization headers on preflight requests.
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+
         if _api_token:
             # Production mode: Bearer token required
             if _check_bearer_token():
@@ -614,6 +637,456 @@ def external_stream_hls(camera_id):
         'type': 'll-hls'
     })
     # CORS handled by Blueprint after_request hook
+
+
+# ---------------------------------------------------------------------------
+# Stream discovery — unified endpoint for third-party consumers
+# ---------------------------------------------------------------------------
+
+@external_api_bp.route('/api/external/stream/<camera_id>')
+@require_auth
+def external_stream_info(camera_id):
+    """
+    Discover the active stream protocol for a camera and get access URLs.
+
+    Returns JSON describing which protocols are available and the URLs
+    to consume them. Third-party apps use this to decide how to connect.
+
+    Response JSON:
+    {
+        "camera_id": "T8416P0023352DA9",
+        "name": "Backyard",
+        "active_protocol": "webrtc",
+        "streaming_hub": "mediamtx",
+        "endpoints": {
+            "mjpeg": "/api/external/stream/T8416P0023352DA9/mjpeg",
+            "hls": "/api/external/stream/T8416P0023352DA9/hls",
+            "whep": "/api/external/stream/T8416P0023352DA9/whep"
+        }
+    }
+
+    The active_protocol field reflects the camera's configured stream type:
+    - "webrtc" — use the whep endpoint (MediaMTX WHEP)
+    - "go2rtc" — use the go2rtc endpoint (go2rtc WebRTC)
+    - "ll_hls" / "hls" — use the hls endpoint
+    - "mjpeg" — use the mjpeg endpoint
+
+    MJPEG is always available as a fallback (taps existing frame buffers).
+    """
+    if _camera_repo is None:
+        return jsonify({'error': 'Camera repository not initialized'}), 503
+
+    camera = _camera_repo.get_camera(camera_id)
+    if not camera:
+        return jsonify({'error': 'Camera not found'}), 404
+
+    # Resolve effective stream type (no user context for external API — use camera default)
+    stream_type = (camera.get('stream_type') or 'LL_HLS').upper()
+
+    # Check streaming hub
+    from services.streaming_hub import get_streaming_hub
+    hub = get_streaming_hub(camera)
+
+    # Determine active protocol based on hub + stream type
+    if hub == 'go2rtc':
+        active_protocol = 'go2rtc'
+    elif stream_type in ('WEBRTC', 'WEBRTC_MEDIAMTX'):
+        active_protocol = 'webrtc'
+    elif stream_type == 'MJPEG':
+        active_protocol = 'mjpeg'
+    else:
+        active_protocol = 'll_hls'
+
+    # Build available endpoints
+    base = f"/api/external/stream/{camera_id}"
+    endpoints = {
+        'mjpeg': f"{base}/mjpeg",
+        'hls': f"{base}/hls",
+    }
+
+    # Add WebRTC endpoints based on hub
+    if hub == 'go2rtc':
+        endpoints['go2rtc'] = f"{base}/go2rtc"
+    else:
+        endpoints['whep'] = f"{base}/whep"
+
+    return jsonify({
+        'camera_id': camera_id,
+        'name': camera.get('name', camera_id),
+        'active_protocol': active_protocol,
+        'streaming_hub': hub,
+        'endpoints': endpoints
+    })
+
+
+# ---------------------------------------------------------------------------
+# MJPEG stream — multipart/x-mixed-replace for third-party consumers
+# ---------------------------------------------------------------------------
+
+@external_api_bp.route('/api/external/stream/<camera_id>/mjpeg')
+@require_auth
+def external_stream_mjpeg(camera_id):
+    """
+    Live MJPEG stream (multipart/x-mixed-replace) for third-party consumers.
+
+    Taps into existing NVR capture service frame buffers — never opens new
+    camera connections. Works for any camera type that has an active capture
+    service (Reolink, UniFi, SV3C, Amcrest, or MediaServer/MediaMTX tap).
+
+    Query params (optional):
+        fps — target frame rate, 1-10 (default: 2)
+
+    Content-Type: multipart/x-mixed-replace; boundary=jpgboundary
+
+    IMPORTANT: This is a long-lived streaming response. The connection
+    stays open until the client disconnects.
+
+    Returns 503 if no frames are available (camera not streaming).
+    """
+    if _camera_repo is None:
+        return jsonify({'error': 'Camera repository not initialized'}), 503
+
+    camera = _camera_repo.get_camera(camera_id)
+    if not camera:
+        return jsonify({'error': 'Camera not found'}), 404
+
+    camera_type = camera.get('type', '').lower()
+
+    # Target FPS from query param, clamped to 1-10
+    target_fps = request.args.get('fps', 2, type=int)
+    target_fps = max(1, min(10, target_fps))
+    frame_interval = 1.0 / target_fps
+
+    def generate():
+        """
+        Generator that yields MJPEG frames from existing capture service buffers.
+        Dispatches to the correct capture service based on camera type.
+        Uses try/finally to guarantee cleanup on disconnect.
+        """
+        frame_count = 0
+        no_frame_retries = 0
+        max_no_frame_retries = 20  # 10 seconds max wait for first frame
+        last_frame_time = 0
+
+        try:
+            while True:
+                # Rate limit to target FPS
+                now = time.monotonic()
+                elapsed = now - last_frame_time
+                if elapsed < frame_interval:
+                    time.sleep(frame_interval - elapsed)
+
+                frame_bytes = _get_latest_frame(camera_id, camera_type)
+
+                if frame_bytes:
+                    no_frame_retries = 0
+                    frame_count += 1
+                    last_frame_time = time.monotonic()
+
+                    yield (b'--jpgboundary\r\n'
+                           b'Content-Type: image/jpeg\r\n'
+                           + f'Content-Length: {len(frame_bytes)}\r\n\r\n'.encode()
+                           + frame_bytes + b'\r\n')
+                else:
+                    no_frame_retries += 1
+                    if no_frame_retries >= max_no_frame_retries and frame_count == 0:
+                        # No frames after 10 seconds — give up
+                        logger.warning(
+                            f"External API MJPEG {camera_id}: no frames after "
+                            f"{max_no_frame_retries} attempts, ending stream"
+                        )
+                        return
+                    time.sleep(0.5)
+
+        except GeneratorExit:
+            logger.info(
+                f"External API MJPEG {camera_id}: client disconnected "
+                f"after {frame_count} frames"
+            )
+        except Exception as e:
+            logger.error(f"External API MJPEG {camera_id}: error: {e}")
+
+    # Check if at least one frame is available before committing to the stream
+    test_frame = _get_latest_frame(camera_id, camera_type)
+    if not test_frame:
+        # Try mediaserver fallback — it may have frames from MediaMTX tap
+        from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
+        ms_frame = mediaserver_mjpeg_service.get_latest_frame(camera_id)
+        if not ms_frame or not ms_frame.get('data'):
+            return jsonify({
+                'error': 'No frames available — camera may not be streaming'
+            }), 503
+
+    response = Response(generate(), mimetype='multipart/x-mixed-replace; boundary=jpgboundary')
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
+
+
+# ---------------------------------------------------------------------------
+# WebRTC WHEP proxy — relays SDP signaling to MediaMTX with Bearer auth
+# ---------------------------------------------------------------------------
+
+@external_api_bp.route('/api/external/stream/<camera_id>/whep', methods=['POST', 'OPTIONS'])
+@require_auth
+def external_stream_whep(camera_id):
+    """
+    WebRTC WHEP signaling proxy for third-party consumers.
+
+    Proxies the WHEP (WebRTC-HTTP Egress Protocol) exchange to MediaMTX,
+    adding Bearer token authentication. The client sends an SDP offer,
+    this endpoint relays it to MediaMTX and returns the SDP answer.
+
+    Request:
+        POST with Content-Type: application/sdp
+        Body: SDP offer string
+
+    Response:
+        Content-Type: application/sdp
+        Body: SDP answer string
+
+    After receiving the SDP answer, the client establishes a direct
+    WebRTC media connection to MediaMTX (ICE candidates resolved in SDP).
+
+    NOTE: WebRTC media flows directly between client and MediaMTX after
+    signaling. LAN connectivity is required for the media plane unless
+    a TURN server is configured.
+
+    Query params (optional):
+        stream — 'sub' (default) or 'main' for resolution selection
+
+    Returns 404 if camera not found.
+    Returns 502 if MediaMTX WHEP endpoint is unreachable.
+    """
+    if _camera_repo is None:
+        return jsonify({'error': 'Camera repository not initialized'}), 503
+
+    camera = _camera_repo.get_camera(camera_id)
+    if not camera:
+        return jsonify({'error': 'Camera not found'}), 404
+
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        resp = Response('', status=204)
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return resp
+
+    # Resolve MediaMTX path
+    stream = request.args.get('stream', 'sub')
+    stream_path = f"{camera_id}_main" if stream == 'main' else camera_id
+
+    # MediaMTX WHEP endpoint (internal docker network)
+    # MediaMTX listens on HTTPS 8889 when webrtcEncryption is enabled
+    mediamtx_whep_url = f"https://nvr-packager:8889/{stream_path}/whep"
+
+    try:
+        # Relay the SDP offer to MediaMTX
+        resp = http_requests.post(
+            mediamtx_whep_url,
+            data=request.get_data(),
+            headers={'Content-Type': 'application/sdp'},
+            verify=False,  # MediaMTX uses self-signed cert
+            timeout=10
+        )
+
+        if resp.status_code != 201 and resp.status_code != 200:
+            logger.warning(
+                f"External API WHEP {camera_id}: MediaMTX returned {resp.status_code}: "
+                f"{resp.text[:200]}"
+            )
+            return Response(
+                resp.text,
+                status=resp.status_code,
+                content_type=resp.headers.get('Content-Type', 'text/plain')
+            )
+
+        # Return the SDP answer to the client
+        answer_resp = Response(
+            resp.content,
+            status=resp.status_code,
+            content_type=resp.headers.get('Content-Type', 'application/sdp')
+        )
+        # Rewrite Location header from MediaMTX internal path to external API path.
+        # MediaMTX returns e.g. Location: /T8416P0023370398/whep/<uuid>
+        # Rewrite to: /api/external/stream/T8416P0023370398/whep/<uuid>
+        # so TILES can PATCH/DELETE through the same authenticated proxy.
+        if 'Location' in resp.headers:
+            raw_location = resp.headers['Location']
+            # MediaMTX Location is relative: /<stream_path>/whep/<session_id>
+            # Prepend our external API base path
+            if raw_location.startswith('/'):
+                answer_resp.headers['Location'] = f"/api/external/stream{raw_location}"
+            else:
+                answer_resp.headers['Location'] = raw_location
+        return answer_resp
+
+    except http_requests.exceptions.ConnectionError:
+        logger.error(f"External API WHEP {camera_id}: cannot reach MediaMTX at {mediamtx_whep_url}")
+        return jsonify({'error': 'MediaMTX unreachable — stream may not be running'}), 502
+    except http_requests.exceptions.Timeout:
+        logger.error(f"External API WHEP {camera_id}: MediaMTX timeout")
+        return jsonify({'error': 'MediaMTX timeout'}), 504
+    except Exception as e:
+        logger.error(f"External API WHEP {camera_id}: error: {e}")
+        return jsonify({'error': f'WHEP proxy error: {e}'}), 500
+
+
+# ---------------------------------------------------------------------------
+# WHEP session management — PATCH (ICE candidates) and DELETE (teardown)
+# ---------------------------------------------------------------------------
+
+@external_api_bp.route(
+    '/api/external/stream/<camera_id>/whep/<session_id>',
+    methods=['PATCH', 'DELETE', 'OPTIONS']
+)
+@require_auth
+def external_stream_whep_session(camera_id, session_id):
+    """
+    Proxy WHEP session PATCH (ICE trickle) and DELETE (teardown) to MediaMTX.
+
+    After the initial POST /whep returns a Location header, the client uses
+    that URL for:
+        PATCH  — send additional ICE candidates (Content-Type: application/trickle-ice-sdpfrag)
+        DELETE — tear down the WebRTC session
+
+    The Location header was rewritten from MediaMTX's internal path to
+    /api/external/stream/<camera_id>/whep/<session_id>, so we reverse
+    that here and proxy to MediaMTX's original path.
+    """
+    if _camera_repo is None:
+        return jsonify({'error': 'Camera repository not initialized'}), 503
+
+    # Reconstruct MediaMTX internal URL
+    # External: /api/external/stream/<camera_id>/whep/<session_id>
+    # MediaMTX: /<camera_id>/whep/<session_id>
+    mediamtx_url = f"https://nvr-packager:8889/{camera_id}/whep/{session_id}"
+
+    try:
+        if request.method == 'PATCH':
+            resp = http_requests.patch(
+                mediamtx_url,
+                data=request.get_data(),
+                headers={
+                    'Content-Type': request.content_type or 'application/trickle-ice-sdpfrag',
+                    'If-Match': request.headers.get('If-Match', '*'),
+                },
+                verify=False,
+                timeout=10
+            )
+        elif request.method == 'DELETE':
+            resp = http_requests.delete(
+                mediamtx_url,
+                verify=False,
+                timeout=10
+            )
+        else:
+            return Response('', status=405)
+
+        return Response(
+            resp.content,
+            status=resp.status_code,
+            content_type=resp.headers.get('Content-Type', 'text/plain')
+        )
+
+    except http_requests.exceptions.ConnectionError:
+        logger.error(f"External API WHEP session {camera_id}/{session_id}: cannot reach MediaMTX")
+        return jsonify({'error': 'MediaMTX unreachable'}), 502
+    except http_requests.exceptions.Timeout:
+        return jsonify({'error': 'MediaMTX timeout'}), 504
+    except Exception as e:
+        logger.error(f"External API WHEP session {camera_id}/{session_id}: error: {e}")
+        return jsonify({'error': f'WHEP session proxy error: {e}'}), 500
+
+
+# ---------------------------------------------------------------------------
+# go2rtc WebRTC proxy — relays SDP signaling to go2rtc with Bearer auth
+# ---------------------------------------------------------------------------
+
+@external_api_bp.route('/api/external/stream/<camera_id>/go2rtc', methods=['POST', 'OPTIONS'])
+@require_auth
+def external_stream_go2rtc(camera_id):
+    """
+    WebRTC signaling proxy for go2rtc cameras.
+
+    go2rtc serves WebRTC for cameras that use it as their streaming hub
+    (typically Neolink/Baichuan cameras). This endpoint proxies the
+    SDP offer/answer exchange, adding Bearer token authentication.
+
+    Request:
+        POST with Content-Type: application/json
+        Body: {"type": "offer", "sdp": "v=0\\r\\n..."}
+
+    Response:
+        Content-Type: application/json
+        Body: {"type": "answer", "sdp": "v=0\\r\\n..."}
+
+    NOTE: go2rtc uses JSON format for SDP exchange, not raw SDP like WHEP.
+
+    Returns 404 if camera not found.
+    Returns 502 if go2rtc is unreachable.
+    """
+    if _camera_repo is None:
+        return jsonify({'error': 'Camera repository not initialized'}), 503
+
+    camera = _camera_repo.get_camera(camera_id)
+    if not camera:
+        return jsonify({'error': 'Camera not found'}), 404
+
+    # Verify this camera uses go2rtc
+    from services.streaming_hub import is_go2rtc_camera
+    if not is_go2rtc_camera(camera):
+        return jsonify({
+            'error': f'Camera {camera_id} does not use go2rtc — use /whep endpoint instead'
+        }), 400
+
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        resp = Response('', status=204)
+        resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return resp
+
+    # go2rtc WebRTC API endpoint (internal docker network)
+    go2rtc_url = f"http://nvr-go2rtc:1984/api/webrtc?src={camera_id}"
+
+    try:
+        # Relay the SDP offer to go2rtc
+        resp = http_requests.post(
+            go2rtc_url,
+            json=request.get_json(),
+            headers={'Content-Type': 'application/json'},
+            timeout=10
+        )
+
+        if resp.status_code != 200:
+            logger.warning(
+                f"External API go2rtc {camera_id}: go2rtc returned {resp.status_code}: "
+                f"{resp.text[:200]}"
+            )
+            return Response(
+                resp.text,
+                status=resp.status_code,
+                content_type=resp.headers.get('Content-Type', 'text/plain')
+            )
+
+        # Return the SDP answer
+        return Response(
+            resp.content,
+            status=200,
+            content_type='application/json'
+        )
+
+    except http_requests.exceptions.ConnectionError:
+        logger.error(f"External API go2rtc {camera_id}: cannot reach go2rtc at {go2rtc_url}")
+        return jsonify({'error': 'go2rtc unreachable — service may not be running'}), 502
+    except http_requests.exceptions.Timeout:
+        logger.error(f"External API go2rtc {camera_id}: timeout")
+        return jsonify({'error': 'go2rtc timeout'}), 504
+    except Exception as e:
+        logger.error(f"External API go2rtc {camera_id}: error: {e}")
+        return jsonify({'error': f'go2rtc proxy error: {e}'}), 500
 
 
 # ---------------------------------------------------------------------------

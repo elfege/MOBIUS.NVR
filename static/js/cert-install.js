@@ -148,8 +148,8 @@
                     localStorage.setItem(BANNER_DISMISSED_KEY, 'true');
                 });
 
-                // Prepend to container
-                container.insertBefore(banner, container.firstChild);
+                // Insert after the container element
+                container.parentNode.insertBefore(banner, container.nextSibling);
             })
             .catch(function () {
                 // Silently fail — banner is non-critical

@@ -379,7 +379,7 @@ def generate_neolink_config(cameras, creds, project_dir):
 #   - Cameras whose go2rtc_source references neolink (bridge dependencies)
 # Script: scripts/generate_streaming_configs.py
 #
-# DO NOT EDIT MANUALLY — regenerated on every start.sh
+# DO NOT EDIT MANUALLY — regenerated on demand (./start.sh --regenerate-configs|-r|--reset, or ./deploy.sh)
 ################################################################################
 
 bind = "0.0.0.0"

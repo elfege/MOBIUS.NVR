@@ -100,8 +100,8 @@ class StorageManager:
         # Core directories that must exist
         for path in [self.motion_path, self.continuous_path, self.snapshots_path, self.manual_path]:
             if not path.exists():
-                logger.error(f"Storage directory does not exist: {path}")
-                raise FileNotFoundError(f"Storage directory missing: {path}")
+                logger.warning(f"Storage directory missing, creating: {path}")
+                path.mkdir(parents=True, exist_ok=True)
 
             if not os.access(path, os.W_OK):
                 logger.error(f"Storage directory not writable: {path}")

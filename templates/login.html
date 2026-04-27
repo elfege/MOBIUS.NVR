@@ -35,7 +35,26 @@
 
                 <button type="submit" class="btn btn-primary">Login</button>
             </form>
+
+            <div class="cert-install-link" style="margin-top: 1.5rem; text-align: center;">
+                <a href="/install-cert" style="color: #4fc3f7; font-size: 0.85rem; text-decoration: none;">
+                    <i class="fas fa-shield-alt" style="margin-right: 0.3rem;"></i>
+                    Seeing security warnings? Install the NVR certificate
+                </a>
+            </div>
         </div>
     </div>
+
+
+    <!-- Certificate install banner -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/cert-install.css') }}">
+    <script src="{{ url_for('static', filename='js/cert-install.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.CertInstall) {
+                window.CertInstall.showBannerIfNeeded('.login-panel');
+            }
+        });
+    </script>
 </body>
 </html>

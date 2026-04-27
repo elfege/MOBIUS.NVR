@@ -129,21 +129,7 @@ else
 	exit 1
 fi
 
-# =============================================================================
-# - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
-# =============================================================================
-if declare -f get_cameras_credentials >/dev/null 2>&1; then
-	get_cameras_credentials --temp=/tmp/nvr.credentials &>/dev/null || {
-		echo -e "${YELLOW}WARNING: Failed to load camera credentials from secrets.env${NC}"
-		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
-		exit 1
-	}
-	. /tmp/nvr.credentials &>/dev/null || {
-		echo -e "${YELLOW}WARNING: Failed to source camera credentials from secrets.env${NC}"
-		echo "  Ensure secrets.env is properly formatted or switch to DB-based credentials via the UI."
-		exit 1
-	}
-fi
+
 
 # Detect host IP early (needed for LAN-cache decision + container env).
 # Only export if detection succeeds — if it fails, docker compose falls back to .env value.
@@ -165,6 +151,17 @@ echo ""
 echo "Creating directories..."
 mkdir -p logs streams config
 
+# go2rtc tmpfs config dir — ensure it exists AND is owned by the current user on
+# every start. /dev/shm is wiped on reboot; when dockerd restarts a container
+# with `restart: unless-stopped` before start.sh runs, it auto-creates missing
+# bind-mount targets as root:root. That later breaks the Python generator which
+# runs as this user. Normalize ownership here, unconditionally.
+mkdir -p /dev/shm/nvr-go2rtc 2>/dev/null || sudo mkdir -p /dev/shm/nvr-go2rtc
+if [[ ! -w /dev/shm/nvr-go2rtc ]] || [[ "$(stat -c '%u' /dev/shm/nvr-go2rtc)" != "$(id -u)" ]]; then
+	echo -e "${YELLOW}/dev/shm/nvr-go2rtc not owned by $USER — fixing${NC}"
+	sudo chown -R "$USER:$USER" /dev/shm/nvr-go2rtc
+fi
+
 # Host IP for go2rtc WebRTC ICE candidates — browser needs this to reach media UDP port
 export NVR_HOST_IP=$(hostname -I | awk '{print $1}')
 echo -e "${GREEN}✓${NC} NVR_HOST_IP=${NVR_HOST_IP}"
@@ -184,6 +181,39 @@ if docker ps 2>/dev/null | grep -q unified-nvr; then
 	echo ""
 	echo "Stopping existing containers..."
 	docker compose down --remove-orphans
+fi
+
+# =============================================================================
+# - Camera credentials are now stored in the DB and added via the UI, but this supports legacy workflows.
+# =============================================================================
+_CRED_TMP="/tmp/nvr.credentials"
+
+# Fast path: if a previous run left a populated temp file, source it now.
+# get_cameras_credentials will then short-circuit via its 'all_set' check
+# (every required NVR_* var already defined → no AWS pull needed).
+# The temp file is tmpfs-backed; pull_aws_secrets schedules a wipe 60s after
+# writing it, so this only hits on back-to-back restarts — exactly the case
+# we want to accelerate.
+if [[ -s "$_CRED_TMP" ]]; then
+	echo -e "${CYAN}Found existing credential temp file — sourcing before AWS pull${NC}"
+	. "$_CRED_TMP" 2>/dev/null || \
+		echo -e "${YELLOW}WARNING: failed to source $_CRED_TMP (malformed?)${NC}"
+fi
+
+if declare -f get_cameras_credentials >/dev/null 2>&1; then
+	# Load credentials from AWS Secrets Manager into the current shell.
+	# get_cameras_credentials writes export statements to the temp file,
+	# then sources it internally. We also capture a copy BEFORE it gets
+	# cleared, so we can re-source with set -a for child process export.
+	get_cameras_credentials --temp="$_CRED_TMP" 2>/dev/null || {
+		echo -e "${YELLOW}WARNING: Failed to load camera credentials${NC}"
+		echo "  Ensure AWS SSO is valid or switch to DB-based credentials via the UI."
+	}
+	# Export all NVR_* vars so subprocesses (seed_credentials.py) can see them.
+	# get_cameras_credentials sources vars into this shell but doesn't export them.
+	for _var in $(compgen -v | grep '^NVR_'); do
+		export "$_var"
+	done
 fi
 
 # =============================================================================
@@ -229,13 +259,38 @@ if [[ -f scripts/seed_credentials.py ]]; then
 	stop_spinner
 fi
 
-# Generate streaming configs for all three hubs (exclusive assignment).
+# Streaming configs (MediaMTX + go2rtc + neolink) — regenerate on demand only.
 # Each camera appears in exactly ONE hub's config based on DB streaming_hub field.
-echo -e "${CYAN}Generating streaming configs (MediaMTX + go2rtc + neolink)...${NC}"
-if [[ -f scripts/generate_streaming_configs.py ]]; then
-	venv/bin/python3 scripts/generate_streaming_configs.py
+#
+# Regen triggers (any of these forces it):
+#   - caller passed --regenerate-configs / -r / --reset
+#   - deploy.sh invoked us (sets NVR_FROM_DEPLOY=1 in the environment)
+#   - live go2rtc.yaml is missing or empty (post-reboot tmpfs case)
+#
+# Otherwise the existing live config is preserved — regen is expensive and
+# invalidates any manual tweaks in /dev/shm/nvr-go2rtc/.
+_REGEN_CONFIGS=false
+for _arg in "$@"; do
+	case "$_arg" in
+		--regenerate-configs | -r | --reset) _REGEN_CONFIGS=true ;;
+	esac
+done
+[[ "${NVR_FROM_DEPLOY:-}" == "1" ]] && _REGEN_CONFIGS=true
+[[ ! -s /dev/shm/nvr-go2rtc/go2rtc.yaml ]] && _REGEN_CONFIGS=true
+
+if $_REGEN_CONFIGS; then
+	# Ownership of /dev/shm/nvr-go2rtc is guaranteed by the early setup block above.
+	echo -e "${CYAN}Regenerating streaming configs (MediaMTX + go2rtc + neolink)...${NC}"
+	if [[ -f scripts/generate_streaming_configs.py ]]; then
+		if ! venv/bin/python3 scripts/generate_streaming_configs.py; then
+			echo -e "${RED}ERROR: streaming config generation failed — aborting${NC}"
+			exit 1
+		fi
+	fi
+	echo -e "${GREEN}✓${NC} Streaming configs regenerated"
+else
+	echo -e "${GREEN}✓${NC} Streaming configs preserved (use --regenerate-configs / -r / --reset to force)"
 fi
-echo -e "${GREEN}✓${NC} Streaming configs generated"
 
 if [[ -f scripts/update_recording_settings.sh && -f config/recording_settings.json ]]; then
 	start_spinner 20 "$CYAN Syncing recording_settings.json with cameras"

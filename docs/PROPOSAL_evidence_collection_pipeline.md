@@ -311,7 +311,7 @@ If the user is not in NY, the disclosure text is jurisdiction-aware (uses `nvr_s
 | 0b | Manifest writer + hash chain + DB migrations | 1 day | — |
 | 1 | ffmpeg audio extractor service (silence-prune) | 2 days | Per-camera audio capability survey |
 | 2 | YAMNet classifier service | 2 days | — |
-| 3 | Whisper transcription + Anamnesis ingest | 2 days | **MSG-131 reply from server-legal** |
+| 3 | Whisper transcription + Anamnesis ingest | 2 days | ✓ unblocked — MSG-131 ACK received 2026-04-27 |
 | 4 | "Collect Evidence" UI tab | 2 days | — |
 | 4.5 | Jurisdiction-aware disclosure | 1 day | — |
 | 5 | HTTP API + reference `0_LEGAL` consumer daemon | 3 days | — |
@@ -325,13 +325,75 @@ If the user is not in NY, the disclosure text is jurisdiction-aware (uses `nvr_s
 
 1. **`/dev/sdb` contents** — current state is unknown (sandbox blocked read-only inspection). User stated "use sdb, rename for purpose," but that needs to be authorized as: "wipe whatever is on sdb and use it as `/litigation/`."
 2. **Drive label** — propose `LITIGATION`. Alternative: `EVIDENCE`. User pick.
-3. **Whisper model** — pending intercom reply from `server-legal` (MSG-131).
+3. ~~**Whisper model** — pending intercom reply from `server-legal` (MSG-131).~~ **RESOLVED 2026-04-27** — see §9 below.
 4. **Audio-capable camera survey** — needs ffprobe per camera at Phase 1 start. The DB has `two_way_audio` but no `audio_input_supported` column. May need a one-time probe + new column.
 5. **Anamnesis instance tag for these episodes** — `dellserver-nvr` (existing) vs new tag `dellserver-nvr-litigation` to make it filterable? I lean toward existing tag with a `tags: ["litigation"]` field on the episode body.
 
 ---
 
-## 9. What this proposal does NOT do
+## 9. Whisper config (resolved via MSG-131 ACK from `server-legal`, 2026-04-27)
+
+`0_LEGAL` runs `openai-whisper medium` on office's GTX 1660 with `--fp16 False` (mandatory — the 1660 lacks tensor cores and produces NaN tokens in FP16). For quality parity, NVR-side Phase 3 uses the same model but adapted to the different deployment context:
+
+```
+~/.evidence/venv/bin/whisper "<audio.mp3>" \
+  --model medium \
+  --output_format json \
+  --output_dir <intake_dir> \
+  --fp16 False                 # CPU mode on dellserver (no GPU); same flag value
+  # NOTE: --language deliberately omitted — home audio is FR/EN/ES/PT
+  # mix per user profile §1.5. Auto-detect handles mixed-language speech
+  # better than forcing one language.
+```
+
+### 10.1 Differences from `0_LEGAL`'s Mindhop invocation
+
+| Flag | `0_LEGAL` (Mindhop) | NVR pipeline | Why |
+|---|---|---|---|
+| `--model` | `medium` | `medium` | Match. |
+| `--language` | `en` | *(omitted)* | Mindhop is monolingual English. Home audio is multilingual (FR/EN/ES/PT). |
+| `--fp16` | `False` | `False` | Same flag, different reason — Mindhop runs on a 1660 (no tensor cores), NVR runs on Xeons (no GPU). Either way: `False`. |
+| `--output_format` | `all` | `json` | We need segments + log-probs + token-level data programmatically; the `.txt` and `.vtt` are derived after. |
+| Hardware | GTX 1660 (office) | dual Xeon E5-2690 v4 CPU (dellserver) | Whisper medium @ CPU runs ≈ 0.5× realtime on this CPU; acceptable for silence-pruned short clips. |
+
+### 10.2 First-30s drop mitigation (per MSG-131 §4)
+
+`server-legal` flagged that `medium` sometimes drops the first 30 seconds of long audio. Their workaround is a parallel `tiny` model pass for cross-validation. NVR pipeline implements the same:
+
+```python
+# Phase 3 pseudocode
+medium_segments = whisper(audio, model="medium").segments
+tiny_segments   = whisper(audio, model="tiny").segments
+
+# If medium has nothing in [0, 30s] but tiny does, use tiny's segments for that window
+if not any(s for s in medium_segments if s.start < 30) and \
+   any(s for s in tiny_segments if s.start < 30):
+    medium_segments = [s for s in tiny_segments if s.start < 30] + medium_segments
+```
+
+This adds ~10% to total transcription time but eliminates a known silent-drop mode that would otherwise lose the start of every clip — exactly the moment most likely to contain the triggering event.
+
+### 10.3 Hallucination guard
+
+Per the 2026-03-13 Whisper hallucination episode (`"Good night"` over silence with `no_speech_prob > 0.97`):
+
+```python
+KEPT_SEGMENTS = [
+    s for s in whisper_segments
+    if s["no_speech_prob"] < 0.7        # drops near-silent hallucinated text
+    and s["avg_logprob"]   > -1.0       # drops low-confidence segments
+]
+```
+
+These are **not deleted from the audio** — only from the transcript. The mp3 always retains the full waveform; only the `.txt` and `.json` are filtered. This way, if a dropped segment turns out to have been real speech (rare but possible), the audio is still there to re-transcribe manually with a different model or by ear.
+
+### 10.4 GPU offload as future option
+
+If transcription throughput becomes a bottleneck, Phase 3 can be retargeted to run on office's RX 6800 via the existing Anamnesis trainer's HTTP interface (`office:3011/inference/...` — see Anamnesis trainer README). That would lift `--fp16` (the RX 6800 has hardware FP16) and roughly 5× throughput. Not in scope for the initial implementation.
+
+---
+
+## 10. What this proposal does NOT do
 
 - It does not classify "harassment", "nagging", "insults", or "arguments" automatically. Those are inherently contextual and an LLM verdict on them is not court-admissible. The transcripts are captured and indexed in Anamnesis; the user retrieves them and judges them.
 - It does not auto-share evidence with anyone. Promotion to a case is always a user action.

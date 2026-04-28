@@ -19,6 +19,11 @@ DOCS/
 # Project-specific ignores
 # -----------------------------------------------------------------------------
 **/0_*
+# Evidence collection volume — symlink at ~/0_MOBIUS.NVR/litigation
+# points to /litigation (a separate disk on dellserver). Never commit
+# this symlink, its target, or any of its contents.
+/litigation
+litigation/
 persistent.json
 persistent.json.backup_2
 bootstrap.json
@@ -28,6 +33,10 @@ neolink/target/
 # Personal scripts (untracked — use _deploy.sh and _start.sh instead)
 deploy.sh
 start.sh
+
+# Backup files left by canonical-rule propagation agents
+*.bak
+*.bak.before_*
 
 # SSH keys for container-to-host restart (private keys, never commit)
 .ssh/

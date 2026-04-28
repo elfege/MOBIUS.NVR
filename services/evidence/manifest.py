@@ -46,9 +46,39 @@ from typing import Any, Dict, Iterator, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Default canonical mount point for the litigation volume.
-# Override at construction time for tests or alternate deployments.
-MANIFEST_PATH = Path("/litigation/MANIFEST.jsonl")
+# Resolve the litigation volume root.
+#
+# The volume's canonical mount point on dellserver is /litigation/
+# (sdd, ext4, label LITIGATION). For project-tree access, the same
+# directory is also reachable as <project_root>/litigation:
+#   - On the host: a symlink at ~/0_MOBIUS.NVR/litigation -> /litigation
+#   - In the container: a bind mount /litigation -> /app/litigation
+#
+# Resolution priority:
+#   1. ``LITIGATION_ROOT`` environment variable (explicit override —
+#      used by tests and alternate deployments).
+#   2. ``<project_root>/litigation`` if it exists (preferred — keeps
+#      pipeline code agnostic to whether it runs inside or outside
+#      the container).
+#   3. ``/litigation`` as a final fallback.
+#
+# Project root is two levels up from this file:
+#   services/evidence/manifest.py  →  <project_root>
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_litigation_root() -> Path:
+    env = os.environ.get("LITIGATION_ROOT")
+    if env:
+        return Path(env)
+    project_local = _PROJECT_ROOT / "litigation"
+    if project_local.exists():
+        return project_local
+    return Path("/litigation")
+
+
+LITIGATION_ROOT = _resolve_litigation_root()
+MANIFEST_PATH = LITIGATION_ROOT / "MANIFEST.jsonl"
 
 # Special sentinel used as previous_hash on the genesis entry. Anything
 # else here would imply a prior entry exists, breaking the chain check.

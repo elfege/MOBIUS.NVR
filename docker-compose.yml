@@ -93,6 +93,12 @@ services:
       - ${NVR_RECORDING_PATH:-/mnt/sdc/NVR_Recent}:/recordings
       - ${NVR_STORAGE_PATH:-/mnt/THE_BIG_DRIVE/NVR_RECORDINGS}:/recordings/STORAGE
       - ${NVR_ALTERNATE_RECORDING_STORAGE:-/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP}:/recordings/ALTERNATE
+      # Evidence collection volume (Phase 0 of evidence_gathering branch).
+      # Mounted both at /litigation (canonical path matching the host) and
+      # at /app/litigation (project-namespace view, matches the host symlink
+      # at ~/0_MOBIUS.NVR/litigation -> /litigation).
+      - ${NVR_LITIGATION_PATH:-/litigation}:/litigation
+      - ${NVR_LITIGATION_PATH:-/litigation}:/app/litigation
       # Mount Python source code for hot-reloading
       - ./:/app
       # Restart trigger — container writes "reboot" to trigger file,

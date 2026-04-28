@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Publisher State Coordination Architecture</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Publisher State Coordination Architecture</h1>
+    <p><strong>Author:</strong> Design Session</p>
+    <p><strong>Date:</strong> January 3, 2026</p>
+    <p><strong>Status:</strong> Design Phase</p>
+    <p><strong>Branch:</strong> <code>recording_motion_detection_isolation_JAN_3_2026_a</code></p>
+    <hr>
+    <h2>Problem Statement</h2>
+    <p><strong>Current Issue:</strong></p>
+    <p>When a camera's LL-HLS publisher fails or dies, there is no coordinated state management between MediaMTX and the NVR services. This causes:</p>
+    <ol>
+        <li><strong>Resource Waste</strong>: Motion detection, recording, and UI health monitors continuously attempt to connect to dead publishers</li>
+        <li><strong>Log Spam</strong>: MediaMTX logs fill with "torn down by 172.19.0.6:XXXX" events (10+ per 30 seconds per dead camera)</li>
+        <li><strong>Poor UX</strong>: UI shows "Starting..." indefinitely instead of accurate "Camera Unavailable" status</li>
+        <li><strong>No Smart Retry</strong>: Services hammer MediaMTX paths with no exponential backoff or coordination</li>
+    </ol>
+    <p><strong>User Requirement:</strong></p>
+    <blockquote>"MediaMTX fails to stream from a camera => communicate with the other containers (mostly nvr) so recorder and motion managers don't attempt until MediaMTX says 'hey, this one is online now, you can try again'"</blockquote>
+    <hr>
+    <h2>Current Architecture Analysis</h2>
+    <h3>Existing State Tracking (Backend)</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/streaming/stream_manager.py</code></p>
+    <p><strong>Stream Entry Structure:</strong></p>
+    <pre><code>self.active_streams[stream_key] = {
+    'process': None,              # subprocess.Popen object
+    'status': 'starting',         # 'starting' | 'active' | 'stopped'
+    'start_time': None,
+    'camera_name': camera_name,
+    'camera_serial': camera_serial,
+    # ...
+}</code></pre>
+    <p><strong>Status Detection:</strong></p>
+    <ul>
+        <li><code>is_stream_alive()</code> - Checks if FFmpeg process running (Line 1014-1028)</li>
+        <li><code>get_active_streams()</code> - Returns all active streams with status (Line 1030-1067)</li>
+        <li>Thread-safe access via <code>self._streams_lock</code> (RLock)</li>
+    </ul>
+    <h3>Existing Health Monitoring (UI)</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/static/js/streaming/health.js</code></p>
+    <p><strong>Detection Mechanisms:</strong></p>
+    <ol>
+        <li><strong>Frame Progression Tracking</strong> - Monitors <code>currentTime</code> advancement</li>
+        <li><strong>Frame Signature Detection</strong> - FNV-1a hash of frame data</li>
+        <li><strong>Black Screen Detection</strong> - Luminance/deviation analysis</li>
+        <li><strong>Stale Detection</strong> - Frozen frame detection (20s threshold)</li>
+    </ol>
+    <p><strong>Recovery Strategy:</strong></p>
+    <ul>
+        <li>First 3 failures: Refresh/reconnect only</li>
+        <li>Subsequent failures: Nuclear restart (stop + start)</li>
+        <li>Exponential backoff: 5s, 10s, 20s, 40s, 60s max</li>
+        <li>Max attempts: 10 (configurable)</li>
+    </ul>
+    <h3>Gap Analysis</h3>
+    <p><strong>What's Missing:</strong></p>
+    <ol>
+        <li><strong>No Publisher State Broadcast</strong></li>
+    </ol>
+    <ul>
+        <li>MediaMTX knows path has no publisher, but NVR services don't</li>
+        <li>Each service independently discovers failures by attempting connection</li>
+        <li>No shared state = redundant failure detection</li>
+    </ul>
+    <ol>
+        <li><strong>No Coordinated Retry Logic</strong></li>
+    </ol>
+    <ul>
+        <li>UI health monitor retries independently</li>
+        <li>Motion detection retries independently</li>
+        <li>Recording service retries independently</li>
+        <li>No exponential backoff coordination</li>
+    </ul>
+    <ol>
+        <li><strong>No Camera Availability Tracker</strong></li>
+    </ol>
+    <ul>
+        <li>No centralized "camera is unreachable" state</li>
+        <li>Services can't distinguish between "publisher starting" vs "camera hardware dead"</li>
+    </ul>
+    <ol>
+        <li><strong>MediaMTX API Not Enabled</strong></li>
+    </ol>
+    <ul>
+        <li>MediaMTX has REST API for path/publisher queries (port 9997)</li>
+        <li>Currently not configured in <code>packager/mediamtx.yml</code></li>
+        <li>No programmatic access to publisher state</li>
+    </ul>
+    <hr>
+    <h2>Proposed Architecture</h2>
+    <h3>Design Principles</h3>
+    <ol>
+        <li><strong>Single Source of Truth</strong>: One authoritative state tracker for camera availability</li>
+        <li><strong>Event-Driven Updates</strong>: Push state changes instead of continuous polling</li>
+        <li><strong>Graceful Degradation</strong>: Individual camera failures don't crash system</li>
+        <li><strong>Minimal Configuration</strong>: Use existing infrastructure where possible</li>
+        <li><strong>Backwards Compatible</strong>: Maintain current behavior as fallback</li>
+    </ol>
+    <h3>Architecture Overview</h3>
+    <pre><code>┌─────────────────────────────────────────────────────────────────┐
+│                         Camera Hardware                          │
+│                   (Eufy, Reolink, UniFi, etc.)                  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ RTSP
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    LL-HLS Publisher (FFmpeg)                     │
+│                  streaming/stream_manager.py                     │
+│                                                                   │
+│  • Spawns FFmpeg per camera                                      │
+│  • Publishes to MediaMTX via RTSP                                │
+│  • Detects process death (poll())                                │
+│  • Updates CameraStateTracker on state change                    │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ RTSP Publish
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    MediaMTX (nvr-packager)                       │
+│                  packager/mediamtx.yml                           │
+│                                                                   │
+│  • Receives RTSP from publishers                                 │
+│  • Re-broadcasts to consumers (RTSP/HLS/LL-HLS)                  │
+│  • **NEW**: Exposes API on port 9997 (path state)                │
+│  • **NEW**: Polled by CameraStateTracker                         │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│            **NEW**: CameraStateTracker (Singleton)               │
+│                services/camera_state_tracker.py                  │
+│                                                                   │
+│  State Per Camera:                                                │
+│  • availability: ONLINE | STARTING | OFFLINE | DEGRADED          │
+│  • publisher_active: bool (MediaMTX has publisher)               │
+│  • last_seen: timestamp                                          │
+│  • failure_count: int                                            │
+│  • next_retry: timestamp (exponential backoff)                   │
+│                                                                   │
+│  Methods:                                                         │
+│  • get_camera_state(camera_id) -&gt; CameraState                    │
+│  • update_state(camera_id, state)                                │
+│  • can_retry(camera_id) -&gt; bool                                  │
+│  • register_failure(camera_id)                                   │
+│  • register_success(camera_id)                                   │
+│                                                                   │
+│  Background Tasks:                                                │
+│  • Poll MediaMTX API every 5s for publisher state                │
+│  • Update availability based on FFmpeg process state             │
+│  • Trigger state change callbacks                                │
+└────────────────────────┬────────────────────────────────────────┘
+                         │ Query State
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Consumer Services                           │
+│                                                                   │
+│  Motion Detection:                                                │
+│  • Check can_retry() before attempting connection                │
+│  • Respect exponential backoff from tracker                      │
+│  • Register failures/successes with tracker                      │
+│                                                                   │
+│  Recording Service:                                               │
+│  • Check publisher_active before starting recording              │
+│  • Skip recording if camera OFFLINE                              │
+│  • Register failures/successes with tracker                      │
+│                                                                   │
+│  UI Health Monitor:                                               │
+│  • Query state for accurate status display                       │
+│  • Show "Camera Unavailable" if OFFLINE                          │
+│  • Reduce polling frequency for OFFLINE cameras                  │
+│                                                                   │
+│  API Endpoints:                                                   │
+│  • /api/camera/state/&lt;camera_id&gt; - Get state                     │
+│  • /api/camera/states - Get all states                           │
+└─────────────────────────────────────────────────────────────────┘</code></pre>
+    <hr>
+    <h2>Component Design</h2>
+    <h3>1. CameraStateTracker (New Singleton Service)</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/services/camera_state_tracker.py</code></p>
+    <p><strong>State Model:</strong></p>
+    <pre><code>from enum import Enum
+from dataclasses import dataclass
+from datetime import datetime
+
+class CameraAvailability(Enum):
+    ONLINE = "online"          # Publisher active, stream healthy
+    STARTING = "starting"      # Publisher starting, not yet confirmed
+    OFFLINE = "offline"        # Camera unreachable or hardware failure
+    DEGRADED = "degraded"      # Publisher active but stream quality issues
+
+@dataclass
+class CameraState:
+    camera_id: str
+    availability: CameraAvailability
+    publisher_active: bool          # MediaMTX has active publisher
+    ffmpeg_process_alive: bool      # FFmpeg process running
+    last_seen: datetime             # Last successful health check
+    failure_count: int              # Consecutive failures
+    next_retry: datetime            # When to attempt next retry
+    backoff_seconds: int            # Current backoff duration
+    error_message: str | None       # Last error (for UI display)</code></pre>
+    <p><strong>Core Methods:</strong></p>
+    <pre><code>class CameraStateTracker:
+    def __init__(self):
+        self._states: Dict[str, CameraState] = {}
+        self._lock = threading.RLock()
+        self._callbacks: Dict[str, List[Callable]] = {}
+        self._mediamtx_api_url = "http://nvr-packager:9997"
+        self._poll_thread: threading.Thread | None = None
+        self._running = False
+
+    def start(self):
+        """Start background polling thread"""
+        self._running = True
+        self._poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._poll_thread.start()
+
+    def stop(self):
+        """Stop background polling"""
+        self._running = False
+        if self._poll_thread:
+            self._poll_thread.join(timeout=5)
+
+    def get_camera_state(self, camera_id: str) -&gt; CameraState:
+        """Get current state for camera"""
+        with self._lock:
+            return self._states.get(camera_id, self._create_default_state(camera_id))
+
+    def can_retry(self, camera_id: str) -&gt; bool:
+        """Check if service can attempt connection to camera"""
+        state = self.get_camera_state(camera_id)
+
+        # Always allow if ONLINE or STARTING
+        if state.availability in (CameraAvailability.ONLINE, CameraAvailability.STARTING):
+            return True
+
+        # For OFFLINE/DEGRADED, check exponential backoff timer
+        now = datetime.now()
+        return now &gt;= state.next_retry
+
+    def register_failure(self, camera_id: str, error: str):
+        """Register connection failure, update backoff"""
+        with self._lock:
+            state = self._states.get(camera_id)
+            if not state:
+                state = self._create_default_state(camera_id)
+                self._states[camera_id] = state
+
+            state.failure_count += 1
+            state.error_message = error
+
+            # Exponential backoff: 5s, 10s, 20s, 40s, 80s, 120s max
+            state.backoff_seconds = min(120, 5 * (2 ** (state.failure_count - 1)))
+            state.next_retry = datetime.now() + timedelta(seconds=state.backoff_seconds)
+
+            # Update availability
+            if state.failure_count &gt;= 3:
+                state.availability = CameraAvailability.OFFLINE
+            elif state.failure_count &gt;= 1:
+                state.availability = CameraAvailability.DEGRADED
+
+            self._trigger_callbacks(camera_id, state)
+
+    def register_success(self, camera_id: str):
+        """Register successful connection, reset backoff"""
+        with self._lock:
+            state = self._states.get(camera_id)
+            if not state:
+                state = self._create_default_state(camera_id)
+                self._states[camera_id] = state
+
+            state.failure_count = 0
+            state.backoff_seconds = 0
+            state.next_retry = datetime.now()
+            state.last_seen = datetime.now()
+            state.error_message = None
+            state.availability = CameraAvailability.ONLINE
+
+            self._trigger_callbacks(camera_id, state)
+
+    def update_publisher_state(self, camera_id: str, active: bool):
+        """Update publisher active state from MediaMTX API or stream manager"""
+        with self._lock:
+            state = self._states.get(camera_id)
+            if not state:
+                state = self._create_default_state(camera_id)
+                self._states[camera_id] = state
+
+            state.publisher_active = active
+
+            # If publisher just became active, mark as STARTING (not yet verified healthy)
+            if active and state.availability == CameraAvailability.OFFLINE:
+                state.availability = CameraAvailability.STARTING
+
+            self._trigger_callbacks(camera_id, state)
+
+    def _poll_loop(self):
+        """Background thread: poll MediaMTX API for publisher states"""
+        while self._running:
+            try:
+                self._poll_mediamtx_api()
+            except Exception as e:
+                logger.error(f"MediaMTX API poll failed: {e}")
+
+            time.sleep(5)  # Poll every 5 seconds
+
+    def _poll_mediamtx_api(self):
+        """Query MediaMTX API for all path states"""
+        try:
+            response = requests.get(f"{self._mediamtx_api_url}/v3/paths/list", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+
+                # Update publisher state for each path
+                for path_info in data.get('items', []):
+                    camera_id = path_info.get('name', '')
+
+                    # Skip _main paths (only track base camera ID)
+                    if camera_id.endswith('_main'):
+                        continue
+
+                    # Check if path has active publisher
+                    has_publisher = path_info.get('sourceReady', False)
+                    self.update_publisher_state(camera_id, has_publisher)
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"MediaMTX API unreachable: {e}")
+
+    def register_callback(self, camera_id: str, callback: Callable[[CameraState], None]):
+        """Register callback for state changes"""
+        with self._lock:
+            if camera_id not in self._callbacks:
+                self._callbacks[camera_id] = []
+            self._callbacks[camera_id].append(callback)
+
+    def _trigger_callbacks(self, camera_id: str, state: CameraState):
+        """Trigger all registered callbacks for camera"""
+        callbacks = self._callbacks.get(camera_id, [])
+        for callback in callbacks:
+            try:
+                callback(state)
+            except Exception as e:
+                logger.error(f"Callback error for {camera_id}: {e}")
+
+    def _create_default_state(self, camera_id: str) -&gt; CameraState:
+        """Create default state for new camera"""
+        return CameraState(
+            camera_id=camera_id,
+            availability=CameraAvailability.STARTING,
+            publisher_active=False,
+            ffmpeg_process_alive=False,
+            last_seen=datetime.now(),
+            failure_count=0,
+            next_retry=datetime.now(),
+            backoff_seconds=0,
+            error_message=None
+        )</code></pre>
+    <hr>
+    <h3>2. StreamManager Integration</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/streaming/stream_manager.py</code></p>
+    <p><strong>Changes Required:</strong></p>
+    <pre><code># Add import
+from services.camera_state_tracker import CameraStateTracker, CameraAvailability
+
+class StreamManager:
+    def __init__(self, ...):
+        # ... existing init ...
+        self.state_tracker = CameraStateTracker()
+        self.state_tracker.start()
+
+    def start_stream(self, camera_serial, ...):
+        # Before starting, check if we should retry
+        if not self.state_tracker.can_retry(camera_serial):
+            state = self.state_tracker.get_camera_state(camera_serial)
+            logger.info(f"Skipping stream start for {camera_serial}, "
+                       f"next retry in {state.backoff_seconds}s")
+            return None
+
+        # Mark as STARTING
+        self.state_tracker.update_publisher_state(camera_serial, active=False)
+        self.state_tracker.get_camera_state(camera_serial).availability = CameraAvailability.STARTING
+
+        # ... existing start_stream logic ...
+
+        # After successful FFmpeg spawn
+        self.state_tracker.register_success(camera_serial)
+        self.state_tracker.update_publisher_state(camera_serial, active=True)
+
+    def _monitor_stream(self, camera_serial):
+        """Existing background monitor (if enabled)"""
+        # ... existing monitoring ...
+
+        # On process death
+        if process.poll() is not None:
+            self.state_tracker.register_failure(camera_serial, "FFmpeg process died")
+            self.state_tracker.update_publisher_state(camera_serial, active=False)
+
+    def is_stream_alive(self, camera_serial):
+        # Update state tracker with FFmpeg process state
+        alive = super().is_stream_alive(camera_serial)  # existing logic
+
+        state = self.state_tracker.get_camera_state(camera_serial)
+        state.ffmpeg_process_alive = alive
+
+        if not alive and state.publisher_active:
+            # FFmpeg died but MediaMTX still thinks publisher active
+            self.state_tracker.update_publisher_state(camera_serial, active=False)
+
+        return alive</code></pre>
+    <hr>
+    <h3>3. Motion Detection Service Integration</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/services/motion/ffmpeg_motion_detector.py</code></p>
+    <p><strong>Changes Required:</strong></p>
+    <pre><code>from services.camera_state_tracker import CameraStateTracker
+
+class FFmpegMotionDetector:
+    def __init__(self, ...):
+        # ... existing init ...
+        self.state_tracker = CameraStateTracker()  # Singleton, shared instance
+
+    def start_detector(self, camera_id, sensitivity):
+        # Check if camera available
+        if not self.state_tracker.can_retry(camera_id):
+            state = self.state_tracker.get_camera_state(camera_id)
+            logger.info(f"Skipping motion detection for {camera_id}, "
+                       f"camera {state.availability.value}, retry in {state.backoff_seconds}s")
+            return False
+
+        # Check if publisher active
+        state = self.state_tracker.get_camera_state(camera_id)
+        if not state.publisher_active:
+            logger.info(f"Skipping motion detection for {camera_id}, no active publisher")
+            return False
+
+        # ... existing start_detector logic ...
+
+        # On successful start
+        self.state_tracker.register_success(camera_id)
+
+    def _monitor_detector(self, camera_id):
+        """Background monitor for detector process"""
+        # ... existing monitoring ...
+
+        # On connection failure
+        if "Connection refused" in error_output:
+            self.state_tracker.register_failure(camera_id, "Motion detector connection refused")</code></pre>
+    <hr>
+    <h3>4. Recording Service Integration</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/services/recording/recording_service.py</code></p>
+    <p><strong>Changes Required:</strong></p>
+    <pre><code>from services.camera_state_tracker import CameraStateTracker, CameraAvailability
+
+class RecordingService:
+    def __init__(self, ...):
+        # ... existing init ...
+        self.state_tracker = CameraStateTracker()
+
+    def start_motion_recording(self, camera_id, event_id):
+        # Check camera availability
+        state = self.state_tracker.get_camera_state(camera_id)
+
+        if state.availability == CameraAvailability.OFFLINE:
+            logger.warning(f"Skipping recording for {camera_id}, camera offline")
+            return None
+
+        if not state.publisher_active:
+            logger.warning(f"Skipping recording for {camera_id}, no active publisher")
+            return None
+
+        if not self.state_tracker.can_retry(camera_id):
+            logger.info(f"Skipping recording for {camera_id}, "
+                       f"backoff active, retry in {state.backoff_seconds}s")
+            return None
+
+        # ... existing recording logic ...
+
+        # On successful recording start
+        self.state_tracker.register_success(camera_id)
+
+        # On recording failure
+        # self.state_tracker.register_failure(camera_id, "Recording failed: ...")</code></pre>
+    <hr>
+    <h3>5. API Endpoints</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/app.py</code></p>
+    <p><strong>New Endpoints:</strong></p>
+    <pre><code>from services.camera_state_tracker import camera_state_tracker  # Global singleton
+
+@app.route('/api/camera/state/&lt;camera_id&gt;', methods=['GET'])
+def get_camera_state(camera_id):
+    """Get state for specific camera"""
+    state = camera_state_tracker.get_camera_state(camera_id)
+
+    return jsonify({
+        'success': True,
+        'camera_id': camera_id,
+        'state': {
+            'availability': state.availability.value,
+            'publisher_active': state.publisher_active,
+            'ffmpeg_process_alive': state.ffmpeg_process_alive,
+            'last_seen': state.last_seen.isoformat(),
+            'failure_count': state.failure_count,
+            'next_retry': state.next_retry.isoformat(),
+            'backoff_seconds': state.backoff_seconds,
+            'error_message': state.error_message
+        }
+    })
+
+@app.route('/api/camera/states', methods=['GET'])
+def get_all_camera_states():
+    """Get states for all cameras"""
+    from config.camera_config import camera_config
+
+    all_states = {}
+    for camera_id in camera_config.get_all_camera_ids():
+        state = camera_state_tracker.get_camera_state(camera_id)
+        all_states[camera_id] = {
+            'availability': state.availability.value,
+            'publisher_active': state.publisher_active,
+            'last_seen': state.last_seen.isoformat(),
+            'error_message': state.error_message
+        }
+
+    return jsonify({
+        'success': True,
+        'states': all_states
+    })</code></pre>
+    <hr>
+    <h3>6. UI Integration</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/static/js/streaming/stream.js</code></p>
+    <p><strong>Changes Required:</strong></p>
+    <pre><code>// New method: query camera state from API
+async queryCameraState(cameraSerial) {
+    try {
+        const response = await fetch(`/api/camera/state/${cameraSerial}`);
+        const data = await response.json();
+
+        if (data.success) {
+            return data.state;
+        }
+    } catch (error) {
+        console.error(`Failed to query camera state: ${error}`);
+    }
+
+    return null;
+}
+
+// Modified: handle camera state in stream start
+async startStream(cameraSerial, $streamItem) {
+    // Check camera state before attempting start
+    const state = await this.queryCameraState(cameraSerial);
+
+    if (state &amp;&amp; state.availability === 'offline') {
+        this.setStreamStatus($streamItem, 'error',
+            `Camera Unavailable (retry in ${state.backoff_seconds}s)`);
+
+        // Schedule retry based on backoff timer
+        setTimeout(() =&gt; {
+            this.startStream(cameraSerial, $streamItem);
+        }, state.backoff_seconds * 1000);
+
+        return;
+    }
+
+    if (state &amp;&amp; !state.publisher_active) {
+        this.setStreamStatus($streamItem, 'loading',
+            'Publisher Starting...');
+    }
+
+    // ... existing start_stream logic ...
+}
+
+// New method: poll camera states for UI updates
+startCameraStatePolling() {
+    setInterval(async () =&gt; {
+        const response = await fetch('/api/camera/states');
+        const data = await response.json();
+
+        if (data.success) {
+            for (const [cameraId, state] of Object.entries(data.states)) {
+                const $streamItem = $(`.stream-item[data-camera="${cameraId}"]`);
+
+                // Update UI based on state
+                if (state.availability === 'offline') {
+                    this.setStreamStatus($streamItem, 'error',
+                        `Camera Unavailable${state.error_message ? ': ' + state.error_message : ''}`);
+                } else if (!state.publisher_active) {
+                    this.setStreamStatus($streamItem, 'loading', 'Publisher Starting...');
+                }
+            }
+        }
+    }, 10000);  // Poll every 10 seconds
+}</code></pre>
+    <hr>
+    <h3>7. MediaMTX Configuration</h3>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/packager/mediamtx.yml</code></p>
+    <p><strong>Changes Required:</strong></p>
+    <pre><code># === API Configuration ===
+api: yes
+apiAddress: :9997  # Internal port for NVR container
+
+# ... rest of existing config ...</code></pre>
+    <p><strong>Docker Compose Change:</strong></p>
+    <p><strong>File:</strong> <code>/home/elfege/0_NVR/docker-compose.yml</code></p>
+    <pre><code>services:
+  nvr-packager:
+    # ... existing config ...
+    ports:
+      - "8888:8888"   # LL-HLS HTTP
+      - "8554:8554"   # RTSP
+      - "1935:1935"   # RTMP
+      # No need to expose 9997 externally - only internal Docker network</code></pre>
+    <hr>
+    <h2>Implementation Plan</h2>
+    <h3>Phase 1: Foundation (1-2 hours)</h3>
+    <ol>
+        <li><strong>Enable MediaMTX API</strong></li>
+    </ol>
+    <ul>
+        <li>Edit <code>packager/mediamtx.yml</code>: add <code>api: yes</code> and <code>apiAddress: :9997</code></li>
+        <li>Test API accessibility: <code>curl http://nvr-packager:9997/v3/paths/list</code></li>
+    </ul>
+    <ol>
+        <li><strong>Create CameraStateTracker</strong></li>
+    </ol>
+    <ul>
+        <li>New file: <code>services/camera_state_tracker.py</code></li>
+        <li>Implement core state model (CameraState, CameraAvailability enum)</li>
+        <li>Implement singleton pattern with thread-safe access</li>
+        <li>Add basic get/update methods (no polling yet)</li>
+    </ul>
+    <ol>
+        <li><strong>Unit Tests</strong></li>
+    </ol>
+    <ul>
+        <li>Test state transitions</li>
+        <li>Test exponential backoff calculation</li>
+        <li>Test thread safety (concurrent access)</li>
+    </ul>
+    <h3>Phase 2: StreamManager Integration (2-3 hours)</h3>
+    <ol>
+        <li><strong>Integrate StateTracker into StreamManager</strong></li>
+    </ol>
+    <ul>
+        <li>Add tracker initialization in <code>__init__</code></li>
+        <li>Update <code>start_stream()</code> to check <code>can_retry()</code></li>
+        <li>Update <code>is_stream_alive()</code> to update tracker state</li>
+        <li>Register failures on FFmpeg process death</li>
+    </ul>
+    <ol>
+        <li><strong>Add MediaMTX API Polling</strong></li>
+    </ol>
+    <ul>
+        <li>Implement <code>_poll_mediamtx_api()</code> in CameraStateTracker</li>
+        <li>Start background polling thread</li>
+        <li>Update <code>publisher_active</code> state from API responses</li>
+    </ul>
+    <ol>
+        <li><strong>Testing</strong></li>
+    </ol>
+    <ul>
+        <li>Manually kill FFmpeg process, verify state updates</li>
+        <li>Verify exponential backoff prevents immediate retry</li>
+        <li>Check MediaMTX API polling works correctly</li>
+    </ul>
+    <h3>Phase 3: Service Integration (2-3 hours)</h3>
+    <ol>
+        <li><strong>Motion Detection Services</strong></li>
+    </ol>
+    <ul>
+        <li>Update <code>ffmpeg_motion_detector.py</code> to check <code>can_retry()</code></li>
+        <li>Update <code>reolink_motion_service.py</code> to check publisher state</li>
+        <li>Register failures on connection errors</li>
+    </ul>
+    <ol>
+        <li><strong>Recording Service</strong></li>
+    </ol>
+    <ul>
+        <li>Update <code>recording_service.py</code> to check publisher state</li>
+        <li>Skip recording attempts for OFFLINE cameras</li>
+        <li>Register failures on recording start errors</li>
+    </ul>
+    <ol>
+        <li><strong>Testing</strong></li>
+    </ol>
+    <ul>
+        <li>Disable a camera, verify motion detection respects backoff</li>
+        <li>Verify recording service skips offline cameras</li>
+        <li>Check log spam reduction</li>
+    </ul>
+    <h3>Phase 4: API and UI (2-3 hours)</h3>
+    <ol>
+        <li><strong>Add API Endpoints</strong></li>
+    </ol>
+    <ul>
+        <li><code>/api/camera/state/<camera_id></code> - Single camera state</li>
+        <li><code>/api/camera/states</code> - All camera states</li>
+        <li>Test endpoints return correct JSON</li>
+    </ul>
+    <ol>
+        <li><strong>UI Integration</strong></li>
+    </ol>
+    <ul>
+        <li>Add <code>queryCameraState()</code> method in stream.js</li>
+        <li>Update stream start logic to check state first</li>
+        <li>Add camera state polling (10s interval)</li>
+        <li>Display accurate "Camera Unavailable" status</li>
+    </ul>
+    <ol>
+        <li><strong>Testing</strong></li>
+    </ol>
+    <ul>
+        <li>Verify UI shows accurate status for offline cameras</li>
+        <li>Test backoff timer display</li>
+        <li>Verify state polling updates UI in real-time</li>
+    </ul>
+    <h3>Phase 5: Validation and Optimization (1-2 hours)</h3>
+    <ol>
+        <li><strong>End-to-End Testing</strong></li>
+    </ol>
+    <ul>
+        <li>Restart system, verify all cameras tracked correctly</li>
+        <li>Manually disconnect a camera, verify:</li>
+        <li>State transitions to OFFLINE after 3 failures</li>
+        <li>Backoff timer prevents retry spam</li>
+        <li>UI shows "Camera Unavailable"</li>
+        <li>MediaMTX logs show reduced "torn down" events</li>
+        <li>Reconnect camera, verify:</li>
+        <li>Publisher auto-starts when camera comes back</li>
+        <li>State transitions to ONLINE</li>
+        <li>UI updates to "Live"</li>
+    </ul>
+    <ol>
+        <li><strong>Performance Validation</strong></li>
+    </ol>
+    <ul>
+        <li>Check MediaMTX API polling overhead (should be negligible)</li>
+        <li>Verify thread-safe access doesn't block</li>
+        <li>Monitor log reduction (expect 90%+ reduction in "torn down" spam)</li>
+    </ul>
+    <ol>
+        <li><strong>Documentation</strong></li>
+    </ol>
+    <ul>
+        <li>Update <code>nvr_engineering_architecture.html</code></li>
+        <li>Document new API endpoints</li>
+        <li>Add troubleshooting guide</li>
+    </ul>
+    <hr>
+    <h2>Expected Outcomes</h2>
+    <h3>Before Implementation</h3>
+    <p><strong>Problem Symptoms:</strong></p>
+    <ul>
+        <li>10+ "torn down" events per 30 seconds per dead camera</li>
+        <li>UI shows "Starting..." indefinitely</li>
+        <li>Motion detection continuously attempts dead cameras</li>
+        <li>Recording service hammers MediaMTX paths</li>
+        <li>No coordinated retry logic</li>
+    </ul>
+    <h3>After Implementation</h3>
+    <p><strong>Expected Improvements:</strong></p>
+    <ol>
+        <li><strong>Log Spam Reduction: 90%+</strong></li>
+    </ol>
+    <ul>
+        <li>Services respect backoff timers</li>
+        <li>No redundant connection attempts</li>
+        <li>MediaMTX logs clean and actionable</li>
+    </ul>
+    <ol>
+        <li><strong>Accurate UI Status</strong></li>
+    </ol>
+    <ul>
+        <li>"Camera Unavailable" for OFFLINE cameras</li>
+        <li>Backoff timer display: "Retry in 40s"</li>
+        <li>No false "Starting..." states</li>
+    </ul>
+    <ol>
+        <li><strong>Coordinated Retry Logic</strong></li>
+    </ol>
+    <ul>
+        <li>Exponential backoff: 5s → 10s → 20s → 40s → 80s → 120s</li>
+        <li>All services respect same backoff timer</li>
+        <li>Automatic recovery when camera comes back online</li>
+    </ul>
+    <ol>
+        <li><strong>Resource Efficiency</strong></li>
+    </ol>
+    <ul>
+        <li>No wasted FFmpeg processes for dead cameras</li>
+        <li>Reduced MediaMTX connection churn</li>
+        <li>Lower CPU/memory footprint</li>
+    </ul>
+    <ol>
+        <li><strong>Better Observability</strong></li>
+    </ol>
+    <ul>
+        <li>API endpoints for camera state queries</li>
+        <li>Centralized failure tracking</li>
+        <li>Clear error messages propagated to UI</li>
+    </ul>
+    <hr>
+    <h2>Risks and Mitigations</h2>
+    <h3>Risk 1: MediaMTX API Overhead</h3>
+    <p><strong>Risk:</strong> Polling MediaMTX API every 5s for 10 cameras adds latency/load.</p>
+    <p><strong>Mitigation:</strong></p>
+    <ul>
+        <li>API is lightweight (JSON over HTTP)</li>
+        <li>MediaMTX already tracks publisher state internally</li>
+        <li>5s poll interval is conservative (can increase if needed)</li>
+        <li>Caching: Only update state on changes</li>
+    </ul>
+    <h3>Risk 2: Race Conditions</h3>
+    <p><strong>Risk:</strong> FFmpeg starts, but StateTracker hasn't polled MediaMTX yet.</p>
+    <p><strong>Mitigation:</strong></p>
+    <ul>
+        <li>StreamManager updates tracker immediately on FFmpeg spawn</li>
+        <li>MediaMTX API polling is secondary verification</li>
+        <li>Use STARTING state as transitional buffer</li>
+    </ul>
+    <h3>Risk 3: Singleton State Corruption</h3>
+    <p><strong>Risk:</strong> Concurrent access to CameraStateTracker corrupts state.</p>
+    <p><strong>Mitigation:</strong></p>
+    <ul>
+        <li>Use <code>threading.RLock()</code> for all state access</li>
+        <li>Atomic state updates (deepcopy or immutable dataclasses)</li>
+        <li>Unit tests for thread safety</li>
+    </ul>
+    <h3>Risk 4: Backoff Too Aggressive</h3>
+    <p><strong>Risk:</strong> Camera briefly offline causes long backoff, slow recovery.</p>
+    <p><strong>Mitigation:</strong></p>
+    <ul>
+        <li>Start backoff low (5s) for transient issues</li>
+        <li>Max backoff capped at 120s (2 minutes)</li>
+        <li>Manual "Retry Now" button in UI (future enhancement)</li>
+    </ul>
+    <hr>
+    <h2>Future Enhancements</h2>
+    <ol>
+        <li><strong>WebSocket State Broadcast</strong></li>
+    </ol>
+    <ul>
+        <li>Push state changes to UI instead of polling</li>
+        <li>Real-time updates (<1s latency)</li>
+    </ul>
+    <ol>
+        <li><strong>Camera Reachability Probes</strong></li>
+    </ol>
+    <ul>
+        <li>Ping camera IP before attempting RTSP</li>
+        <li>Faster failure detection</li>
+        <li>Distinguish network vs. hardware failures</li>
+    </ul>
+    <ol>
+        <li><strong>Per-Camera Backoff Tuning</strong></li>
+    </ol>
+    <ul>
+        <li>Cameras with known flakiness get longer backoff</li>
+        <li>Stable cameras get aggressive retry</li>
+        <li>ML-based backoff optimization (learn failure patterns)</li>
+    </ul>
+    <ol>
+        <li><strong>Manual Override Controls</strong></li>
+    </ol>
+    <ul>
+        <li>UI button: "Retry Now" (bypass backoff)</li>
+        <li>API endpoint: <code>POST /api/camera/retry/<camera_id></code></li>
+        <li>Admin can force camera state reset</li>
+    </ul>
+    <ol>
+        <li><strong>Persistent State Storage</strong></li>
+    </ol>
+    <ul>
+        <li>Save state to Redis or SQLite</li>
+        <li>Survive container restarts</li>
+        <li>Historical failure tracking</li>
+    </ul>
+    <hr>
+    <h2>Conclusion</h2>
+    <p>This architecture solves the core coordination problem by introducing a <strong>Single Source of Truth</strong> for camera availability. All services (motion detection, recording, UI) query the <code>CameraStateTracker</code> before attempting operations, eliminating redundant failures and log spam.</p>
+    <p>The design is <strong>incremental</strong> - Phase 1 can be deployed immediately for basic state tracking, with subsequent phases adding API polling, service integration, and UI enhancements.</p>
+    <p><strong>Key Success Metric:</strong> 90%+ reduction in MediaMTX "torn down" log events after implementation.</p>
+    <hr>
+    <p><strong>Next Steps:</strong></p>
+    <ol>
+        <li>User review and approval of architecture</li>
+        <li>Begin Phase 1 implementation (enable MediaMTX API, create StateTracker)</li>
+        <li>Iterative testing and validation</li>
+        <li>Document findings in README_handoff.md</li>
+    </ol>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

@@ -11,14 +11,60 @@ config/
 
 # -----------------------------------------------------------------------------
 # Documentation - track only specific files
+# Use docs/* (not docs/) so !exceptions below can re-include subtrees;
+# git refuses to re-include children of a fully-excluded parent dir.
 # -----------------------------------------------------------------------------
-docs/
+docs/*
 DOCS/
 
 # -----------------------------------------------------------------------------
 # Project-specific ignores
 # -----------------------------------------------------------------------------
 **/0_*
+
+# -----------------------------------------------------------------------------
+# Documentation tree — whitelist (after docs/ and **/0_* ignores above).
+# Reorganized 2026-04-28: structured docs live under docs/0_*/ subtrees.
+# -----------------------------------------------------------------------------
+# Anchor files at docs/ root (CLAUDE.md hardcoded paths + Jekyll site)
+!docs/index.html
+!docs/_config.yml
+!docs/README_handoff.md
+!docs/README_project_history.md
+!docs/nvr_engineering_architecture.html
+# Structured top-level subtrees (categorized per Apr 2026 reorg)
+!docs/0_ARCHITECTURE/
+!docs/0_ARCHITECTURE/**
+!docs/0_PROPOSALS/
+!docs/0_PROPOSALS/**
+!docs/0_GUIDES/
+!docs/0_GUIDES/**
+!docs/0_CAMERAS/
+!docs/0_CAMERAS/**
+!docs/0_REFERENCE/
+!docs/0_REFERENCE/**
+!docs/0_LICENSE/
+!docs/0_LICENSE/**
+!docs/0_DIAGRAMS/
+!docs/0_DIAGRAMS/**
+!docs/0_SESSIONS/
+!docs/0_SESSIONS/**
+!docs/0_HISTORY/
+!docs/0_HISTORY/**
+# 0_DEPRECATED stays untracked (clutter / dup / swap files)
+# Canonical workflow dirs (lowercase by convention)
+!docs/teachings/
+!docs/teachings/**
+!docs/plans/
+!docs/plans/**
+!docs/weekly_summaries/
+!docs/weekly_summaries/**
+# Pre-Jan-2026 archive (name unchanged per user directive)
+!docs/archive/
+!docs/archive/**
+# Re-exclude editor/sync swap files (.filename.md.XXXXXX) anywhere under docs/
+docs/**/.*.md.*
+
 # Evidence collection volume — symlink at ~/0_MOBIUS.NVR/litigation
 # points to /litigation (a separate disk on dellserver). Never commit
 # this symlink, its target, or any of its contents.
@@ -159,10 +205,8 @@ coverage.xml
 **/backup/
 **/backups/
 **/archive/
-!docs/archive/
-!docs/archive/handoffs/
-!docs/archive/handoffs/**
 *archive*
+# (docs/archive/ exception is declared in the Documentation tree section above)
 ARCHIVE/
 *~.bak
 *.backup

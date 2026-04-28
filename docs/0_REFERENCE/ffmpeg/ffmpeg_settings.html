@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📘 NVR Encoding & Resolution Reference Guide</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <hr>
+    <p>title: "ffmpeg settings guide"</p>
+    <p>layout: default</p>
+    <hr>
+    <p><!-- markdownlint-disable MD025 MD033 --></p>
+    <h1>📘 NVR Encoding & Resolution Reference Guide</h1>
+    <h2>📑 Table of Contents</h2>
+    <ol>
+        <li><a href="#-169-aspect-ratio-widescreen-standard">🖥️ 16:9 Aspect Ratio (Widescreen Standard)</a></li>
+        <li><a href="#-43-aspect-ratio-classic--security--legacy">🧾 4:3 Aspect Ratio (Classic / Security / Legacy)</a></li>
+        <li><a href="#️-ffmpeg-transcode-presets">⚙️ FFmpeg Transcode Presets</a></li>
+    </ol>
+    <ul>
+        <li><a href="#overview--system-impact-by-layer">Overview — System Impact by Layer</a></li>
+        <li><a href="#quick-links">Quick Links</a></li>
+        <li><a href="#preset-details">Preset Details</a></li>
+        <li><a href="#quick-comparison-summary">Quick Comparison Summary</a></li>
+        <li><a href="#pipeline-load-comparison">Pipeline Load Comparison</a></li>
+    </ul>
+    <ol>
+        <li><a href="#-ffmpeg-stream-configuration-parameters">📄 FFmpeg Stream Configuration Parameters</a></li>
+    </ol>
+    <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#parameter-reference-table">Parameter Reference Table</a></li>
+        <li><a href="#performance--interdependencies">Performance & Interdependencies</a></li>
+        <li><a href="#recommended-profiles">Recommended Profiles</a></li>
+    </ul>
+    <hr>
+    <h2>🖥️ 16:9 Aspect Ratio (Widescreen Standard)</h2>
+    <table>
+        <tr><th>Label</th><th>Resolution</th><th>Notes</th></tr>
+        <tr><td>128×72</td><td>Extremely low</td><td>Thumbnail-level</td></tr>
+        <tr><td>160×90</td><td>Minimal viable stream</td><td></td></tr>
+        <tr><td>213×120</td><td>Ultra-low bandwidth</td><td></td></tr>
+        <tr><td>256×144</td><td>144p</td><td>YouTube’s lowest tier</td></tr>
+        <tr><td>320×180</td><td>Tiny preview</td><td>Typical “tiny preview”</td></tr>
+        <tr><td>426×240</td><td>240p</td><td>Mobile baseline</td></tr>
+        <tr><td>640×360</td><td>360p</td><td>Low SD</td></tr>
+        <tr><td>854×480</td><td>480p</td><td>DVD-quality SD</td></tr>
+        <tr><td>960×540</td><td>qHD</td><td>Quarter of Full HD</td></tr>
+        <tr><td>1280×720</td><td>720p</td><td>HD</td></tr>
+        <tr><td>1366×768</td><td>HD variant</td><td>Common on laptops</td></tr>
+        <tr><td>1600×900</td><td>HD+</td><td>High-quality preview</td></tr>
+        <tr><td>1920×1080</td><td>1080p</td><td>Full HD</td></tr>
+        <tr><td>2560×1440</td><td>1440p</td><td>QHD / 2K</td></tr>
+        <tr><td>3200×1800</td><td>QHD+</td><td>High-res laptop</td></tr>
+        <tr><td>3840×2160</td><td>2160p</td><td>4K UHD</td></tr>
+        <tr><td>5120×2880</td><td>5K</td><td>High-end display</td></tr>
+        <tr><td>7680×4320</td><td>4320p</td><td>8K UHD</td></tr>
+    </table>
+    <hr>
+    <h2>🧾 4:3 Aspect Ratio (Classic / Security / Legacy)</h2>
+    <table>
+        <tr><th>Label</th><th>Resolution</th><th>Notes</th></tr>
+        <tr><td>128×96</td><td>Icon-size</td><td>Ultra-small legacy</td></tr>
+        <tr><td>160×120</td><td>QQVGA</td><td>Very low</td></tr>
+        <tr><td>192×144</td><td>Classic low-res</td><td>Legacy webcams</td></tr>
+        <tr><td>240×180</td><td>Slightly wider than 320×180</td><td></td></tr>
+        <tr><td>320×240</td><td>QVGA</td><td>Webcam baseline</td></tr>
+        <tr><td>400×300</td><td>Surveillance SD</td><td></td></tr>
+        <tr><td>640×480</td><td>VGA</td><td>Analog capture</td></tr>
+        <tr><td>800×600</td><td>SVGA</td><td>Early digital SD</td></tr>
+        <tr><td>1024×768</td><td>XGA</td><td>1990s LCD standard</td></tr>
+        <tr><td>1280×960</td><td>SXGA-lite</td><td>1.2 MP</td></tr>
+        <tr><td>1600×1200</td><td>UXGA</td><td>2 MP 4:3</td></tr>
+        <tr><td>2048×1536</td><td>QXGA</td><td>3 MP</td></tr>
+        <tr><td>2560×1920</td><td>QSXGA</td><td>5 MP</td></tr>
+        <tr><td>3264×2448</td><td>8 MP</td><td>Modern 4:3 sensors</td></tr>
+    </table>
+    <hr>
+    <h2>⚙️ FFmpeg Transcode Presets</h2>
+    <h3>Overview — System Impact by Layer</h3>
+    <table>
+        <tr><th>Layer</th><th>Affected by <code>-preset</code>?</th><th>How / Why</th></tr>
+        <tr><td><strong>Camera</strong></td><td>❌ No</td><td>Cameras output RTSP/H.264; unaffected by presets.</td></tr>
+        <tr><td><strong>Server / NVR Backend</strong></td><td>✅ Yes (Primary)</td><td>Determines CPU usage and compression efficiency during HLS transcoding.</td></tr>
+        <tr><td><strong>Browser / Client</strong></td><td>⚠️ Indirectly</td><td>Affects bitrate and decoding complexity; mobile devices feel impact most.</td></tr>
+    </table>
+    <hr>
+    <h3>Quick Links</h3>
+    <p><a href="#ultrafast">ultrafast</a> · <a href="#superfast">superfast</a> · <a href="#veryfast">veryfast</a> · <a href="#faster">faster</a> · <a href="#fast">fast</a> · <a href="#medium">medium</a> · <a href="#slow">slow</a> · <a href="#slower">slower</a> · <a href="#veryslow">veryslow</a> · <a href="#placebo">placebo</a></p>
+    <hr>
+    <h3>Preset Details</h3>
+    <h4>ultrafast</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Minimum CPU, maximum speed.</li>
+        <li><strong>Use Case:</strong> Debug, testing, low-end hardware, high camera counts.</li>
+        <li><strong>Trade-Off:</strong> Massive file size, weak compression, highest bitrate.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🔹 Very low</li>
+        <li>Latency: ⚡ Extremely low (~1s)</li>
+        <li>Bandwidth: 🔺 High (6–12 Mbps per 720p stream)</li>
+    </ul>
+    <h4>superfast</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Slightly better compression, still lightweight.</li>
+        <li><strong>Use Case:</strong> Real-time streaming on low-power servers.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🔹 Low</li>
+        <li>Latency: ⚡ Very low (~1.5s)</li>
+        <li>Bandwidth: 🔺 High (4–8 Mbps @ 720p)</li>
+    </ul>
+    <h4>veryfast</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Practical default for live HLS / NVR pipelines.</li>
+        <li><strong>Use Case:</strong> Real-time multi-camera encoding.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: ⚖️ Moderate</li>
+        <li>Latency: ⚡ 2–3s</li>
+        <li>Bandwidth: ⚖️ 3–6 Mbps</li>
+        <li><strong>Special Behavior:</strong> Enforces <code>-g 30 -bf 0</code> (low-latency GOP).</li>
+    </ul>
+    <h4>faster</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Higher quality at modest CPU increase.</li>
+        <li><strong>Use Case:</strong> Midrange hardware, smaller camera sets.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🟠 Moderate-high</li>
+        <li>Latency: ⏱ Slightly higher (~3–4s)</li>
+        <li>Bandwidth: 🟢 Lower (2–4 Mbps)</li>
+    </ul>
+    <h4>fast</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Quality-focused streaming; fewer cameras.</li>
+        <li><strong>Use Case:</strong> Archival-quality real-time or small setups.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🔴 High</li>
+        <li>Latency: ⏱ 3–5s</li>
+        <li>Bandwidth: 🟢 Low (2–3 Mbps)</li>
+    </ul>
+    <h4>medium</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Default FFmpeg preset; best quality per bitrate.</li>
+        <li><strong>Use Case:</strong> Archival or near-live workloads.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🔴 Very High</li>
+        <li>Latency: 🕐 5–7s</li>
+        <li>Bandwidth: 🟢 Low (~2 Mbps @ 720p)</li>
+    </ul>
+    <h4>slow / slower / veryslow</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Archival / offline encoding only.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🟥 Extreme</li>
+        <li>Latency: 🕐 8–20s+</li>
+        <li>Bandwidth: 🟢 Minimal (~1.5 Mbps)</li>
+        <li><strong>Note:</strong> Not viable for real-time NVR systems.</li>
+    </ul>
+    <h4>placebo</h4>
+    <ul>
+        <li><strong>Purpose:</strong> Testing only; maximum compression depth.</li>
+        <li><strong>Performance:</strong></li>
+    </ul>
+    <ul>
+        <li>CPU: 🟥🟥 Absurdly high</li>
+        <li>Latency: 🕐 Minutes per minute</li>
+        <li><strong>Never use live.</strong></li>
+    </ul>
+    <hr>
+    <h3>Quick Comparison Summary</h3>
+    <table>
+        <tr><th>Preset</th><th>Relative Speed</th><th>Compression Efficiency</th><th>Latency</th><th>Typical Use</th></tr>
+        <tr><td>ultrafast</td><td>🟢 Fastest</td><td>🔴 Poor</td><td>⚡ Lowest</td><td>Debug / multi-cam</td></tr>
+        <tr><td>superfast</td><td>🟢 Very Fast</td><td>🟠 Low</td><td>⚡ Low</td><td>Low-power servers</td></tr>
+        <tr><td>veryfast</td><td>⚖️ Balanced</td><td>🟡 Medium</td><td>⚡ 2–3s</td><td>Default live preset</td></tr>
+        <tr><td>faster</td><td>🟡 Medium</td><td>🟢 Good</td><td>⏱ 3–4s</td><td>Quality bias</td></tr>
+        <tr><td>fast</td><td>🟠 Medium-Slow</td><td>🟢 Good+</td><td>⏱ 4–5s</td><td>Quality + bandwidth balance</td></tr>
+        <tr><td>medium</td><td>🟠 Slow</td><td>🟢 High</td><td>🕐 5–7s</td><td>Archival</td></tr>
+        <tr><td>slow → veryslow</td><td>🔴 Slower–Extreme</td><td>🟢🔵 Excellent</td><td>🕐 8–20s</td><td>Offline only</td></tr>
+        <tr><td>placebo</td><td>🐢 Absurdly Slow</td><td>🟢 Max</td><td>🕐 >20s</td><td>Benchmark only</td></tr>
+    </table>
+    <hr>
+    <h3>Pipeline Load Comparison</h3>
+    <table>
+        <tr><th>Preset</th><th>Camera Load</th><th>NVR CPU Load</th><th>Bandwidth / Disk</th><th>Client Load</th><th>Typical Impact</th></tr>
+        <tr><td>ultrafast</td><td>None</td><td>🟢 Very Low</td><td>🔴 Very High</td><td>🟠 High</td><td>Real-time multi-cam; inefficient</td></tr>
+        <tr><td>superfast</td><td>None</td><td>🟢 Low</td><td>🔴 High</td><td>🟠 Medium</td><td>Stable low-latency</td></tr>
+        <tr><td>veryfast</td><td>None</td><td>⚖️ Medium</td><td>⚖️ Moderate</td><td>⚖️ Moderate</td><td>Balanced; LL-HLS default</td></tr>
+        <tr><td>faster</td><td>None</td><td>🟠 High</td><td>🟢 Lower</td><td>🟡 Medium</td><td>Better quality</td></tr>
+        <tr><td>fast</td><td>None</td><td>🔴 High</td><td>🟢 Low</td><td>🟢 Low</td><td>Excellent quality, fewer streams</td></tr>
+        <tr><td>medium</td><td>None</td><td>🔴 Very High</td><td>🟢 Low</td><td>🟢 Low</td><td>Archival</td></tr>
+        <tr><td>slow/slower/veryslow</td><td>None</td><td>🟥 Extreme</td><td>🟢 Minimal</td><td>🟢 Low</td><td>Offline transcoding only</td></tr>
+    </table>
+    <hr>
+    <h2>📄 FFmpeg Stream Configuration Parameters</h2>
+    <h3>Overview</h3>
+    <p>These parameters define how  NVR’s FFmpeg transcode layer behaves.</p>
+    <p>They control latency, buffering, CPU utilization, and compatibility with browsers (especially HLS.js clients).</p>
+    <hr>
+    <h3>Parameter Reference Table</h3>
+    <table>
+        <tr><th><strong>Parameter</strong></th><th><strong>Purpose / Behavior</strong></th><th><strong>Common Values / Examples</strong></th><th><strong>Performance Impact</strong></th></tr>
+        <tr><td><code>stream_type</code></td><td>Defines output stream format.</td><td><code>"HLS"</code> or <code>"MJPEG"</code></td><td>HLS = segmented (2–5s latency), MJPEG = instant but heavy.</td></tr>
+        <tr><td><code>rtsp_transport</code></td><td>Selects RTSP transport protocol.</td><td><code>"tcp"</code> (reliable), <code>"udp"</code> (lower latency)</td><td>TCP safer for LANs with drops; UDP faster but fragile.</td></tr>
+        <tr><td><code>timeout</code></td><td>Socket timeout (µs).</td><td><code>5000000</code> (5s typical)</td><td>Higher = better stability; slight stall delay on disconnects.</td></tr>
+        <tr><td><code>analyzeduration</code></td><td>Input probing duration.</td><td><code>1000000</code>–<code>2000000</code></td><td>Lower = faster startup; risk of misdetection.</td></tr>
+        <tr><td><code>probesize</code></td><td>Data size (bytes) used for probing streams.</td><td><code>500000</code>–<code>2000000</code></td><td>Larger improves stream accuracy, slower start.</td></tr>
+        <tr><td><code>use_wallclock_as_timestamps</code></td><td>Syncs output timestamps to real time.</td><td><code>"1"</code></td><td>Required for LL-HLS to prevent drift; negligible cost.</td></tr>
+        <tr><td><code>fflags</code></td><td>Global FFmpeg flags.</td><td><code>"nobuffer"</code></td><td>Reduces buffering latency; may increase CPU slightly.</td></tr>
+        <tr><td><code>flags</code></td><td>Encoder-level options.</td><td><code>"low_delay"</code></td><td>Minimizes frame buffering; essential for real-time.</td></tr>
+        <tr><td><code>frame_rate_full_screen</code></td><td>Target FPS for full-screen mode.</td><td><code>18</code>, <code>24</code>, or <code>30</code></td><td>Higher = smoother, more CPU.</td></tr>
+        <tr><td><code>frame_rate_grid_mode</code></td><td>FPS for grid/preview mode.</td><td><code>5</code>–<code>8</code> typical</td><td>Reduces CPU by dropping frames in preview view.</td></tr>
+        <tr><td><code>resolution_main</code></td><td>Main encoding resolution.</td><td><code>"1920x1080"</code>, <code>"1280x720"</code>, <code>"640x360"</code></td><td>Defines quality and bandwidth; scales with preset.</td></tr>
+        <tr><td><code>resolution_sub</code></td><td>Low-bitrate fallback resolution.</td><td><code>"320x180"</code>, <code>"256x144"</code></td><td>Used for mobile or thumbnails.</td></tr>
+        <tr><td><code>hls_mode</code></td><td>Transcoding or direct copy.</td><td><code>"transcode"</code> or <code>"copy"</code></td><td>Transcode = CPU-heavy, reliable; Copy = fast, error-prone.</td></tr>
+        <tr><td><code>preset</code></td><td>FFmpeg preset selection.</td><td><code>"ultrafast"</code> → <code>"veryslow"</code></td><td>Directly affects CPU load and bitrate.</td></tr>
+        <tr><td><code>hls_time</code></td><td>Duration of each <code>.ts</code> segment.</td><td><code>1</code>–<code>4</code> seconds typical</td><td>Shorter = lower latency, more filesystem I/O.</td></tr>
+        <tr><td><code>hls_list_size</code></td><td>Playlist size (segments retained).</td><td><code>1</code>–<code>10</code> typical</td><td>Larger = longer DVR buffer, higher memory use.</td></tr>
+        <tr><td><code>hsl_delete_threshold</code></td><td>Max segment backlog before cleanup.</td><td><code>1</code>–<code>3</code> typical</td><td>Prevents disk bloating; too low risks abrupt playback drops.</td></tr>
+    </table>
+    <hr>
+    <h3>Performance & Interdependencies</h3>
+    <table>
+        <tr><th>Parameter Pair</th><th>Interaction</th><th>Tuning Notes</th></tr>
+        <tr><td><code>hls_time</code> + <code>hls_list_size</code></td><td>Controls total stream buffer length (<code>length × list_size</code>).</td><td>For LL-HLS: aim for ≤6s total buffer.</td></tr>
+        <tr><td><code>fflags=nobuffer</code> + <code>flags=low_delay</code></td><td>Together minimize end-to-end latency.</td><td>Use both for <3s latency; disables internal frame queues.</td></tr>
+        <tr><td><code>frame_rate_full_screen</code> + <code>preset</code></td><td>Determines total CPU load per stream.</td><td>Example: 1080p @ 30fps + <code>veryfast</code> ≈ 60–80% of one core.</td></tr>
+        <tr><td><code>rtsp_transport</code> + network stability</td><td>Impacts reconnection frequency.</td><td>TCP avoids desyncs; UDP reduces delay but drops under congestion.</td></tr>
+    </table>
+    <hr>
+    <h3>Recommended Profiles</h3>
+    <table>
+        <tr><th>Profile</th><th>Goal</th><th>Example Key Parameters</th><th>Expected Outcome</th></tr>
+        <tr><td><strong>LL-HLS Real-Time (Balanced)</strong></td><td>Multi-cam, low latency</td><td><code>hls_time=2</code>, <code>hls_list_size=3</code>, <code>preset="veryfast"</code>, <code>flags="low_delay"</code>, <code>fflags="nobuffer"</code></td><td>2–3s latency, medium CPU (~1 core per stream)</td></tr>
+        <tr><td><strong>High Efficiency Archival</strong></td><td>Storage optimization</td><td><code>hls_time=4</code>, <code>preset="fast"</code>, <code>rtsp_transport="tcp"</code></td><td>4–5s latency, smaller files, higher CPU</td></tr>
+        <tr><td><strong>Lightweight (Edge Device)</strong></td><td>Low-power NVR</td><td><code>hls_time=2</code>, <code>preset="ultrafast"</code>, <code>frame_rate_grid_mode=5</code></td><td><2s latency, larger files, minimal CPU</td></tr>
+        <tr><td><strong>High Quality Export</strong></td><td>Forensic / review</td><td><code>preset="medium"</code>, <code>frame_rate_full_screen=24</code>, <code>hls_time=4</code></td><td>Near-lossless quality; offline only</td></tr>
+    </table>
+    <hr>
+    <p>✅ <strong>Final Summary</strong></p>
+    <ul>
+        <li><strong>Preset controls CPU usage</strong> — slower = higher compression, higher CPU.</li>
+        <li><strong>Camera hardware unaffected</strong> — encoding occurs in FFmpeg, not the device.</li>
+        <li><strong>Most NVRs perform best with <code>veryfast</code> preset</strong>, 720p @ 18–24 fps, 2 s segments, and 3-segment playlists.</li>
+        <li><strong>Always balance CPU, latency, and bandwidth</strong> — no single setting fits all cameras or purposes.</li>
+    </ul>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proposal: Database-Based Camera Configuration Migration</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Proposal: Database-Based Camera Configuration Migration</h1>
+    <p><strong>Date:</strong> February 16, 2026</p>
+    <p><strong>Status:</strong> Draft for Review</p>
+    <p><strong>Branch:</strong> <code>ipad_grid_force_webrtc_fix_FEB_16_2026_a</code></p>
+    <hr>
+    <h2>Current State Analysis</h2>
+    <h3>What We Have (Feb 8-16 Implementation)</h3>
+    <p><strong>Stream Type Preferences (Partially Implemented):</strong></p>
+    <ul>
+        <li>✅ Backend API: <code>GET/PUT /api/user/stream-preferences/<camera_serial></code></li>
+        <li>✅ Database table: <code>user_camera_preferences</code> (migration 005)</li>
+        <li>✅ Frontend: <code>loadUserStreamPreferences()</code> loads from DB, overrides <code>data-stream-type</code></li>
+        <li>✅ Frontend: <code>switchStreamType()</code> does live switch + saves to DB</li>
+        <li>❌ <strong>Does NOT modify cameras.json</strong></li>
+        <li>❌ <strong>Does NOT restart backend services</strong></li>
+    </ul>
+    <p><strong>Camera Configuration:</strong></p>
+    <ul>
+        <li><code>config/cameras.json</code> — canonical source (gitignored, not in DB)</li>
+        <li>Changes affect ALL users globally</li>
+        <li>Restart required for most changes</li>
+        <li>No per-user camera visibility/selection</li>
+    </ul>
+    <p><strong>User Preferences:</strong></p>
+    <ul>
+        <li>Camera access control: admin sets which cameras user can see (via <code>user_cameras</code> table)</li>
+        <li>Stream type preference: user can set preferred type (via <code>user_camera_preferences</code> table)</li>
+        <li>❌ <strong>NO localStorage for camera selection/visibility</strong></li>
+        <li>❌ <strong>Dropdown selection resets on page reload</strong></li>
+    </ul>
+    <hr>
+    <h2>Issues Identified</h2>
+    <h3>1. Stream Type Switching Not Working (URGENT)</h3>
+    <p><strong>Problem:</strong> User selects MJPEG in UI, nothing happens. Snapshot MJPEG cameras don't switch.</p>
+    <p><strong>Root Cause Analysis:</strong></p>
+    <p>The current <code>switchStreamType()</code> implementation:</p>
+    <ol>
+        <li>Updates browser-side <code>data-stream-type</code> attribute ✅</li>
+        <li>Starts new stream type client-side ✅</li>
+        <li>Saves preference to DB ✅</li>
+    </ol>
+    <p><strong>But:</strong></p>
+    <ul>
+        <li>Backend services (stream_manager.py, segment_buffer.py, etc.) still use <code>cameras.json</code> stream_type</li>
+        <li>MediaMTX paths are created based on cameras.json</li>
+        <li>FFmpeg processes launched with cameras.json parameters</li>
+        <li>No backend restart triggered</li>
+    </ul>
+    <p><strong>Why It Partially Works:</strong></p>
+    <ul>
+        <li>Browser can start HLS/WebRTC/MJPEG clients independently</li>
+        <li>MediaMTX paths exist if camera is LL_HLS in cameras.json</li>
+        <li>Switching between MediaMTX-based types (WebRTC ↔ HLS) works</li>
+        <li><strong>Switching TO/FROM MJPEG fails</strong> because backend expects different stream source</li>
+    </ul>
+    <p><strong>Example Failure:</strong></p>
+    <ul>
+        <li>Camera in cameras.json: <code>"stream_type": "LL_HLS"</code></li>
+        <li>User selects: MJPEG</li>
+        <li>Frontend tries to load <code>/mjpeg/<camera_serial></code></li>
+        <li>Backend MJPEG service not running for this camera</li>
+        <li>Result: nothing happens</li>
+    </ul>
+    <h3>2. Camera Selection Not Persistent</h3>
+    <p><strong>Problem:</strong> Dropdown camera selection resets on page reload.</p>
+    <p><strong>Current Behavior:</strong></p>
+    <ul>
+        <li>User can see cameras authorized by admin (from <code>user_cameras</code> table)</li>
+        <li>Dropdown shows all authorized cameras</li>
+        <li>Selection state not saved anywhere</li>
+        <li>Page reload → back to default view (all cameras visible)</li>
+    </ul>
+    <p><strong>User Expectation:</strong></p>
+    <ul>
+        <li>Select subset of authorized cameras to display</li>
+        <li>Selection persists in localStorage</li>
+        <li>Page reload → sees same cameras they selected</li>
+    </ul>
+    <h3>3. No Per-User Configuration</h3>
+    <p><strong>Problem:</strong> cameras.json changes affect everyone.</p>
+    <p><strong>Current:</strong></p>
+    <ul>
+        <li>cameras.json is global configuration</li>
+        <li>Admin changes stream type → affects all users</li>
+        <li>No way for user A to prefer WebRTC while user B prefers HLS <strong>with backend support</strong></li>
+    </ul>
+    <hr>
+    <h2>Proposed Solutions</h2>
+    <h3>Option A: Quick Fix (2-4 hours) — Hybrid Approach</h3>
+    <p><strong>Keep cameras.json as primary, add localStorage for UI state.</strong></p>
+    <h4>A.1 Fix Stream Type Switching (Immediate)</h4>
+    <p><strong>Approach:</strong> Backend service restart on stream type change.</p>
+    <p><strong>Implementation:</strong></p>
+    <ol>
+        <li>Modify <code>switchStreamType()</code> to call backend restart endpoint</li>
+        <li>Backend temporarily overrides stream type for this camera (in-memory)</li>
+        <li>Restart only affected services (stream manager, MJPEG if needed)</li>
+        <li>Update MediaMTX path if needed</li>
+        <li>Show loading modal during restart (~5-10s)</li>
+    </ol>
+    <p><strong>Pros:</strong></p>
+    <ul>
+        <li>Works within current architecture</li>
+        <li>No database migration needed</li>
+        <li>Backend services use correct stream type</li>
+    </ul>
+    <p><strong>Cons:</strong></p>
+    <ul>
+        <li>Service restart per switch (slow)</li>
+        <li>Still no true per-user backend config</li>
+        <li>In-memory override lost on full restart</li>
+    </ul>
+    <p><strong>Code Changes:</strong></p>
+    <ul>
+        <li><code>static/js/streaming/stream.js</code>: Add <code>/api/stream/reconfigure/<camera_serial></code> call</li>
+        <li><code>app.py</code>: New endpoint to update stream type + restart services</li>
+        <li><code>streaming/stream_manager.py</code>: Support in-memory stream type override</li>
+    </ul>
+    <h4>A.2 Camera Selection Persistence (Easy)</h4>
+    <p><strong>Approach:</strong> localStorage for visible camera list.</p>
+    <p><strong>Implementation:</strong></p>
+    <pre><code>// On dropdown selection change
+const selectedCameras = getSelectedCamerasFromDropdown();
+localStorage.setItem('selectedCameras', JSON.stringify(selectedCameras));
+
+// On page load
+const selected = JSON.parse(localStorage.getItem('selectedCameras') || '[]');
+if (selected.length &gt; 0) {
+    // Show only selected cameras
+    hideUnselectedCameras(selected);
+}</code></pre>
+    <p><strong>Pros:</strong></p>
+    <ul>
+        <li>Simple, fast implementation (30 min)</li>
+        <li>No backend changes</li>
+        <li>Works immediately</li>
+    </ul>
+    <p><strong>Cons:</strong></p>
+    <ul>
+        <li>localStorage only (not synced across devices)</li>
+    </ul>
+    <hr>
+    <h3>Option B: Database Migration (8-12 hours) — Full Solution</h3>
+    <p><strong>Migrate ALL camera configuration to database, keep cameras.json as canonical source for resets.</strong></p>
+    <h4>B.1 Database Schema</h4>
+    <p><strong>New Tables:</strong></p>
+    <pre><code>-- Camera base configuration (canonical from cameras.json)
+CREATE TABLE cameras (
+    serial VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    brand VARCHAR(100),
+    model VARCHAR(100),
+    ip_address VARCHAR(45),
+    rtsp_port INTEGER,
+    http_port INTEGER,
+    username VARCHAR(255),
+    password_encrypted TEXT,
+    capabilities JSONB,  -- array of strings: ptz, audio, motion, etc.
+    stream_configs JSONB,  -- rtsp_input, go2rtc, etc.
+    ptz_config JSONB,
+    recording_config JSONB,
+    hidden BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Per-user camera preferences (overrides global config)
+CREATE TABLE user_camera_config (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    camera_serial VARCHAR(255) REFERENCES cameras(serial) ON DELETE CASCADE,
+    preferred_stream_type VARCHAR(50),  -- Overrides cameras.stream_type
+    visible BOOLEAN DEFAULT TRUE,  -- Camera shown in user's UI
+    display_order INTEGER,  -- Grid position
+    custom_name VARCHAR(255),  -- User can rename camera for themselves
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, camera_serial)
+);
+
+-- Camera state (runtime, not config)
+CREATE TABLE camera_state (
+    camera_serial VARCHAR(255) PRIMARY KEY REFERENCES cameras(serial),
+    current_stream_type VARCHAR(50),
+    health_status VARCHAR(50),
+    last_seen TIMESTAMP,
+    active_connections INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT NOW()
+);</code></pre>
+    <h4>B.2 Migration Strategy</h4>
+    <p><strong>Phase 1: cameras.json → Database (One-Time Import)</strong></p>
+    <pre><code># scripts/migrate_cameras_to_db.py
+def migrate_cameras_json_to_db():
+    """
+    One-time migration: Read cameras.json, populate cameras table.
+    """
+    with open('config/cameras.json') as f:
+        cameras_json = json.load(f)
+
+    for serial, config in cameras_json['cameras'].items():
+        db.execute('''
+            INSERT INTO cameras (serial, name, brand, model, ...)
+            VALUES (%s, %s, %s, %s, ...)
+            ON CONFLICT (serial) DO NOTHING
+        ''', (...))</code></pre>
+    <p><strong>Phase 2: Auto-Sync Module (Detect New Cameras in JSON)</strong></p>
+    <pre><code># services/camera_config_sync.py
+class CameraConfigSync:
+    """
+    Monitors cameras.json for new entries not in database.
+    Triggers automatic migration when new cameras added manually.
+    """
+
+    def check_for_new_cameras(self):
+        json_cameras = self._load_cameras_json()
+        db_cameras = self._load_db_cameras()
+
+        new_cameras = set(json_cameras.keys()) - set(db_cameras.keys())
+
+        if new_cameras:
+            logger.info(f"Found {len(new_cameras)} new cameras in JSON, migrating...")
+            for serial in new_cameras:
+                self._migrate_camera(serial, json_cameras[serial])
+
+    def _migrate_camera(self, serial, config):
+        """Insert new camera from JSON into database."""
+        # Insert into cameras table
+        # Create default user_camera_config entries (all users can see it)</code></pre>
+    <p><strong>Phase 3: Backend Services Use Database</strong></p>
+    <pre><code># streaming/stream_manager.py
+def start_stream(self, camera_serial, user_id=None):
+    # OLD: Load from cameras.json
+    # camera_config = cameras_json['cameras'][camera_serial]
+
+    # NEW: Load from database with user preferences
+    camera = db.query('SELECT * FROM cameras WHERE serial = %s', camera_serial)
+
+    if user_id:
+        user_pref = db.query('''
+            SELECT preferred_stream_type FROM user_camera_config
+            WHERE user_id = %s AND camera_serial = %s
+        ''', user_id, camera_serial)
+
+        stream_type = user_pref.preferred_stream_type or camera.stream_type
+    else:
+        stream_type = camera.stream_type
+
+    # Start stream with resolved stream_type
+    ...</code></pre>
+    <p><strong>Phase 4: cameras.json Remains Canonical for Resets</strong></p>
+    <pre><code># scripts/reset_camera_config.py
+def reset_camera_to_canonical(camera_serial):
+    """
+    Reset camera configuration to cameras.json canonical source.
+    Use case: user preferences broke camera, admin wants to reset.
+    """
+    canonical = load_cameras_json()[camera_serial]
+
+    db.execute('''
+        UPDATE cameras SET
+            stream_type = %s,
+            ...
+        WHERE serial = %s
+    ''', canonical['stream_type'], camera_serial)
+
+    db.execute('''
+        DELETE FROM user_camera_config
+        WHERE camera_serial = %s
+    ''', camera_serial)</code></pre>
+    <h4>B.3 UI Changes</h4>
+    <p><strong>Camera Selection (Persistent):</strong></p>
+    <ul>
+        <li>Load visible cameras from <code>user_camera_config.visible</code></li>
+        <li>Dropdown updates <code>visible</code> field in DB</li>
+        <li>Syncs across devices (unlike localStorage)</li>
+    </ul>
+    <p><strong>Stream Type Switching (Real):</strong></p>
+    <ul>
+        <li>Update <code>user_camera_config.preferred_stream_type</code></li>
+        <li>Backend reads user preference, uses it</li>
+        <li>No service restart needed (just reconnect stream)</li>
+        <li>Works per-user (user A: WebRTC, user B: HLS)</li>
+    </ul>
+    <hr>
+    <h3>Option C: Hybrid Pro (4-6 hours) — Best of Both</h3>
+    <p><strong>Database for user preferences, cameras.json for base config.</strong></p>
+    <p><strong>Keep:</strong></p>
+    <ul>
+        <li>cameras.json as base/canonical configuration</li>
+        <li>Auto-sync module detects new cameras</li>
+        <li>Simple DB schema (no full camera config, just user prefs)</li>
+    </ul>
+    <p><strong>Add:</strong></p>
+    <ul>
+        <li><code>user_camera_config</code> table (stream type, visibility, order)</li>
+        <li>Backend services check user preferences before cameras.json</li>
+        <li>localStorage as backup (offline-first)</li>
+    </ul>
+    <p><strong>Schema:</strong></p>
+    <pre><code>CREATE TABLE user_camera_preferences_v2 (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    camera_serial VARCHAR(255),
+    preferred_stream_type VARCHAR(50),
+    visible BOOLEAN DEFAULT TRUE,
+    display_order INTEGER,
+    UNIQUE(user_id, camera_serial)
+);</code></pre>
+    <p><strong>Backend Logic:</strong></p>
+    <pre><code>def get_stream_type_for_user(camera_serial, user_id):
+    # 1. Check user preference in DB
+    pref = db.query('SELECT preferred_stream_type FROM user_camera_preferences_v2 ...')
+    if pref:
+        return pref.preferred_stream_type
+
+    # 2. Fall back to cameras.json
+    return cameras_json[camera_serial]['stream_type']</code></pre>
+    <p><strong>Pros:</strong></p>
+    <ul>
+        <li>Simpler than full migration (Option B)</li>
+        <li>Faster than service restart (Option A)</li>
+        <li>Per-user config works immediately</li>
+        <li>cameras.json remains canonical</li>
+    </ul>
+    <p><strong>Cons:</strong></p>
+    <ul>
+        <li>Still requires backend code changes</li>
+        <li>Doesn't solve ALL config-in-DB needs (only stream type + visibility)</li>
+    </ul>
+    <hr>
+    <h2>Recommendation</h2>
+    <p><strong>Immediate (Today):</strong></p>
+    <ul>
+        <li><strong>Option A.2</strong> — Camera selection in localStorage (30 min fix)</li>
+        <li>Investigate why stream switching broken (may be simpler bug than expected)</li>
+    </ul>
+    <p><strong>Short-Term (Next Session):</strong></p>
+    <ul>
+        <li><strong>Option C</strong> — Hybrid Pro approach</li>
+        <li>Extends existing <code>user_camera_preferences</code> to include visibility</li>
+        <li>Backend checks user pref before cameras.json</li>
+        <li>Simple, effective, reversible</li>
+    </ul>
+    <p><strong>Long-Term (Future):</strong></p>
+    <ul>
+        <li><strong>Option B</strong> — Full database migration</li>
+        <li>After Option C proves the pattern works</li>
+        <li>When ready to deprecate cameras.json as runtime source</li>
+        <li>Requires schema design review, migration testing</li>
+    </ul>
+    <hr>
+    <h2>Questions for User</h2>
+    <ol>
+        <li><strong>Stream switching urgency:</strong> Should I investigate why current implementation broken before redesigning? (May be simpler bug)</li>
+    </ol>
+    <ol>
+        <li><strong>Restart tolerance:</strong> Is 5-10s service restart per stream switch acceptable? (Option A.1)</li>
+    </ol>
+    <ol>
+        <li><strong>Scope priority:</strong></li>
+    </ol>
+    <ul>
+        <li>Just fix stream switching + camera selection? (Quick wins)</li>
+        <li>OR full database migration now? (Bigger investment)</li>
+    </ul>
+    <ol>
+        <li><strong>cameras.json future:</strong> Keep as canonical forever? Or eventual deprecation?</li>
+    </ol>
+    <ol>
+        <li><strong>go2rtc pipeline:</strong> Investigate go2rtc for WebRTC on mobile? (Noted as curious, not urgent)</li>
+    </ol>
+    <hr>
+    <p><strong>Next Steps:</strong> User approval of approach → Implementation plan → Execute.</p>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

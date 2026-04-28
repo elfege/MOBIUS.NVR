@@ -1,12 +1,136 @@
-# MJPEG Settings Flow Diagram
-
-*Left-to-right algorithmic decision graph*
-
-## Grid View Stream Selection
-
-```
-┌─────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌──────────────────┐
-│  Device     │───>│  Is Portable?    │───>│  Has Native MJPEG?  │───>│  Stream Type     │
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MJPEG Settings Flow Diagram</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>MJPEG Settings Flow Diagram</h1>
+    <p><em>Left-to-right algorithmic decision graph</em></p>
+    <h2>Grid View Stream Selection</h2>
+    <pre><code>┌─────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌──────────────────┐
+│  Device     │───&gt;│  Is Portable?    │───&gt;│  Has Native MJPEG?  │───&gt;│  Stream Type     │
 │  Request    │    │  (iOS/Android)   │    │  (reolink/unifi/    │    │  Decision        │
 └─────────────┘    └──────────────────┘    │   amcrest)          │    └──────────────────┘
                           │                └─────────────────────┘              │
@@ -14,7 +138,7 @@
                           ▼                          ▼                          ▼
                    ┌──────────────┐          ┌──────────────┐          ┌──────────────┐
                    │     NO       │          │     YES      │          │ Use MJPEG    │
-                   │  (Desktop)   │          │              │          │ (<img> tag)  │
+                   │  (Desktop)   │          │              │          │ (&lt;img&gt; tag)  │
                    └──────────────┘          └──────────────┘          └──────────────┘
                           │                          │
                           │                          │
@@ -30,14 +154,10 @@
                                              ┌──────────────┐
                                              │ Use HLS      │
                                              │ (fallback)   │
-                                             └──────────────┘
-```
-
-## MJPEG Source Selection (Backend)
-
-```
-┌─────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌──────────────────┐
-│  Camera     │───>│  mjpeg_source    │───>│  max_connections    │───>│  Final Source    │
+                                             └──────────────┘</code></pre>
+    <h2>MJPEG Source Selection (Backend)</h2>
+    <pre><code>┌─────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌──────────────────┐
+│  Camera     │───&gt;│  mjpeg_source    │───&gt;│  max_connections    │───&gt;│  Final Source    │
 │  Config     │    │  field value     │    │  validation         │    │  Decision        │
 └─────────────┘    └──────────────────┘    └─────────────────────┘    └──────────────────┘
                           │                          │                          │
@@ -57,13 +177,9 @@
 │  IF max_connections == 1 AND mjpeg_source IN ('snapshots', 'multipart'):             │
 │     FORCE mjpeg_source = 'mediaserver'                                                │
 │     REASON: Can't open second connection for snapshots/multipart                      │
-└──────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-## MJPEG Source by Camera Type (Default Assignments)
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
+└──────────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+    <h2>MJPEG Source by Camera Type (Default Assignments)</h2>
+    <pre><code>┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                              Camera Type Defaults                                    │
 ├─────────────────┬───────────────────┬────────────────────┬──────────────────────────┤
 │  Camera Type    │  mjpeg_source     │  max_connections   │  Reason                  │
@@ -77,14 +193,10 @@
 │  RLC Reolink    │  snapshots        │  2-4               │  Can handle extra conn   │
 ├─────────────────┼───────────────────┼────────────────────┼──────────────────────────┤
 │  UniFi          │  snapshots        │  8                 │  Via Protect API         │
-└─────────────────┴───────────────────┴────────────────────┴──────────────────────────┘
-```
-
-## Fullscreen Stream Switching (Portable Devices)
-
-```
-┌─────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌──────────────────┐
-│  User Taps  │───>│  Current View    │───>│  Target View        │───>│  Stream Switch   │
+└─────────────────┴───────────────────┴────────────────────┴──────────────────────────┘</code></pre>
+    <h2>Fullscreen Stream Switching (Portable Devices)</h2>
+    <pre><code>┌─────────────┐    ┌──────────────────┐    ┌─────────────────────┐    ┌──────────────────┐
+│  User Taps  │───&gt;│  Current View    │───&gt;│  Target View        │───&gt;│  Stream Switch   │
 │  Camera     │    │  (Grid/Full)     │    │  (Full/Grid)        │    │  Action          │
 └─────────────┘    └──────────────────┘    └─────────────────────┘    └──────────────────┘
                           │                          │
@@ -107,23 +219,23 @@
 │    2. Check if portable device                                                     │
 │    3. If portable + native MJPEG camera → restart as MJPEG                         │
 │    4. Else → restart with original stream_type                                     │
-└───────────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Implementation Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `mjpeg_source` field | ✅ Done | Added to cameras.json |
-| `max_connections` field | ✅ Done | Added to cameras.json |
-| Backend validation | ✅ Done | camera_repository.py |
-| Portable device detection | ✅ Done | stream.js `isPortableDevice()` |
-| Native MJPEG override | ✅ Done | reolink/unifi/amcrest only |
-| Fullscreen MJPEG→HLS switch | ✅ Done | stream.js |
-| Sequential stream loading | ✅ Done | 300ms delays, all UIs |
-| `mediaserver` MJPEG backend | ❌ Pending | FFmpeg tap needed |
-| Advanced Settings UI | ❌ Future | WTForms, Phase 3 |
-
----
-
-*Created: January 6, 2026 00:40 EST*
+└───────────────────────────────────────────────────────────────────────────────────┘</code></pre>
+    <h2>Implementation Status</h2>
+    <table>
+        <tr><th>Component</th><th>Status</th><th>Notes</th></tr>
+        <tr><td><code>mjpeg_source</code> field</td><td>✅ Done</td><td>Added to cameras.json</td></tr>
+        <tr><td><code>max_connections</code> field</td><td>✅ Done</td><td>Added to cameras.json</td></tr>
+        <tr><td>Backend validation</td><td>✅ Done</td><td>camera_repository.py</td></tr>
+        <tr><td>Portable device detection</td><td>✅ Done</td><td>stream.js <code>isPortableDevice()</code></td></tr>
+        <tr><td>Native MJPEG override</td><td>✅ Done</td><td>reolink/unifi/amcrest only</td></tr>
+        <tr><td>Fullscreen MJPEG→HLS switch</td><td>✅ Done</td><td>stream.js</td></tr>
+        <tr><td>Sequential stream loading</td><td>✅ Done</td><td>300ms delays, all UIs</td></tr>
+        <tr><td><code>mediaserver</code> MJPEG backend</td><td>❌ Pending</td><td>FFmpeg tap needed</td></tr>
+        <tr><td>Advanced Settings UI</td><td>❌ Future</td><td>WTForms, Phase 3</td></tr>
+    </table>
+    <hr>
+    <p><em>Created: January 6, 2026 00:40 EST</em></p>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check if there are any PTZ-related configs</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <hr>
+    <p>title: "UniFi Protect API Analysis"</p>
+    <p>layout: default</p>
+    <hr>
+    <p>elfege@laptopwsl:~$ gflex1</p>
+    <p>BusyBox v1.34.1 (2022-11-08 01:19:20 UTC) built-in shell (ash)</p>
+    <p><strong><em><em></em></strong><strong><em></em></em></strong><strong><em><em></em></strong><strong><em></em></em></strong><strong><em><strong> NOTICE </em></strong><strong><em><em></em></strong><strong><em></em></em></strong><strong><em><em></em></strong><strong><em></em></em></strong></strong>*</p>
+    <ul>
+        <li>By logging in to, accessing, or using any Ubiquiti product, you are     *</li>
+        <li>signifying that you have read our Terms of Service (ToS) and End User   *</li>
+        <li>License Agreement (EULA), understand their terms, and agree to be       *</li>
+        <li>fully bound to them. The use of CLI (Command Line Interface) can        *</li>
+        <li>potentially harm Ubiquiti devices and result in lost access to them and *</li>
+        <li>their data. By proceeding, you acknowledge that the use of CLI to       *</li>
+        <li>modify device(s) outside of their normal operational scope, or in any   *</li>
+        <li>manner inconsistent with the ToS or EULA, will permanently and          *</li>
+        <li>irrevocably void any applicable warranty.                               *</li>
+    </ul>
+    <hr>
+    <p>___ ___      .__________.__</p>
+    <table>
+        <tr><th></th><th></th><th>____</th><th>__\_  ____/__</th></tr>
+    </table>
+    <p>|   |   /    \|  ||  __) |  |   (c) 2010-2022</p>
+    <p>|   |  |   |  \  ||  \   |  |   Ubiquiti Networks, Inc.</p>
+    <table>
+        <tr><th>______</th><th>___</th><th>/__</th><th></th><th>__/</th><th>__</th></tr>
+    </table>
+    <p>|_/                  https://www.ui.com/</p>
+    <p>Welcome to UVC G5 Flex! (v4.59.32.67.M_0f30ce3.221108.0139)</p>
+    <p>UVC G5 Flex-4.59.32# ls -l</p>
+    <p>drwxr-xr-x    2 ubnt     admin           60 Aug  5 11:50 MY_NVR</p>
+    <p>-rw-------    1 ubnt     admin          141 Dec 31  1999 dropbear_ecdsa_host_key</p>
+    <p>-rw-r--r--    1 ubnt     admin         1009 Dec 31  1999 server.pem</p>
+    <p>drwxr-xr-x    2 ubnt     admin           40 Dec 31  1999 support</p>
+    <p>-rw-r--r--    1 ubnt     admin           79 Dec 31  1999 ubnt_avclient.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin         1496 Aug  5 11:24 ubnt_encoder.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin         2399 Dec 31  1999 ubnt_isp.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin          230 Dec 31  1999 ubnt_networkd.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin          179 Aug  3 23:48 ubnt_nvr.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin         1166 Aug  3 23:11 ubnt_osd.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin         1046 Aug  5 11:24 ubnt_smart_detect.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin           69 Dec 31  1999 ubnt_sounds_leds.conf</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <h1>Check if there are any PTZ-related configs</h1>
+    <p>find /etc -name "<em>ptz</em>" -o -name "<em>motor</em>" -o -name "<em>stepper</em>" 2>/dev/null</p>
+    <h1>Look at the ISP config (might contain motor settings)</h1>
+    <p>cat ubnt_isp.conf</p>
+    <h1>Check if there are any PTZ references in existing configs</h1>
+    <p>grep -i "ptz\|motor\|stepper\|pan\|tilt" *.conf</p>
+    <h1>Look for device tree or hardware config files</h1>
+    <p>find /boot -name "<em>.dtb" -o -name "</em>.dts" 2>/dev/null</p>
+    <p>find /proc/device-tree -name "<em>motor</em>" -o -name "<em>ptz</em>" 2>/dev/null</p>
+    <h1>Check for any motor-related kernel modules</h1>
+    <p>lsmod | grep -i motor</p>
+    <p>cat /proc/modules | grep -i motor</p>
+    <h1>Look in system config directories</h1>
+    <p>ls -la /etc/</p>
+    <p>ls -la /usr/share/unifi-protect/</p>
+    <p>UVC G5 Flex-4.59.32# cat ubnt_isp.conf</p>
+    <p>{</p>
+    <p>"ae": {</p>
+    <p>"autoFreq": 60,</p>
+    <p>"blc": 0,</p>
+    <p>"daclevel": 0,</p>
+    <p>"dss": {</p>
+    <p>"min": 4,</p>
+    <p>"mode": "off"</p>
+    <p>},</p>
+    <p>"gain": {</p>
+    <p>"max": 100,</p>
+    <p>"min": 0</p>
+    <p>},</p>
+    <p>"manual": {</p>
+    <p>"gain": 0,</p>
+    <p>"iris": 0,</p>
+    <p>"shutter": 30</p>
+    <p>},</p>
+    <p>"mode": "auto",</p>
+    <p>"shutter": {</p>
+    <p>"max": 10000,</p>
+    <p>"min": 30</p>
+    <p>},</p>
+    <p>"target": 50</p>
+    <p>},</p>
+    <p>"awb": {</p>
+    <p>"awbAlgoMethod": "advanced",</p>
+    <p>"bgain": 1024,</p>
+    <p>"colortemp": 6000,</p>
+    <p>"mode": "auto",</p>
+    <p>"rgain": 1024</p>
+    <p>},</p>
+    <p>"cfgver": 1,</p>
+    <p>"image": {</p>
+    <p>"aggressiveAntiFlicker": 0,</p>
+    <p>"autoFlipMirror": 1,</p>
+    <p>"brightness": 50,</p>
+    <p>"contrast": 50,</p>
+    <p>"criticalTmpOfProtect": 40,</p>
+    <p>"dZoomCenterX": 50,</p>
+    <p>"dZoomCenterY": 50,</p>
+    <p>"dZoomScale": 0,</p>
+    <p>"dZoomStreamId": 4,</p>
+    <p>"denoise": 50,</p>
+    <p>"dzoom": false,</p>
+    <p>"enable3dnr": 1,</p>
+    <p>"enableExternalIr": 0,</p>
+    <p>"enableMicroTmpProtect": 1,</p>
+    <p>"enablePauseMotion": 0,</p>
+    <p>"flip": 1,</p>
+    <p>"forceFilterIrSwitchEvents": 0,</p>
+    <p>"hdr": 2,</p>
+    <p>"hue": 50,</p>
+    <p>"irOnStsBrightness": 0,</p>
+    <p>"irOnStsContrast": 0,</p>
+    <p>"irOnStsDenoise": 0,</p>
+    <p>"irOnStsHue": 0,</p>
+    <p>"irOnStsSaturation": 0,</p>
+    <p>"irOnStsSharpness": 0,</p>
+    <p>"irOnStsWdr": 0,</p>
+    <p>"irOnValBrightness": 50,</p>
+    <p>"irOnValContrast": 50,</p>
+    <p>"irOnValDenoise": 50,</p>
+    <p>"irOnValHue": 50,</p>
+    <p>"irOnValSaturation": 50,</p>
+    <p>"irOnValSharpness": 50,</p>
+    <p>"irOnValWdr": 1,</p>
+    <p>"lensDistortionCorrection": 1,</p>
+    <p>"masks": {},</p>
+    <p>"mirror": 1,</p>
+    <p>"mountPosition": "wall",</p>
+    <p>"queryIrLedStatus": 0,</p>
+    <p>"saturation": 50,</p>
+    <p>"sharpness": 50,</p>
+    <p>"wdr": 1,</p>
+    <p>"zonesAutoFlipMirror": 1</p>
+    <p>},</p>
+    <p>"ir": {</p>
+    <p>"filter": {</p>
+    <p>"cnt2day": 5,</p>
+    <p>"icrLightSensorNightThd": 0,</p>
+    <p>"mode": "auto",</p>
+    <p>"sensitivity": 0,</p>
+    <p>"thd2day": 750,</p>
+    <p>"thd2night": 200</p>
+    <p>},</p>
+    <p>"led": {</p>
+    <p>"level": 255,</p>
+    <p>"mode": "auto"</p>
+    <p>}</p>
+    <p>},</p>
+    <p>"misc": {</p>
+    <p>"mode": "auto",</p>
+    <p>"powerled": {</p>
+    <p>"interval": 245,</p>
+    <p>"mode": "auto"</p>
+    <p>},</p>
+    <p>"vport0in": 0,</p>
+    <p>"vport0out": false,</p>
+    <p>"vport1in": 0,</p>
+    <p>"vport1out": false</p>
+    <p>},</p>
+    <p>"motor": {</p>
+    <p>"focus": {</p>
+    <p>"afNearLimit": 800,</p>
+    <p>"afRange": 0,</p>
+    <p>"mode": "ztrig",</p>
+    <p>"objDistance": 0,</p>
+    <p>"position": 0,</p>
+    <p>"speed": 5,</p>
+    <p>"touchX": 1001,</p>
+    <p>"touchY": 1001</p>
+    <p>},</p>
+    <p>"pan": {</p>
+    <p>"position": 0,</p>
+    <p>"speed": 5</p>
+    <p>},</p>
+    <p>"tilt": {</p>
+    <p>"position": 0,</p>
+    <p>"speed": 5</p>
+    <p>},</p>
+    <p>"zoom": {</p>
+    <p>"position": 0,</p>
+    <p>"speed": 5</p>
+    <p>}</p>
+    <p>},</p>
+    <p>"pir": {</p>
+    <p>"sensitivity": 2</p>
+    <p>}</p>
+    <p>}</p>
+    <p>UVC G5 Flex-4.59.32# grep -i "ptz\|motor\|stepper\|pan\|tilt" *.conf</p>
+    <p>ubnt_isp.conf:  "motor": {</p>
+    <p>ubnt_isp.conf:    "pan": {</p>
+    <p>ubnt_isp.conf:    "tilt": {</p>
+    <p>ubnt_smart_detect.conf:                "motorcycle"</p>
+    <p>UVC G5 Flex-4.59.32# # Look for device tree or hardware config files</p>
+    <p>UVC G5 Flex-4.59.32# find /boot -name "<em>.dtb" -o -name "</em>.dts" 2>/dev/null</p>
+    <p>UVC G5 Flex-4.59.32# find /proc/device-tree -name "<em>motor</em>" -o -name "<em>ptz</em>" 2>/dev/null</p>
+    <p>UVC G5 Flex-4.59.32# # Check for any motor-related kernel modules</p>
+    <p>UVC G5 Flex-4.59.32# lsmod | grep -i motor</p>
+    <p>UVC G5 Flex-4.59.32# cat /proc/modules | grep -i motor</p>
+    <p>UVC G5 Flex-4.59.32# # Look in system config directories</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /etc/</p>
+    <p>drwxr-xr-x   15 ubnt     admin         1060 Aug  5 11:24 .</p>
+    <p>drwxrwxrwt    8 ubnt     admin          160 Jan  1  1970 ..</p>
+    <p>-rw-------    1 ubnt     admin           23 Dec 31  1999 TZ</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           20 Dec 31  1999 asound.conf -> /usr/etc/asound.conf</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           21 Dec 31  1999 asound.state -> /usr/etc/asound.state</p>
+    <p>-rw-r--r--    1 ubnt     admin         2525 Dec 31  1999 audio_tuning_fcd.json</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           53 Dec 31  1999 audio_tuning_nature.json -> /usr/etc/audio_tuning/0xa593/audio_tuning_nature.json</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           60 Dec 31  1999 audio_tuning_noise-reduced.json -> /usr/etc/audio_tuning/0xa593/audio_tuning_noise-reduced.json</p>
+    <p>-rw-r--r--    1 ubnt     admin          130 Dec 31  1999 avclient_state.json</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           15 Dec 31  1999 banner -> /usr/etc/banner</p>
+    <p>-rw-------    1 ubnt     admin         1017 Dec 31  1999 board.info</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           19 Dec 31  1999 default.cfg -> /usr/etc/system.cfg</p>
+    <p>drwx------    2 ubnt     admin           60 Dec 31  1999 dropbear</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           16 Dec 31  1999 dynamic -> /usr/etc/dynamic</p>
+    <p>drwxr-xr-x    2 ubnt     admin           60 Dec 31  1999 ems</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           19 Dec 31  1999 ethertypes -> /usr/etc/ethertypes</p>
+    <p>-rw-r--r--    1 ubnt     admin          304 Dec 31  1999 features.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin            0 Dec 31  1999 fstab</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           22 Dec 31  1999 fw_env.config -> /usr/etc/fw_env.config</p>
+    <p>-rw-r--r--    1 ubnt     admin          150 Dec 31  1999 group</p>
+    <p>-rw-r--r--    1 ubnt     admin           26 Dec 31  1999 host.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin           42 Dec 31  1999 hosts</p>
+    <p>drwxr-xr-x    2 ubnt     admin           80 Dec 31  1999 httpd</p>
+    <p>-rw-------    1 ubnt     admin           18 Dec 31  1999 hwaddr</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           13 Dec 31  1999 idsp -> /usr/etc/idsp</p>
+    <p>drwxr-xr-x    2 ubnt     admin           40 Dec 31  1999 init.d</p>
+    <p>-rw-------    1 ubnt     admin         1500 Dec 31  1999 inittab</p>
+    <p>drwxr-xr-x    2 ubnt     admin          180 Aug  5 12:14 ispserver</p>
+    <p>-rw-r--r--    1 ubnt     admin            6 Aug  5 11:24 last_timesync_monotonic_ts</p>
+    <p>-rw-------    1 ubnt     admin          786 Dec 31  1999 lighttpd.conf</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           36 Dec 31  1999 localtime -> /usr/share/zoneinfo/America/New_York</p>
+    <p>-rw-r--r--    1 ubnt     admin           12 Dec 31  1999 login.defs</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           19 Dec 31  1999 mime.types -> /usr/etc/mime.types</p>
+    <p>drwxr-xr-x    2 ubnt     admin          640 Dec 31  1999 modules.d</p>
+    <p>-rw-r--r--    1 ubnt     admin           82 Dec 31  1999 passwd</p>
+    <p>drwxr-xr-x    4 ubnt     admin          280 Aug  5 11:37 persistent</p>
+    <p>-rwxr-xr-x    1 ubnt     admin         2527 Dec 31  1999 profile</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           18 Dec 31  1999 protocols -> /usr/etc/protocols</p>
+    <p>drwxr-xr-x    2 ubnt     admin          100 Dec 31  1999 rc.d</p>
+    <p>-rw-r--r--    1 ubnt     admin           48 Dec 31  1999 resolv.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin         1009 Dec 31  1999 server.pem</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           17 Dec 31  1999 services -> /usr/etc/services</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           15 Dec 31  1999 shells -> /usr/etc/shells</p>
+    <p>drwxr-xr-x    2 ubnt     admin          120 Dec 31  1999 sounds</p>
+    <p>drwxr-xr-x    2 ubnt     admin           40 Dec 31  1999 ssh</p>
+    <p>drwxr-xr-x    2 ubnt     admin           60 Dec 31  1999 ssl</p>
+    <p>-rw-r--r--    1 ubnt     admin           52 Dec 31  1999 startup.list</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           18 Dec 31  1999 sysconfig -> /usr/etc/sysconfig</p>
+    <p>drwxr-xr-x    2 ubnt     admin          160 Dec 31  1999 sysinit</p>
+    <p>-rw-r--r--    1 ubnt     admin         2253 Dec 31  1999 ubnt_isp.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin           69 Dec 31  1999 ubnt_sounds_leds.conf</p>
+    <p>drwxr-xr-x    3 ubnt     admin          100 Dec 31  1999 udev</p>
+    <p>-rw-------    1 ubnt     admin           16 Dec 31  1999 version</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /usr/share/unifi-protect/</p>
+    <p>UVC G5 Flex-4.59.32# # Let's see what happens if we change the pan position</p>
+    <p>UVC G5 Flex-4.59.32# # Edit the config to change pan position from 0 to 30</p>
+    <p>UVC G5 Flex-4.59.32# sed 's/"position": 0/"position": 30/' ubnt_isp.conf > ubnt_isp_test.conf</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check the difference</p>
+    <p>UVC G5 Flex-4.59.32# diff ubnt_isp.conf ubnt_isp_test.conf</p>
+    <p>--- ubnt_isp.conf</p>
+    <p>+++ ubnt_isp_test.conf</p>
+    <p>@@ -106,21 +106,21 @@</p>
+    <p>"afRange": 0,</p>
+    <p>"mode": "ztrig",</p>
+    <p>"objDistance": 0,</p>
+    <ul>
+        <li>"position": 0,</li>
+        <li>"position": 30,</li>
+    </ul>
+    <p>"speed": 5,</p>
+    <p>"touchX": 1001,</p>
+    <p>"touchY": 1001</p>
+    <p>},</p>
+    <p>"pan": {</p>
+    <ul>
+        <li>"position": 0,</li>
+        <li>"position": 30,</li>
+    </ul>
+    <p>"speed": 5</p>
+    <p>},</p>
+    <p>"tilt": {</p>
+    <ul>
+        <li>"position": 0,</li>
+        <li>"position": 30,</li>
+    </ul>
+    <p>"speed": 5</p>
+    <p>},</p>
+    <p>"zoom": {</p>
+    <ul>
+        <li>"position": 0,</li>
+        <li>"position": 30,</li>
+    </ul>
+    <p>"speed": 5</p>
+    <p>}</p>
+    <p>},</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check what process uses this config file</p>
+    <p>UVC G5 Flex-4.59.32# ps aux | grep isp</p>
+    <p>ps: invalid option -- 'a'</p>
+    <p>BusyBox v1.34.1 (2022-11-08 01:19:20 UTC) multi-call binary.</p>
+    <p>Usage: ps</p>
+    <p>Show list of processes</p>
+    <p>w       Wide output</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Look for the ISP server process</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /etc/ispserver/</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           20 Dec 31  1999 <em> -> /usr/etc/ispserver/</em></p>
+    <p>drwxr-xr-x    2 ubnt     admin          180 Aug  5 12:16 .</p>
+    <p>drwxr-xr-x   15 ubnt     admin         1060 Aug  5 11:24 ..</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           28 Dec 31  1999 iq.bin -> /config/iqfile/0xa593/iq.bin</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           32 Dec 31  1999 iq_hdr.bin -> /config/iqfile/0xa593/iq_hdr.bin</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           38 Dec 31  1999 iq_hdr_night.bin -> /config/iqfile/0xa593/iq_hdr_night.bin</p>
+    <p>lrwxrwxrwx    1 ubnt     admin           34 Dec 31  1999 iq_night.bin -> /config/iqfile/0xa593/iq_night.bin</p>
+    <p>-rw-------    1 ubnt     admin           78 Dec 31  1999 ispserver.conf</p>
+    <p>-rw-r--r--    1 ubnt     admin           88 Aug  5 12:16 lensbias.conf</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check if there's a service that reloads this config</p>
+    <p>UVC G5 Flex-4.59.32# systemctl status ubnt-ispserver || service ubnt-ispserver status</p>
+    <p>-sh: systemctl: not found</p>
+    <p>-sh: service: not found</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check what processes are running (BusyBox ps)</p>
+    <p>UVC G5 Flex-4.59.32# ps w</p>
+    <p>if there are any ubnt processes</p>
+    <p>ps w | grep ubnt</p>
+    <h1>Look at the   PID USER       VSZ STAT COMMAND</h1>
+    <p>ISP server config</p>
+    <p>cat /etc/ispserver/ispserver.conf</p>
+    <h1>Check what's in the startup scripts</h1>
+    <p>ls -la /etc/init.d/</p>
+    <p>cat /etc/init.d/*    1 ubnt      2204 S    /sbin/init</p>
+    <p>| grep -i isp</p>
+    <h1>Let's try to a    2 ubnt         0 SW   [kthreadd]</h1>
+    <p>3 ubnt         0 SW   [ksoftirqd/0]</p>
+    <p>4 ubnt         0 SW   [kworker/0:0]</p>
+    <p>5 ubnt         0 SW<  [kworker/0:0H]</p>
+    <p>7 ubnt         0 RW   [rcu_preempt]</p>
+    <p>8 ubnt         0 SW   [rcu_sched]</p>
+    <p>pply the config with the modifie    9 ubnt         0 SW   [rcu_bh]</p>
+    <p>d pan position</p>
+    <p>cp ubnt_isp_test.conf ubnt_isp.conf</p>
+    <h1>Look for a   10 ubnt         0 SW   [migration/0]</h1>
+    <p>ny reload or restart commands</p>
+    <p>ls   11 ubnt         0 SW<  [lru-add-drain]</p>
+    <p>-la /usr/bin/ |   12 ubnt         0 SW   [watchdog/0]</p>
+    <p>13 ubnt         0 SW   [cpuhp/0]</p>
+    <p>grep -i isp</p>
+    <p>ls -la /usr/sbin/ |   14 ubnt         0 SW   [cpuhp/1]</p>
+    <p>grep -i isp</p>
+    <h1>15 ubnt         0 SW   [watchdog/1]</h1>
+    <p>16 ubnt         0 SW   [migration/1]</p>
+    <p>Check if there's   17 ubnt         0 SW   [ksoftirqd/1]</p>
+    <p>a way to signal   19 ubnt         0 SW<  [kworker/1:0H]</p>
+    <p>20 ubnt         0 SW   [kdevtmpfs]</p>
+    <p>the ISP server</p>
+    <p>killall -HUP ubn   21 ubnt         0 SW<  [netns]</p>
+    <p>t_ispserver 2>/dev/null || echo "No ubnt_ispserver process"</p>
+    <h1>Try to restart an  187 ubnt         0 SW   [oom_reaper]</h1>
+    <p>y camera-related services</p>
+    <p>ls -la  188 ubnt         0 SW<  [writeback]</p>
+    <p>/etc/rc.d/  190 ubnt         0 SW   [kcompactd0]</p>
+    <p>191 ubnt         0 SW<  [crypto]</p>
+    <p>192 ubnt         0 SW<  [bioset]</p>
+    <p>194 ubnt         0 SW<  [kblockd]</p>
+    <p>228 ubnt         0 SW<  [cfg80211]</p>
+    <p>229 ubnt         0 SW<  [watchdogd]</p>
+    <p>318 ubnt         0 SW   [kswapd0]</p>
+    <p>319 ubnt         0 SW<  [vmstat]</p>
+    <p>404 ubnt         0 SW   [kapmd]</p>
+    <p>462 ubnt         0 SW   [hwrng]</p>
+    <p>464 ubnt         0 SW   [monitor_temp]</p>
+    <p>471 ubnt         0 SW<  [bioset]</p>
+    <p>476 ubnt         0 SW<  [bioset]</p>
+    <p>481 ubnt         0 SW<  [bioset]</p>
+    <p>486 ubnt         0 SW<  [bioset]</p>
+    <p>491 ubnt         0 SW<  [bioset]</p>
+    <p>496 ubnt         0 SW<  [bioset]</p>
+    <p>501 ubnt         0 SW<  [bioset]</p>
+    <p>506 ubnt         0 SW<  [bioset]</p>
+    <p>509 ubnt         0 SW   [kworker/1:1]</p>
+    <p>512 ubnt         0 SW<  [bioset]</p>
+    <p>517 ubnt         0 SW<  [bioset]</p>
+    <p>522 ubnt         0 SW<  [bioset]</p>
+    <p>526 ubnt         0 SW   [spi0]</p>
+    <p>531 ubnt         0 SW   [spi1]</p>
+    <p>567 ubnt         0 SW   [ubi_bgt0d]</p>
+    <p>568 ubnt         0 SW   [kworker/0:2]</p>
+    <p>599 ubnt         0 SW   [ubi_bgt1d]</p>
+    <p>603 ubnt         0 SW   [ubifs_bgt1_0]</p>
+    <p>662 ubnt      3228 S    /bin/syslogd -S -s 0 -C1024</p>
+    <p>758 ubnt      2204 S    /bin/udevd --daemon --children-max=1</p>
+    <p>886 ubnt         0 SW<  [cryptodev_queue]</p>
+    <p>910 ubnt      2072 S<   /bin/watchdog -t 1 /dev/watchdog</p>
+    <p>972 ubnt         0 SW<  [cifsiod]</p>
+    <p>973 ubnt         0 SW<  [cifsoplockd]</p>
+    <p>977 ubnt         0 SW<  [rpciod]</p>
+    <p>978 ubnt         0 SW<  [xprtiod]</p>
+    <p>981 ubnt         0 SW<  [nfsiod]</p>
+    <p>996 ubnt         0 SW   [kworker/1:2]</p>
+    <p>998 ubnt         0 DW   [ehci_monitor]</p>
+    <p>1005 ubnt         0 SW   [SensorIfThreadW]</p>
+    <p>1006 ubnt         0 SW   [IspDriverThread]</p>
+    <p>1007 ubnt         0 SW   [IspMidThreadWq]</p>
+    <p>1088 ubnt      2204 S    /sbin/init</p>
+    <p>1090 ubnt      2204 S    /bin/syslogd -S -s 0 -C1024 -n</p>
+    <p>1092 ubnt      2204 S    /bin/klogd -n</p>
+    <p>1093 ubnt      5696 S    /bin/lighttpd -D -f /etc/lighttpd.conf</p>
+    <p>1095 ubnt      1988 S    /bin/dropbear -F -r /etc/persistent/dropbear_ecdsa_host_key -p 22</p>
+    <p>1098 ubnt     39072 S    /bin/ubnt_audio_agent_sstar -p=50</p>
+    <p>1105 ubnt     17936 D    /bin/ubnt_ctlserver</p>
+    <p>1107 ubnt     56836 S    /bin/ubnt_streamer</p>
+    <p>1108 ubnt     10604 S    /bin/ubnt_networkd</p>
+    <p>1110 ubnt     10060 S    /bin/ubnt_nvr</p>
+    <p>1111 ubnt     11160 S    /bin/ubnt_sounds_leds</p>
+    <p>1112 ubnt     11216 S    /bin/ubnt_talkback -a</p>
+    <p>1116 ubnt     16704 S    /bin/ubnt_audio_events</p>
+    <p>1117 ubnt      2324 S    /bin/crond -l5 -f</p>
+    <p>1118 ubnt      2204 S    /bin/sh /bin/watchdog.sh</p>
+    <p>1119 ubnt     12076 S    /bin/ubnt_reportd</p>
+    <p>1125 ubnt         0 DW   [mi_wq]</p>
+    <p>1134 ubnt         0 DWN  [mi_log]</p>
+    <p>1141 ubnt         0 DW   [ai1_P0_MAIN]</p>
+    <p>1149 ubnt     25452 S    /bin/ubnt_smart_detect</p>
+    <p>1150 ubnt      8812 S    /bin/ubnt_pmask_sstar</p>
+    <p>1151 ubnt     20196 S    /bin/ubnt_ispserver -d=0</p>
+    <p>1152 ubnt     16260 S    /bin/ubnt_osd</p>
+    <p>1153 ubnt      2204 S    /bin/udhcpc --retries 9 -f -x hostname:UVC G5 Flex -i eth0 -S -s /bin/udhcpc_cb.sh -v</p>
+    <p>1160 ubnt         0 DW   [vpe0_P0_MAIN]</p>
+    <p>1161 ubnt         0 DW   [vpe0_P1_MAIN]</p>
+    <p>1162 ubnt         0 DW   [vpe0_P2_MAIN]</p>
+    <p>1163 ubnt         0 DWN  [VEP_DumpTaskThr]</p>
+    <p>1170 ubnt         0 DW   [vif0_P0_MAIN]</p>
+    <p>1171 ubnt         0 DW   [vif1_P0_MAIN]</p>
+    <p>1172 ubnt         0 DW   [vif2_P0_MAIN]</p>
+    <p>1176 ubnt         0 DW   [divp0_P0_MAIN]</p>
+    <p>1179 ubnt         0 DW   [venc0_P0_MAIN]</p>
+    <p>1180 ubnt         0 DW   [venc1_P0_MAIN]</p>
+    <p>1183 ubnt         0 SW   [RGN BUF WQ]</p>
+    <p>1188 ubnt         0 DW   [ipu0_P0_MAIN]</p>
+    <p>1202 ubnt      5700 S    /bin/infctld</p>
+    <p>1204 ubnt     11008 S    /bin/ubnt_avclient</p>
+    <p>1236 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetStatus"}</p>
+    <p>1237 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetPosition"}</p>
+    <p>1238 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetCurrentPosition"}</p>
+    <p>1244 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Home"}</p>
+    <p>1245 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Center"}</p>
+    <p>1246 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Recenter"}</p>
+    <p>1252 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo"}</p>
+    <p>1253 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Move"}</p>
+    <p>1254 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"AbsolutePosition"}</p>
+    <p>1260 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"RelativePosition"}</p>
+    <p>1261 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Stop"}</p>
+    <p>1262 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetCapabilities"}</p>
+    <p>1268 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetInfo"}</p>
+    <p>1269 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Initialize"}</p>
+    <p>1303 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetStatus"}</p>
+    <p>1304 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"GetStatus"}</p>
+    <p>1305 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"GetStatus"}</p>
+    <p>1306 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Home"}</p>
+    <p>1312 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Center"}</p>
+    <p>1313 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"Recenter"}</p>
+    <p>1314 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","pan":10,"tilt":0}</p>
+    <p>1378 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1384 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 15, "tilt": 0}</p>
+    <p>1385 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": -30, "tilt": 0}</p>
+    <p>1386 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1387 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1388 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "AbsolutePosition", "panPos": 45, "tiltPos": 0}</p>
+    <p>1389 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Stop"}</p>
+    <p>1390 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1396 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1402 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1646 ubnt         0 SW   [kworker/u4:0]</p>
+    <p>1783 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1784 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 15, "tilt": 0}</p>
+    <p>1785 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": -30, "tilt": 0}</p>
+    <p>1786 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1792 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1793 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "AbsolutePosition", "panPos": 45, "tiltPos": 0}</p>
+    <p>1794 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Stop"}</p>
+    <p>1795 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1837 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Initialize"}</p>
+    <p>1838 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Enable"}</p>
+    <p>1839 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Activate"}</p>
+    <p>1840 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Start"}</p>
+    <p>1841 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"Initialize"}</p>
+    <p>1842 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"EnablePTZ"}</p>
+    <p>1843 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"SetMode","mode":"ptz"}</p>
+    <p>1844 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Calibrate"}</p>
+    <p>1845 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Reset"}</p>
+    <p>1846 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"FindHome"}</p>
+    <p>1852 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","angle":30,"axis":"pan"}</p>
+    <p>1853 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","degrees":30,"direction":"right"}</p>
+    <p>1854 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","x":30,"y":0}</p>
+    <p>1855 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"PanTo","position":30}</p>
+    <p>1856 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"SetPosition","pan":30,"tilt":0}</p>
+    <p>1857 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GoTo","pan":30,"tilt":0}</p>
+    <p>1858 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","pan":30,"tilt":0,"speed":50}</p>
+    <p>1859 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","pan":30,"tilt":0,"panSpeed":23,"tiltSpeed":23}</p>
+    <p>1860 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Move","motor":"pan","steps":100}</p>
+    <p>1861 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Step","direction":"right","steps":50}</p>
+    <p>1901 ubnt         0 SW   [kworker/u4:1]</p>
+    <p>1925 ubnt      2108 R    /bin/dropbear -F -r /etc/persistent/dropbear_ecdsa_host_key -p 22</p>
+    <p>1926 ubnt      2332 S    -sh</p>
+    <p>2024 ubnt      2072 S    timeout 5 logger ruok</p>
+    <p>2026 ubnt      2072 S    sleep 30</p>
+    <p>2027 ubnt      2324 R    ps w</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Look for ISP-related processes</p>
+    <p>UVC G5 Flex-4.59.32# ps w | grep isp</p>
+    <p>1151 ubnt     20196 S    /bin/ubnt_ispserver -d=0</p>
+    <p>2030 ubnt      2204 S    grep isp</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check if there are any ubnt processes</p>
+    <p>UVC G5 Flex-4.59.32# ps w | grep ubnt</p>
+    <p>1 ubnt      2204 S    /sbin/init</p>
+    <p>2 ubnt         0 SW   [kthreadd]</p>
+    <p>3 ubnt         0 SW   [ksoftirqd/0]</p>
+    <p>4 ubnt         0 SW   [kworker/0:0]</p>
+    <p>5 ubnt         0 SW<  [kworker/0:0H]</p>
+    <p>7 ubnt         0 SW   [rcu_preempt]</p>
+    <p>8 ubnt         0 SW   [rcu_sched]</p>
+    <p>9 ubnt         0 SW   [rcu_bh]</p>
+    <p>10 ubnt         0 SW   [migration/0]</p>
+    <p>11 ubnt         0 SW<  [lru-add-drain]</p>
+    <p>12 ubnt         0 SW   [watchdog/0]</p>
+    <p>13 ubnt         0 SW   [cpuhp/0]</p>
+    <p>14 ubnt         0 SW   [cpuhp/1]</p>
+    <p>15 ubnt         0 SW   [watchdog/1]</p>
+    <p>16 ubnt         0 SW   [migration/1]</p>
+    <p>17 ubnt         0 SW   [ksoftirqd/1]</p>
+    <p>19 ubnt         0 SW<  [kworker/1:0H]</p>
+    <p>20 ubnt         0 SW   [kdevtmpfs]</p>
+    <p>21 ubnt         0 SW<  [netns]</p>
+    <p>187 ubnt         0 SW   [oom_reaper]</p>
+    <p>188 ubnt         0 SW<  [writeback]</p>
+    <p>190 ubnt         0 SW   [kcompactd0]</p>
+    <p>191 ubnt         0 SW<  [crypto]</p>
+    <p>192 ubnt         0 SW<  [bioset]</p>
+    <p>194 ubnt         0 SW<  [kblockd]</p>
+    <p>228 ubnt         0 SW<  [cfg80211]</p>
+    <p>229 ubnt         0 SW<  [watchdogd]</p>
+    <p>318 ubnt         0 SW   [kswapd0]</p>
+    <p>319 ubnt         0 SW<  [vmstat]</p>
+    <p>404 ubnt         0 SW   [kapmd]</p>
+    <p>462 ubnt         0 SW   [hwrng]</p>
+    <p>464 ubnt         0 SW   [monitor_temp]</p>
+    <p>471 ubnt         0 SW<  [bioset]</p>
+    <p>476 ubnt         0 SW<  [bioset]</p>
+    <p>481 ubnt         0 SW<  [bioset]</p>
+    <p>486 ubnt         0 SW<  [bioset]</p>
+    <p>491 ubnt         0 SW<  [bioset]</p>
+    <p>496 ubnt         0 SW<  [bioset]</p>
+    <p>501 ubnt         0 SW<  [bioset]</p>
+    <p>506 ubnt         0 SW<  [bioset]</p>
+    <p>509 ubnt         0 SW   [kworker/1:1]</p>
+    <p>512 ubnt         0 SW<  [bioset]</p>
+    <p>517 ubnt         0 SW<  [bioset]</p>
+    <p>522 ubnt         0 SW<  [bioset]</p>
+    <p>526 ubnt         0 SW   [spi0]</p>
+    <p>531 ubnt         0 SW   [spi1]</p>
+    <p>567 ubnt         0 SW   [ubi_bgt0d]</p>
+    <p>568 ubnt         0 SW   [kworker/0:2]</p>
+    <p>599 ubnt         0 SW   [ubi_bgt1d]</p>
+    <p>603 ubnt         0 SW   [ubifs_bgt1_0]</p>
+    <p>662 ubnt      3228 S    /bin/syslogd -S -s 0 -C1024</p>
+    <p>758 ubnt      2204 S    /bin/udevd --daemon --children-max=1</p>
+    <p>886 ubnt         0 SW<  [cryptodev_queue]</p>
+    <p>910 ubnt      2072 S<   /bin/watchdog -t 1 /dev/watchdog</p>
+    <p>972 ubnt         0 SW<  [cifsiod]</p>
+    <p>973 ubnt         0 SW<  [cifsoplockd]</p>
+    <p>977 ubnt         0 SW<  [rpciod]</p>
+    <p>978 ubnt         0 SW<  [xprtiod]</p>
+    <p>981 ubnt         0 SW<  [nfsiod]</p>
+    <p>996 ubnt         0 SW   [kworker/1:2]</p>
+    <p>998 ubnt         0 DW   [ehci_monitor]</p>
+    <p>1005 ubnt         0 SW   [SensorIfThreadW]</p>
+    <p>1006 ubnt         0 SW   [IspDriverThread]</p>
+    <p>1007 ubnt         0 SW   [IspMidThreadWq]</p>
+    <p>1088 ubnt      2204 S    /sbin/init</p>
+    <p>1090 ubnt      2204 S    /bin/syslogd -S -s 0 -C1024 -n</p>
+    <p>1092 ubnt      2204 S    /bin/klogd -n</p>
+    <p>1093 ubnt      5696 S    /bin/lighttpd -D -f /etc/lighttpd.conf</p>
+    <p>1095 ubnt      1988 S    /bin/dropbear -F -r /etc/persistent/dropbear_ecdsa_host_key -p 22</p>
+    <p>1098 ubnt     39072 S    /bin/ubnt_audio_agent_sstar -p=50</p>
+    <p>1105 ubnt     17936 S    /bin/ubnt_ctlserver</p>
+    <p>1107 ubnt     56836 S    /bin/ubnt_streamer</p>
+    <p>1108 ubnt     10604 S    /bin/ubnt_networkd</p>
+    <p>1110 ubnt     10060 S    /bin/ubnt_nvr</p>
+    <p>1111 ubnt     11160 S    /bin/ubnt_sounds_leds</p>
+    <p>1112 ubnt     11216 S    /bin/ubnt_talkback -a</p>
+    <p>1116 ubnt     16704 S    /bin/ubnt_audio_events</p>
+    <p>1117 ubnt      2324 S    /bin/crond -l5 -f</p>
+    <p>1118 ubnt      2204 S    /bin/sh /bin/watchdog.sh</p>
+    <p>1119 ubnt     12076 S    /bin/ubnt_reportd</p>
+    <p>1125 ubnt         0 DW   [mi_wq]</p>
+    <p>1134 ubnt         0 DWN  [mi_log]</p>
+    <p>1141 ubnt         0 DW   [ai1_P0_MAIN]</p>
+    <p>1149 ubnt     25452 S    /bin/ubnt_smart_detect</p>
+    <p>1150 ubnt      8812 S    /bin/ubnt_pmask_sstar</p>
+    <p>1151 ubnt     20196 S    /bin/ubnt_ispserver -d=0</p>
+    <p>1152 ubnt     16260 S    /bin/ubnt_osd</p>
+    <p>1153 ubnt      2204 S    /bin/udhcpc --retries 9 -f -x hostname:UVC G5 Flex -i eth0 -S -s /bin/udhcpc_cb.sh -v</p>
+    <p>1160 ubnt         0 DW   [vpe0_P0_MAIN]</p>
+    <p>1161 ubnt         0 DW   [vpe0_P1_MAIN]</p>
+    <p>1162 ubnt         0 DW   [vpe0_P2_MAIN]</p>
+    <p>1163 ubnt         0 DWN  [VEP_DumpTaskThr]</p>
+    <p>1170 ubnt         0 DW   [vif0_P0_MAIN]</p>
+    <p>1171 ubnt         0 DW   [vif1_P0_MAIN]</p>
+    <p>1172 ubnt         0 DW   [vif2_P0_MAIN]</p>
+    <p>1176 ubnt         0 DW   [divp0_P0_MAIN]</p>
+    <p>1179 ubnt         0 DW   [venc0_P0_MAIN]</p>
+    <p>1180 ubnt         0 DW   [venc1_P0_MAIN]</p>
+    <p>1183 ubnt         0 SW   [RGN BUF WQ]</p>
+    <p>1188 ubnt         0 DW   [ipu0_P0_MAIN]</p>
+    <p>1202 ubnt      5700 S    /bin/infctld</p>
+    <p>1204 ubnt     11008 S    /bin/ubnt_avclient</p>
+    <p>1236 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetStatus"}</p>
+    <p>1237 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetPosition"}</p>
+    <p>1238 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetCurrentPosition"}</p>
+    <p>1244 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Home"}</p>
+    <p>1245 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Center"}</p>
+    <p>1246 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Recenter"}</p>
+    <p>1252 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo"}</p>
+    <p>1253 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Move"}</p>
+    <p>1254 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"AbsolutePosition"}</p>
+    <p>1260 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"RelativePosition"}</p>
+    <p>1261 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Stop"}</p>
+    <p>1262 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetCapabilities"}</p>
+    <p>1268 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetInfo"}</p>
+    <p>1269 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Initialize"}</p>
+    <p>1303 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GetStatus"}</p>
+    <p>1304 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"GetStatus"}</p>
+    <p>1305 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"GetStatus"}</p>
+    <p>1306 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Home"}</p>
+    <p>1312 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Center"}</p>
+    <p>1313 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"Recenter"}</p>
+    <p>1314 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","pan":10,"tilt":0}</p>
+    <p>1378 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1384 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 15, "tilt": 0}</p>
+    <p>1385 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": -30, "tilt": 0}</p>
+    <p>1386 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1387 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1388 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "AbsolutePosition", "panPos": 45, "tiltPos": 0}</p>
+    <p>1389 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Stop"}</p>
+    <p>1390 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1396 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1402 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1646 ubnt         0 SW   [kworker/u4:0]</p>
+    <p>1783 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1784 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 15, "tilt": 0}</p>
+    <p>1785 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": -30, "tilt": 0}</p>
+    <p>1786 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "MoveTo", "pan": 0, "tilt": 10}</p>
+    <p>1792 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1793 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "AbsolutePosition", "panPos": 45, "tiltPos": 0}</p>
+    <p>1794 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Stop"}</p>
+    <p>1795 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName": "Home"}</p>
+    <p>1837 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Initialize"}</p>
+    <p>1838 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Enable"}</p>
+    <p>1839 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Activate"}</p>
+    <p>1840 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Start"}</p>
+    <p>1841 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"Initialize"}</p>
+    <p>1842 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"EnablePTZ"}</p>
+    <p>1843 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_camera -m={"functionName":"SetMode","mode":"ptz"}</p>
+    <p>1844 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Calibrate"}</p>
+    <p>1845 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"Reset"}</p>
+    <p>1846 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"FindHome"}</p>
+    <p>1852 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","angle":30,"axis":"pan"}</p>
+    <p>1853 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","degrees":30,"direction":"right"}</p>
+    <p>1854 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","x":30,"y":0}</p>
+    <p>1855 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"PanTo","position":30}</p>
+    <p>1856 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"SetPosition","pan":30,"tilt":0}</p>
+    <p>1857 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"GoTo","pan":30,"tilt":0}</p>
+    <p>1858 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","pan":30,"tilt":0,"speed":50}</p>
+    <p>1859 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_ptz -m={"functionName":"MoveTo","pan":30,"tilt":0,"panSpeed":23,"tiltSpeed":23}</p>
+    <p>1860 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Move","motor":"pan","steps":100}</p>
+    <p>1861 ubnt      8168 S    ubnt_ipc_cli -T=ubnt_motor -m={"functionName":"Step","direction":"right","steps":50}</p>
+    <p>1901 ubnt         0 SW   [kworker/u4:1]</p>
+    <p>1925 ubnt      2108 S    /bin/dropbear -F -r /etc/persistent/dropbear_ecdsa_host_key -p 22</p>
+    <p>1926 ubnt      2332 S    -sh</p>
+    <p>2024 ubnt      2072 S    timeout 5 logger ruok</p>
+    <p>2026 ubnt      2072 S    sleep 30</p>
+    <p>2028 ubnt         0 SW   [kworker/u4:2]</p>
+    <p>2031 ubnt      2324 R    ps w</p>
+    <p>2032 ubnt      2204 S    grep ubnt</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Look at the ISP server config</p>
+    <p>UVC G5 Flex-4.59.32# cat /etc/ispserver/ispserver.conf</p>
+    <p>system.model=UnknownSystem_42387</p>
+    <p>system.debug_stderr=0</p>
+    <p>system.debug_verbose=0</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check what's in the startup scripts</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /etc/init.d/</p>
+    <p>drwxr-xr-x    2 ubnt     admin           40 Dec 31  1999 .</p>
+    <p>drwxr-xr-x   15 ubnt     admin         1060 Aug  5 11:24 ..</p>
+    <p>UVC G5 Flex-4.59.32# cat /etc/init.d/* | grep -i isp</p>
+    <p>cat: can't open '/etc/init.d/*': No such file or directory</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Let's try to apply the config with the modified pan position</p>
+    <p>UVC G5 Flex-4.59.32# cp ubnt_isp_test.conf ubnt_isp.conf</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Look for any reload or restart commands</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /usr/bin/ | grep -i isp</p>
+    <p>-rwxr-xr-x    1 ubnt     admin         9740 Nov  7  2022 ubnt_isp_fac_cmd</p>
+    <p>-rwxr-xr-x    1 ubnt     admin       113068 Nov  7  2022 ubnt_ispserver</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /usr/sbin/ | grep -i isp</p>
+    <p>-rwxr-xr-x    1 ubnt     admin         9740 Nov  7  2022 ubnt_isp_fac_cmd</p>
+    <p>-rwxr-xr-x    1 ubnt     admin       113068 Nov  7  2022 ubnt_ispserver</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Check if there's a way to signal the ISP server</p>
+    <p>UVC G5 Flex-4.59.32# killall -HUP ubnt_ispserver 2>/dev/null || echo "No ubnt_ispserver process"</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <p>UVC G5 Flex-4.59.32# # Try to restart any camera-related services</p>
+    <p>UVC G5 Flex-4.59.32# ls -la /etc/rc.d/</p>
+    <p>drwxr-xr-x    2 ubnt     admin          100 Dec 31  1999 .</p>
+    <p>drwxr-xr-x   15 ubnt     admin         1060 Aug  5 11:24 ..</p>
+    <p>-rwxr-xr-x    1 ubnt     admin          264 Dec 31  1999 rc</p>
+    <p>-rwxr-xr-x    1 ubnt     admin         2432 Dec 31  1999 rc.stop</p>
+    <p>-rwxr-xr-x    1 ubnt     admin        11617 Dec 31  1999 rc.sysinit</p>
+    <p>UVC G5 Flex-4.59.32#</p>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

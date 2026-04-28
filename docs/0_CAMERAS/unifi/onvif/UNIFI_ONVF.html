@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniFi Protect ONVIF Protocol Support: Technical Analysis</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <hr>
+    <p>title: "UniFi Protect ONVIF Protocol Support"</p>
+    <p>layout: default</p>
+    <hr>
+    <h1>UniFi Protect ONVIF Protocol Support: Technical Analysis</h1>
+    <p>UniFi's ONVIF implementation has a critical directional distinction: <strong>UniFi Protect accepts incoming ONVIF cameras</strong> (added September 2024), but <strong>UniFi cameras themselves cannot act as ONVIF servers</strong> for third-party systems. This fundamental asymmetry defines the entire integration landscape.</p>
+    <h2>Does UniFi Protect support ONVIF protocol for camera control?</h2>
+    <p><strong>Yes, with significant limitations.</strong> UniFi Protect version 5.0.20+ (released September 2024) introduced ONVIF client support, allowing third-party ONVIF-compliant cameras to be adopted into the Protect ecosystem. This marked Ubiquiti's first departure from their traditionally closed architecture.</p>
+    <p>The implementation supports basic video streaming and continuous recording with no per-camera licensing fees—a major differentiator from competitors like Synology and QNAP. However, Protect only implements <strong>ONVIF Profile S</strong> (streaming), providing minimal functionality compared to native UniFi cameras. Critical features like motion detection, PTZ control, audio streaming, and AI analytics are explicitly unsupported for third-party ONVIF cameras.</p>
+    <p>Adoption requires enabling "Discover Third-Party Cameras" in Settings > System. Auto-discovery works only on the same subnet; cross-VLAN deployments require manual "Advanced Adoption" by IP address. The feature remains marked as "Beta Labs" with active development addressing stability issues through frequent updates (13 micro-releases in the first week).</p>
+    <h2>Do UniFi cameras support ONVIF protocol?</h2>
+    <p><strong>No. UniFi cameras categorically do not support ONVIF.</strong> All UniFi camera models—including G3, G4, G5, AI series, and both PTZ variants (G4-PTZ and G5-PTZ)—are designed exclusively for the UniFi Protect ecosystem using proprietary protocols. This is not an oversight but an architectural decision maintained since UniFi Video 3.0 removed direct RTSP access in 2013-2014.</p>
+    <p>Official Ubiquiti datasheets for all camera models explicitly omit ONVIF from specifications. Third-party verification from certified trainers and community documentation confirms these cameras cannot function as ONVIF servers. UniFi cameras cannot be added to Blue Iris, Frigate, Synology Surveillance Station, or any third-party NVR via ONVIF discovery.</p>
+    <p>The only integration path for UniFi cameras with external systems is through RTSP re-streaming from the Protect controller (not directly from cameras), which requires the entire Protect ecosystem and provides only video feeds without camera control capabilities. For G3-series cameras, a legacy "Standalone" mode enables direct RTSP access, but this feature was removed in G4/G5 generations.</p>
+    <h2>Which ONVIF services are supported by UniFi?</h2>
+    <p>UniFi Protect's ONVIF implementation is <strong>severely feature-restricted</strong>, supporting only core streaming functions:</p>
+    <p><strong>Supported services:</strong></p>
+    <ul>
+        <li>Live video streaming (H.264 and H.265 codecs)</li>
+        <li>Continuous recording to Protect storage</li>
+        <li>Basic playback and timeline review</li>
+        <li>Dual-stream detection (high and low quality)</li>
+        <li>Snapshot retrieval (if camera supports)</li>
+    </ul>
+    <p><strong>Explicitly unsupported services:</strong></p>
+    <ul>
+        <li><strong>PTZ control</strong> – No pan, tilt, zoom commands</li>
+        <li><strong>PTZ presets</strong> – Cannot save or recall positions</li>
+        <li><strong>Continuous move</strong> – No ONVIF PTZ operations</li>
+        <li><strong>Absolute positioning</strong> – No coordinate-based control</li>
+        <li><strong>Motion detection events</strong> – ONVIF motion triggers ignored</li>
+        <li><strong>Audio streaming</strong> – Completely disabled</li>
+        <li><strong>Two-way audio</strong> – Non-functional</li>
+        <li><strong>Smart detections</strong> – No AI analytics from third-party cameras</li>
+    </ul>
+    <p>The sole exception is the <strong>AI Port</strong> accessory ($199), which adds PTZ support for ONVIF cameras when used as an intermediary device. However, each AI Port currently supports only one ONVIF camera, making this an expensive workaround at $199 per camera.</p>
+    <p>Ubiquiti's official documentation explicitly states: <em>"Motion detections, PTZ control, Audio, and other advanced features are not supported on third party cameras."</em> This positions Protect's ONVIF support as a "basic video recorder" suitable for compliance recording or gradual migration scenarios, not full-featured security operations.</p>
+    <h2>ONVIF port configuration for UniFi cameras</h2>
+    <p><strong>For third-party ONVIF cameras adopted into Protect:</strong></p>
+    <ul>
+        <li>Standard ONVIF ports are <strong>80</strong> (HTTP) or <strong>8000</strong> (common alternative)</li>
+        <li>RTSP streams typically use port <strong>554</strong> (standard)</li>
+        <li>Port specification required for manual adoption across VLANs: <code>192.168.1.100:8000</code></li>
+        <li>ONVIF service endpoint format: <code>http://<camera_ip>/onvif/device_service</code></li>
+    </ul>
+    <p><strong>For UniFi cameras (not ONVIF):</strong></p>
+    <ul>
+        <li><strong>Port 7447</strong> – Non-secure RTSP streams from Protect controller</li>
+        <li><strong>Port 7441</strong> – Secure RTSPS streams with TLS encryption</li>
+        <li><strong>Port 80</strong> – Camera web interface (limited functionality)</li>
+        <li>RTSP URL format: <code>rtsp://<protect_ip>:7447/<camera_id>_<quality></code></li>
+        <li>Quality suffixes: <code>_0</code> (highest), <code>_1</code> (medium), <code>_2</code> (lowest)</li>
+        <li>Example: <code>rtsp://192.168.1.1:7447/5adede05e4b096b258e7ba98_0</code></li>
+    </ul>
+    <p><strong>Critical integration note:</strong> Third-party NVR systems like Blue Iris require using <code>rtsp://</code> protocol on port 7447 rather than <code>rtsps://</code> on port 7441. The <code>?enableSrtp</code> parameter must be removed from URLs for compatibility. UniFi cameras use non-standard ports specifically to prevent direct third-party access, forcing integration through the Protect controller.</p>
+    <h2>Known limitations and quirks with UniFi ONVIF implementation</h2>
+    <p><strong>RTSP stream monopolization</strong> is the most significant issue. When Protect adopts an ONVIF camera, it consumes both main and substreams (2 streams total), often exhausting the camera's stream capacity. Users report that concurrent access by other applications (VLC, Blue Iris, Frigate) becomes impossible after adoption. This isn't Protect explicitly blocking streams but resource exhaustion on budget cameras. The only workaround is using higher-end cameras with 3+ simultaneous stream support or running parallel NVR systems before adoption completes.</p>
+    <p><strong>Cross-VLAN discovery failure</strong> represents a fundamental architectural limitation. ONVIF auto-discovery uses multicast WS-Discovery protocol, which doesn't traverse Layer 3 boundaries. While manual "Advanced Adoption" by IP address works, community reports describe ONVIF implementation as "not doing well across VLANs" with authentication failures and connection instability. Best practice requires placing cameras and the Protect console on the same subnet, limiting network segmentation options for security-conscious deployments.</p>
+    <p><strong>Authentication complexity</strong> manifests in multiple ways. Third-party cameras must use <strong>Digest authentication with WS-UsernameToken</strong> mode—a specific requirement that causes failures if misconfigured. Hikvision cameras require explicitly setting authentication to "Digest & ws-username token" rather than defaults. Blank passwords are rejected by Protect. Date/time synchronization is critical; authentication fails silently if camera clocks are incorrect. Many cameras require creating dedicated ONVIF credentials separate from admin accounts.</p>
+    <p><strong>Vendor-specific incompatibilities</strong> are widespread:</p>
+    <ul>
+        <li><strong>Reolink</strong>: ONVIF disabled by default, must enable via Reolink app first; stream stability issues reported as "buggy at best"</li>
+        <li><strong>Hikvision</strong>: Requires separate ONVIF user creation with Operator/Media rights</li>
+        <li><strong>Dahua</strong>: Good compatibility but SMD (Smart Motion Detection) and IVS events don't trigger recordings</li>
+        <li><strong>Amcrest</strong>: Mixed results with frequent disconnections</li>
+    </ul>
+    <p><strong>Software stability concerns</strong> persist despite rapid updates. Early adopters (September-October 2024) reported system crashes when enabling ONVIF, required cold reboots after adding cameras, black video after adoption, broken thumbnails, and timeline scrubbing issues. While Ubiquiti released 13 micro-updates in the first week addressing many bugs, the feature remains marked "Beta Labs" with production deployment risks.</p>
+    <p><strong>Stream selection limitations</strong> prevent optimization. Protect automatically detects streams but users cannot manually specify which to use. This causes high-resolution cameras to record low-quality substreams instead of main streams. Multi-lens cameras (like Reolink Duo) show only a single stitched view without individual lens configuration. Stream settings changes require removing and re-adding the entire camera.</p>
+    <p><strong>Hardware performance degradation</strong> affects resource-constrained consoles. UDM SE devices struggle with 11+ third-party 4K cameras, displaying "approaching limit" warnings. Third-party cameras consume 2-3x more CPU resources than native UniFi cameras due to transcoding overhead. User experience shows lower refresh rates in dashboard views and occasional feed freezing.</p>
+    <h2>Can ONVIF control UniFi cameras through Protect or must cameras be accessed directly?</h2>
+    <p><strong>UniFi cameras cannot be controlled via ONVIF under any circumstances</strong> because they fundamentally do not implement ONVIF server functionality. The question's premise doesn't apply to UniFi cameras—they exist solely within the proprietary Protect ecosystem.</p>
+    <p>For <strong>third-party ONVIF cameras adopted into Protect</strong>, cameras must be <strong>accessed directly at the device level</strong> during initial configuration. The workflow requires:</p>
+    <ol>
+        <li>Accessing camera's native web interface via IP address</li>
+        <li>Enabling ONVIF in camera settings (location varies by manufacturer)</li>
+        <li>Creating ONVIF username and password credentials</li>
+        <li>Configuring authentication method (Digest + WS-UsernameToken)</li>
+        <li>Setting accurate date/time/timezone</li>
+        <li>Then adopting the camera into Protect</li>
+    </ol>
+    <p>After adoption, Protect provides only streaming and recording capabilities—no camera management functions. All configuration changes (exposure, white balance, overlays, motion zones, privacy masks) must still be performed through the camera's native interface. Protect cannot adjust camera settings via ONVIF. This creates a fragmented management experience requiring switching between Protect and individual camera web UIs for administration.</p>
+    <p><strong>Alternative integration paths</strong> for those requiring ONVIF control:</p>
+    <ul>
+        <li><strong>Home Assistant</strong>: Use direct ONVIF integration to cameras (bypassing Protect) for full PTZ and motion detection support</li>
+        <li><strong>Blue Iris/Frigate</strong>: Connect cameras directly via RTSP/ONVIF rather than routing through Protect</li>
+        <li><strong>AI Port</strong>: Adds PTZ control for one ONVIF camera at $199 per unit</li>
+    </ul>
+    <p>The community consensus strongly recommends managing ONVIF cameras directly through superior NVR platforms (Blue Iris, Frigate) rather than routing through Protect's limited implementation.</p>
+    <h2>What authentication method does UniFi use for ONVIF?</h2>
+    <p>UniFi Protect requires <strong>Digest authentication combined with WS-UsernameToken</strong> (also called "Digest & ws-username token" or "WS-Security UsernameToken with Digest"). This dual-method approach follows ONVIF Profile S specifications but requires explicit configuration on the camera side—many cameras default to digest-only or basic authentication, causing adoption failures.</p>
+    <p><strong>Configuration requirements:</strong></p>
+    <ul>
+        <li>ONVIF username and password must be explicitly created (admin credentials may not work)</li>
+        <li>Authentication mode must be set to "Digest & ws-username token" in camera settings</li>
+        <li>Blank passwords are rejected—minimum password strength varies by camera</li>
+        <li>Date/time/timezone must be accurately synchronized (authentication includes timestamps)</li>
+        <li>Some cameras require assigning specific ONVIF user roles (Operator or Media User)</li>
+    </ul>
+    <p><strong>Vendor-specific authentication notes:</strong></p>
+    <ul>
+        <li><strong>Hikvision</strong>: Official documentation specifies changing from default to "Digest & ws-username token"; separate ONVIF user recommended rather than using admin account</li>
+        <li><strong>Dahua/Amcrest</strong>: Generally compatible with standard digest authentication</li>
+        <li><strong>Reolink</strong>: Requires enabling ONVIF first via mobile app before web interface exposes settings</li>
+        <li><strong>Sony</strong>: Requires enabling video encoders for each ONVIF profile</li>
+    </ul>
+    <p><strong>Authentication failure troubleshooting:</strong></p>
+    <ul>
+        <li>Verify ONVIF enabled on camera</li>
+        <li>Confirm authentication method matches Digest + WS-UsernameToken</li>
+        <li>Check date/time synchronization (especially cameras blocked from NTP servers)</li>
+        <li>Test credentials with third-party ONVIF tool (ONVIF Device Manager) before Protect adoption</li>
+        <li>Review camera logs for specific authentication errors</li>
+    </ul>
+    <p><strong>Security considerations:</strong> The authentication mechanism is sufficiently secure for internal networks but cameras should be VLAN-isolated and blocked from WAN access. Protect stores ONVIF credentials encrypted in its configuration database. Multi-factor authentication is not supported in ONVIF protocol specifications.</p>
+    <h2>Technical integration guidance for developers</h2>
+    <p><strong>For developers integrating with UniFi Protect via ONVIF</strong>, recognize that Protect acts as an <strong>ONVIF client only</strong>—it cannot export UniFi cameras as ONVIF sources. Integration paths include:</p>
+    <p><strong>Path 1: Adding third-party cameras to Protect (ONVIF → Protect)</strong></p>
+    <ul>
+        <li>Target Protect 5.0.20+ API endpoints</li>
+        <li>Enable "Discover Third-Party Cameras" via Settings API</li>
+        <li>Use ONVIF WS-Discovery for same-subnet detection</li>
+        <li>Manual adoption via IP requires POST to adoption endpoint with credentials</li>
+        <li>Expect only streaming/recording functionality; no control plane access</li>
+    </ul>
+    <p><strong>Path 2: Accessing UniFi cameras from external systems (Protect → RTSP)</strong></p>
+    <ul>
+        <li>Use Protect's RTSP re-streaming on port 7447</li>
+        <li>Authenticate via Protect API to obtain camera IDs and stream URLs</li>
+        <li>Format: <code>rtsp://<protect_ip>:7447/<camera_id>_<quality></code></li>
+        <li>Cannot use ONVIF—protocol unsupported by UniFi cameras</li>
+        <li>PTZ control requires Protect's proprietary WebSocket API</li>
+    </ul>
+    <p><strong>Path 3: Home automation integration</strong></p>
+    <ul>
+        <li>Home Assistant: Use official UniFi Protect integration (not ONVIF)</li>
+        <li>Node-RED: Access via Protect's REST API</li>
+        <li>MQTT: Use third-party bridges (unifi-cam-proxy, scrypted)</li>
+    </ul>
+    <p><strong>Network topology recommendations:</strong></p>
+    <ul>
+        <li><strong>Isolated camera VLAN</strong> (e.g., 192.168.50.0/24)</li>
+        <li><strong>Separate Protect VLAN</strong> (e.g., 192.168.40.0/24)</li>
+        <li><strong>Layer 3 routing</strong> with firewall rules:</li>
+        <li>Allow camera VLAN → Protect console IP (specific ports: 80, 443, 554, 7447)</li>
+        <li>Block camera VLAN → WAN (prevent Chinese cameras phoning home)</li>
+        <li>Block camera VLAN → gateway/other networks</li>
+        <li><strong>mDNS reflection</strong> not required (ONVIF uses unicast for adoption)</li>
+    </ul>
+    <p><strong>Testing methodology:</strong></p>
+    <ol>
+        <li>Verify ONVIF functionality with ONVIF Device Manager before Protect adoption</li>
+        <li>Test RTSP stream access with VLC using <code>rtsp://<camera_ip>:554/<path></code></li>
+        <li>Confirm date/time synchronization via NTP or manual setting</li>
+        <li>Validate authentication with digest credentials</li>
+        <li>Monitor Protect logs during adoption for specific error messages</li>
+        <li>Use Wireshark to capture ONVIF SOAP messages if troubleshooting</li>
+    </ol>
+    <p><strong>Current API limitations (Protect 5.0.x):</strong></p>
+    <ul>
+        <li>No API endpoints for PTZ control of third-party cameras</li>
+        <li>Cannot query ONVIF motion events programmatically</li>
+        <li>Third-party camera settings not exposed via Protect API</li>
+        <li>Must use direct camera management for configuration changes</li>
+    </ul>
+    <p><strong>Future development considerations:</strong> Ubiquiti's roadmap suggests motion detection and PTZ support are planned but unscheduled. Build integrations with fallback paths to direct camera access for features Protect doesn't support. Monitor release notes for each Protect update as ONVIF implementation is under active development.</p>
+    <h2>Conclusion</h2>
+    <p>UniFi's ONVIF implementation represents a <strong>strategic compromise</strong> between ecosystem openness and feature differentiation. Protect's ability to accept third-party ONVIF cameras (no licensing fees, Profile S support, automated discovery) provides migration flexibility for existing deployments, but severe limitations—no motion detection, no PTZ, no audio—restrict it to basic recording scenarios.</p>
+    <p>The critical asymmetry—<strong>Protect accepts ONVIF but UniFi cameras don't provide ONVIF</strong>—reveals Ubiquiti's competitive strategy: enable foot-in-the-door installations with legacy cameras while incentivizing gradual replacement with native UniFi cameras for full functionality. This approach works for SMB migrations and compliance recording but fails for serious security operations requiring motion-triggered recording, PTZ patrol patterns, or AI analytics from third-party cameras.</p>
+    <p><strong>For developers and integrators</strong>, the path forward depends on requirements: use native UniFi cameras for full Protect integration, or choose ONVIF-compliant brands (Dahua, Hikvision, Axis) with superior NVR platforms (Blue Iris, Frigate) if advanced features, PTZ control, or multi-system flexibility are required. Attempting to bridge these worlds through Protect's limited ONVIF implementation or RTSP re-streaming introduces complexity without meaningful benefit.</p>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

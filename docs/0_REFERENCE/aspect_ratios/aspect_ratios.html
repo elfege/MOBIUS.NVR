@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🖥️ **16:9 Aspect Ratio (widescreen standard)**</title>
+    <style>
+        :root {
+            --bg:      #0d1117;
+            --surface: #161b22;
+            --border:  #30363d;
+            --text:    #e6edf3;
+            --muted:   #8b949e;
+            --blue:    #58a6ff;
+            --purple:  #bc8cff;
+            --green:   #3fb950;
+            --yellow:  #d29922;
+            --red:     #f85149;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            padding: 40px 20px;
+        }
+        .container { max-width: 960px; margin: 0 auto; }
+        h1 {
+            font-size: 2em;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--blue), var(--purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        h2 {
+            font-size: 1.4em;
+            color: var(--blue);
+            margin: 32px 0 12px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+        }
+        h3 {
+            font-size: 1.15em;
+            color: var(--purple);
+            margin: 24px 0 8px;
+        }
+        h4 { font-size: 1em; color: var(--green); margin: 16px 0 6px; }
+        p { margin: 10px 0; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { color: var(--purple); text-decoration: underline; }
+        ul, ol { margin: 8px 0 8px 24px; }
+        li { margin: 4px 0; }
+        code {
+            font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.9em;
+            color: var(--green);
+        }
+        pre {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: var(--text);
+        }
+        blockquote {
+            border-left: 3px solid var(--purple);
+            padding: 8px 16px;
+            margin: 12px 0;
+            background: rgba(188,140,255,0.05);
+            color: #cdb9f5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+        }
+        th {
+            background: var(--surface);
+            color: var(--blue);
+            text-align: left;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            font-weight: 600;
+        }
+        td {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+        }
+        tr:nth-child(even) { background: rgba(22,27,34,0.5); }
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 24px 0;
+        }
+        strong { color: #f0f6fc; }
+        .meta {
+            color: var(--muted);
+            font-size: 0.85em;
+            margin-bottom: 24px;
+        }
+        footer {
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.82em;
+            padding-top: 32px;
+            margin-top: 48px;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <hr>
+    <p>title: "Aspect Ratios & Resolutions"</p>
+    <p>layout: default</p>
+    <hr>
+    <p><!-- markdownlint-disable MD025 --></p>
+    <h1>🖥️ <strong>16:9 Aspect Ratio (widescreen standard)</strong></h1>
+    <table>
+        <tr><th>Label</th><th>Resolution</th><th>Notes</th></tr>
+        <tr><td>128×72</td><td>Extremely low (thumbnail-level)</td><td></td></tr>
+        <tr><td>160×90</td><td>Minimal viable stream</td><td></td></tr>
+        <tr><td>213×120</td><td>Ultra-low bandwidth</td><td></td></tr>
+        <tr><td>256×144</td><td>144p — YouTube’s lowest tier</td><td></td></tr>
+        <tr><td>320×180</td><td>Typical “tiny preview” size</td><td></td></tr>
+        <tr><td>426×240</td><td>240p — mobile baseline</td><td></td></tr>
+        <tr><td>640×360</td><td>360p — low standard definition</td><td></td></tr>
+        <tr><td>854×480</td><td>480p — SD “DVD quality”</td><td></td></tr>
+        <tr><td>960×540</td><td>qHD — quarter of Full HD</td><td></td></tr>
+        <tr><td>1280×720</td><td>720p — HD</td><td></td></tr>
+        <tr><td>1366×768</td><td>Laptop HD common variant</td><td></td></tr>
+        <tr><td>1600×900</td><td>HD+</td><td></td></tr>
+        <tr><td>1920×1080</td><td>1080p — Full HD</td><td></td></tr>
+        <tr><td>2560×1440</td><td>1440p — QHD / 2K</td><td></td></tr>
+        <tr><td>3200×1800</td><td>QHD+ — high-res laptops</td><td></td></tr>
+        <tr><td>3840×2160</td><td>2160p — 4K UHD</td><td></td></tr>
+        <tr><td>5120×2880</td><td>5K — high-end displays</td><td></td></tr>
+        <tr><td>7680×4320</td><td>4320p — 8K UHD</td><td></td></tr>
+    </table>
+    <hr>
+    <h1>🧾 <strong>4:3 Aspect Ratio (classic / security cams / legacy)</strong></h1>
+    <table>
+        <tr><th>Label</th><th>Resolution</th><th>Notes</th></tr>
+        <tr><td>128×96</td><td>Very small (icon size)</td><td></td></tr>
+        <tr><td>160×120</td><td>QQVGA — ultra-low</td><td></td></tr>
+        <tr><td>192×144</td><td>Classic low-res</td><td></td></tr>
+        <tr><td>240×180</td><td>Slightly wider than 320×180</td><td></td></tr>
+        <tr><td>320×240</td><td>QVGA — standard webcam baseline</td><td></td></tr>
+        <tr><td>400×300</td><td>Low-res surveillance standard</td><td></td></tr>
+        <tr><td>640×480</td><td>VGA — old SD camcorder</td><td></td></tr>
+        <tr><td>800×600</td><td>SVGA — improved legacy SD</td><td></td></tr>
+        <tr><td>1024×768</td><td>XGA — early LCD displays</td><td></td></tr>
+        <tr><td>1280×960</td><td>1.2 MP “SXGA-lite”</td><td></td></tr>
+        <tr><td>1600×1200</td><td>UXGA — 2 MP classic 4:3</td><td></td></tr>
+        <tr><td>2048×1536</td><td>QXGA — 3 MP cameras</td><td></td></tr>
+        <tr><td>2560×1920</td><td>QSXGA — 5 MP sensors</td><td></td></tr>
+        <tr><td>3264×2448</td><td>8 MP (modern 4:3 smartphone sensors)</td><td></td></tr>
+    </table>
+    <hr>
+    <footer>Elfege Leylavergne &middot; 2026</footer>
+</div>
+</body>
+</html>

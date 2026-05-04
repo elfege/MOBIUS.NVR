@@ -48,6 +48,7 @@
    ============================================================================ */
 @import url('components/settings-overlay.css');
 @import url('components/settings-controls.css');
+@import url('components/evidence-collection.css');
 
 /* ============================================================================
    RESPONSIVE OVERRIDES - Must be last for proper cascade

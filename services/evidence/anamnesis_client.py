@@ -74,13 +74,25 @@ logger = logging.getLogger(__name__)
 
 # ----- module-level configuration ----------------------------------------
 
-# Default Anamnesis app URL. Override via env var ``ANAMNESIS_URL`` for
-# alternate deployments (e.g. a developer running Anamnesis locally).
-# We resolve at import time so each evidence service that constructs an
-# AnamnesisClient gets the same default.
+# Default Anamnesis app URL.
+#
+# Resolution priority:
+#   1. ``ANAMNESIS_URL`` env var — explicit override; used by tests and
+#      alternate deployments where the user runs Anamnesis locally or
+#      on a different host.
+#   2. ``http://anamnesis-app:3010`` — the in-container default. Works
+#      when unified-nvr is attached to the anamnesis-net external
+#      docker network (see docker-compose.yml). Resolves via docker
+#      DNS to the anamnesis-app container.
+#
+# The host-network form ``http://192.168.10.20:3010`` is NOT the
+# default because it only works from the host or from a container
+# with host networking — and unified-nvr does not use host networking.
+# Set ``ANAMNESIS_URL=http://192.168.10.20:3010`` explicitly when
+# running the client outside the container.
 DEFAULT_ANAMNESIS_URL: str = os.environ.get(
     "ANAMNESIS_URL",
-    "http://192.168.10.20:3010",
+    "http://anamnesis-app:3010",
 )
 
 # Default timeouts for non-streaming endpoints. Generous because some

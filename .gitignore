@@ -55,10 +55,11 @@ DOCS/
 # Canonical workflow dirs (lowercase by convention)
 !docs/teachings/
 !docs/teachings/**
-!docs/plans/
-!docs/plans/**
-!docs/weekly_summaries/
-!docs/weekly_summaries/**
+# docs/plans/ and docs/weekly_summaries/ are intentionally NOT whitelisted
+# here — per RULE 19 in CLAUDE.md (canonical, propagated 2026-04-28),
+# both directories are "intended-untracked" operational artifacts. A plan
+# may be promoted to a tracked location ONLY after explicit user direction
+# at finalization time, never preemptively.
 # Pre-Jan-2026 archive (name unchanged per user directive)
 !docs/archive/
 !docs/archive/**

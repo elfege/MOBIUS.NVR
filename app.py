@@ -88,6 +88,7 @@ from routes.storage import storage_bp
 from routes.streaming import streaming_bp, init_socketio as _init_streaming_socketio
 from routes.settings_routes import settings_bp
 from routes.talkback import talkback_bp, init_socketio as _init_talkback_socketio
+from routes.evidence_routes import evidence_bp
 
 # Flask-SocketIO for WebSocket MJPEG multiplexing
 # Uses simple-websocket for Gunicorn compatibility (gthread workers)
@@ -174,6 +175,7 @@ app.register_blueprint(storage_bp)
 app.register_blueprint(streaming_bp)
 app.register_blueprint(talkback_bp)
 app.register_blueprint(settings_bp)
+app.register_blueprint(evidence_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).
@@ -182,7 +184,7 @@ app.register_blueprint(settings_bp)
 # so we must register exemptions via the CSRFProtect instance directly.
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
-           external_api_bp]:
+           external_api_bp, evidence_bp]:
     csrf.exempt(bp)
 
 # ===== License Validation =====

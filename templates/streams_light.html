@@ -85,6 +85,38 @@
             color: #555; font-size: 12px;
         }
 
+        /* --- Per-tile refresh button (top-right corner, fades in on hover/touch) --- */
+        .tile-refresh {
+            position: absolute; top: 6px; right: 6px;
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: #eee;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px; line-height: 1;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.18s ease-out;
+            z-index: 5;
+            -webkit-user-select: none; user-select: none;
+            padding: 0;
+        }
+        .tile.show-refresh .tile-refresh,
+        .tile:hover .tile-refresh {
+            opacity: 1;
+        }
+        .tile-refresh:active {
+            background: rgba(76, 175, 80, 0.6);
+        }
+        .tile-refresh.spinning {
+            animation: tile-refresh-spin 0.6s linear;
+        }
+        @keyframes tile-refresh-spin {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+
         /* ---- Stream modal (single camera, swipeable) ---- */
         .fs-backdrop {
             display: none;
@@ -163,6 +195,7 @@
         <button class="topbar-btn" id="grid-btn" title="Change grid size">2x2</button>
         <button class="topbar-btn" id="fit-btn" title="Toggle stretch / proportional">Stretch</button>
         <button class="topbar-btn" id="pause-btn" title="Pause snapshot refresh">Pause</button>
+        <button class="topbar-btn" id="refresh-page-btn" title="Full page reload (clears caches, re-fetches all data)">↻</button>
         <a href="/streams?full=1" class="topbar-btn" title="Switch to full UI">Full UI</a>
         <form method="POST" action="/logout" style="margin:0;">
             <button type="submit" class="topbar-btn">Logout</button>
@@ -307,9 +340,43 @@
             label.className = 'tile-label';
             label.textContent = cam.name;
 
+            /* Per-tile refresh button — fades in on hover (mouse) or touch.
+               Click forces a fresh snapshot fetch (cache-buster) for THIS tile only,
+               and briefly spins. Stops the click from bubbling so the double-tap
+               fullscreen-open handler below doesn't fire. */
+            var refreshBtn = document.createElement('button');
+            refreshBtn.className = 'tile-refresh';
+            refreshBtn.type = 'button';
+            refreshBtn.title = 'Refresh this stream';
+            refreshBtn.innerHTML = '↻';  /* ↻ */
+            refreshBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                e.preventDefault();
+                refreshBtn.classList.remove('spinning');
+                /* Force reflow so the animation restarts on rapid repeated clicks */
+                void refreshBtn.offsetWidth;
+                refreshBtn.classList.add('spinning');
+                img.src = snapUrl(cam.id);
+            });
+
             tile.appendChild(img);
             tile.appendChild(label);
+            tile.appendChild(refreshBtn);
             grid.appendChild(tile);
+
+            /* Touch-device support: tap once to reveal the refresh button briefly,
+               since :hover doesn't fire on touch. The 'show-refresh' class gives the
+               same opacity:1 as :hover; auto-hide after 2.5s. */
+            (function (tileEl) {
+                var hideTimer = null;
+                tileEl.addEventListener('touchstart', function () {
+                    tileEl.classList.add('show-refresh');
+                    if (hideTimer) clearTimeout(hideTimer);
+                    hideTimer = setTimeout(function () {
+                        tileEl.classList.remove('show-refresh');
+                    }, 2500);
+                }, { passive: true });
+            })(tile);
 
             /* Double-tap to enter fullscreen for this camera */
             (function (camObj, tileEl) {
@@ -439,6 +506,23 @@
             if (dx > 0 && curPage > 0) { curPage--; render(); }
         }
     }, { passive: true });
+
+    /* ===== Full page reload ===== */
+    var refreshPageBtn = document.getElementById('refresh-page-btn');
+    if (refreshPageBtn) {
+        refreshPageBtn.addEventListener('click', function () {
+            /* Cache-busting reload: bump a query param so any stale ?_t=
+               in the URL doesn't sit in the back/forward cache the same way.
+               Fall back to plain reload if URL manipulation fails. */
+            try {
+                var u = new URL(window.location.href);
+                u.searchParams.set('_r', Date.now());
+                window.location.replace(u.toString());
+            } catch (e) {
+                window.location.reload();
+            }
+        });
+    }
 
     /* ===== Pause / resume ===== */
     pauseBtn.addEventListener('click', function () {

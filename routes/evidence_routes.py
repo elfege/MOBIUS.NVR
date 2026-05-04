@@ -886,3 +886,185 @@ def promote_events(case_id: int):
         "promoted_at_utc": iso_now,
         "rows": updated,
     })
+
+
+# =========================================================================
+# UI-facing settings endpoints (Phase 4 wiring)
+# =========================================================================
+#
+# The 'Collect Evidence' tab in the global settings UI needs to read +
+# write the per-camera evidence_camera_settings table. We expose these
+# operations as Flask routes (rather than letting the browser hit
+# PostgREST directly) because:
+#
+#   * Nginx-edge has no /pgrest proxy by design — keeping PostgREST
+#     hidden from clients reduces attack surface and avoids exposing
+#     the whole DB query language to the browser.
+#   * The UI needs a CAMERA + SETTINGS join, which is awkward to do
+#     from the client side; one server-side endpoint is cleaner.
+#   * Login_required guards every read/write, matching the rest of
+#     the evidence API.
+# =========================================================================
+
+
+# ----- GET /api/evidence/cameras -----------------------------------------
+
+@evidence_bp.route("/api/evidence/cameras", methods=["GET"])
+@login_required
+def cameras_with_settings():
+    """
+    Return audio-capable cameras (cameras.audio_input_supported = TRUE)
+    joined with their evidence_camera_settings row (or a default shape
+    if no row exists yet).
+
+    Response::
+
+        [
+          {
+            "serial":   "T8419P0024110C6A",
+            "name":     "KITCHEN OFFICE",
+            "audio_input_supported": true,
+            "settings": {
+              "enabled":               false,
+              "capture_video":         true,
+              "capture_audio":         true,
+              "silence_db_threshold":  -40,
+              "retention_days":        365,
+              "classifier_categories": [...]
+            }
+          },
+          ...
+        ]
+
+    The "settings" sub-object is always present. If the camera doesn't
+    yet have a row in evidence_camera_settings, we return the schema
+    defaults so the UI can render checkboxes consistently — the row
+    will be INSERTed on first save.
+    """
+    import requests
+    base = _shared_settings_postgrest_url()
+
+    cams_r = requests.get(
+        f"{base}/cameras?audio_input_supported=eq.true"
+        f"&select=serial,name,audio_input_supported"
+        f"&order=name.asc",
+        timeout=10,
+    )
+    if not cams_r.ok:
+        return jsonify({"error": f"cameras query failed: {cams_r.text[:300]}"}), 502
+    cams = cams_r.json()
+
+    settings_r = requests.get(
+        f"{base}/evidence_camera_settings?select=*",
+        timeout=10,
+    )
+    if not settings_r.ok:
+        return jsonify({"error": f"settings query failed: {settings_r.text[:300]}"}), 502
+    settings_by_serial = {s["serial"]: s for s in settings_r.json()}
+
+    # Default shape — must match the column defaults declared in
+    # migration 027. If migration 027 changes those defaults, update
+    # here too (or refactor to read DEFAULTs from a shared module).
+    DEFAULTS = {
+        "enabled": False,
+        "capture_video": True,
+        "capture_audio": True,
+        "silence_db_threshold": -40.0,
+        "classifier_categories": [
+            "screams", "crying", "impacts", "raised-voices",
+        ],
+        "retention_days": 365,
+    }
+
+    out = []
+    for cam in cams:
+        s = settings_by_serial.get(cam["serial"])
+        merged = dict(DEFAULTS, **(s or {}))
+        # Strip metadata that the UI doesn't need (and that PostgREST
+        # may include like updated_at).
+        for k in ("updated_at",):
+            merged.pop(k, None)
+        out.append({
+            "serial": cam["serial"],
+            "name": cam.get("name") or cam["serial"],
+            "audio_input_supported": True,
+            "settings": merged,
+        })
+    return jsonify(out)
+
+
+# ----- PUT /api/evidence/camera-settings/<serial> ------------------------
+
+@evidence_bp.route(
+    "/api/evidence/camera-settings/<serial>", methods=["PUT"],
+)
+@login_required
+def upsert_camera_settings(serial: str):
+    """
+    Insert-or-update one camera's evidence settings row.
+
+    Body (all fields optional; only the ones present are written)::
+
+        {
+          "enabled":               <bool>,
+          "capture_video":         <bool>,
+          "capture_audio":         <bool>,
+          "silence_db_threshold":  <-90 .. 0>,
+          "retention_days":        <int>,
+          "classifier_categories": ["screams", ...]
+        }
+
+    Behavior:
+      * If a row exists for this serial, PATCH the listed fields.
+      * If no row exists, INSERT a new row with the listed fields
+        (other columns get migration-027 defaults).
+
+    Returns the row as it stands after the write.
+    """
+    import requests
+    body = request.get_json(silent=True) or {}
+
+    # Whitelist — silently drops unknown keys so a future schema
+    # change doesn't accidentally let clients write columns we haven't
+    # vetted.
+    allowed_fields = {
+        "enabled", "capture_video", "capture_audio",
+        "silence_db_threshold", "retention_days",
+        "classifier_categories",
+    }
+    payload = {k: v for k, v in body.items() if k in allowed_fields}
+    if not payload:
+        return jsonify({"error": "no whitelisted fields in body"}), 400
+
+    base = _shared_settings_postgrest_url()
+
+    # Try PATCH first. If the row doesn't exist, PostgREST returns
+    # 200 with [] (empty result) — we detect that and fall through
+    # to INSERT.
+    patch_url = (f"{base}/evidence_camera_settings"
+                 f"?serial=eq.{requests.utils.quote(serial, safe='')}")
+    patch_r = requests.patch(
+        patch_url,
+        json=payload,
+        headers={"Prefer": "return=representation"},
+        timeout=10,
+    )
+    if not patch_r.ok:
+        return jsonify({"error": f"PATCH failed: {patch_r.text[:300]}"}), 502
+    rows = patch_r.json()
+    if rows:
+        # Patched an existing row.
+        return jsonify(rows[0])
+
+    # No existing row → INSERT. Always include the serial.
+    insert_payload = {"serial": serial, **payload}
+    insert_r = requests.post(
+        f"{base}/evidence_camera_settings",
+        json=insert_payload,
+        headers={"Prefer": "return=representation"},
+        timeout=10,
+    )
+    if not insert_r.ok:
+        return jsonify({"error": f"INSERT failed: {insert_r.text[:300]}"}), 502
+    rows = insert_r.json()
+    return jsonify(rows[0] if rows else insert_payload), 201

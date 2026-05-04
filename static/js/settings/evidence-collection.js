@@ -39,17 +39,20 @@
  *     panel ``$container`` to be in the DOM already.
  *   * No framework — vanilla DOM + jQuery. Keeps the bundle small.
  *
- * Why we PATCH per-camera rows directly to PostgREST
- * --------------------------------------------------
+ * Endpoints used (all under /api/evidence/, all login_required)
+ * -------------------------------------------------------------
  *
- * The ``evidence_camera_settings`` table is intentionally simple
- * (see ``psql/migrations/027_add_evidence_tables.sql``) and PostgREST
- * already has SELECT/INSERT/UPDATE/DELETE granted on it (migration
- * 029). Going through PostgREST means we don't have to maintain a
- * Flask CRUD shim. The only operation that ALSO needs server-side
- * logic — the disclosure ack — has its own dedicated Flask route
- * because it needs the request IP / user-agent and writes to the
- * manifest (which is filesystem-bound).
+ *   GET  /api/evidence/cameras                  list audio-capable
+ *                                               cameras + settings
+ *   PUT  /api/evidence/camera-settings/<serial> upsert settings row
+ *   GET  /api/evidence/status                   volume + chain stats
+ *   POST /api/evidence/disclosure-ack           disclosure manifest entry
+ *
+ * Earlier drafts of this module talked to PostgREST directly through
+ * a hypothetical /pgrest reverse-proxy path. That path doesn't exist
+ * in nginx-edge by design — we keep PostgREST hidden from clients to
+ * limit attack surface. The Flask endpoints above wrap the underlying
+ * tables so the browser only sees a small, vetted surface.
  */
 
 
@@ -175,22 +178,6 @@ export class EvidenceCollectionTab {
     constructor() {
         // jQuery handle to the tab panel container (set by init()).
         this.$panel = null;
-
-        // PostgREST base URL. Same convention as the rest of the
-        // settings UI — most modules just use absolute paths against
-        // this origin since edge-nginx proxies /api/ to the backend.
-        // For raw PostgREST CRUD we go through /pgrest which the
-        // nginx config maps to nvr-postgrest:3001. (Adjust if your
-        // edge config exposes it elsewhere.)
-        //
-        // FALLBACK: most projects use /pgrest, but if the deployment
-        // exposes PostgREST at /api/db/ or just /api/ the fetch URLs
-        // below need to match. Override with window.NVR_POSTGREST_URL
-        // if needed.
-        this._pgrest = (
-            window.NVR_POSTGREST_URL ||
-            "/pgrest"
-        ).replace(/\/+$/, "");
 
         // In-memory state: cameras with audio support + their current
         // evidence settings rows. Loaded by load(), mutated as the
@@ -426,33 +413,27 @@ export class EvidenceCollectionTab {
         $matrix.html('<em class="evidence-matrix-loading">Loading…</em>');
 
         try {
-            // Fetch in parallel — three small independent requests.
-            const [cameras, settings, status] = await Promise.all([
-                this._fetchAudioCapableCameras(),
-                this._fetchEvidenceSettings(),
+            // Fetch in parallel — two small independent requests.
+            // /api/evidence/cameras already does the camera+settings
+            // join server-side, so we only need that + status.
+            const [camerasWithSettings, status] = await Promise.all([
+                this._fetchCamerasWithSettings(),
                 this._fetchStatus(),
             ]);
 
-            // Index settings by serial for fast lookup during render.
-            // Cameras without a settings row get a default (disabled)
-            // shape — the row will be INSERTed if/when the user
-            // enables them.
-            this._cameras = cameras;
+            // Materialize internal state. Each entry from the server is
+            // {serial, name, audio_input_supported, settings: {...}}.
+            this._cameras = camerasWithSettings.map(c => ({
+                serial: c.serial,
+                name: c.name,
+                audio_input_supported: c.audio_input_supported,
+            }));
             this._settings = {};
             this._dirty.clear();
-            for (const cam of cameras) {
-                const existing = settings.find(s => s.serial === cam.serial);
-                this._settings[cam.serial] = existing || {
-                    serial: cam.serial,
-                    enabled: false,
-                    capture_video: true,
-                    capture_audio: true,
-                    silence_db_threshold: -40.0,
-                    classifier_categories: [
-                        'screams','crying','impacts','raised-voices',
-                    ],
-                    retention_days: 365,
-                    _is_new_row: true,  // force POST not PATCH on save
+            for (const c of camerasWithSettings) {
+                this._settings[c.serial] = {
+                    serial: c.serial,
+                    ...c.settings,
                 };
             }
 
@@ -467,22 +448,13 @@ export class EvidenceCollectionTab {
         }
     }
 
-    async _fetchAudioCapableCameras() {
-        // PostgREST: filter cameras where audio_input_supported=true.
-        // Selecting only the columns we display keeps the wire small.
-        const url = `${this._pgrest}/cameras?audio_input_supported=eq.true`
-                  + `&select=serial,name,brand,audio_input_supported`
-                  + `&order=name.asc`;
-        const r = await fetch(url, { credentials: 'same-origin' });
+    async _fetchCamerasWithSettings() {
+        // Server-side endpoint joins cameras + evidence_camera_settings
+        // and fills in defaults for cameras without an existing row,
+        // so this single GET gives the UI everything it needs.
+        const r = await fetch('/api/evidence/cameras',
+                              { credentials: 'same-origin' });
         if (!r.ok) throw new Error(`cameras HTTP ${r.status}`);
-        return r.json();
-    }
-
-    async _fetchEvidenceSettings() {
-        const url = `${this._pgrest}/evidence_camera_settings`
-                  + `?select=*`;
-        const r = await fetch(url, { credentials: 'same-origin' });
-        if (!r.ok) throw new Error(`settings HTTP ${r.status}`);
         return r.json();
     }
 
@@ -594,16 +566,12 @@ export class EvidenceCollectionTab {
                .css('color', '#aaa');
 
         try {
-            // ── 1. PATCH per-camera dirty rows ─────────────────────
+            // ── 1. UPSERT per-camera dirty rows ────────────────────
+            // Server-side endpoint is upsert-aware — PATCH if row
+            // exists, INSERT otherwise — so the client doesn't need
+            // to track that distinction.
             for (const serial of this._dirty) {
-                const row = this._settings[serial];
-                if (row._is_new_row) {
-                    // No prior settings row exists — INSERT.
-                    await this._upsertNewRow(row);
-                    delete row._is_new_row;
-                } else {
-                    await this._patchRow(serial, row);
-                }
+                await this._upsertRow(serial, this._settings[serial]);
             }
             this._dirty.clear();
 
@@ -624,47 +592,27 @@ export class EvidenceCollectionTab {
         }
     }
 
-    async _patchRow(serial, row) {
-        const url = `${this._pgrest}/evidence_camera_settings`
-                  + `?serial=eq.${encodeURIComponent(serial)}`;
+    async _upsertRow(serial, row) {
+        // Single endpoint does both PATCH-existing and INSERT-new
+        // server-side. We send only the user-facing fields (master
+        // tunables like silence_db_threshold or retention_days are
+        // not yet exposed in the UI matrix; they keep their
+        // server-side defaults).
+        const url = `/api/evidence/camera-settings/${encodeURIComponent(serial)}`;
         const body = {
-            enabled: !!row.enabled,
+            enabled:       !!row.enabled,
             capture_audio: !!row.capture_audio,
             capture_video: !!row.capture_video,
         };
         const r = await fetch(url, {
-            method: 'PATCH',
+            method: 'PUT',
             credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
-        if (!r.ok) throw new Error(`PATCH ${serial}: HTTP ${r.status}`);
-    }
-
-    async _upsertNewRow(row) {
-        const url = `${this._pgrest}/evidence_camera_settings`;
-        // Send only the columns we care about; defaults handle the rest.
-        const body = {
-            serial: row.serial,
-            enabled: !!row.enabled,
-            capture_audio: !!row.capture_audio,
-            capture_video: !!row.capture_video,
-        };
-        const r = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal,resolution=ignore-duplicates',
-            },
-            body: JSON.stringify(body),
-        });
-        // 201 created, 200 ok, 409 conflict-ignored — all acceptable.
-        if (![200, 201, 409].includes(r.status)) {
-            throw new Error(`POST ${row.serial}: HTTP ${r.status}`);
+        if (!r.ok) {
+            const text = await r.text().catch(() => '');
+            throw new Error(`PUT ${serial}: HTTP ${r.status} ${text}`);
         }
     }
 

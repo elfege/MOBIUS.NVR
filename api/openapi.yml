@@ -1,0 +1,3168 @@
+openapi: 3.1.0
+
+info:
+  title: MOBIUS.NVR HTTP API
+  version: "0.1.0"
+  summary: |
+    Contract between the MOBIUS.NVR Flask backend and its native clients
+    (`~/0_MOBIUS.NVR.CLIENT.DESKTOP/`, `~/0_MOBIUS.NVR.CLIENT.MOBILE/`).
+  description: |
+    Phase 0 deliverable for the native-client plan
+    (`docs/plans/native_desktop_and_mobile_client_alongside_browser_frontend_evaluating_pyside6_flutter_gtk_with_gstreamer_video_open_source_only.md`).
+
+    This document is the canonical API contract. Both client repos copy it in
+    at build time (via `tools/sync-api-contract.sh`) and codegen models
+    (`datamodel-code-generator` for Python, `openapi-generator` for Dart).
+
+    ## Scope
+
+    - All blueprint-registered Flask routes the browser frontend consumes
+      (`routes/*.py`, `services/cert_routes.py`).
+    - Excludes `services/external_api_routes.py` (third-party Bearer-token
+      surface, separately documented at `/api/external/docs`).
+
+    ## Phase 0 vs Phase 1+
+
+    Path / method / auth / params are pinned in Phase 0. Response payload
+    schemas are intentionally permissive (`additionalProperties: true` on
+    most domain objects) — they tighten in Phase 1 as each endpoint is
+    first consumed by the desktop client. Exact field lists at that point
+    are pulled from `routes/*.py` source rather than guessed.
+
+    ## Auth model
+
+    Two cookies are involved:
+
+    - `session` — Flask-Login session cookie (HttpOnly, SameSite=Lax).
+      Established by `POST /login` (form-encoded). Cleared by
+      `POST /logout`.
+    - `device_token` — long-lived UUID (HttpOnly, SameSite=Lax,
+      `max_age=365 days`) issued at first login. Used to identify and
+      "trust" devices server-side; consumed by `/api/device/heartbeat` and
+      the admin device endpoints.
+
+    Most routes are decorated `@login_required`. A small set are unauthed
+    (`/api/health`, `/login`, certificate install pages, `/eufy-auth`
+    captcha/2fa).
+
+    Native clients store both cookies via `keyring` (desktop) /
+    `flutter_secure_storage` (mobile) and inject them on every HTTP
+    request.
+  contact:
+    name: Elfege Leylavergne
+    email: elfege@elfege.com
+  license:
+    name: BSL-1.1
+    identifier: BUSL-1.1
+
+servers:
+  - url: https://nvr.local
+    description: Default LAN address (mDNS).
+  - url: https://<LAN_IP>
+    description: dellserver direct IP (LAN).
+  - url: http://localhost:5000
+    description: Local dev; HTTPS not required when running on the host.
+
+# ---------------------------------------------------------------------------
+# Tags — grouping for client codegen + documentation viewers.
+# ---------------------------------------------------------------------------
+tags:
+  - name: Pages
+    description: HTML page routes the browser hits directly. Native clients
+      do not consume these but they are listed for completeness.
+  - name: Auth
+    description: Login, logout, password change, session/device lifecycle.
+  - name: Users
+    description: User CRUD (admin) and self-management endpoints.
+  - name: Devices
+    description: Per-device registration / trust / heartbeat (admin + self).
+  - name: Cameras
+    description: Camera metadata, settings, credentials, MediaMTX paths.
+  - name: Stream Control
+    description: Per-camera FFmpeg pipeline lifecycle (start/stop/restart/status).
+  - name: Snapshots
+    description: Single-frame JPEG / MJPEG endpoints used by `/light` and the
+      grid placeholder while live streams warm up.
+  - name: Recordings
+    description: Recording lifecycle (start/stop/active) and recording_settings.
+  - name: Timeline
+    description: Segment listing, summary, export, preview-merge.
+  - name: Files
+    description: Recording file browse / stream / download.
+  - name: Settings
+    description: Global + per-camera + per-user setting CRUD.
+  - name: PTZ
+    description: Pan/tilt/zoom directional control, presets, latency calibration.
+  - name: Talkback
+    description: Two-way audio capability discovery + Eufy cloud bridge status.
+  - name: Power
+    description: Hubitat outlet + UniFi PoE port control for camera power cycling.
+  - name: Storage
+    description: Storage stats, migration, cleanup, reconciliation.
+  - name: Motion
+    description: Motion-detection lifecycle status / start / stop.
+  - name: Presence
+    description: Person + device presence records (used to gate motion alerts).
+  - name: Eufy
+    description: Eufy cloud captcha / 2FA / status (initial pairing flow).
+  - name: Amcrest
+    description: Amcrest direct MJPEG pass-through (when streaming hub bypassed).
+  - name: UniFi
+    description: UniFi camera list + per-camera snapshot / MJPEG.
+  - name: Reolink
+    description: Reolink direct MJPEG pass-through.
+  - name: SV3C
+    description: SV3C direct MJPEG pass-through.
+  - name: MediaServer
+    description: Generic MediaMTX/go2rtc-fronted MJPEG pass-through.
+  - name: Bridge
+    description: Eufy bridge daemon start/stop.
+  - name: Evidence
+    description: Evidence collection pipeline — disclosure, manifest, feed,
+      cases, audio_events. (See plan in
+      `docs/plans/evidence_collection_pipeline_*.md`.)
+  - name: Certificates
+    description: TLS certificate install pages + status (Apple
+      `.mobileconfig`, Linux/Android download).
+  - name: Status
+    description: Health, license, system status, /api/cameras list.
+  - name: Maintenance
+    description: Admin-only ops (force-sync, restart, recycle sessions).
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Flask-Login session cookie. Issued by `POST /login`.
+    DeviceCookie:
+      type: apiKey
+      in: cookie
+      name: device_token
+      description: Long-lived per-device UUID cookie. Set on first login,
+        max_age=365 days. Used for device trust + heartbeat.
+
+  parameters:
+    CameraSerial:
+      name: camera_serial
+      in: path
+      required: true
+      description: Camera serial number (primary key in DB; e.g.
+        `T8416P0023352DA9`). Per project rule 10 (CLAUDE.md), serials are
+        always the canonical identifier.
+      schema:
+        type: string
+        minLength: 4
+    CameraId:
+      name: camera_id
+      in: path
+      required: true
+      description: Same as `camera_serial`. Some legacy routes use
+        `camera_id` in the path; semantics are identical.
+      schema:
+        type: string
+        minLength: 4
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+    DeviceId:
+      name: device_id
+      in: path
+      required: true
+      schema: { type: integer, format: int64, minimum: 1 }
+
+  responses:
+    Unauthorized:
+      description: Not logged in. Browser frontend redirects to `/login`;
+        native clients receive 401 + JSON error envelope.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Forbidden:
+      description: Authenticated but not authorized (e.g. non-admin hitting
+        an admin route, or user lacking access to a specific camera).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource (camera, user, recording, evidence event, ...)
+        does not exist.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ServerError:
+      description: Unhandled backend error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    # ---- Common envelopes -------------------------------------------------
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: |
+            Human-readable error message. The backend is consistent in
+            returning `{"error": "..."}` — but a few legacy routes also use
+            `{"success": false, "error": "..."}`; clients should accept either.
+        success:
+          type: boolean
+          description: Present on legacy routes only.
+
+    SuccessEnvelope:
+      type: object
+      properties:
+        status:
+          type: string
+          examples: ["saved", "ok", "started", "stopped"]
+        success:
+          type: boolean
+      additionalProperties: true
+
+    # ---- Domain objects ---------------------------------------------------
+    Camera:
+      type: object
+      description: Camera config row from the `cameras` DB table. Per
+        CLAUDE.md, the DB is the runtime source of truth; `cameras.json`
+        is a seed file.
+      properties:
+        serial:        { type: string, description: Primary key. }
+        name:          { type: string, description: Display name. }
+        brand:         { type: string, examples: ["reolink", "eufy", "amcrest", "sv3c", "unifi", "neolink"] }
+        model:         { type: string }
+        ip:            { type: string }
+        rtsp_input:    { type: string, description: Source RTSP URL (creds redacted server-side). }
+        stream_type:   { $ref: "#/components/schemas/StreamType" }
+        streaming_hub: { $ref: "#/components/schemas/StreamingHub" }
+        ptz:           { type: boolean }
+        audio:         { type: boolean }
+        audio_input_supported: { type: boolean, description: Set by Phase 1 ffprobe survey of evidence pipeline. }
+        hidden:        { type: boolean }
+        ui_health_monitor: { type: boolean }
+        capabilities:  { type: array, items: { type: string } }
+        video_fit_mode: { $ref: "#/components/schemas/VideoFitMode" }
+      additionalProperties: true
+
+    StreamType:
+      type: string
+      enum:
+        - WEBRTC
+        - HLS
+        - LL_HLS
+        - MJPEG
+        - NEOLINK
+        - NEOLINK_LL_HLS
+      description: Per-camera default stream protocol. User may override
+        via `user_camera_preferences`.
+
+    StreamingHub:
+      type: string
+      enum: [mediamtx, go2rtc]
+      description: Which relay hub serves this camera. `mediamtx` is the
+        default; `go2rtc` covers Baichuan (Reolink E1, etc.) and the
+        in-progress consolidation target.
+
+    VideoFitMode:
+      type: string
+      nullable: true
+      enum: [cover, contain, fill, null]
+
+    CameraStatePayload:
+      type: object
+      description: |
+        Returned by `GET /api/camera/state/<id>` and `GET /api/camera/states`.
+        Captures the dynamic state Python service-side (running / not
+        running / restarting / errored).
+      additionalProperties: true
+
+    User:
+      type: object
+      properties:
+        id:         { type: integer, format: int64 }
+        username:   { type: string }
+        role:       { type: string, enum: [admin, user] }
+        created_at: { type: string, format: date-time }
+        must_change_password: { type: boolean }
+      additionalProperties: true
+
+    UserCreate:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 3 }
+        password: { type: string, minLength: 8, format: password }
+        role:     { type: string, enum: [admin, user], default: user }
+
+    Device:
+      type: object
+      properties:
+        id:            { type: integer, format: int64 }
+        device_token:  { type: string, format: uuid }
+        user_id:       { type: integer, format: int64 }
+        device_name:   { type: string, nullable: true }
+        last_seen:     { type: string, format: date-time }
+        ip_address:    { type: string }
+        user_agent:    { type: string }
+        trusted:       { type: boolean }
+      additionalProperties: true
+
+    UserPreferences:
+      type: object
+      description: Per-user UI preferences (display order, hidden set,
+        per-camera stream-type override, etc.).
+      additionalProperties: true
+
+    StreamPreference:
+      type: object
+      properties:
+        camera_serial:          { type: string }
+        preferred_stream_type:  { $ref: "#/components/schemas/StreamType" }
+      additionalProperties: true
+
+    Recording:
+      type: object
+      properties:
+        id:             { type: integer, format: int64 }
+        camera_serial:  { type: string }
+        type:           { type: string, enum: [motion, continuous, manual, snapshot, buffer] }
+        started_at:     { type: string, format: date-time }
+        ended_at:       { type: string, format: date-time, nullable: true }
+        duration_seconds: { type: number }
+        path:           { type: string }
+        size_bytes:     { type: integer, format: int64 }
+        storage_tier:   { type: string, enum: [recent, long_term] }
+      additionalProperties: true
+
+    TimelineSegment:
+      type: object
+      description: A contiguous span of recording on a camera. Returned by
+        `/api/timeline/segments/<camera_id>`. Schema currently held loose;
+        recent perf work (Apr 13) eliminated per-row ffprobe — segments
+        come straight from the `recordings` table.
+      additionalProperties: true
+
+    TimelineExport:
+      type: object
+      properties:
+        export_id:    { type: string, format: uuid }
+        camera_id:    { type: string }
+        start:        { type: string, format: date-time }
+        end:          { type: string, format: date-time }
+        status:       { type: string, enum: [queued, running, complete, cancelled, failed] }
+        progress:     { type: number, minimum: 0, maximum: 1 }
+        output_path:  { type: string, nullable: true }
+        error:        { type: string, nullable: true }
+      additionalProperties: true
+
+    PreviewMerge:
+      type: object
+      description: Same shape family as `TimelineExport` but for the
+        preview-merge flow.
+      additionalProperties: true
+
+    SettingsAdvanced:
+      type: object
+      description: Free-form advanced settings keyed by string. Reads/writes
+        through `/api/settings/advanced` and `/api/settings/advanced/<key>`.
+      additionalProperties: true
+
+    StorageStats:
+      type: object
+      additionalProperties: true
+
+    MotionStatus:
+      type: object
+      additionalProperties: true
+
+    PtzPreset:
+      type: object
+      properties:
+        token: { type: string }
+        name:  { type: string }
+      additionalProperties: true
+
+    PtzDirection:
+      type: string
+      enum:
+        - up
+        - down
+        - left
+        - right
+        - up-left
+        - up-right
+        - down-left
+        - down-right
+        - zoom-in
+        - zoom-out
+        - stop
+
+    EvidenceStatus:
+      type: object
+      description: Returned by `GET /api/evidence/status`. Includes
+        disclosure-ack state, jurisdiction, free-space, manifest tail.
+      additionalProperties: true
+
+    EvidenceFeedItem:
+      type: object
+      description: Element of `GET /api/evidence/feed`. Audio event with
+        classifier scores + manifest pointer.
+      additionalProperties: true
+
+    EvidenceCase:
+      type: object
+      properties:
+        id:           { type: integer, format: int64 }
+        name:         { type: string }
+        description:  { type: string, nullable: true }
+        jurisdiction: { type: string, nullable: true }
+        created_at:   { type: string, format: date-time }
+        archived:     { type: boolean }
+      additionalProperties: true
+
+    EvidenceCaseCreate:
+      type: object
+      required: [name]
+      properties:
+        name:         { type: string }
+        description:  { type: string }
+        jurisdiction: { type: string }
+
+    EvidenceCasePatch:
+      type: object
+      properties:
+        name:         { type: string }
+        description:  { type: string }
+        jurisdiction: { type: string }
+        archived:     { type: boolean }
+
+    AudioEvent:
+      type: object
+      description: Row from `audio_events` table — classified audio segment.
+      properties:
+        manifest_id:    { type: integer, format: int64 }
+        camera_serial:  { type: string }
+        captured_at:    { type: string, format: date-time }
+        duration_seconds: { type: number }
+        classifier:     { type: string }
+        scores:         { type: object, additionalProperties: { type: number } }
+        audio_path:     { type: string }
+        case_id:        { type: integer, format: int64, nullable: true }
+      additionalProperties: true
+
+    DisclosureAck:
+      type: object
+      required: [accepted, jurisdiction]
+      properties:
+        accepted:     { type: boolean }
+        jurisdiction: { type: string, examples: ["NY", "CA", "TX"] }
+        notes:        { type: string }
+
+  # -------------------------------------------------------------------------
+  # Reusable success body fragments — declared inline below where it makes
+  # the spec more readable. Otherwise everything cross-references the
+  # schemas above.
+  # -------------------------------------------------------------------------
+
+# Default security: every operation requires both cookies unless overridden.
+security:
+  - SessionCookie: []
+    DeviceCookie: []
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # ====================== Pages (HTML; informational) ======================
+
+  /:
+    get:
+      tags: [Pages]
+      summary: Redirect to /streams.
+      responses:
+        "302": { description: Redirect. }
+
+  /streams:
+    get:
+      tags: [Pages]
+      summary: Multi-stream viewing page (HTML).
+      description: Auto-redirects mobile/tablet UAs to `/light` unless `?full=1`.
+      parameters:
+        - { name: full, in: query, schema: { type: string }, description: "Pass `1` to bypass mobile redirect." }
+      responses:
+        "200": { description: HTML. }
+        "302": { description: Redirected to /light for mobile UAs. }
+
+  /light:
+    get:
+      tags: [Pages]
+      summary: Snapshot-polling stream viewer for low-power devices.
+      responses:
+        "200": { description: HTML. }
+
+  /reloading:
+    get:
+      tags: [Pages]
+      summary: Reconnection page shown while server restarts.
+      responses:
+        "200": { description: HTML. }
+
+  /change-password:
+    get:
+      tags: [Auth]
+      summary: Password change form.
+      description: Only accessible while `must_change_password` is set.
+      responses:
+        "200": { description: HTML. }
+        "302": { description: Redirected to `/streams` if no change required. }
+    post:
+      tags: [Auth]
+      summary: Submit new password.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [new_password, confirm_password]
+              properties:
+                new_password:     { type: string, format: password, minLength: 8 }
+                confirm_password: { type: string, format: password }
+      responses:
+        "302": { description: Redirected to `/login` (logged out so user can re-auth). }
+        "200": { description: HTML form re-rendered with error. }
+
+  # ============================ Auth =======================================
+
+  /login:
+    get:
+      tags: [Auth]
+      security: []
+      summary: Login form (HTML).
+      responses:
+        "200": { description: HTML. }
+    post:
+      tags: [Auth]
+      security: []
+      summary: Authenticate and establish session cookie + device cookie.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+      responses:
+        "302":
+          description: |
+            Success. Sets `session` cookie + `device_token` cookie;
+            redirects to `/streams` (or `/change-password` if forced).
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Two cookies set in succession.
+        "200":
+          description: HTML form re-rendered with `error` for bad credentials.
+
+  /logout:
+    post:
+      tags: [Auth]
+      summary: End session (deactivates DB session row + clears cookie).
+      responses:
+        "302": { description: Redirected to `/login`. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ============================ Users ======================================
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: List all users (admin only).
+      responses:
+        "200":
+          description: User list.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/User" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Users]
+      summary: Create user (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/users/{user_id}:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    patch:
+      tags: [Users]
+      summary: Update user (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username: { type: string }
+                role:     { type: string, enum: [admin, user] }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Users]
+      summary: Delete user (admin only).
+      responses:
+        "204": { description: Deleted. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/users/{user_id}/reset-password:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    post:
+      tags: [Users]
+      summary: Force a password reset for a user (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [new_password]
+              properties:
+                new_password: { type: string, format: password, minLength: 8 }
+      responses:
+        "200":
+          description: Reset.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/users/{user_id}/camera-access:
+    parameters: [{ $ref: "#/components/parameters/UserId" }]
+    get:
+      tags: [Users]
+      summary: List which camera serials this user can access (admin only).
+      responses:
+        "200":
+          description: Allowed-camera list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed_cameras: { type: array, items: { type: string } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Users]
+      summary: Replace allowed-camera list (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allowed_cameras]
+              properties:
+                allowed_cameras: { type: array, items: { type: string } }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/my-camera-access:
+    get:
+      tags: [Users]
+      summary: Camera-access list for the current user.
+      responses:
+        "200":
+          description: Allowed-camera list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed_cameras:
+                    type: array
+                    items: { type: string }
+                    description: Empty array means "all" — see backend for the
+                      exact admin-vs-user semantics.
+
+  /api/my-preferences:
+    get:
+      tags: [Users]
+      summary: Get current user's preferences.
+      responses:
+        "200":
+          description: Preferences blob.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPreferences" }
+    put:
+      tags: [Users]
+      summary: Replace current user's preferences.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserPreferences" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # =========================== Devices =====================================
+
+  /api/device/register:
+    post:
+      tags: [Devices]
+      summary: Register / upsert this device for the current user.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                device_name: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Registered.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+
+  /api/device/heartbeat:
+    post:
+      tags: [Devices]
+      summary: Update `last_seen` for the device cookie.
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/admin/devices:
+    get:
+      tags: [Devices]
+      summary: List all devices (admin only).
+      responses:
+        "200":
+          description: Device list.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Device" } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/devices/{device_id}/trust:
+    parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+    patch:
+      tags: [Devices]
+      summary: Mark device trusted/untrusted (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trusted]
+              properties:
+                trusted: { type: boolean }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/devices/{device_id}/name:
+    parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+    patch:
+      tags: [Devices]
+      summary: Rename a device (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_name]
+              properties:
+                device_name: { type: string }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/devices/{device_id}:
+    parameters: [{ $ref: "#/components/parameters/DeviceId" }]
+    delete:
+      tags: [Devices]
+      summary: Delete device (admin only).
+      responses:
+        "204": { description: Deleted. }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # =========================== Status ======================================
+
+  /api/health:
+    get:
+      tags: [Status]
+      security: []
+      summary: Lightweight health probe (no auth).
+      responses:
+        "200":
+          description: Healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, enum: [ok] }
+                  message: { type: string }
+        "503":
+          description: Server is shutting down.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, enum: [shutting_down] }
+                  message: { type: string }
+
+  /api/license:
+    get:
+      tags: [Status]
+      summary: License state (used to render demo banners and watermark).
+      responses:
+        "200":
+          description: License blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/status:
+    get:
+      tags: [Status]
+      summary: System status snapshot.
+      responses:
+        "200":
+          description: Status blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/cameras:
+    get:
+      tags: [Cameras, Status]
+      summary: List all cameras the current user can access.
+      responses:
+        "200":
+          description: Camera list, keyed by serial in some legacy responses,
+            array in others. Schema held loose; tightens in Phase 1.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: "#/components/schemas/Camera" }
+                  - type: object
+                    additionalProperties: { $ref: "#/components/schemas/Camera" }
+
+  # ============================ Cameras ====================================
+
+  /api/cameras/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Cameras]
+      summary: Get a single camera's metadata.
+      responses:
+        "200":
+          description: Camera record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Camera" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/camera/{camera_serial}/display:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Cameras]
+      summary: Get current `video_fit_mode` for a camera.
+      responses:
+        "200":
+          description: Display blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  video_fit_mode: { $ref: "#/components/schemas/VideoFitMode" }
+    put:
+      tags: [Cameras]
+      summary: Set `video_fit_mode`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                video_fit_mode: { $ref: "#/components/schemas/VideoFitMode" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [saved] }
+                  video_fit_mode: { $ref: "#/components/schemas/VideoFitMode" }
+
+  /api/camera/{camera_serial}/name:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    put:
+      tags: [Cameras]
+      summary: Rename camera.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Renamed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/camera/{camera_serial}/settings:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    put:
+      tags: [Cameras]
+      summary: Bulk update camera settings (admin-style multi-field PUT).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Free-form camera setting bag (subset of `Camera`
+                fields). Server enforces which fields are writable.
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/camera/{camera_serial}/credentials:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Cameras]
+      summary: Get redacted credential metadata for a camera.
+      responses:
+        "200":
+          description: Credential record (passwords redacted).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    put:
+      tags: [Cameras]
+      summary: Set credentials for a camera (encrypted server-side).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+                api_username: { type: string, description: Reolink api-user split. }
+                api_password: { type: string, format: password }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+    delete:
+      tags: [Cameras]
+      summary: Remove credentials for a camera.
+      responses:
+        "204": { description: Deleted. }
+
+  /api/credentials/copy-to-go2rtc/{vendor}:
+    parameters:
+      - { name: vendor, in: path, required: true, schema: { type: string }, description: "Brand: reolink, eufy, amcrest, sv3c, ..." }
+    post:
+      tags: [Cameras]
+      summary: Bulk-copy stored credentials into go2rtc config (admin only).
+      responses:
+        "200":
+          description: Copied.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/credentials/service:
+    get:
+      tags: [Cameras]
+      summary: Service-account credentials for backend internals (admin only).
+      responses:
+        "200":
+          description: Service creds metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/camera/{camera_serial}/reboot:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Cameras]
+      summary: Reboot the camera (vendor-specific protocol; admin only).
+      responses:
+        "202":
+          description: Reboot dispatched.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/cameras/{camera_serial}/speaker_volume:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Cameras]
+      summary: Get camera speaker volume.
+      responses:
+        "200":
+          description: Volume.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  volume: { type: integer, minimum: 0, maximum: 100 }
+    post:
+      tags: [Cameras]
+      summary: Set camera speaker volume.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [volume]
+              properties:
+                volume: { type: integer, minimum: 0, maximum: 100 }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/cameras/{camera_serial}/power_supply:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Cameras, Power]
+      summary: Get configured power-supply binding (Hubitat outlet).
+      responses:
+        "200":
+          description: Power binding.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [Cameras, Power]
+      summary: Set power-supply binding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/cameras/{camera_serial}/poe_config:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Cameras, Power]
+      summary: Get UniFi PoE port binding for this camera.
+      responses:
+        "200":
+          description: PoE binding.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [Cameras, Power]
+      summary: Set UniFi PoE port binding.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/my-camera-order:
+    put:
+      tags: [Users, Cameras]
+      summary: Save current user's tile display order.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  items: { type: string }
+                  description: Camera serials in desired display order.
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [saved] }
+                  count:  { type: integer }
+
+  /api/user/stream-preferences:
+    get:
+      tags: [Users, Cameras]
+      summary: Per-user stream-type override list.
+      responses:
+        "200":
+          description: List of overrides.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StreamPreference" }
+
+  /api/user/stream-preferences/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    put:
+      tags: [Users, Cameras]
+      summary: Upsert stream-type override for a single camera.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [preferred_stream_type]
+              properties:
+                preferred_stream_type: { $ref: "#/components/schemas/StreamType" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/mediamtx/path-status/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Cameras, Stream Control]
+      summary: Whether this camera has an active MediaMTX publisher.
+      description: Used by the frontend to pre-validate a stream-type switch
+        before opening a WebRTC/HLS connection that would 404.
+      responses:
+        "200":
+          description: Path status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/mediamtx/create-path/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Cameras, Stream Control]
+      summary: Create the MediaMTX path on demand.
+      responses:
+        "200":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/cameras/data-source:
+    get:
+      tags: [Cameras, Status]
+      summary: Reports DB vs cameras.json data source health.
+      responses:
+        "200":
+          description: Data-source state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/cameras/force-sync:
+    post:
+      tags: [Maintenance]
+      summary: Force `cameras.json → DB` sync (admin only).
+      responses:
+        "200":
+          description: Sync result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/devices/refresh:
+    post:
+      tags: [Maintenance]
+      summary: Refresh attached IoT/camera devices (admin only).
+      responses:
+        "200":
+          description: Refresh result.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/admin/restart:
+    post:
+      tags: [Maintenance]
+      summary: Restart the NVR app process (admin only).
+      responses:
+        "202":
+          description: Restart scheduled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/config/streaming:
+    get:
+      tags: [Cameras, Stream Control]
+      summary: Streaming configuration snapshot.
+      responses:
+        "200":
+          description: Config blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/bridge/start:
+    post:
+      tags: [Bridge]
+      summary: Start the Eufy bridge daemon (admin only).
+      responses:
+        "200":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/bridge/stop:
+    post:
+      tags: [Bridge]
+      summary: Stop the Eufy bridge daemon (admin only).
+      responses:
+        "200":
+          description: Stopped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # ======================== Stream Control ================================
+  # NOTE: Both routes/camera.py and routes/streaming.py register
+  # /api/stream/start, /stop, /restart, /status. Flask uses whichever
+  # blueprint registered last; in app.py the order is camera_bp (line 167)
+  # then streaming_bp (line 175). Native clients should treat these as a
+  # single contract — server side resolves which handler runs.
+
+  /api/stream/start/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Stream Control]
+      summary: Start the FFmpeg pipeline for a camera (server-side recording / relay).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [main, sub]
+                  default: sub
+                  description: Resolution profile.
+      responses:
+        "200":
+          description: Started.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessEnvelope"
+                  - type: object
+                    properties:
+                      stream_url: { type: string }
+
+  /api/stream/stop/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Stream Control]
+      summary: Stop the FFmpeg pipeline for a camera.
+      responses:
+        "200":
+          description: Stopped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/stream/restart/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Stream Control]
+      summary: Restart the FFmpeg pipeline.
+      responses:
+        "200":
+          description: Restarted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/stream/status/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Stream Control]
+      summary: Current pipeline status.
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/streams:
+    get:
+      tags: [Stream Control]
+      summary: All known streams (configured).
+      responses:
+        "200":
+          description: Stream registry.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/streams/active:
+    get:
+      tags: [Stream Control]
+      summary: Currently-running streams.
+      responses:
+        "200":
+          description: Active stream list.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/streams/stop-all:
+    post:
+      tags: [Stream Control, Maintenance]
+      summary: Stop every active stream.
+      responses:
+        "200":
+          description: Stopped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/streams/{camera_serial}/playlist.m3u8:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Stream Control]
+      summary: HLS master/playlist passthrough for a camera.
+      responses:
+        "200":
+          description: HLS playlist.
+          content:
+            application/vnd.apple.mpegurl:
+              schema: { type: string }
+            application/x-mpegurl:
+              schema: { type: string }
+
+  /api/streams/{camera_serial}/{segment}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraSerial" }
+      - { name: segment, in: path, required: true, schema: { type: string }, description: "HLS segment filename." }
+    get:
+      tags: [Stream Control]
+      summary: HLS segment passthrough.
+      responses:
+        "200":
+          description: TS segment.
+          content:
+            video/mp2t:
+              schema: { type: string, format: binary }
+
+  /api/camera/state/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Stream Control]
+      summary: Combined runtime state for a single camera.
+      responses:
+        "200":
+          description: State.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CameraStatePayload" }
+
+  /api/camera/states:
+    get:
+      tags: [Stream Control]
+      summary: Combined runtime state for all cameras.
+      responses:
+        "200":
+          description: States.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { $ref: "#/components/schemas/CameraStatePayload" }
+
+  # =========================== Snapshots ===================================
+
+  /api/snap/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Snapshots]
+      summary: Single JPEG frame for a camera (used by `/light` and grid placeholder).
+      responses:
+        "200":
+          description: JPEG image.
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+
+  # MJPEG vendor-specific — pass-throughs (binary multipart streams).
+
+  /api/amcrest/{camera_id}/stream/mjpeg:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Amcrest, Snapshots]
+      summary: Amcrest MJPEG (sub stream).
+      responses:
+        "200":
+          description: MJPEG multipart stream.
+          content:
+            multipart/x-mixed-replace:
+              schema: { type: string, format: binary }
+
+  /api/amcrest/{camera_id}/stream/mjpeg/main:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Amcrest, Snapshots]
+      summary: Amcrest MJPEG (main stream).
+      responses:
+        "200":
+          description: MJPEG multipart stream.
+          content:
+            multipart/x-mixed-replace:
+              schema: { type: string, format: binary }
+
+  /api/reolink/{camera_id}/stream/mjpeg:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Reolink, Snapshots]
+      summary: Reolink MJPEG.
+      responses:
+        "200":
+          description: MJPEG multipart stream.
+          content:
+            multipart/x-mixed-replace:
+              schema: { type: string, format: binary }
+
+  /api/sv3c/{camera_id}/stream/mjpeg:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [SV3C, Snapshots]
+      summary: SV3C MJPEG.
+      responses:
+        "200":
+          description: MJPEG multipart stream.
+          content:
+            multipart/x-mixed-replace:
+              schema: { type: string, format: binary }
+
+  /api/mediaserver/{camera_id}/stream/mjpeg:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [MediaServer, Snapshots]
+      summary: Generic MediaMTX/go2rtc-fronted MJPEG.
+      responses:
+        "200":
+          description: MJPEG multipart stream.
+          content:
+            multipart/x-mixed-replace:
+              schema: { type: string, format: binary }
+
+  /api/unifi/cameras:
+    get:
+      tags: [UniFi]
+      summary: List UniFi cameras (UniFi Protect API proxy).
+      responses:
+        "200":
+          description: UniFi camera list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/unifi/{camera_id}/snapshot:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [UniFi, Snapshots]
+      summary: UniFi Protect snapshot pass-through.
+      responses:
+        "200":
+          description: JPEG image.
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+
+  /api/unifi/{camera_id}/stream/mjpeg:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [UniFi, Snapshots]
+      summary: UniFi Protect MJPEG.
+      responses:
+        "200":
+          description: MJPEG multipart stream.
+          content:
+            multipart/x-mixed-replace:
+              schema: { type: string, format: binary }
+
+  /api/camera/{camera_serial}/flv:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Stream Control]
+      summary: HTTP-FLV stream pass-through (legacy).
+      responses:
+        "200":
+          description: FLV stream.
+          content:
+            video/x-flv:
+              schema: { type: string, format: binary }
+
+  # ============================ Status (capture monitors) ==================
+
+  /api/status/mjpeg-captures:
+    get:
+      tags: [Status]
+      summary: Active MJPEG capture sessions (server-side).
+      responses:
+        "200":
+          description: Captures snapshot.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/status/mjpeg-captures/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Status]
+      summary: Capture status for one camera.
+      responses:
+        "200":
+          description: Per-camera capture state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/status/unifi-monitor:
+    get:
+      tags: [Status, UniFi]
+      summary: UniFi monitor health.
+      responses:
+        "200":
+          description: Monitor blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/status/unifi-monitor/summary:
+    get:
+      tags: [Status, UniFi]
+      summary: UniFi monitor summary.
+      responses:
+        "200":
+          description: Summary blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/status/mediaserver-mjpeg:
+    get:
+      tags: [Status, MediaServer]
+      summary: MediaServer-MJPEG aggregate status.
+      responses:
+        "200":
+          description: Aggregate status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/status/mediaserver-mjpeg/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Status, MediaServer]
+      summary: Per-camera MediaServer-MJPEG status.
+      responses:
+        "200":
+          description: Per-camera status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/maintenance/recycle-unifi-sessions:
+    post:
+      tags: [Maintenance, UniFi]
+      summary: Recycle UniFi Protect API sessions (admin only).
+      responses:
+        "200":
+          description: Recycled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # =========================== Recordings ==================================
+
+  /api/recording/settings/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    get:
+      tags: [Recordings]
+      summary: Recording settings for a camera.
+      responses:
+        "200":
+          description: Settings blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    post:
+      tags: [Recordings]
+      summary: Update recording settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/recording/{camera_id}/start:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    post:
+      tags: [Recordings]
+      summary: Manually start a recording.
+      responses:
+        "200":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/recording/{camera_id}/stop:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    post:
+      tags: [Recordings]
+      summary: Manually stop a recording.
+      responses:
+        "200":
+          description: Stopped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/recording/active:
+    get:
+      tags: [Recordings]
+      summary: List currently-active recordings (across all cameras).
+      responses:
+        "200":
+          description: Active recordings.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  # =========================== Timeline ====================================
+
+  /api/timeline/segments/{camera_id}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraId" }
+      - { name: start, in: query, required: true, schema: { type: string, format: date-time } }
+      - { name: end,   in: query, required: true, schema: { type: string, format: date-time } }
+    get:
+      tags: [Timeline]
+      summary: Recorded segments for a camera over a time window.
+      responses:
+        "200":
+          description: Segment list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TimelineSegment" }
+
+  /api/timeline/summary/{camera_id}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraId" }
+      - { name: start, in: query, required: true, schema: { type: string, format: date-time } }
+      - { name: end,   in: query, required: true, schema: { type: string, format: date-time } }
+    get:
+      tags: [Timeline]
+      summary: Aggregate counts/durations for a window.
+      responses:
+        "200":
+          description: Summary blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/timeline/export:
+    post:
+      tags: [Timeline]
+      summary: Queue a stitched export (motion + continuous merge).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [camera_id, start, end]
+              properties:
+                camera_id: { type: string }
+                start:     { type: string, format: date-time }
+                end:       { type: string, format: date-time }
+      responses:
+        "201":
+          description: Export queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelineExport" }
+
+  /api/timeline/export/{export_id}:
+    parameters:
+      - { name: export_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Timeline]
+      summary: Get export status.
+      responses:
+        "200":
+          description: Export.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelineExport" }
+
+  /api/timeline/export/{export_id}/start:
+    parameters:
+      - { name: export_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Timeline]
+      summary: Begin processing a queued export.
+      responses:
+        "202":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelineExport" }
+
+  /api/timeline/export/{export_id}/cancel:
+    parameters:
+      - { name: export_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Timeline]
+      summary: Cancel a running export.
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelineExport" }
+
+  /api/timeline/export/{export_id}/download:
+    parameters:
+      - { name: export_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Timeline]
+      summary: Download a finished export (full-file).
+      responses:
+        "200":
+          description: Export bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  /api/timeline/export/{export_id}/stream:
+    parameters:
+      - { name: export_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Timeline]
+      summary: Stream a finished export (range-request friendly).
+      responses:
+        "200":
+          description: Stream bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+        "206":
+          description: Partial content.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+
+  /api/timeline/exports:
+    get:
+      tags: [Timeline]
+      summary: List exports (current user's).
+      responses:
+        "200":
+          description: Export list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TimelineExport" }
+
+  /api/timeline/preview/{recording_id}:
+    parameters:
+      - { name: recording_id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Timeline]
+      summary: In-place preview/playback of a single recording row.
+      responses:
+        "200":
+          description: Stream bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+        "206":
+          description: Partial content.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+
+  /api/timeline/preview-merge:
+    post:
+      tags: [Timeline]
+      summary: Queue a preview-merge (no fully-rendered file; on-the-fly stitch).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [camera_id, start, end]
+              properties:
+                camera_id: { type: string }
+                start:     { type: string, format: date-time }
+                end:       { type: string, format: date-time }
+      responses:
+        "201":
+          description: Merge queued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PreviewMerge" }
+
+  /api/timeline/preview-merge/{merge_id}:
+    parameters:
+      - { name: merge_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Timeline]
+      summary: Get preview-merge status.
+      responses:
+        "200":
+          description: Merge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PreviewMerge" }
+
+  /api/timeline/preview-merge/{merge_id}/cancel:
+    parameters:
+      - { name: merge_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Timeline]
+      summary: Cancel a preview-merge.
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PreviewMerge" }
+
+  /api/timeline/preview-merge/{merge_id}/stream:
+    parameters:
+      - { name: merge_id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Timeline]
+      summary: Stream the merged preview (range-request friendly).
+      responses:
+        "200":
+          description: Stream bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+        "206":
+          description: Partial content.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+
+  /api/timeline/preview-merge/{merge_id}/cleanup:
+    parameters:
+      - { name: merge_id, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [Timeline]
+      summary: Delete the merged preview's temp artefacts.
+      responses:
+        "204": { description: Cleaned. }
+
+  /api/timeline/preview-merge/{merge_id}/promote:
+    parameters:
+      - { name: merge_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Timeline]
+      summary: Promote a preview-merge into a permanent export.
+      responses:
+        "201":
+          description: Promoted; returns the new export.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TimelineExport" }
+
+  /api/timeline/export/download/{filename}:
+    parameters:
+      - { name: filename, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Timeline]
+      summary: Direct download by filename (legacy alternative to export_id route).
+      responses:
+        "200":
+          description: Bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  /api/timeline/export/stream/{filename}:
+    parameters:
+      - { name: filename, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Timeline]
+      summary: Direct stream by filename (legacy alternative to export_id route).
+      responses:
+        "200":
+          description: Stream bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+        "206":
+          description: Partial content.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+
+  # ============================== Files ====================================
+
+  /api/files/browse:
+    get:
+      tags: [Files]
+      summary: List files under a recordings root.
+      parameters:
+        - { name: path, in: query, schema: { type: string }, description: "Subpath under the recordings root." }
+      responses:
+        "200":
+          description: Directory listing.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/files/stream/{filepath}:
+    parameters:
+      - { name: filepath, in: path, required: true, schema: { type: string }, description: "Path under recordings root." }
+    get:
+      tags: [Files]
+      summary: Range-request stream of a file.
+      responses:
+        "200":
+          description: Stream bytes.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+        "206":
+          description: Partial content.
+          content:
+            video/mp4:
+              schema: { type: string, format: binary }
+
+  /api/files/download/{filepath}:
+    parameters:
+      - { name: filepath, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Files]
+      summary: Full-file download.
+      responses:
+        "200":
+          description: Bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  /api/recordings/download/{filepath}:
+    parameters:
+      - { name: filepath, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Files, Recordings]
+      summary: Recording download (alias of /api/files/download for recordings tree).
+      responses:
+        "200":
+          description: Bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  # ============================ Settings ===================================
+
+  /api/settings/global:
+    get:
+      tags: [Settings]
+      summary: All global settings.
+      responses:
+        "200":
+          description: Settings dict.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/settings/global/{key}:
+    parameters:
+      - { name: key, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Settings]
+      summary: One global setting.
+      responses:
+        "200":
+          description: Value.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    put:
+      tags: [Settings]
+      summary: Set one global setting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/settings/camera/{camera_serial}:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Settings]
+      summary: All settings for a camera.
+      responses:
+        "200":
+          description: Settings dict.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/settings/camera/{camera_serial}/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraSerial" }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Settings]
+      summary: Get one camera setting.
+      responses:
+        "200":
+          description: Value.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    put:
+      tags: [Settings]
+      summary: Set one camera setting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/settings/camera/{camera_serial}/bulk:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    put:
+      tags: [Settings]
+      summary: Bulk-update multiple camera settings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/settings/user/preferences:
+    get:
+      tags: [Settings, Users]
+      summary: All per-user preferences for current user (across cameras).
+      responses:
+        "200":
+          description: Preferences dict.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPreferences" }
+
+  /api/settings/user/{camera_serial}/{key}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraSerial" }
+      - { name: key, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Settings, Users]
+      summary: Get one per-user per-camera preference.
+      responses:
+        "200":
+          description: Value.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    put:
+      tags: [Settings, Users]
+      summary: Set one per-user per-camera preference.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/settings/trusted-network:
+    get:
+      tags: [Settings]
+      summary: Trusted-network status (auto-login when on LAN, etc.).
+      responses:
+        "200":
+          description: Trusted-network blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    put:
+      tags: [Settings]
+      summary: Update trusted-network setting (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/settings/streaming-hubs:
+    get:
+      tags: [Settings, Stream Control]
+      summary: Per-vendor + global streaming-hub assignments.
+      responses:
+        "200":
+          description: Hub assignment blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    put:
+      tags: [Settings, Stream Control]
+      summary: Update streaming-hub assignments (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/settings/advanced:
+    get:
+      tags: [Settings]
+      summary: All advanced settings (admin only).
+      responses:
+        "200":
+          description: Advanced-settings blob.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsAdvanced" }
+
+  /api/settings/advanced/{key}:
+    parameters:
+      - { name: key, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [Settings]
+      summary: Patch one advanced setting (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # ============================== PTZ ======================================
+
+  /api/ptz/{camera_serial}/{direction}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraSerial" }
+      - { name: direction, in: path, required: true, schema: { $ref: "#/components/schemas/PtzDirection" } }
+    post:
+      tags: [PTZ]
+      summary: Send a directional PTZ command.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                speed:    { type: integer, minimum: 0, maximum: 10 }
+                duration: { type: number, description: "Seconds before auto-stop." }
+      responses:
+        "200":
+          description: Dispatched.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/ptz/{camera_serial}/presets:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [PTZ]
+      summary: List PTZ presets.
+      responses:
+        "200":
+          description: Preset list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PtzPreset" }
+
+  /api/ptz/{camera_serial}/preset:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [PTZ]
+      summary: Save a new preset at the camera's current position.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PtzPreset" }
+
+  /api/ptz/{camera_serial}/preset/{preset_token}:
+    parameters:
+      - { $ref: "#/components/parameters/CameraSerial" }
+      - { name: preset_token, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [PTZ]
+      summary: Recall a preset.
+      responses:
+        "200":
+          description: Recalled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+    delete:
+      tags: [PTZ]
+      summary: Delete a preset.
+      responses:
+        "204": { description: Deleted. }
+
+  /api/ptz/latency/{client_uuid}/{camera_serial}:
+    parameters:
+      - { name: client_uuid, in: path, required: true, schema: { type: string, format: uuid } }
+      - { $ref: "#/components/parameters/CameraSerial" }
+    get:
+      tags: [PTZ]
+      summary: Get current latency-calibration value for this client+camera.
+      responses:
+        "200":
+          description: Latency record.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [PTZ]
+      summary: Submit a latency sample (frontend ⇄ camera ⇄ frontend roundtrip).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Recorded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/ptz/{camera_serial}/reversal:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [PTZ]
+      summary: Get axis-reversal setting (some cameras are inverted).
+      responses:
+        "200":
+          description: Reversal blob.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+    post:
+      tags: [PTZ]
+      summary: Set axis-reversal flags.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reverse_pan:  { type: boolean }
+                reverse_tilt: { type: boolean }
+                reverse_zoom: { type: boolean }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # ============================ Talkback ===================================
+
+  /api/talkback/{camera_serial}/capabilities:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Talkback]
+      summary: Talkback (two-way audio) capability discovery.
+      responses:
+        "200":
+          description: Capabilities blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/eufy/cloud-status:
+    get:
+      tags: [Talkback, Eufy]
+      summary: Eufy cloud bridge status (used for talkback path on Eufy cams).
+      responses:
+        "200":
+          description: Cloud status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  # ============================== Power ====================================
+
+  /api/hubitat/devices/switch:
+    get:
+      tags: [Power]
+      summary: List Hubitat switch devices (for camera power binding).
+      responses:
+        "200":
+          description: Switch list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/hubitat/cameras:
+    get:
+      tags: [Power]
+      summary: Cameras with Hubitat outlet bindings.
+      responses:
+        "200":
+          description: List.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/power/{camera_serial}/cycle:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Power]
+      summary: Power-cycle camera (Hubitat path).
+      responses:
+        "200":
+          description: Cycled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/power/{camera_serial}/status:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Power]
+      summary: Camera power-supply state (Hubitat path).
+      responses:
+        "200":
+          description: State.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/unifi-poe/switches:
+    get:
+      tags: [Power, UniFi]
+      summary: UniFi PoE-capable switches.
+      responses:
+        "200":
+          description: Switch list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/unifi-poe/switches/{switch_mac}/ports:
+    parameters:
+      - { name: switch_mac, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Power, UniFi]
+      summary: PoE ports on a UniFi switch.
+      responses:
+        "200":
+          description: Port list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/poe/{camera_serial}/cycle:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    post:
+      tags: [Power, UniFi]
+      summary: Power-cycle camera (UniFi PoE path).
+      responses:
+        "200":
+          description: Cycled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/poe/{camera_serial}/status:
+    parameters: [{ $ref: "#/components/parameters/CameraSerial" }]
+    get:
+      tags: [Power, UniFi]
+      summary: PoE port state for camera.
+      responses:
+        "200":
+          description: State.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/unifi-poe/cameras:
+    get:
+      tags: [Power, UniFi]
+      summary: Cameras with UniFi PoE bindings.
+      responses:
+        "200":
+          description: List.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  # ============================ Storage ====================================
+
+  /api/storage/stats:
+    get:
+      tags: [Storage]
+      summary: Storage usage / free space across recording paths.
+      responses:
+        "200":
+          description: Stats.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StorageStats" }
+
+  /api/storage/migrate:
+    post:
+      tags: [Storage, Maintenance]
+      summary: Migrate recordings from recent → long-term tier.
+      responses:
+        "202":
+          description: Migration started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/storage/migrate/full:
+    post:
+      tags: [Storage, Maintenance]
+      summary: Full migration sweep (admin only).
+      responses:
+        "202":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/storage/cleanup:
+    post:
+      tags: [Storage, Maintenance]
+      summary: Cleanup pass (delete orphans, prune by retention policy).
+      responses:
+        "202":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/storage/reconcile:
+    post:
+      tags: [Storage, Maintenance]
+      summary: Reconcile DB rows against on-disk files.
+      responses:
+        "202":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/storage/operations:
+    get:
+      tags: [Storage]
+      summary: List ongoing/recent storage operations.
+      responses:
+        "200":
+          description: Operation list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/storage/cancel:
+    post:
+      tags: [Storage, Maintenance]
+      summary: Cancel an in-flight storage operation.
+      responses:
+        "200":
+          description: Cancelled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/storage/migration-status:
+    get:
+      tags: [Storage]
+      summary: Migration progress snapshot.
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/storage/settings:
+    get:
+      tags: [Storage, Settings]
+      summary: Storage settings (retention horizons, free-space floors).
+      responses:
+        "200":
+          description: Settings blob.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+    post:
+      tags: [Storage, Settings]
+      summary: Update storage settings (admin only).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # ============================ Motion =====================================
+
+  /api/motion/status:
+    get:
+      tags: [Motion]
+      summary: Motion-detection daemon status (across all cameras).
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MotionStatus" }
+
+  /api/motion/start/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    post:
+      tags: [Motion]
+      summary: Start motion detection for a camera.
+      responses:
+        "200":
+          description: Started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/motion/stop/{camera_id}:
+    parameters: [{ $ref: "#/components/parameters/CameraId" }]
+    post:
+      tags: [Motion]
+      summary: Stop motion detection for a camera.
+      responses:
+        "200":
+          description: Stopped.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # =========================== Presence ====================================
+
+  /api/presence:
+    get:
+      tags: [Presence]
+      summary: All persons + last-known presence state.
+      responses:
+        "200":
+          description: Persons.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/presence/{person_name}:
+    parameters:
+      - { name: person_name, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Presence]
+      summary: Presence state for one person.
+      responses:
+        "200":
+          description: Presence record.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/presence/{person_name}/toggle:
+    parameters:
+      - { name: person_name, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Presence]
+      summary: Toggle presence (manual override).
+      responses:
+        "200":
+          description: Toggled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/presence/{person_name}/set:
+    parameters:
+      - { name: person_name, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Presence]
+      summary: Set presence (manual override).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [present]
+              properties:
+                present: { type: boolean }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/presence/devices:
+    get:
+      tags: [Presence]
+      summary: Devices currently used as presence indicators.
+      responses:
+        "200":
+          description: Device list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, additionalProperties: true }
+
+  /api/presence/{person_name}/device:
+    parameters:
+      - { name: person_name, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Presence]
+      summary: Bind a device to a person for presence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Bound.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # ============================== Eufy =====================================
+
+  /eufy-auth:
+    get:
+      tags: [Eufy, Pages]
+      security: []
+      summary: Eufy auth flow page (HTML; captcha + 2FA).
+      responses:
+        "200": { description: HTML. }
+
+  /api/eufy-auth/captcha:
+    post:
+      tags: [Eufy]
+      security: []
+      summary: Submit Eufy captcha solution.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [captcha]
+              properties:
+                captcha: { type: string }
+      responses:
+        "200":
+          description: Result.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/eufy-auth/2fa:
+    post:
+      tags: [Eufy]
+      security: []
+      summary: Submit Eufy 2FA code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "200":
+          description: Result.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/eufy-auth/status:
+    get:
+      tags: [Eufy]
+      summary: Current Eufy auth state (logged in / awaiting captcha / awaiting 2FA / failed).
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+
+  /api/eufy-auth/captcha-image:
+    get:
+      tags: [Eufy]
+      security: []
+      summary: Current Eufy captcha image (PNG).
+      responses:
+        "200":
+          description: Captcha PNG.
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+
+  /api/eufy-auth/refresh-captcha:
+    post:
+      tags: [Eufy]
+      security: []
+      summary: Request a fresh captcha.
+      responses:
+        "200":
+          description: Refreshed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  # ============================ Evidence ===================================
+
+  /api/evidence/disclosure-ack:
+    post:
+      tags: [Evidence]
+      summary: Record user acknowledgement of jurisdiction-aware consent disclosure.
+      description: Phase 4.5 of the evidence-collection plan. Records the
+        per-jurisdiction disclosure the user must accept before evidence
+        capture proceeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DisclosureAck" }
+      responses:
+        "200":
+          description: Saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+
+  /api/evidence/status:
+    get:
+      tags: [Evidence]
+      summary: Evidence pipeline runtime status (free space, disclosure-ack, manifest tail).
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvidenceStatus" }
+
+  /api/evidence/feed:
+    get:
+      tags: [Evidence]
+      summary: Recent classified audio events (paginated).
+      parameters:
+        - { name: limit,  in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string }, description: "Opaque pagination cursor." }
+      responses:
+        "200":
+          description: Feed page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/EvidenceFeedItem" }
+                  next_cursor: { type: string, nullable: true }
+
+  /api/evidence/event/{manifest_id}:
+    parameters:
+      - { name: manifest_id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Evidence]
+      summary: One audio event by manifest id.
+      responses:
+        "200":
+          description: Event.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AudioEvent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/evidence/manifest/verify:
+    get:
+      tags: [Evidence]
+      summary: Verify manifest hash chain integrity.
+      responses:
+        "200":
+          description: Verification result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:    { type: boolean }
+                  error: { type: string, nullable: true }
+
+  /api/evidence/cases:
+    get:
+      tags: [Evidence]
+      summary: List cases (current user's, plus shared).
+      responses:
+        "200":
+          description: Case list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EvidenceCase" }
+    post:
+      tags: [Evidence]
+      summary: Create a case.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EvidenceCaseCreate" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvidenceCase" }
+
+  /api/evidence/cases/{case_id}:
+    parameters:
+      - { name: case_id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Evidence]
+      summary: Get a case by id.
+      responses:
+        "200":
+          description: Case.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvidenceCase" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Evidence]
+      summary: Update / archive a case.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EvidenceCasePatch" }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvidenceCase" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/evidence/cases/{case_id}/events:
+    parameters:
+      - { name: case_id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Evidence]
+      summary: List events bound to a case (paginated).
+      parameters:
+        - { name: limit,  in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Bound events.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AudioEvent" }
+                  next_cursor: { type: string, nullable: true }
+
+  # ========================== Certificates =================================
+
+  /install-cert:
+    get:
+      tags: [Certificates, Pages]
+      security: []
+      summary: Certificate install landing page (HTML).
+      responses:
+        "200": { description: HTML. }
+
+  /install-cert/download:
+    get:
+      tags: [Certificates]
+      security: []
+      summary: Download root CA cert (PEM/DER).
+      responses:
+        "200":
+          description: Certificate.
+          content:
+            application/x-x509-ca-cert:
+              schema: { type: string, format: binary }
+            application/octet-stream:
+              schema: { type: string, format: binary }
+
+  /install-cert/mobileconfig:
+    get:
+      tags: [Certificates]
+      security: []
+      summary: Download Apple `.mobileconfig` profile.
+      responses:
+        "200":
+          description: Mobileconfig.
+          content:
+            application/x-apple-aspen-config:
+              schema: { type: string, format: binary }
+
+  /api/cert/status:
+    get:
+      tags: [Certificates]
+      summary: Certificate status (CA fingerprint, expiry).
+      responses:
+        "200":
+          description: Status.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }

@@ -524,3 +524,365 @@ def manifest_verify():
         "from": from_id,
         "to": to_id,
     })
+
+
+# =========================================================================
+# Phase 5b — Cases CRUD + promote-to-case
+# =========================================================================
+#
+# Cases are how evidence-bearing events get bound to a real-world legal
+# matter. The pipeline itself is intentionally case-agnostic — it just
+# records events. Cases live in the ``evidence_cases`` table (created
+# by migration 027) and an event becomes "promoted" to a case when its
+# ``audio_events.case_id`` is set.
+#
+# Why these endpoints exist on Flask (not just PostgREST direct):
+#   1. ``GET /cases/<id>/events`` filters by the case's stored
+#      predicates JSONB; that filtering logic is non-trivial and we
+#      want it in Python, not in a tangle of PostgREST query string
+#      operators.
+#   2. ``POST /cases/<id>/promote`` is a multi-row UPDATE plus a
+#      manifest write (chain-of-custody record of the promotion). It
+#      would be awkward to express atomically through PostgREST, and
+#      we want the operator action recorded in the manifest.
+#   3. CRUD on the ``cases`` table itself goes through Flask too for
+#      consistency and so the entire mutation surface for evidence
+#      lives behind ``login_required``.
+#
+# Predicate schema (stored in ``evidence_cases.predicates``):
+#   {
+#     "cameras":    ["serial1", "serial2"],   // optional
+#     "categories": ["screams", "crying"],    // optional
+#     "after":      "2026-01-01T00:00:00Z",   // optional iso lower bound
+#     "before":     "2027-01-01T00:00:00Z"    // optional iso upper bound
+#   }
+# All fields optional. An event matches iff every present predicate
+# matches it. Empty predicates match everything (use sparingly).
+# =========================================================================
+
+
+def _shared_settings_postgrest_url() -> str:
+    """The PostgREST URL that the Flask process uses for DB queries."""
+    import os
+    return os.environ.get("NVR_POSTGREST_URL") or "http://postgrest:3001"
+
+
+def _event_matches_predicates(
+    event: Dict[str, Any],
+    predicates: Dict[str, Any],
+) -> bool:
+    """
+    Return True if ``event`` matches every present predicate in
+    ``predicates``. Used by GET /cases/<id>/events.
+
+    Event format here is a row from ``audio_events`` (already a join-
+    friendly index over the manifest). Camera + category + timestamp
+    predicates map directly to columns.
+    """
+    cams = predicates.get("cameras")
+    if cams and event.get("camera_serial") not in cams:
+        return False
+    cats = predicates.get("categories")
+    if cats and event.get("primary_label") not in cats:
+        return False
+    # Time bounds: event.timestamp_utc is an ISO string from postgres,
+    # we string-compare iso timestamps (lexicographic equals temporal
+    # ordering for fixed-format ISO 8601).
+    after = predicates.get("after")
+    if after and (event.get("timestamp_utc") or "") < after:
+        return False
+    before = predicates.get("before")
+    if before and (event.get("timestamp_utc") or "") > before:
+        return False
+    return True
+
+
+# ----- POST /api/evidence/cases ------------------------------------------
+
+@evidence_bp.route("/api/evidence/cases", methods=["POST"])
+@login_required
+def create_case():
+    """
+    Register a new case.
+
+    Body::
+
+        {
+          "name":        "Marital — 2026",
+          "consumer_id": "0_LEGAL/0_MARITAL",
+          "predicates":  { "cameras": [...], "categories": [...] }
+        }
+
+    Returns the created row with its assigned id.
+    """
+    import requests
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    consumer_id = (body.get("consumer_id") or "").strip()
+    if not consumer_id:
+        return jsonify({"error": "consumer_id is required"}), 400
+    predicates = body.get("predicates") or {}
+    if not isinstance(predicates, dict):
+        return jsonify({"error": "predicates must be an object"}), 400
+
+    payload = {
+        "name": name,
+        "consumer_id": consumer_id,
+        "predicates": predicates,
+    }
+    r = requests.post(
+        f"{_shared_settings_postgrest_url()}/evidence_cases",
+        json=payload,
+        headers={"Prefer": "return=representation"},
+        timeout=10,
+    )
+    if not r.ok:
+        return jsonify({"error": f"DB insert failed: {r.text[:300]}"}), 502
+    rows = r.json()
+    new_row = rows[0] if rows else None
+
+    # Record the case creation in the manifest (chain-of-custody).
+    if new_row:
+        try:
+            _manifest.append({
+                "event_type": "case_created",
+                "service": "evidence_routes",
+                "case_id": new_row["id"],
+                "case_name": new_row["name"],
+                "consumer_id": new_row["consumer_id"],
+                "predicates": new_row.get("predicates") or {},
+                "created_by_user_id": str(
+                    getattr(current_user, "id", None)
+                    or getattr(current_user, "username", None)
+                    or "unknown"
+                ),
+            })
+        except Exception:
+            logger.exception("create_case: manifest append failed")
+
+    return jsonify(new_row), 201
+
+
+# ----- GET /api/evidence/cases -------------------------------------------
+
+@evidence_bp.route("/api/evidence/cases", methods=["GET"])
+@login_required
+def list_cases():
+    """
+    List cases. Optional query: ``include_archived=true`` to also
+    return cases with archived_at IS NOT NULL (default: only active).
+    """
+    import requests
+    include_archived = request.args.get("include_archived", "").lower() in (
+        "1", "true", "yes",
+    )
+    url = f"{_shared_settings_postgrest_url()}/evidence_cases?select=*&order=created_at.desc"
+    if not include_archived:
+        url += "&archived_at=is.null"
+    r = requests.get(url, timeout=10)
+    if not r.ok:
+        return jsonify({"error": f"DB query failed: {r.text[:300]}"}), 502
+    return jsonify(r.json())
+
+
+# ----- GET /api/evidence/cases/<id> --------------------------------------
+
+@evidence_bp.route("/api/evidence/cases/<int:case_id>", methods=["GET"])
+@login_required
+def get_case(case_id: int):
+    """Return one case by id, or 404."""
+    import requests
+    r = requests.get(
+        f"{_shared_settings_postgrest_url()}/evidence_cases"
+        f"?id=eq.{case_id}&select=*",
+        timeout=10,
+    )
+    if not r.ok:
+        return jsonify({"error": f"DB query failed: {r.text[:300]}"}), 502
+    rows = r.json()
+    if not rows:
+        abort(404)
+    return jsonify(rows[0])
+
+
+# ----- PATCH /api/evidence/cases/<id> ------------------------------------
+
+@evidence_bp.route("/api/evidence/cases/<int:case_id>", methods=["PATCH"])
+@login_required
+def patch_case(case_id: int):
+    """
+    Update a case. Whitelisted fields: name, predicates, archived_at.
+
+    To archive: PATCH with {"archived_at": "<iso>"}.
+    To reopen:  PATCH with {"archived_at": null}.
+    """
+    import requests
+    body = request.get_json(silent=True) or {}
+    allowed = {}
+    for k in ("name", "predicates", "archived_at"):
+        if k in body:
+            allowed[k] = body[k]
+    if not allowed:
+        return jsonify({"error": "no whitelisted fields in body"}), 400
+
+    r = requests.patch(
+        f"{_shared_settings_postgrest_url()}/evidence_cases?id=eq.{case_id}",
+        json=allowed,
+        headers={"Prefer": "return=representation"},
+        timeout=10,
+    )
+    if not r.ok:
+        return jsonify({"error": f"DB update failed: {r.text[:300]}"}), 502
+    rows = r.json()
+    if not rows:
+        abort(404)
+    return jsonify(rows[0])
+
+
+# ----- GET /api/evidence/cases/<id>/events -------------------------------
+
+@evidence_bp.route("/api/evidence/cases/<int:case_id>/events", methods=["GET"])
+@login_required
+def case_events(case_id: int):
+    """
+    Return all audio_events whose row matches this case's predicates,
+    plus all events already promoted to this case.
+
+    The "matches predicates" set may be larger than the "promoted" set
+    — predicates describe what the case is INTERESTED in; promotion is
+    a deliberate user action that says "this event IS evidence for the
+    case." UI typically shows both, distinguished by whether
+    ``promoted_at`` is set.
+    """
+    import requests
+
+    # 1) load the case to get its predicates
+    case_r = requests.get(
+        f"{_shared_settings_postgrest_url()}/evidence_cases"
+        f"?id=eq.{case_id}&select=*",
+        timeout=10,
+    )
+    if not case_r.ok:
+        return jsonify({"error": f"case lookup failed: {case_r.text[:300]}"}), 502
+    case_rows = case_r.json()
+    if not case_rows:
+        abort(404)
+    case = case_rows[0]
+    predicates = case.get("predicates") or {}
+
+    # 2) load all audio_events (the full table is fine — index is small;
+    # if it grows large, add a pre-filter on case_id and predicate
+    # columns and merge in Python).
+    ev_r = requests.get(
+        f"{_shared_settings_postgrest_url()}/audio_events"
+        f"?select=*&order=timestamp_utc.desc",
+        timeout=20,
+    )
+    if not ev_r.ok:
+        return jsonify({"error": f"events lookup failed: {ev_r.text[:300]}"}), 502
+    all_events = ev_r.json()
+
+    # 3) bucket each event into matching / promoted
+    matching: List[Dict[str, Any]] = []
+    promoted: List[Dict[str, Any]] = []
+    for e in all_events:
+        is_promoted = e.get("case_id") == case_id
+        is_match = _event_matches_predicates(e, predicates)
+        if is_promoted:
+            promoted.append(e)
+        elif is_match:
+            matching.append(e)
+    return jsonify({
+        "case_id": case_id,
+        "promoted": promoted,
+        "matching_unpromoted": matching,
+    })
+
+
+# ----- POST /api/evidence/cases/<id>/promote -----------------------------
+
+@evidence_bp.route(
+    "/api/evidence/cases/<int:case_id>/promote",
+    methods=["POST"],
+)
+@login_required
+def promote_events(case_id: int):
+    """
+    Mark a list of audio_events as promoted to this case.
+
+    Body::
+
+        {"manifest_ids": [12834, 12835, 12840]}
+
+    For each id we PATCH ``audio_events`` setting ``case_id`` and
+    ``promoted_at = now()``, and we append a ``case_promotion``
+    manifest entry naming all promoted ids in one entry (so the
+    chain-of-custody record reflects this as one operator action,
+    not N individual mutations).
+    """
+    import requests
+    from datetime import datetime as _dt, timezone as _tz
+
+    body = request.get_json(silent=True) or {}
+    ids = body.get("manifest_ids")
+    if not isinstance(ids, list) or not ids or not all(
+        isinstance(i, int) for i in ids
+    ):
+        return jsonify({"error": "manifest_ids must be a non-empty list of ints"}), 400
+
+    # First, verify the case exists.
+    case_r = requests.get(
+        f"{_shared_settings_postgrest_url()}/evidence_cases"
+        f"?id=eq.{case_id}&select=id",
+        timeout=10,
+    )
+    if not case_r.ok or not case_r.json():
+        abort(404)
+
+    # PATCH all matching audio_events rows in one PostgREST call by
+    # using the IN filter. Atomic from PostgREST's perspective.
+    iso_now = _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    in_filter = "in.(" + ",".join(str(i) for i in ids) + ")"
+    patch_url = (f"{_shared_settings_postgrest_url()}/audio_events"
+                 f"?manifest_id={in_filter}")
+    p = requests.patch(
+        patch_url,
+        json={"case_id": case_id, "promoted_at": iso_now},
+        headers={"Prefer": "return=representation"},
+        timeout=15,
+    )
+    if not p.ok:
+        return jsonify({"error": f"promote PATCH failed: {p.text[:300]}"}), 502
+    updated = p.json()
+
+    # Manifest entry — one event for the whole batch.
+    try:
+        _manifest.append({
+            "event_type": "case_promotion",
+            "service": "evidence_routes",
+            "case_id": case_id,
+            "promoted_audio_capture_manifest_ids": ids,
+            "promoted_count": len(updated),
+            "promoted_at_utc": iso_now,
+            "promoted_by_user_id": str(
+                getattr(current_user, "id", None)
+                or getattr(current_user, "username", None)
+                or "unknown"
+            ),
+            "client_ip": (
+                request.headers.get("X-Forwarded-For", "")
+                .split(",")[0].strip()
+                or request.remote_addr or "unknown"
+            ),
+        })
+    except Exception:
+        logger.exception("promote_events: manifest append failed")
+
+    return jsonify({
+        "case_id": case_id,
+        "promoted_count": len(updated),
+        "promoted_at_utc": iso_now,
+        "rows": updated,
+    })

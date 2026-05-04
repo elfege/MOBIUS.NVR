@@ -107,6 +107,18 @@
     /* Treat as one continuous block; no setting-top split. */
     display: block;
 }
+.evidence-disclosure-jurisdiction {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 13px;
+    color: #ccc;
+}
+.evidence-disclosure-jurisdiction select {
+    flex: 1;
+    max-width: 320px;
+}
 .evidence-disclosure-box {
     background: rgba(255, 235, 130, 0.06);
     border-left: 3px solid #d4a017;

@@ -53,20 +53,117 @@
  */
 
 
-// Hash of the disclosure text shown to the user. If you change the
-// disclosure copy below, recompute this hash so prior acks remain
-// pinned (by hash) to the older text and don't pretend they apply
-// to the new copy. Cheap forward-compat.
+// =====================================================================
+// JURISDICTION-AWARE DISCLOSURE (Phase 4.5)
+// =====================================================================
 //
-// Computed from the canonical text in the renderHTML() template
-// literal. Update via:
-//   echo -n "<text>" | sha256sum
-// at deploy time when the text changes. The string here just needs
-// to be different per disclosure-version, so even an obvious
-// "v1-default" placeholder works for now.
-const DISCLOSURE_TEXT_SHA256 = "v1-default-2026-04-28";
-const DISCLOSURE_VERSION     = 1;
-const DEFAULT_JURISDICTION   = "US-NY";
+// Each entry is a self-contained legal disclosure for one jurisdiction.
+// We ship four out of the box:
+//
+//   * "US-NY"        — New York, the user's home jurisdiction. Cites
+//                      §250.00 explicitly.
+//   * "US-1PARTY"    — generic one-party-consent US states (38 of them
+//                      including AL, AK, AZ, AR, CA*, CO, CT*... see
+//                      Reporters Committee for Freedom of the Press
+//                      summary). The * means "with caveats" — this is
+//                      a baseline, not legal advice.
+//   * "US-2PARTY"    — all-party-consent US states (CA, CT, FL, IL, MD,
+//                      MA, MT, NH, OR, PA, WA). Recording in your home
+//                      may still be lawful here under residence
+//                      exceptions, but the user must know it's stricter.
+//   * "OTHER"        — generic non-US fallback. EU users, French users,
+//                      others — most jurisdictions outside the US
+//                      require all-party consent or stricter notice
+//                      regimes. We tell the user to verify locally.
+//
+// The user picks one in the disclosure dropdown. The chosen value is
+// posted to /api/evidence/disclosure-ack along with that text's hash —
+// so the chain-of-custody record proves exactly which jurisdiction
+// the operator was claiming when they enabled recording.
+//
+// IMPORTANT: ``hash`` for each entry must match the SHA-256 of the
+// ``html`` field's exact bytes (UTF-8). If you edit the html, re-hash
+// with: echo -n "<html>" | sha256sum
+// or just bump the version (e.g. "...-v2") to keep prior acks pinned.
+
+const DISCLOSURE_VERSION = 1;
+
+// Order of keys = order shown in the dropdown. First entry is the
+// default selection. The default jurisdiction (US-NY) is also the
+// fallback if the dropdown is somehow not rendered.
+const DISCLOSURES = {
+    "US-NY": {
+        label: "United States — New York",
+        html: `<p>Audio recording is enabled in your home. New York is a
+            <strong>one-party-consent</strong> state under N.Y. Penal
+            Law §250.00 — recording a conversation is lawful when at
+            least one party (you, the account holder) consents, OR when
+            the conversation occurs in your residence.</p>
+            <p>You are responsible for compliance with applicable law.
+            Recording in shared spaces (Airbnb hosts recording guests,
+            employees recording each other off-duty) may raise distinct
+            legal issues this disclosure does not cover.</p>
+            <p>Promotion of any evidence to a case (rsync to a legal
+            workspace) is always a manual user action; this system never
+            auto-shares captured audio.</p>`,
+        hash: "us-ny-v1-2026-04-28",
+    },
+    "US-1PARTY": {
+        label: "United States — one-party-consent state",
+        html: `<p>You have selected a U.S. <strong>one-party-consent</strong>
+            jurisdiction. Recording a conversation is lawful when at least
+            one party (you, the account holder) consents.</p>
+            <p>One-party-consent states include (non-exhaustive): AL, AK,
+            AZ, AR, CO, DE, GA, HI, ID, IN, IA, KS, KY, LA, ME, MI, MN,
+            MS, MO, NE, NV, NJ, NM, NY, NC, ND, OH, OK, RI, SC, SD, TN,
+            TX, UT, VT, VA, WV, WI, WY. Federal interstate calls fall
+            under the one-party rule under 18 U.S.C. §2511(2)(d).</p>
+            <p>You are responsible for compliance with applicable law.
+            Verify your state's specific statute before relying on this
+            recording for litigation. Promotion of any evidence to a case
+            is always a manual user action.</p>`,
+        hash: "us-1party-v1-2026-04-28",
+    },
+    "US-2PARTY": {
+        label: "United States — all-party-consent state",
+        html: `<p>You have selected a U.S. <strong>all-party-consent</strong>
+            (often called "two-party") jurisdiction. Recording a
+            conversation generally requires the consent of <em>every</em>
+            party, with limited exceptions for in-home recording when you
+            are present.</p>
+            <p>All-party-consent states include (non-exhaustive): CA, CT,
+            FL, IL, MD, MA, MT, NH, OR, PA, WA. Penalties for
+            non-compliance can include both criminal liability and
+            inadmissibility of the recording in court.</p>
+            <p><strong>Strongly recommended:</strong> consult a local
+            attorney before relying on this recording for any legal
+            purpose. Recording in shared spaces, of visitors, or of
+            non-residents is especially likely to fall outside the
+            home-residence exception.</p>
+            <p>Promotion of any evidence to a case is always a manual
+            user action; this system never auto-shares captured audio.</p>`,
+        hash: "us-2party-v1-2026-04-28",
+    },
+    "OTHER": {
+        label: "Other / outside the United States",
+        html: `<p>You have selected a non-U.S. jurisdiction or "other".
+            Most jurisdictions outside the U.S. — including the European
+            Union, the United Kingdom, Canada, France, and most of Latin
+            America — require <strong>all-party consent</strong> for
+            audio recording, or impose distinct notice obligations under
+            data-protection law (GDPR, LGPD, etc.).</p>
+            <p>You are responsible for compliance with applicable law in
+            your jurisdiction. Consult a local attorney before enabling
+            this feature; do not assume U.S. consent rules apply.</p>
+            <p>Promotion of any evidence to a case is always a manual
+            user action; this system never auto-shares captured audio.</p>`,
+        hash: "other-v1-2026-04-28",
+    },
+};
+
+// Ordered list — used to render the dropdown.
+const DISCLOSURE_KEYS = Object.keys(DISCLOSURES);
+const DEFAULT_JURISDICTION = "US-NY";
 
 
 // =====================================================================
@@ -102,6 +199,12 @@ export class EvidenceCollectionTab {
         this._settings = {};       // serial → {enabled, capture_video, capture_audio, ...}
         this._dirty = new Set();   // serials whose row needs PATCHing
         this._disclosureAckPending = false; // true when user just checked the box
+
+        // Currently-selected jurisdiction key (matches a key in
+        // DISCLOSURES). Persists for the lifetime of the panel —
+        // reload restores the default (or whatever the user last
+        // saved server-side, when we wire that).
+        this._jurisdiction = DEFAULT_JURISDICTION;
     }
 
 
@@ -175,27 +278,31 @@ export class EvidenceCollectionTab {
             </div>
           </div>
 
-          <!-- ── Legal disclosure ─────────────────────────────────── -->
+          <!-- ── Legal disclosure (jurisdiction-aware, Phase 4.5) ───
+            The dropdown selects which canonical text to display. The
+            chosen jurisdiction + the displayed text's hash are
+            posted with the ack, so the chain-of-custody record proves
+            exactly which legal claim the operator made when enabling
+            recording. -->
           <div class="setting-row evidence-disclosure">
             <div class="setting-label">
               <i class="fas fa-balance-scale"></i> Legal disclosure
             </div>
-            <div class="evidence-disclosure-box">
-              <p>Audio recording is enabled in your home. New York is a
-              <strong>one-party-consent</strong> state under N.Y. Penal
-              Law §250.00 — recording a conversation is lawful when at
-              least one party (you, the account holder) consents, OR
-              when the conversation occurs in your residence.</p>
-              <p>You are responsible for compliance with applicable
-              law in your jurisdiction. If you are not in New York,
-              consult local statutes before enabling this feature.
-              Recording in shared spaces (Airbnb hosts recording
-              guests, employees recording each other off-duty) may
-              raise distinct legal issues this disclosure does not
-              cover.</p>
-              <p>Promotion of any evidence to a case (rsync to a
-              legal workspace) is always a manual user action; this
-              system never auto-shares captured audio.</p>
+            <div class="evidence-disclosure-jurisdiction">
+              <label for="evidence-jurisdiction-select">Jurisdiction:</label>
+              <select id="evidence-jurisdiction-select"
+                      class="setting-select">
+                ${DISCLOSURE_KEYS.map(k => `
+                  <option value="${k}"
+                          ${k === DEFAULT_JURISDICTION ? 'selected' : ''}>
+                    ${DISCLOSURES[k].label}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+            <div class="evidence-disclosure-box"
+                 id="evidence-disclosure-text">
+              ${DISCLOSURES[DEFAULT_JURISDICTION].html}
               <label class="evidence-disclosure-ack">
                 <input type="checkbox" id="evidence-disclosure-ack-cb">
                 I have read and accept the disclosure above.
@@ -266,6 +373,30 @@ export class EvidenceCollectionTab {
         $panel.off('change.evidence', '#evidence-disclosure-ack-cb')
               .on('change.evidence', '#evidence-disclosure-ack-cb', (e) => {
             this._disclosureAckPending = !!e.currentTarget.checked;
+        });
+
+        // ── Jurisdiction dropdown change (Phase 4.5) ───────────────
+        // Switching jurisdiction means the text the user is being
+        // asked to ack changes — so we MUST clear any pending ack
+        // when they switch, otherwise they'd be acking text they
+        // didn't see. Forces re-check of the box.
+        $panel.off('change.evidence', '#evidence-jurisdiction-select')
+              .on('change.evidence', '#evidence-jurisdiction-select', (e) => {
+            const key = $(e.currentTarget).val();
+            if (!DISCLOSURES[key]) return;
+            this._jurisdiction = key;
+            // Re-render the disclosure text (preserve the ack
+            // checkbox element by re-injecting the text + the
+            // checkbox label together).
+            $panel.find('#evidence-disclosure-text').html(
+                DISCLOSURES[key].html
+              + `<label class="evidence-disclosure-ack">
+                   <input type="checkbox" id="evidence-disclosure-ack-cb">
+                   I have read and accept the disclosure above.
+                 </label>`
+            );
+            // Reset the pending state — user must re-check.
+            this._disclosureAckPending = false;
         });
     }
 
@@ -541,14 +672,17 @@ export class EvidenceCollectionTab {
         // Backend route writes a manifest lifecycle entry with
         // user_id, IP, user-agent, jurisdiction, disclosure version,
         // text hash. See routes/evidence_routes.py.
+        // Phase 4.5: jurisdiction now reflects the user's pick.
+        const j = DISCLOSURES[this._jurisdiction] ||
+                  DISCLOSURES[DEFAULT_JURISDICTION];
         const r = await fetch('/api/evidence/disclosure-ack', {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                jurisdiction:           DEFAULT_JURISDICTION,
+                jurisdiction:           this._jurisdiction,
                 disclosure_version:     DISCLOSURE_VERSION,
-                disclosure_text_sha256: DISCLOSURE_TEXT_SHA256,
+                disclosure_text_sha256: j.hash,
             }),
         });
         if (!r.ok) {

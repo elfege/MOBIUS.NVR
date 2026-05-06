@@ -205,7 +205,12 @@ if declare -f get_cameras_credentials >/dev/null 2>&1; then
 	# get_cameras_credentials writes export statements to the temp file,
 	# then sources it internally. We also capture a copy BEFORE it gets
 	# cleared, so we can re-source with set -a for child process export.
-	get_cameras_credentials --temp="$_CRED_TMP" 2>/dev/null || {
+	#
+	# Do NOT silence stderr here — _mobius_vault_inject prompts for the
+	# MOBIUS.VAULT passphrase via `read -srp`, which writes the prompt
+	# to fd 2. Hiding stderr made start.sh appear to hang on an invisible
+	# prompt right after `docker compose down --remove-orphans`.
+	get_cameras_credentials --temp="$_CRED_TMP" || {
 		echo -e "${YELLOW}WARNING: Failed to load camera credentials${NC}"
 		echo "  Ensure AWS SSO is valid or switch to DB-based credentials via the UI."
 	}

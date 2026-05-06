@@ -240,16 +240,8 @@ export class MultiStreamManager {
                     return;
                 }
 
-                // Per-camera opt-out: ui_health_monitor=false suppresses the
-                // entire recovery path (no Signal Lost overlay, no refresh).
-                // Use case: streams that are working continuously (e.g.
-                // MJPEG via the streaming hub) but where the backend's
-                // degraded → online transitions produce false-positive
-                // UI churn.
-                if ($streamItem.attr('data-ui-health-monitor') === 'false') {
-                    console.log(`[Recovery] ${cameraId}: Skipping recovery — ui_health_monitor=false for this camera`);
-                    return;
-                }
+                // (ui_health_monitor=false opt-out moved to
+                // handleBackendRecovery — see invariant comment there.)
 
                 // When WebSocket is active, still check if this WebRTC stream needs help
                 // The WebSocket notification fires BEFORE FFmpeg is ready, but poll-based
@@ -3235,6 +3227,15 @@ export class MultiStreamManager {
      * @param {jQuery} $streamItem - Stream item element
      */
     async handleBackendRecovery(cameraId, $streamItem) {
+        // ARCHITECTURAL INVARIANT: this method is the single chokepoint for
+        // backend-driven recovery. Three upstream paths can reach it:
+        //   1. CameraStateMonitor.onRecovery (degraded → online) via _scheduleHealthRecovery
+        //   2. WebSocket 'stream_restarted' event (line ~5131) via _scheduleHealthRecovery
+        //   3. Future entry points
+        // All gating (global pause, user-stopped, ui_health_monitor opt-out)
+        // MUST live here, not at the call sites — call sites have proven to
+        // multiply faster than the gates can be kept in sync.
+
         // Suppress recovery while globally paused
         if (this._globalPaused) {
             console.log(`[Recovery] ${cameraId}: Skipping backend recovery — global pause is active`);
@@ -3246,6 +3247,29 @@ export class MultiStreamManager {
             // User explicitly stopped this stream via UI, don't auto-restart
             if (this.isUserStoppedStream(cameraId)) {
                 console.log(`[Recovery] ${cameraId}: Skipping backend recovery - user manually stopped this stream`);
+                return;
+            }
+
+            // Per-camera opt-out: ui_health_monitor=false suppresses the
+            // entire recovery path (no Signal Lost overlay, no refresh).
+            // Use case: streams that are working continuously (e.g. MJPEG
+            // via the streaming hub) but where the backend's degraded →
+            // online transitions or stream_restarted events produce
+            // false-positive UI churn.
+            if ($streamItem.attr('data-ui-health-monitor') === 'false') {
+                console.log(`[Recovery] ${cameraId}: Skipping backend recovery — ui_health_monitor=false for this camera`);
+                return;
+            }
+
+            // Server-hidden cameras: the StartAll routine skips starting
+            // them, but their stream-items remain in the DOM (so admins
+            // can reveal them via the show-hidden toggle). Backend still
+            // emits stream_restarted for them on its restart loop, which
+            // bombarded the frontend recovery path. Honor the hidden flag
+            // here — if the tile isn't being shown, don't fight to refresh
+            // a stream the user isn't watching.
+            if ($streamItem.attr('data-hidden') === 'true') {
+                console.log(`[Recovery] ${cameraId}: Skipping backend recovery — camera is server-hidden`);
                 return;
             }
 
@@ -5123,12 +5147,20 @@ export class MultiStreamManager {
                     return;
                 }
 
-                // Find the stream item and trigger recovery
+                // Find the stream item and trigger recovery via the
+                // debounced wrapper so this path ALSO honors the
+                // per-camera ui_health_refresh_delay_ms and the gates
+                // inside handleBackendRecovery (ui_health_monitor opt-out,
+                // global pause, user-stopped streams). Going direct to
+                // handleBackendRecovery here was the bug that let
+                // ui_health_monitor=false leak through and caused the
+                // Signal Lost / Recovered-Reconnecting churn the user
+                // reported on Terrace South.
                 const $streamItem = $(`.stream-item[data-camera-serial="${camera_id}"]`);
                 if ($streamItem.length) {
                     console.log(`[WEBSOCKET] Triggering refresh for ${camera_id}`);
                     this.recentRecoveries.set(camera_id, now);
-                    this.handleBackendRecovery(camera_id, $streamItem);
+                    this._scheduleHealthRecovery(camera_id, $streamItem);
                 } else {
                     console.log(`[WEBSOCKET] Camera ${camera_id} not on this page, ignoring`);
                 }

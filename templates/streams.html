@@ -386,6 +386,7 @@
             data-streaming-hub="{{ info.get('streaming_hub', 'mediamtx') }}"
             data-mjpeg-source="{{ info.get('mjpeg_source', '') }}"
             data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}"
+            data-ui-health-refresh-delay-ms="{{ info.get('ui_health_refresh_delay_ms', 0) }}"
             data-video-fit="{{ info.get('video_fit_mode') or '' }}"
             data-hidden="{{ info.get('hidden', False)|lower }}">
 

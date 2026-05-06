@@ -258,6 +258,22 @@ class StreamWatchdog:
                 break
 
             try:
+                # ADMIN OPT-OUT: skip cameras the user has explicitly
+                # marked as not-in-active-use. Two flags both mean "leave
+                # this one alone":
+                #   - hidden=true            (camera is hidden in the UI)
+                #   - ui_health_monitor=false (user disabled health for it)
+                # Without this gate, the watchdog burns cycles restarting
+                # cameras the user isn't watching, which floods the
+                # WebSocket stream_restarted event channel and causes
+                # frontend UI churn for live tiles. The frontend has its
+                # own mirror of this gate in handleBackendRecovery as a
+                # belt-and-suspenders fix; this here is the source of
+                # truth and keeps the storm from happening in the first
+                # place.
+                if self._is_admin_opted_out(camera_id):
+                    continue
+
                 # PER-CAMERA COOLDOWN: Skip if recently restarted
                 cooldown_expires = self._restart_cooldowns.get(camera_id, 0)
                 if now < cooldown_expires:
@@ -313,6 +329,33 @@ class StreamWatchdog:
         # Access the tracker's states through its lock for thread safety
         with self._state_tracker._lock:
             return list(self._state_tracker._states.keys())
+
+    def _is_admin_opted_out(self, camera_id: str) -> bool:
+        """
+        Whether the user has marked this camera as not-in-active-use.
+
+        Returns True if either:
+          - cameras.hidden is true            (camera is hidden in the UI)
+          - cameras.ui_health_monitor is false (user disabled health for it)
+
+        Both flags signal "stop trying to keep this stream alive." On any
+        DB lookup error we default to False (keep the watchdog running)
+        rather than silently silencing every camera.
+        """
+        try:
+            camera = self._stream_manager.camera_repo.get_camera(camera_id)
+            if not camera:
+                return False
+            if camera.get('hidden', False):
+                return True
+            # ui_health_monitor defaults to True if absent — only opt out
+            # when the column is explicitly false.
+            if camera.get('ui_health_monitor', True) is False:
+                return True
+            return False
+        except Exception as e:
+            logger.warning(f"Error looking up admin opt-out for {camera_id}: {e}")
+            return False
 
     def _get_stream_type(self, camera_id: str) -> str:
         """

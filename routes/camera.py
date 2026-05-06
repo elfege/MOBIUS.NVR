@@ -491,7 +491,8 @@ def api_camera_settings_update(camera_serial):
     EDITABLE_KEYS = {
         'name', 'type', 'host', 'mac', 'packager_path', 'stream_type',
         'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
-        'hidden', 'ui_health_monitor', 'reversed_pan', 'reversed_tilt',
+        'hidden', 'ui_health_monitor', 'ui_health_refresh_delay_ms',
+        'reversed_pan', 'reversed_tilt',
         'notes', 'power_supply_device_id', 'true_mjpeg', 'capabilities',
         'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
         'rtsp_input', 'rtsp_output', 'two_way_audio',

@@ -122,6 +122,10 @@ def disclosure_ack():
     )[:80]
 
     # ----- write the manifest entry --------------------------------------
+    # The manifest is the tamper-evident chain-of-custody record. Append
+    # FIRST: if this fails, no DB row should exist (a DB row without a
+    # corresponding manifest line would be a record without a
+    # cryptographic anchor — useless for legal purposes).
     try:
         entry = _manifest.append({
             "event_type": "disclosure_acked",
@@ -136,6 +140,56 @@ def disclosure_ack():
     except Exception as e:
         logger.exception("disclosure_ack: manifest append failed")
         return jsonify({"error": f"manifest write failed: {e}"}), 500
+
+    # ----- write the DB row ---------------------------------------------
+    # Pair the manifest line with a queryable DB row in
+    # ``evidence_disclosure_acks``. The DB row carries manifest_id +
+    # manifest_hash so an auditor can re-verify the linkage at any time.
+    # Done via PostgREST (same pattern as the rest of this blueprint).
+    #
+    # If the DB write fails the manifest line still exists — that is
+    # acceptable: the manifest is the legal record of record. We log
+    # loudly and return 502 so the UI can prompt the user to retry; on
+    # retry, a fresh manifest entry is appended (the chain preserves the
+    # full sequence) and a matching DB row is written.
+    import requests as _requests  # lazy — only this endpoint
+    db_payload = {
+        "user_id":                str(user_id),
+        "client_ip":              client_ip,
+        "user_agent":             user_agent,
+        "jurisdiction":           jurisdiction,
+        "disclosure_version":     disclosure_version,
+        "disclosure_text_sha256": disclosure_text_sha256,
+        "manifest_id":            int(entry["manifest_id"]),
+        "manifest_hash":          str(entry["this_hash"]),
+    }
+    try:
+        r = _requests.post(
+            f"{_shared_settings_postgrest_url()}/evidence_disclosure_acks",
+            json=db_payload,
+            headers={"Prefer": "return=representation"},
+            timeout=10,
+        )
+        if not r.ok:
+            logger.error(
+                "disclosure_ack: DB insert failed (manifest_id=%d): HTTP %s %s",
+                entry["manifest_id"], r.status_code, r.text[:300],
+            )
+            return jsonify({
+                "error": "DB insert failed; manifest entry was written. "
+                         "Re-submit to retry.",
+                "manifest_id": entry["manifest_id"],
+            }), 502
+    except Exception as e:
+        logger.exception(
+            "disclosure_ack: DB insert raised (manifest_id=%d)",
+            entry["manifest_id"],
+        )
+        return jsonify({
+            "error": f"DB insert raised: {e}; manifest entry was written. "
+                     "Re-submit to retry.",
+            "manifest_id": entry["manifest_id"],
+        }), 502
 
     logger.info(
         "disclosure acknowledged: user=%s ip=%s jurisdiction=%s "
@@ -187,6 +241,11 @@ def status():
         "manifest_total_entries": 0,
         "last_event_utc": None,
         "chain_ok": None,
+        # Latest disclosure ack for the *currently authenticated user*.
+        # The UI reads this to pre-check the disclosure box when the
+        # user has previously acked the same jurisdiction+version+hash.
+        # ``null`` if the user has never acked anything.
+        "last_disclosure_ack": None,
     }
 
     # Disk usage — handles the case where the volume isn't mounted yet
@@ -219,6 +278,43 @@ def status():
     except Exception:
         logger.exception("status: verify_chain raised")
         payload["chain_ok"] = False
+
+    # ----- latest disclosure ack for the current user -------------------
+    # Read the most recent row from evidence_disclosure_acks for whoever
+    # is logged in. The UI uses this to render the disclosure checkbox
+    # in its previously-acked state on page load — so a user who acked
+    # US-NY-v1 on Monday sees the box pre-checked on Tuesday (assuming
+    # they still have US-NY selected; switching jurisdiction or bumping
+    # the disclosure version will leave the box unchecked, forcing a
+    # fresh ack of the new text).
+    try:
+        user_id = (
+            getattr(current_user, "id", None)
+            or getattr(current_user, "username", None)
+            or "unknown"
+        )
+        import requests as _requests  # lazy
+        url = (
+            f"{_shared_settings_postgrest_url()}/evidence_disclosure_acks"
+            f"?user_id=eq.{str(user_id)}"
+            f"&order=acked_at.desc&limit=1"
+        )
+        r = _requests.get(url, timeout=5)
+        if r.ok:
+            rows = r.json()
+            if rows:
+                a = rows[0]
+                payload["last_disclosure_ack"] = {
+                    "jurisdiction":           a.get("jurisdiction"),
+                    "disclosure_version":     a.get("disclosure_version"),
+                    "disclosure_text_sha256": a.get("disclosure_text_sha256"),
+                    "manifest_id":            a.get("manifest_id"),
+                    "manifest_hash":          a.get("manifest_hash"),
+                    "acked_at":               a.get("acked_at"),
+                }
+    except Exception:
+        # Best-effort — UI degrades gracefully (box stays unchecked).
+        logger.exception("status: failed to read last disclosure ack")
 
     return jsonify(payload)
 

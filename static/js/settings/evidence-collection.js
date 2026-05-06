@@ -187,10 +187,18 @@ export class EvidenceCollectionTab {
         this._dirty = new Set();   // serials whose row needs PATCHing
         this._disclosureAckPending = false; // true when user just checked the box
 
+        // Latest disclosure ack on file for the current user. Populated
+        // by load() from /api/evidence/status. Shape:
+        //   { jurisdiction, disclosure_version, disclosure_text_sha256,
+        //     manifest_id, manifest_hash, acked_at }
+        // or null if the user has never acked anything. Used to
+        // pre-check the disclosure box when the displayed jurisdiction
+        // matches an existing ack.
+        this._lastAck = null;
+
         // Currently-selected jurisdiction key (matches a key in
-        // DISCLOSURES). Persists for the lifetime of the panel —
-        // reload restores the default (or whatever the user last
-        // saved server-side, when we wire that).
+        // DISCLOSURES). Defaults to US-NY; if the user has a previous
+        // ack on file, load() switches the dropdown to that.
         this._jurisdiction = DEFAULT_JURISDICTION;
     }
 
@@ -364,25 +372,41 @@ export class EvidenceCollectionTab {
 
         // ── Jurisdiction dropdown change (Phase 4.5) ───────────────
         // Switching jurisdiction means the text the user is being
-        // asked to ack changes — so we MUST clear any pending ack
-        // when they switch, otherwise they'd be acking text they
-        // didn't see. Forces re-check of the box.
+        // asked to ack changes. If they're switching to a
+        // jurisdiction they've previously acked (and the canonical
+        // text hasn't changed since) we restore the checked state so
+        // a saved ack survives a round-trip through the dropdown.
+        // Otherwise the box is unchecked and a fresh ack is required.
         $panel.off('change.evidence', '#evidence-jurisdiction-select')
               .on('change.evidence', '#evidence-jurisdiction-select', (e) => {
             const key = $(e.currentTarget).val();
             if (!DISCLOSURES[key]) return;
             this._jurisdiction = key;
-            // Re-render the disclosure text (preserve the ack
-            // checkbox element by re-injecting the text + the
-            // checkbox label together).
+
+            // Restore the checked state IFF the on-file ack pins to
+            // this exact jurisdiction + version + text hash.
+            const ack = this._lastAck;
+            const cur = DISCLOSURES[key];
+            const restoreChecked = !!(
+                ack
+                && ack.jurisdiction === key
+                && ack.disclosure_version === DISCLOSURE_VERSION
+                && ack.disclosure_text_sha256 === cur.hash
+            );
+
             $panel.find('#evidence-disclosure-text').html(
-                DISCLOSURES[key].html
+                cur.html
               + `<label class="evidence-disclosure-ack">
-                   <input type="checkbox" id="evidence-disclosure-ack-cb">
+                   <input type="checkbox"
+                          id="evidence-disclosure-ack-cb"
+                          ${restoreChecked ? 'checked' : ''}>
                    I have read and accept the disclosure above.
                  </label>`
             );
-            // Reset the pending state — user must re-check.
+            // Restoring the checked state from on-file ack is NOT a
+            // pending ack — the server already has this one. Pending
+            // is only set by the user actually clicking the box (via
+            // the change.evidence handler above).
             this._disclosureAckPending = false;
         });
     }
@@ -437,9 +461,17 @@ export class EvidenceCollectionTab {
                 };
             }
 
+            // Capture the latest disclosure ack (may be null) so the
+            // disclosure UI can render its previously-acked state. Done
+            // BEFORE the renders below because _renderDisclosureFromAck
+            // needs both _lastAck and _jurisdiction to be in sync.
+            this._lastAck = status && status.last_disclosure_ack
+                            ? status.last_disclosure_ack : null;
+
             this._renderMatrix();
             this._renderStatus(status);
             this._renderMasterSwitch();
+            this._renderDisclosureFromAck();
         } catch (err) {
             console.error('[EvidenceTab] load failed', err);
             $matrix.html(
@@ -550,6 +582,83 @@ export class EvidenceCollectionTab {
         this.$panel.find('#evidence-master-switch').prop('checked', anyOn);
     }
 
+    /**
+     * Reconcile the displayed jurisdiction + disclosure checkbox with
+     * the latest ack on file (``this._lastAck``). Three outcomes:
+     *
+     *   1. No ack on file → leave the dropdown at its default (US-NY)
+     *      and the checkbox unchecked. User must ack fresh.
+     *   2. Ack on file, and its (jurisdiction, version, text-hash)
+     *      matches a current entry in DISCLOSURES → switch the
+     *      dropdown to that jurisdiction, render its text, and
+     *      pre-check the box. No fresh ack needed unless the user
+     *      changes something.
+     *   3. Ack on file, but its text-hash no longer matches the
+     *      current DISCLOSURES entry for that jurisdiction (i.e. we
+     *      bumped the disclosure copy) → switch the dropdown to that
+     *      jurisdiction so the user sees what they last acked, but
+     *      leave the box unchecked. They must re-ack the new text.
+     *
+     * Idempotent — safe to call multiple times.
+     */
+    _renderDisclosureFromAck() {
+        if (!this.$panel) return;
+        const ack = this._lastAck;
+        const $select = this.$panel.find('#evidence-jurisdiction-select');
+        const $box    = this.$panel.find('#evidence-disclosure-text');
+
+        // Helper: render the disclosure text + ack-checkbox label into
+        // the box. Same DOM shape as the original renderHTML() and
+        // the jurisdiction-change handler — keeps the structure stable.
+        const renderText = (key, isChecked) => {
+            const d = DISCLOSURES[key] || DISCLOSURES[DEFAULT_JURISDICTION];
+            $box.html(
+                d.html
+              + `<label class="evidence-disclosure-ack">
+                   <input type="checkbox"
+                          id="evidence-disclosure-ack-cb"
+                          ${isChecked ? 'checked' : ''}>
+                   I have read and accept the disclosure above.
+                 </label>`
+            );
+        };
+
+        if (!ack) {
+            // No prior ack — keep the panel at its construction-time
+            // default. Pending flag is whatever the constructor set
+            // (false on a fresh load).
+            this._jurisdiction = DEFAULT_JURISDICTION;
+            $select.val(DEFAULT_JURISDICTION);
+            renderText(DEFAULT_JURISDICTION, false);
+            this._disclosureAckPending = false;
+            return;
+        }
+
+        // Switch to the jurisdiction the user last acked, if it's
+        // still a valid key. If the key is unknown (e.g. a removed
+        // jurisdiction in a future build) fall back to default.
+        const ackKey = DISCLOSURES[ack.jurisdiction]
+                     ? ack.jurisdiction : DEFAULT_JURISDICTION;
+        this._jurisdiction = ackKey;
+        $select.val(ackKey);
+
+        // Box stays checked only if the on-file ack matches the
+        // CURRENT disclosure version + text hash for this jurisdiction.
+        // Otherwise the canonical text has changed since the ack and
+        // a fresh ack is required.
+        const cur = DISCLOSURES[ackKey];
+        const stillValid = (
+            ack.disclosure_version === DISCLOSURE_VERSION
+            && ack.disclosure_text_sha256 === cur.hash
+        );
+        renderText(ackKey, stillValid);
+
+        // The box now reflects the on-file state; nothing is pending.
+        // (If the user later toggles the box, the change handler in
+        // init() will set _disclosureAckPending appropriately.)
+        this._disclosureAckPending = false;
+    }
+
 
     // -----------------------------------------------------------------
     // Saving — call this from the global save button
@@ -617,10 +726,10 @@ export class EvidenceCollectionTab {
     }
 
     async _postDisclosureAck() {
-        // Backend route writes a manifest lifecycle entry with
-        // user_id, IP, user-agent, jurisdiction, disclosure version,
-        // text hash. See routes/evidence_routes.py.
-        // Phase 4.5: jurisdiction now reflects the user's pick.
+        // Backend route writes both a manifest lifecycle entry AND a
+        // row in evidence_disclosure_acks (for queryability + UI state
+        // restoration on next page load). See routes/evidence_routes.py.
+        // Phase 4.5: jurisdiction reflects the user's pick.
         const j = DISCLOSURES[this._jurisdiction] ||
                   DISCLOSURES[DEFAULT_JURISDICTION];
         const r = await fetch('/api/evidence/disclosure-ack', {
@@ -637,6 +746,19 @@ export class EvidenceCollectionTab {
             const text = await r.text().catch(() => '');
             throw new Error(`disclosure-ack HTTP ${r.status} ${text}`);
         }
+        // Mirror the just-acked state into _lastAck so subsequent
+        // dropdown round-trips within this session don't lose the
+        // checked indicator. The server is the source of truth — we
+        // only cache here to avoid a redundant /status round-trip.
+        const body = await r.json().catch(() => ({}));
+        this._lastAck = {
+            jurisdiction:           this._jurisdiction,
+            disclosure_version:     DISCLOSURE_VERSION,
+            disclosure_text_sha256: j.hash,
+            manifest_id:            body.manifest_id || null,
+            manifest_hash:          body.this_hash   || null,
+            acked_at:               body.timestamp_utc || null,
+        };
     }
 }
 

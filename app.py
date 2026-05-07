@@ -974,6 +974,31 @@ try:
 except Exception as e:
     print(f"⚠️  Presence Service startup warning: {e}")
 
+
+# ===== Start Evidence Pipeline (audio extractor) =====
+# Reconciles the live extractor set against evidence_camera_settings every
+# poll_seconds. Cameras with enabled=true AND capture_audio=true AND
+# cameras.audio_input_supported=true get a CameraAudioExtractor running:
+# RTSP audio tap -> sliding window -> silence prune -> mp3 -> manifest entry.
+# YAMNet classifier and Whisper transcriber are downstream services that
+# read the manifest; they boot separately in the same pattern but are
+# left for the operator to enable when models are warm-cached locally.
+evidence_extractor_supervisor = None
+try:
+    from services.evidence.audio_extractor import ExtractorSupervisor
+    print("\n🎙  Initializing Evidence Audio Extractor supervisor...")
+    evidence_extractor_supervisor = ExtractorSupervisor()
+    Thread(
+        target=evidence_extractor_supervisor.run_forever,
+        daemon=True,
+        name='evidence-extractor-supervisor',
+    ).start()
+    print("✅ Evidence Audio Extractor supervisor started")
+except Exception as e:
+    print(f"⚠️  Evidence Audio Extractor startup warning: {e}")
+    import traceback
+    traceback.print_exc()
+
 # ===== Auto-start Reolink Motion Detection =====
 if reolink_motion_service:
     try:

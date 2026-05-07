@@ -1,0 +1,230 @@
+{#
+  Collected Data — top-level browse page for the evidence pipeline.
+
+  User-facing label is "Collected Data" (less legally loaded than
+  "Evidence"). The backend API still uses the /api/evidence/* prefix
+  because that's the established contract; this template just renders
+  whatever those endpoints return under a friendlier name.
+#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MOBIUS.NVR — Collected Data</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/collected-data.css') }}">
+
+    <style>
+        /* Inline minimal — full theme rules in collected-data.css */
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6e6e6;
+        }
+    </style>
+</head>
+<body>
+
+<header class="cd-header">
+    <a href="/streams" class="cd-back" title="Back to streams">
+        <i class="fas fa-arrow-left"></i>
+    </a>
+    <h1 class="cd-title"><i class="fas fa-folder-tree"></i> Collected Data</h1>
+    <div class="cd-header-actions">
+        <button id="cd-refresh-btn" class="cd-btn cd-btn-ghost" title="Refresh">
+            <i class="fas fa-sync"></i>
+        </button>
+        <button id="cd-verify-btn" class="cd-btn cd-btn-ghost" title="Verify chain-of-custody integrity">
+            <i class="fas fa-link"></i> <span>Verify chain</span>
+        </button>
+    </div>
+</header>
+
+<!-- ============================================================= -->
+<!-- KPI ROW                                                       -->
+<!-- ============================================================= -->
+<section class="cd-kpi-row">
+    <div class="cd-kpi" data-kpi="total_events">
+        <div class="cd-kpi-label">Total events</div>
+        <div class="cd-kpi-value" id="kpi-total-events">—</div>
+        <div class="cd-kpi-sub" id="kpi-total-events-sub">manifest entries</div>
+    </div>
+    <div class="cd-kpi" data-kpi="last_event">
+        <div class="cd-kpi-label">Last activity</div>
+        <div class="cd-kpi-value" id="kpi-last-event">—</div>
+        <div class="cd-kpi-sub" id="kpi-last-event-sub">most recent capture</div>
+    </div>
+    <div class="cd-kpi" data-kpi="storage">
+        <div class="cd-kpi-label">Storage free</div>
+        <div class="cd-kpi-value" id="kpi-storage">—</div>
+        <div class="cd-kpi-sub" id="kpi-storage-sub">on litigation volume</div>
+    </div>
+    <div class="cd-kpi" data-kpi="chain">
+        <div class="cd-kpi-label">Chain integrity</div>
+        <div class="cd-kpi-value" id="kpi-chain">—</div>
+        <div class="cd-kpi-sub" id="kpi-chain-sub">hash chain verification</div>
+    </div>
+    <div class="cd-kpi" data-kpi="cameras">
+        <div class="cd-kpi-label">Audio-capable</div>
+        <div class="cd-kpi-value" id="kpi-cameras">—</div>
+        <div class="cd-kpi-sub" id="kpi-cameras-sub">cameras / total</div>
+    </div>
+    <div class="cd-kpi" data-kpi="cases">
+        <div class="cd-kpi-label">Active cases</div>
+        <div class="cd-kpi-value" id="kpi-cases">—</div>
+        <div class="cd-kpi-sub" id="kpi-cases-sub">non-archived</div>
+    </div>
+</section>
+
+<!-- ============================================================= -->
+<!-- MAIN GRID — left feed, right cases panel                      -->
+<!-- ============================================================= -->
+<main class="cd-main">
+
+    <!-- Feed column -->
+    <section class="cd-feed-col">
+        <div class="cd-section-header">
+            <h2><i class="fas fa-stream"></i> Recent captures</h2>
+            <div class="cd-feed-filters">
+                <label class="cd-filter-group">
+                    <span>Camera</span>
+                    <select id="cd-filter-camera">
+                        <option value="">All</option>
+                    </select>
+                </label>
+                <label class="cd-filter-group">
+                    <span>Category</span>
+                    <select id="cd-filter-category">
+                        <option value="">All</option>
+                        <option value="screams">Screams</option>
+                        <option value="crying">Crying</option>
+                        <option value="impacts">Impacts</option>
+                        <option value="raised-voices">Raised voices</option>
+                        <option value="speech">Speech (transcribed)</option>
+                    </select>
+                </label>
+                <label class="cd-filter-group">
+                    <span>Case</span>
+                    <select id="cd-filter-case">
+                        <option value="">Unbound</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="cd-feed-table-wrap">
+            <table class="cd-feed-table">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Camera</th>
+                        <th>Category</th>
+                        <th>Duration</th>
+                        <th>Top score</th>
+                        <th>Case</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="cd-feed-tbody">
+                    <tr class="cd-empty-row">
+                        <td colspan="7">
+                            <div class="cd-empty">
+                                <i class="fas fa-inbox"></i>
+                                <p>Loading…</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="cd-feed-footer">
+            <button id="cd-load-more" class="cd-btn cd-btn-ghost" disabled>
+                Load more
+            </button>
+            <span class="cd-feed-status" id="cd-feed-status"></span>
+        </div>
+    </section>
+
+    <!-- Cases column -->
+    <aside class="cd-cases-col">
+        <div class="cd-section-header">
+            <h2><i class="fas fa-folder"></i> Cases</h2>
+            <button id="cd-new-case-btn" class="cd-btn cd-btn-primary">
+                <i class="fas fa-plus"></i> New
+            </button>
+        </div>
+        <div class="cd-cases-list" id="cd-cases-list">
+            <div class="cd-empty">
+                <i class="fas fa-folder-open"></i>
+                <p>Loading…</p>
+            </div>
+        </div>
+    </aside>
+
+</main>
+
+<!-- ============================================================= -->
+<!-- New case modal                                                -->
+<!-- ============================================================= -->
+<div class="cd-modal" id="cd-new-case-modal" aria-hidden="true">
+    <div class="cd-modal-backdrop" data-close-modal></div>
+    <div class="cd-modal-body" role="dialog" aria-labelledby="cd-new-case-title">
+        <header>
+            <h3 id="cd-new-case-title"><i class="fas fa-folder-plus"></i> New case</h3>
+            <button class="cd-icon-btn" data-close-modal title="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </header>
+        <form id="cd-new-case-form">
+            <label>
+                <span>Name</span>
+                <input type="text" name="name" required maxlength="200" placeholder="e.g. 2026-Q2-incident">
+            </label>
+            <label>
+                <span>Description (optional)</span>
+                <textarea name="description" rows="3" placeholder="Free-form context"></textarea>
+            </label>
+            <label>
+                <span>Jurisdiction (optional)</span>
+                <input type="text" name="jurisdiction" maxlength="64" placeholder="e.g. US-NY">
+            </label>
+            <footer>
+                <button type="button" class="cd-btn cd-btn-ghost" data-close-modal>Cancel</button>
+                <button type="submit" class="cd-btn cd-btn-primary">Create</button>
+            </footer>
+            <div class="cd-form-error" id="cd-new-case-error" hidden></div>
+        </form>
+    </div>
+</div>
+
+<!-- ============================================================= -->
+<!-- Event detail drawer                                           -->
+<!-- ============================================================= -->
+<div class="cd-drawer" id="cd-event-drawer" aria-hidden="true">
+    <div class="cd-drawer-backdrop" data-close-drawer></div>
+    <aside class="cd-drawer-body">
+        <header>
+            <h3 id="cd-event-title">Event detail</h3>
+            <button class="cd-icon-btn" data-close-drawer title="Close">
+                <i class="fas fa-times"></i>
+            </button>
+        </header>
+        <div class="cd-drawer-content" id="cd-event-content">
+            <p class="cd-empty"><i class="fas fa-spinner fa-spin"></i> Loading…</p>
+        </div>
+    </aside>
+</div>
+
+<!-- ============================================================= -->
+<!-- jQuery + page module                                          -->
+<!-- ============================================================= -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script type="module"
+        src="{{ url_for('static', filename='js/collected/collected-data-app.js') }}"></script>
+
+</body>
+</html>

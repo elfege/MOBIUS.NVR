@@ -39,7 +39,7 @@ from typing import Any, Dict, List, Optional, Tuple   # type hints
 
 # ----- third party -------------------------------------------------------
 from flask import (                             # routing + JSON I/O
-    Blueprint, abort, jsonify, request, send_file,
+    Blueprint, abort, jsonify, render_template, request, send_file,
 )
 from flask_login import current_user, login_required  # auth gate
 
@@ -58,6 +58,23 @@ evidence_bp = Blueprint("evidence", __name__)
 # the per-process lock is honored. Cross-process safety is provided by
 # fcntl.flock inside EvidenceManifest itself.
 _manifest = EvidenceManifest()
+
+
+# =========================================================================
+# GET /evidence — Collected Data browse page
+# =========================================================================
+#
+# User-facing label is "Collected Data" (less legally loaded than
+# "Evidence"). The route stays /evidence so it matches the existing
+# /api/evidence/* contract; only the UI labels change. The page is a
+# thick client over the existing JSON endpoints and pulls all its data
+# via fetch — this handler just serves the HTML shell.
+
+@evidence_bp.route("/evidence", methods=["GET"])
+@login_required
+def collected_data_page():
+    """Render the Collected Data browse page (KPIs + feed + cases)."""
+    return render_template("collected.html")
 
 
 # =========================================================================

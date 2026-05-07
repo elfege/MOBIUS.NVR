@@ -999,6 +999,34 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 
+
+# ===== Start Evidence YAMNet Classifier =====
+# Downstream consumer of the audio_extractor's output. Polls the manifest
+# for newly-extracted audio segments, runs each through YAMNet, and writes
+# audio_events rows (read by the Collected Data UI) for clips that match
+# flagged categories (screams / crying / impacts / raised-voices).
+#
+# The classifier loads a TensorFlow Lite model at first inference; the
+# load is lazy so a missing model file doesn't take down container boot
+# — it would surface as a runtime error in the classifier's poll loop.
+# Try/except around startup catches import-time failures (no tflite
+# runtime, no model path, etc.) and lets the rest of the app come up.
+evidence_yamnet_classifier = None
+try:
+    from services.evidence.yamnet_classifier import YamnetClassifierService
+    print("\n🔊 Initializing Evidence YAMNet Classifier...")
+    evidence_yamnet_classifier = YamnetClassifierService()
+    Thread(
+        target=evidence_yamnet_classifier.run,
+        daemon=True,
+        name='evidence-yamnet-classifier',
+    ).start()
+    print("✅ Evidence YAMNet Classifier started")
+except Exception as e:
+    print(f"⚠️  Evidence YAMNet Classifier startup warning: {e}")
+    import traceback
+    traceback.print_exc()
+
 # ===== Auto-start Reolink Motion Detection =====
 if reolink_motion_service:
     try:

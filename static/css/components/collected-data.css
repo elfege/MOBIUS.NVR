@@ -1,0 +1,454 @@
+/* ============================================================
+   Collected Data — page styles for /evidence (rendered as
+   templates/collected.html).
+   User-facing label is "Collected Data"; backend API uses the
+   /api/evidence/* prefix preserved from the existing contract.
+   ============================================================ */
+
+/* ----- Layout primitives ----- */
+
+.cd-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 24px;
+    background: #161b22;
+    border-bottom: 1px solid #21262d;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.cd-back {
+    color: #8b949e;
+    font-size: 18px;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: background 0.15s, color 0.15s;
+}
+.cd-back:hover { background: #21262d; color: #e6e6e6; }
+
+.cd-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    flex: 1;
+    color: #e6e6e6;
+}
+.cd-title i { color: #58a6ff; margin-right: 6px; }
+
+.cd-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.cd-btn {
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #e6e6e6;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s, border-color 0.15s;
+    font-family: inherit;
+}
+.cd-btn:hover { background: #30363d; border-color: #484f58; }
+.cd-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.cd-btn-primary { background: #238636; border-color: #2ea043; color: #fff; }
+.cd-btn-primary:hover { background: #2ea043; border-color: #46954a; }
+
+.cd-btn-ghost { background: transparent; }
+
+.cd-icon-btn {
+    background: transparent;
+    border: none;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+.cd-icon-btn:hover { background: #21262d; color: #e6e6e6; }
+
+/* ----- KPI row ----- */
+
+.cd-kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    padding: 16px 24px;
+    background: #0d1117;
+    border-bottom: 1px solid #21262d;
+}
+
+.cd-kpi {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 14px 16px;
+    transition: border-color 0.2s;
+}
+.cd-kpi:hover { border-color: #30363d; }
+
+.cd-kpi-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8b949e;
+    font-weight: 600;
+}
+
+.cd-kpi-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: #e6e6e6;
+    margin: 4px 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.cd-kpi-sub {
+    font-size: 11px;
+    color: #6e7681;
+}
+
+/* Status colorings on chain integrity KPI */
+.cd-kpi[data-state="ok"] .cd-kpi-value { color: #3fb950; }
+.cd-kpi[data-state="bad"] .cd-kpi-value { color: #f85149; }
+.cd-kpi[data-state="unknown"] .cd-kpi-value { color: #d29922; }
+
+/* ----- Main grid ----- */
+
+.cd-main {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+    padding: 16px 24px;
+}
+@media (max-width: 1100px) {
+    .cd-main { grid-template-columns: 1fr; }
+}
+
+.cd-feed-col, .cd-cases-col {
+    background: #161b22;
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cd-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #21262d;
+    background: #0d1117;
+}
+.cd-section-header h2 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #e6e6e6;
+}
+.cd-section-header h2 i { margin-right: 6px; color: #58a6ff; }
+
+/* ----- Feed table ----- */
+
+.cd-feed-filters {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.cd-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #8b949e;
+}
+.cd-filter-group select {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #e6e6e6;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-family: inherit;
+}
+
+.cd-feed-table-wrap {
+    max-height: calc(100vh - 360px);
+    overflow: auto;
+}
+
+.cd-feed-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.cd-feed-table thead th {
+    position: sticky;
+    top: 0;
+    background: #161b22;
+    color: #8b949e;
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid #21262d;
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    z-index: 1;
+}
+.cd-feed-table tbody tr {
+    border-bottom: 1px solid #21262d;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.cd-feed-table tbody tr:hover { background: #1c2128; }
+.cd-feed-table td {
+    padding: 10px 12px;
+    color: #c9d1d9;
+    vertical-align: middle;
+}
+.cd-feed-table .cd-cat-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #30363d;
+    color: #c9d1d9;
+}
+.cd-feed-table .cd-cat-badge[data-cat="screams"]      { background: #5a1d24; color: #ff7b72; }
+.cd-feed-table .cd-cat-badge[data-cat="crying"]       { background: #4a2a08; color: #f0883e; }
+.cd-feed-table .cd-cat-badge[data-cat="impacts"]      { background: #3b1d6e; color: #b392f0; }
+.cd-feed-table .cd-cat-badge[data-cat="raised-voices"]{ background: #4a4308; color: #d29922; }
+.cd-feed-table .cd-cat-badge[data-cat="speech"]       { background: #1d4a3e; color: #56d364; }
+
+.cd-feed-footer {
+    padding: 10px 16px;
+    background: #0d1117;
+    border-top: 1px solid #21262d;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.cd-feed-status {
+    font-size: 12px;
+    color: #6e7681;
+}
+
+/* ----- Empty states ----- */
+
+.cd-empty-row td { background: transparent !important; }
+.cd-empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: #6e7681;
+}
+.cd-empty i {
+    font-size: 32px;
+    margin-bottom: 8px;
+    display: block;
+    color: #484f58;
+}
+.cd-empty p { margin: 0; font-size: 13px; }
+
+/* ----- Cases panel ----- */
+
+.cd-cases-list {
+    max-height: calc(100vh - 360px);
+    overflow: auto;
+    padding: 8px;
+}
+
+.cd-case-item {
+    background: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+.cd-case-item:hover { border-color: #30363d; }
+.cd-case-item.archived { opacity: 0.5; }
+
+.cd-case-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e6e6e6;
+    margin-bottom: 4px;
+}
+
+.cd-case-meta {
+    font-size: 11px;
+    color: #8b949e;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.cd-case-meta span i { margin-right: 4px; }
+
+.cd-case-jurisdiction {
+    display: inline-block;
+    background: #21262d;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #8b949e;
+    margin-top: 4px;
+}
+
+/* ----- Modal & Drawer ----- */
+
+.cd-modal, .cd-drawer {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: none;
+}
+.cd-modal[aria-hidden="false"], .cd-drawer[aria-hidden="false"] { display: block; }
+
+.cd-modal-backdrop, .cd-drawer-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(1, 4, 9, 0.7);
+    backdrop-filter: blur(2px);
+}
+
+.cd-modal-body {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    width: 480px;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+}
+.cd-modal-body header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #21262d;
+}
+.cd-modal-body header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.cd-modal-body header h3 i { color: #58a6ff; margin-right: 6px; }
+
+.cd-modal-body form {
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.cd-modal-body form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: #8b949e;
+}
+.cd-modal-body form input,
+.cd-modal-body form textarea {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    color: #e6e6e6;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+}
+.cd-modal-body form input:focus,
+.cd-modal-body form textarea:focus {
+    outline: none;
+    border-color: #58a6ff;
+}
+.cd-modal-body form footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.cd-form-error {
+    font-size: 12px;
+    color: #f85149;
+    background: #3b181c;
+    padding: 8px 10px;
+    border-radius: 6px;
+}
+
+/* Drawer (right-side slide-in) */
+
+.cd-drawer-body {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 460px;
+    max-width: calc(100vw - 32px);
+    background: #161b22;
+    border-left: 1px solid #30363d;
+    display: flex;
+    flex-direction: column;
+}
+.cd-drawer-body header {
+    padding: 14px 18px;
+    border-bottom: 1px solid #21262d;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.cd-drawer-body header h3 { margin: 0; font-size: 14px; font-weight: 600; }
+
+.cd-drawer-content {
+    flex: 1;
+    overflow: auto;
+    padding: 18px;
+    font-size: 13px;
+    color: #c9d1d9;
+}
+.cd-drawer-content dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 6px 12px;
+    margin: 0;
+}
+.cd-drawer-content dt { color: #8b949e; font-weight: 600; }
+.cd-drawer-content dd { margin: 0; color: #e6e6e6; word-break: break-word; }
+
+/* ----- Toast for transient feedback ----- */
+
+.cd-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #21262d;
+    border: 1px solid #30363d;
+    color: #e6e6e6;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    transition: opacity 0.2s;
+    pointer-events: none;
+}
+.cd-toast.visible { opacity: 1; }
+.cd-toast.success { border-color: #2ea043; }
+.cd-toast.error { border-color: #f85149; }

@@ -157,7 +157,16 @@ def streams_light_page():
             )
         ))
 
-        return render_template('streams_light.html', cameras=cameras)
+        # Pass an ordered list, not a dict. Flask's tojson filter inherits
+        # `DefaultJSONProvider.sort_keys=True`, which alphabetizes dict keys
+        # at serialization time — that wipes out the display_order sort we
+        # just applied. JSON arrays preserve element order regardless of
+        # sort_keys, so a list of {serial, ...info} dicts survives intact.
+        # See light-mode-app.js _readCamerasFromDom() for the consumer.
+        cameras_ordered = [
+            {"serial": serial, **info} for serial, info in cameras.items()
+        ]
+        return render_template('streams_light.html', cameras=cameras_ordered)
     except Exception as e:
         logger.error(f"Error loading light streams page: {e}")
         return f"Error loading light streams page: {e}", 500

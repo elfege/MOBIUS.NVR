@@ -1269,6 +1269,68 @@ sequenceDiagram
             </ul>
         </div>
 
+        <h2>Level 14: Per-Machine Performance Throttle &amp; Host-Agent (May 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>Problem solved:</strong> On Linux X11 kiosks, Chrome does <em>not</em> fire <code>visibilitychange</code> when the monitor enters DPMS-off. The browser keeps decoding 8 stream tiles into a black screen — fans spin, CPU stays at 100%. The Page Visibility API alone is insufficient.</p>
+            <p><strong>Solution:</strong> A small per-kiosk Linux daemon (<code>services/host_agent/agent.py</code>, ~285 lines, 64 MB resident, systemd user unit) that probes the host directly and pushes state to the NVR every 5 seconds. The browser tears down on DPMS-off via SocketIO bridge instead of relying on the unreliable Page Visibility event.</p>
+
+            <h3>Data flow</h3>
+            <pre>
+rog (host_agent) ─┬─ xset -q          (X DPMS state)
+                  ├─ /proc/loadavg    (CPU load_1m / cpu_count)
+                  └─ nvidia-smi       (GPU util / temp / mem util)
+                          │
+                          │  POST /api/host/state  (Bearer token)
+                          ▼
+                Flask (routes/host_state.py)
+                          │
+                  ┌───────┼─────────────────────┐
+                  │       │                     │
+                  ▼       ▼                     ▼
+           UPSERT        Auto-bind         SocketIO emit
+        host_settings   trusted_devices    "host_state_changed"
+        (last_seen)     by IP match        on /stream_events
+                                                │
+                                                ▼
+              Chrome kiosk on rog (visibility-manager.js + throttle-controller.js)
+                  ├─ display=off   → tear down streams (skips socket disconnect so wake event arrives)
+                  └─ cpu_load_norm > host_settings.performance_max_cpu_pct
+                                   → demote ONE tile per cycle
+                                     (priority: WEBRTC > LL_HLS > HLS > MJPEG)
+                                     until CPU equilibrium reached
+                                   → restore tiles in LIFO order when
+                                     CPU drops below (max - hysteresis)</pre>
+
+            <h3>Schema (<code>psql/migrations/032</code> + <code>033</code>)</h3>
+            <ul>
+                <li><code>host_settings</code> — <strong>per-physical-machine</strong> (PK <code>host_label</code> = Linux hostname). Columns: <code>performance_throttle_enabled</code>, <code>performance_max_cpu_pct</code> (1–95, default 50), <code>performance_restore_hysteresis_pct</code> (0–50, default 10), <code>last_seen</code>. Auto-touch trigger on UPDATE.</li>
+                <li><code>trusted_devices.host_label</code> — <strong>per-browser-instance</strong> FK pointing UP at <code>host_settings</code>. Cardinality: one machine → many browsers (Chrome + Firefox + profiles). Populated automatically on the agent's first ping (matched by source IP). Lets the kiosk page resolve <em>"what machine am I on?"</em> via <code>/api/host/whoami</code> without manual binding. <code>ON DELETE SET NULL</code> — removing a host_settings row keeps trusted_devices rows intact.</li>
+            </ul>
+
+            <h3>Server-side liveness monitor</h3>
+            <p>A daemon thread classifies every known host every 5 seconds:</p>
+            <ul>
+                <li><strong>online</strong> — last ping &lt; 15 s</li>
+                <li><strong>stale</strong> — 15–30 s</li>
+                <li><strong>offline</strong> — ≥ 30 s</li>
+                <li><strong>never</strong> — DB row exists but no ping received in this process lifetime</li>
+            </ul>
+            <p>On status transition, emits <code>host_status_changed</code> on <code>/stream_events</code>. Admin overview at <code>GET /api/host/list</code> renders one row per host with status dot, age, current display + CPU + GPU, and the throttle settings.</p>
+
+            <h3>Cross-platform scope</h3>
+            <ul>
+                <li><strong>Linux kiosks</strong> (rog, dellserver workstations): host-agent provides authoritative CPU + DPMS signals.</li>
+                <li><strong>iOS / Android / Mac portable devices</strong>: <em>no agent</em>. The OS already handles power management (background CPU throttling, screen-lock decode pause, memory pressure, battery saver). <code>/streams</code> auto-redirects to <code>/light</code> for these devices via UA sniff (<code>routes/config.py</code>). Settings → Performance shows a "OS handles this" empty state instead of inert sliders.</li>
+            </ul>
+
+            <h3>Security boundary</h3>
+            <p>The agent authenticates with a Bearer token (<code>NVR_API_TOKEN</code>, same source as the external API). Settings PUT endpoints are <code>@login_required</code>. Throttle changes apply in real time via <code>host_settings_changed</code> SocketIO broadcast — no agent restart, no page reload.</p>
+
+            <h3>Operator install path</h3>
+            <p><code>start.sh</code> queries <code>host_settings</code> for kiosks with stale or missing <code>last_seen</code> and prints one curl-one-liner per host (with <code>API_TOKEN</code> + <code>HOST_LABEL</code> pre-baked). Operator pastes each into the respective kiosk's terminal once. The systemd user unit installs in idempotent fashion via <code>services/host_agent/install_host_agent.sh</code>.</p>
+        </div>
+
         <!-- SUMMARY -->
         <h2>Architecture Summary</h2>
 

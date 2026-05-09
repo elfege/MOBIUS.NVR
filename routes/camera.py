@@ -491,7 +491,8 @@ def api_camera_settings_update(camera_serial):
     EDITABLE_KEYS = {
         'name', 'type', 'host', 'mac', 'packager_path', 'stream_type',
         'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
-        'hidden', 'ui_health_monitor', 'reversed_pan', 'reversed_tilt',
+        'hidden', 'ui_health_monitor', 'ui_health_refresh_delay_ms',
+        'reversed_pan', 'reversed_tilt',
         'notes', 'power_supply_device_id', 'true_mjpeg', 'capabilities',
         'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
         'rtsp_input', 'rtsp_output', 'two_way_audio',
@@ -1516,3 +1517,124 @@ def api_admin_restart():
     else:
         shared.restart_handler.restart_app(reason)
         return jsonify({'success': True, 'message': 'Container restart initiated'})
+
+
+# ===== Admin: Restart-log live tail (SSE) =====
+
+@camera_bp.route('/api/admin/restart-log/stream', methods=['GET'])
+@login_required
+def api_admin_restart_log_stream():
+    """
+    Server-Sent Events stream of ``~/0_MOBIUS.NVR/restart_from_app.log``.
+
+    Why this exists:
+      The /reloading page used to display a static "tail -f" command for the
+      user to copy into a separate terminal. That worked but required the
+      user to context-switch, and most browser sessions are remote so they
+      may not even have shell access to the host. This endpoint streams the
+      log directly into the page.
+
+    File visibility:
+      The host writes to ``~/0_MOBIUS.NVR/restart_from_app.log``. The
+      container sees the project root bind-mounted at ``/app`` (see
+      docker-compose.yml: ``./:/app``). So the log file is at
+      ``/app/restart_from_app.log`` from the container's view.
+
+    Stream framing:
+      One SSE ``data:`` line per appended log line. Heartbeat comment
+      every 15 s so intermediate proxies (nginx, browsers) don't time the
+      connection out. Stops when the client disconnects.
+
+    Auth:
+      ``@login_required`` only — same gate as the restart endpoint itself.
+      Admin-role check intentionally omitted to match the existing
+      /api/admin/restart endpoint, which is also login-required-but-not-
+      admin-only (audit point: tighten both at once if you tighten one).
+    """
+    import os
+    import time
+    from flask import Response, stream_with_context
+
+    LOG_PATH = '/app/restart_from_app.log'
+    POLL_INTERVAL = 0.5         # seconds between read attempts when at EOF
+    HEARTBEAT_INTERVAL = 15.0   # seconds between SSE keep-alive comments
+    MAX_INITIAL_TAIL_BYTES = 64 * 1024  # don't replay more than 64 KB on connect
+
+    @stream_with_context
+    def generate():
+        # Initial header — confirms the stream is open before any log appears
+        yield f": connected to /api/admin/restart-log/stream at {time.time():.0f}\n\n"
+
+        last_heartbeat = time.time()
+        f = None
+        last_inode = None
+
+        try:
+            while True:
+                # (Re)open the file if missing or rotated.
+                try:
+                    st = os.stat(LOG_PATH)
+                except FileNotFoundError:
+                    if f is not None:
+                        try: f.close()
+                        except Exception: pass
+                        f = None
+                        last_inode = None
+                    yield f"data: (waiting for {LOG_PATH} to be created…)\n\n"
+                    # Poll for the file to appear
+                    for _ in range(int(2.0 / POLL_INTERVAL)):
+                        time.sleep(POLL_INTERVAL)
+                        if os.path.exists(LOG_PATH):
+                            break
+                    continue
+
+                # Detect rotation / truncation by inode change
+                if f is None or last_inode != st.st_ino:
+                    if f is not None:
+                        try: f.close()
+                        except Exception: pass
+                    f = open(LOG_PATH, 'r', encoding='utf-8', errors='replace')
+                    last_inode = st.st_ino
+                    # Seek to the last MAX_INITIAL_TAIL_BYTES so we don't dump
+                    # an entire ancient log into the page on connect.
+                    if st.st_size > MAX_INITIAL_TAIL_BYTES:
+                        f.seek(st.st_size - MAX_INITIAL_TAIL_BYTES)
+                        # Drop the partial line we likely landed in the middle of
+                        f.readline()
+                    yield f"data: --- attached to {LOG_PATH} (inode {last_inode}) ---\n\n"
+
+                # Stream any new lines
+                line = f.readline()
+                if line:
+                    # Strip trailing newline; SSE framing expects \n\n separators
+                    yield f"data: {line.rstrip(chr(10))}\n\n"
+                    continue
+
+                # No new data — heartbeat if it's been a while, then poll
+                now = time.time()
+                if now - last_heartbeat >= HEARTBEAT_INTERVAL:
+                    yield f": heartbeat {int(now)}\n\n"
+                    last_heartbeat = now
+                time.sleep(POLL_INTERVAL)
+        except GeneratorExit:
+            # Client disconnected — clean up file handle
+            if f is not None:
+                try: f.close()
+                except Exception: pass
+            return
+        except Exception as e:
+            logger.warning(f"[restart-log SSE] stream error: {e}")
+            yield f"data: --- stream error: {e} ---\n\n"
+            if f is not None:
+                try: f.close()
+                except Exception: pass
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',  # disable nginx buffering for SSE
+            'Connection': 'keep-alive',
+        },
+    )

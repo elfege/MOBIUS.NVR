@@ -93,6 +93,12 @@ services:
       - ${NVR_RECORDING_PATH:-/mnt/sdc/NVR_Recent}:/recordings
       - ${NVR_STORAGE_PATH:-/mnt/THE_BIG_DRIVE/NVR_RECORDINGS}:/recordings/STORAGE
       - ${NVR_ALTERNATE_RECORDING_STORAGE:-/mnt/THE_BIG_DRIVE/VIDEOSURVEILLANCE_FTP}:/recordings/ALTERNATE
+      # Evidence collection volume (Phase 0 of evidence_gathering branch).
+      # Mounted both at /litigation (canonical path matching the host) and
+      # at /app/litigation (project-namespace view, matches the host symlink
+      # at ~/0_MOBIUS.NVR/litigation -> /litigation).
+      - ${NVR_LITIGATION_PATH:-/litigation}:/litigation
+      - ${NVR_LITIGATION_PATH:-/litigation}:/app/litigation
       # Mount Python source code for hot-reloading
       - ./:/app
       # Restart trigger — container writes "reboot" to trigger file,
@@ -108,7 +114,16 @@ services:
         condition: service_started
 
     networks:
+      # Primary network — siblings (postgres, postgrest, packager,
+      # go2rtc, neolink) all live here.
       - nvr-net
+      # Cross-attachment to the Anamnesis app's network so the
+      # WeeklySummarizerService (and any other evidence service that
+      # needs LLM generation or episodic memory) can reach
+      # http://anamnesis-app:3010 by hostname. Without this attachment
+      # unified-nvr cannot route to anamnesis-app — they're on
+      # separate docker bridge networks otherwise.
+      - anamnesis-net
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
@@ -224,3 +239,13 @@ networks:
   nvr-net:
     external: true
     name: ${NVR_NETWORK_NAME:-0_mobiusnvr_nvr-net}
+  # External network created and owned by the 0_ANAMNESIS project's
+  # docker-compose. We attach to it so that evidence-package services
+  # (WeeklySummarizerService, future Whisper transcript ingester, etc.)
+  # can talk to anamnesis-app at hostname `anamnesis-app:3010` without
+  # going out through the host network. Override the name via
+  # NVR_ANAMNESIS_NETWORK if Anamnesis is deployed under a different
+  # compose project name.
+  anamnesis-net:
+    external: true
+    name: ${NVR_ANAMNESIS_NETWORK:-0_anamnesis_anamnesis-net}

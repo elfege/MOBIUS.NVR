@@ -37,4 +37,5 @@ onvif-zeep
 reolink_aio
 gunicorn
 psycopg2-binary
-pycryptodomex
+pycryptodomextflite-runtime>=2.14,<3
+numpy>=1.26,<2

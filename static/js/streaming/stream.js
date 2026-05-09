@@ -24,6 +24,7 @@ import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
 import { SnapshotStreamManager } from './snapshot-stream.js';
 import { talkbackManager } from './talkback-manager.js';
 import { VisibilityManager } from './visibility-manager.js';
+import { ThrottleController } from './throttle-controller.js';
 import { pinnedWindowManager } from './pinned-window-manager.js';
 import { tileArrangeManager } from './tile-arrange-manager.js';
 
@@ -541,6 +542,14 @@ export class MultiStreamManager {
             }
         });
         this.visibilityManager.start();
+
+        // Per-machine performance throttle: when CPU sustains above the
+        // host_settings threshold, stop one stream tile at a time until the
+        // load drops below threshold. Restores tiles when CPU recovers.
+        this.throttleController = new ThrottleController({
+            streamManager: this,
+            $container: this.$container,
+        });
     }
 
     async nuclear(cameraId, streamItem, cameraType, streamType) {
@@ -5132,8 +5141,9 @@ export class MultiStreamManager {
                 const lsLabel = (typeof localStorage !== 'undefined') ? localStorage.getItem('mobius_host_label') : null;
                 const hostLabel = urlLabel || lsLabel || null;
                 this.visibilityManager?.attachHostStateSocket(this.streamEventsSocket, hostLabel);
+                this.throttleController?.attach(this.streamEventsSocket, hostLabel);
             } catch (e) {
-                console.warn('[WEBSOCKET] Failed to attach host-agent DPMS bridge:', e);
+                console.warn('[WEBSOCKET] Failed to attach host-agent bridges:', e);
             }
 
             this.streamEventsSocket.on('connected', (data) => {

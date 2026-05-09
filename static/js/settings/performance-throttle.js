@@ -1,0 +1,250 @@
+/**
+ * Performance Throttle settings panel — per-machine UI for the host-agent
+ * driven CPU throttler.
+ *
+ * The settings are MACHINE-scoped (one row in host_settings keyed by
+ * host_label), not user-scoped. The host_label is the same identifier the
+ * host-agent reports when it pushes /api/host/state.
+ *
+ * Resolution order for the host_label this UI binds to:
+ *   1. URL ?host_label=
+ *   2. localStorage.mobius_host_label
+ *   3. user input (text field on the panel)
+ *
+ * Whatever the user types in the Host Label field is persisted to
+ * localStorage so the next page load remembers it. This is the same key the
+ * VisibilityManager and ThrottleController read.
+ */
+
+const LS_KEY = 'mobius_host_label';
+
+function resolveHostLabel() {
+    try {
+        const url = new URLSearchParams(window.location.search).get('host_label');
+        if (url) return url;
+    } catch (_) {}
+    try {
+        return localStorage.getItem(LS_KEY) || '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function setHostLabel(label) {
+    try {
+        if (label) localStorage.setItem(LS_KEY, label);
+        else localStorage.removeItem(LS_KEY);
+    } catch (_) {}
+}
+
+export const performanceThrottle = {
+    /**
+     * Render the panel HTML. Called once when the settings modal builds.
+     * Returns a complete .settings-tab-panel string.
+     */
+    renderHTML() {
+        const label = resolveHostLabel();
+        return `
+        <div class="settings-tab-panel" data-tab-panel="performance">
+
+            <div class="setting-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-server"></i> Host Label</div>
+                    <div class="setting-control">
+                        <input type="text" id="perf-host-label" class="setting-input"
+                               placeholder="e.g. rog" value="${label || ''}"
+                               style="width:180px;">
+                        <button id="perf-host-label-save" class="setting-btn setting-btn-primary"
+                                style="font-size:12px;padding:5px 12px;margin-left:6px;">
+                            Bind
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    The kiosk machine identity. Must match HOST_LABEL in the
+                    host-agent config (<code>~/.config/mobius-nvr-host-agent/config</code>).
+                    Stored in localStorage on this browser. Settings below apply
+                    to that host's row in the database.
+                </div>
+            </div>
+
+            <div id="perf-throttle-controls" style="${label ? '' : 'opacity:0.4;pointer-events:none;'}">
+
+                <div class="setting-row">
+                    <div class="setting-top">
+                        <div class="setting-label"><i class="fas fa-toggle-on"></i> Performance Throttle</div>
+                        <div class="setting-control">
+                            <label class="setting-toggle">
+                                <input type="checkbox" id="perf-throttle-enabled" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        When enabled, the browser stops one stream tile at a time
+                        whenever sustained CPU load on this machine exceeds the
+                        threshold below. Tiles are restored automatically as
+                        the load drops.
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-top">
+                        <div class="setting-label"><i class="fas fa-microchip"></i> Max CPU Load</div>
+                        <div class="setting-control" style="display:flex;align-items:center;gap:10px;">
+                            <input type="range" id="perf-max-cpu" min="1" max="95" step="1" value="50" style="width:200px;">
+                            <span id="perf-max-cpu-out" style="font-variant-numeric:tabular-nums;min-width:38px;">50%</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Sustained CPU load (averaged across all cores) above which
+                        the throttler starts demoting tiles. Defaults to 50%.
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-top">
+                        <div class="setting-label"><i class="fas fa-undo"></i> Restore Hysteresis</div>
+                        <div class="setting-control" style="display:flex;align-items:center;gap:10px;">
+                            <input type="range" id="perf-hyst" min="0" max="50" step="1" value="10" style="width:200px;">
+                            <span id="perf-hyst-out" style="font-variant-numeric:tabular-nums;min-width:38px;">10%</span>
+                        </div>
+                    </div>
+                    <div class="setting-description">
+                        Tiles are restored only when CPU drops to
+                        <em>(Max&nbsp;CPU − Hysteresis)</em>. Larger gap = less
+                        oscillation around the boundary.
+                    </div>
+                </div>
+
+                <div class="setting-row">
+                    <div class="setting-description" id="perf-host-status" style="font-size:12px;color:#888;">
+                        Loading host status…
+                    </div>
+                </div>
+
+            </div>
+        </div>`;
+    },
+
+    /**
+     * Tab button to insert into the tab bar.
+     */
+    renderTabButton() {
+        return `<button class="settings-tab-btn" data-tab="performance">
+            <i class="fas fa-tachometer-alt"></i> Performance
+        </button>`;
+    },
+
+    /**
+     * Wire event handlers and load current settings from the server.
+     * Idempotent — safe to call every time the tab is opened.
+     *
+     * @param {jQuery} $panel - the .settings-tab-panel for performance
+     */
+    async init($panel) {
+        if (!$panel || !$panel.length) return;
+
+        // Bind/Save host label
+        $panel.find('#perf-host-label-save').off('click.perf').on('click.perf', () => {
+            const v = $panel.find('#perf-host-label').val().trim();
+            setHostLabel(v);
+            $panel.find('#perf-throttle-controls').css({
+                opacity: v ? '' : '0.4',
+                pointerEvents: v ? '' : 'none',
+            });
+            this.loadSettings($panel);
+        });
+
+        // Live numeric readouts
+        const bindRange = (sel, outSel) => {
+            const $r = $panel.find(sel);
+            const $o = $panel.find(outSel);
+            $r.off('input.perf').on('input.perf', () => $o.text(`${$r.val()}%`));
+        };
+        bindRange('#perf-max-cpu', '#perf-max-cpu-out');
+        bindRange('#perf-hyst', '#perf-hyst-out');
+
+        // Persist on change (debounced for sliders)
+        let debounceT = null;
+        const saveDebounced = () => {
+            clearTimeout(debounceT);
+            debounceT = setTimeout(() => this.saveSettings($panel), 350);
+        };
+        $panel.find('#perf-throttle-enabled').off('change.perf').on('change.perf', () => this.saveSettings($panel));
+        $panel.find('#perf-max-cpu, #perf-hyst').off('change.perf input.perf').on('input.perf change.perf', saveDebounced);
+
+        await this.loadSettings($panel);
+    },
+
+    async loadSettings($panel) {
+        const label = resolveHostLabel();
+        if (!label) {
+            $panel.find('#perf-host-status').text('No host label bound — set one above to load settings.');
+            return;
+        }
+        try {
+            const r = await fetch(`/api/host/${encodeURIComponent(label)}/settings`, {
+                credentials: 'same-origin',
+            });
+            if (!r.ok) {
+                $panel.find('#perf-host-status').text(`Failed to load settings (HTTP ${r.status}).`);
+                return;
+            }
+            const j = await r.json();
+            const s = j && j.settings ? j.settings : {};
+            $panel.find('#perf-throttle-enabled').prop('checked', s.performance_throttle_enabled !== false);
+            const maxCpu = Number(s.performance_max_cpu_pct ?? 50);
+            const hyst   = Number(s.performance_restore_hysteresis_pct ?? 10);
+            $panel.find('#perf-max-cpu').val(maxCpu);
+            $panel.find('#perf-max-cpu-out').text(`${maxCpu}%`);
+            $panel.find('#perf-hyst').val(hyst);
+            $panel.find('#perf-hyst-out').text(`${hyst}%`);
+
+            // Pull last_seen from /api/host/state for context
+            try {
+                const r2 = await fetch(`/api/host/state?host=${encodeURIComponent(label)}`, {
+                    credentials: 'same-origin',
+                });
+                if (r2.ok) {
+                    const js = await r2.json();
+                    if (js && js.host_label) {
+                        const cpu = (typeof js.cpu_load_norm === 'number') ? `${(js.cpu_load_norm * 100).toFixed(0)}%` : '—';
+                        const dpms = js.display_state || '—';
+                        $panel.find('#perf-host-status').text(`Host "${label}": display=${dpms}, CPU=${cpu}, last seen ${js.last_seen || 'never'}.`);
+                    } else {
+                        $panel.find('#perf-host-status').text(`Host "${label}" has not reported yet — install and start the host-agent.`);
+                    }
+                }
+            } catch (_) {}
+        } catch (e) {
+            console.warn('[PerformanceThrottle] loadSettings failed:', e);
+            $panel.find('#perf-host-status').text(`Load error: ${e.message || e}`);
+        }
+    },
+
+    async saveSettings($panel) {
+        const label = resolveHostLabel();
+        if (!label) return;
+        const body = {
+            performance_throttle_enabled: $panel.find('#perf-throttle-enabled').is(':checked'),
+            performance_max_cpu_pct: Number($panel.find('#perf-max-cpu').val()),
+            performance_restore_hysteresis_pct: Number($panel.find('#perf-hyst').val()),
+        };
+        try {
+            const r = await fetch(`/api/host/${encodeURIComponent(label)}/settings`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!r.ok) {
+                console.warn(`[PerformanceThrottle] save failed: HTTP ${r.status}`);
+                return;
+            }
+            console.log('[PerformanceThrottle] saved', body);
+        } catch (e) {
+            console.warn('[PerformanceThrottle] save error:', e);
+        }
+    },
+};

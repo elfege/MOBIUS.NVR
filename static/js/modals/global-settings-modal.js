@@ -6,6 +6,7 @@
 import { fullscreenHandler } from '../settings/fullscreen-handler.js';
 import { storageStatus } from '../settings/storage-status.js';
 import { evidenceTab } from '../settings/evidence-collection.js';
+import { performanceThrottle } from '../settings/performance-throttle.js';
 
 /**
  * Detect if current device is a portable/mobile device
@@ -91,6 +92,11 @@ export class SettingsUI {
             $(e.currentTarget).addClass('active');
             this.$content.find(`.settings-tab-panel[data-tab-panel="${tab}"]`).addClass('active');
             if (tab === 'network') this.loadNetworkSettings();
+            if (tab === 'performance') {
+                performanceThrottle.init(
+                    this.$content.find('.settings-tab-panel[data-tab-panel="performance"]')
+                );
+            }
             if (tab === 'evidence') {
                 // Wire handlers (idempotent) and pull current data
                 // every time the tab is opened — keeps the per-camera
@@ -340,6 +346,9 @@ export class SettingsUI {
             </button>
             <button class="settings-tab-btn" data-tab="audio">
                 <i class="fas fa-volume-up"></i> Audio
+            </button>
+            <button class="settings-tab-btn" data-tab="performance">
+                <i class="fas fa-tachometer-alt"></i> Performance
             </button>
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="evidence"><i class="fas fa-shield-alt"></i> Collect Evidence</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="storage"><i class="fas fa-hdd"></i> Storage</button>' : ''}
@@ -653,6 +662,8 @@ export class SettingsUI {
         ` : ''}
 
         ${window.USER_ROLE === 'admin' ? evidenceTab.renderHTML() : ''}
+
+        ${performanceThrottle.renderHTML()}
     `;
 
         this.$content.html(html);

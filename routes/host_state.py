@@ -135,12 +135,17 @@ def api_host_state_push():
 
     # Broadcast to everyone subscribed to /stream_events. The page
     # filters by host_label client-side (it knows its own hostname
-    # via window.location).
+    # via window.location). Normalize the payload to expose host_label
+    # explicitly — the agent uses the shorter "host" key on the wire,
+    # but consumers (visibility-manager, throttle-controller) read
+    # host_label so the broadcast schema matches /api/host/<label>/settings.
     if _socketio is not None:
         try:
+            broadcast = dict(body)
+            broadcast["host_label"] = host_label
             _socketio.emit(
                 "host_state_changed",
-                body,
+                broadcast,
                 namespace="/stream_events",
             )
         except Exception:

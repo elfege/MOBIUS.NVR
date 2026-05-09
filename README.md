@@ -23,6 +23,7 @@ The database is the runtime source of truth — `cameras.json` is a seed file sy
 - **Grid Layout Modes**: Uniform, last-row stretch, auto-fit, masonry — with 3 video fit options (cover/contain/fill)
 - **User Authentication**: Login with bcrypt, per-user camera access control, trusted network auto-login, viewer role
 - **Monitor Standby Detection**: Page Visibility API tears down streams when tab hidden, auto-reloads on wake
+- **Host-Agent (per-kiosk)**: Optional Linux-only systemd user daemon (`services/host_agent/`) reports DPMS / CPU / GPU to the NVR every 5s. Solves the X11 Chrome bug where DPMS-off does not fire `visibilitychange`, and feeds a per-machine performance throttle that demotes one tile at a time when sustained CPU load exceeds a configurable threshold. Settings live in `host_settings` (per-host_label) and are tunable from Settings → Performance with no agent restart. Portable devices use the `/light` endpoint instead — iOS/Android OS-level power management is already adequate.
 - **Credential Security**: AES-256-GCM encrypted credentials in PostgreSQL (AWS Secrets Manager for initial seeding)
 - **Power Cycle Safety**: Optional auto power-cycle for Hubitat-connected cameras (disabled by default, 24h cooldown)
 - **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
@@ -163,6 +164,7 @@ MOBIUS.NVR/
 │   ├── recording/                 # Recording, snapshots, storage, timeline
 │   ├── motion/                    # Motion detection (Baichuan, ONVIF, FFmpeg)
 │   ├── ptz/                       # PTZ handlers (ONVIF, Amcrest, Baichuan)
+│   ├── host_agent/                # Per-kiosk Linux daemon (DPMS + CPU + GPU reporter)
 │   └── eufy/                      # Eufy bridge client and watchdog
 ├── static/
 │   ├── css/components/            # Modular CSS (grid, fullscreen, PTZ, etc.)
@@ -276,6 +278,21 @@ services:
 |----------|--------|-------------|
 | `/api/my-preferences` | GET/PUT | Get/set user preferences (grid layout, video fit) |
 | `/api/cameras/<id>/display` | PUT | Per-camera display settings (stream type, order, visibility) |
+
+### Host-Agent / Per-Machine Performance
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/host/state` | POST | Agent push: DPMS state, CPU load, GPU metrics. Bearer-auth. |
+| `/api/host/state` | GET | Read latest snapshot (all hosts, or `?host=<label>`). |
+| `/api/host/<label>/settings` | GET/PUT | Per-machine throttle settings (enable, max CPU, hysteresis). |
+| `/api/host/list` | GET | Admin overview: every host with status (online/stale/offline/never), age, current display + CPU. |
+| `/api/host/whoami` | GET | Resolve the current browser's `host_label` via `trusted_devices.host_label` FK. |
+
+SocketIO `/stream_events` namespace events:
+- `host_state_changed` — broadcast on every agent ping (CPU + display state)
+- `host_settings_changed` — broadcast on PUT `/api/host/<label>/settings`
+- `host_status_changed` — broadcast when a host transitions online/stale/offline
 
 ## Streaming Protocols
 

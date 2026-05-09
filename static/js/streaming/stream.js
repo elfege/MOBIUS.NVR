@@ -521,8 +521,8 @@ export class MultiStreamManager {
         this.visibilityManager = new VisibilityManager({
             graceMs: 3000,       // Ignore tab switches < 3 seconds
             reloadDelayMs: 1800, // Show wake animation before reload
-            onSleep: () => {
-                console.log('[Visibility] Tearing down all browser-side stream consumers');
+            onSleep: ({ reason } = {}) => {
+                console.log(`[Visibility] Tearing down all browser-side stream consumers (reason=${reason || 'visibility'})`);
                 // Stop all stream types (HLS.js, WebRTC PeerConnections, MJPEG img polling)
                 this.stopAllStreams();
                 // Stop health monitor (no point checking dead streams)
@@ -531,8 +531,11 @@ export class MultiStreamManager {
                 }
                 // Stop camera state polling
                 this.cameraStateMonitor?.stop();
-                // Disconnect stream events WebSocket
-                if (this.streamEventsSocket) {
+                // Disconnect stream events WebSocket — but ONLY for the Page Visibility
+                // path. When standby is triggered by the host-agent's DPMS signal we
+                // need this socket alive to hear the wake-up host_state_changed event,
+                // since visibilitychange does NOT fire on Linux X11 DPMS-off.
+                if (this.streamEventsSocket && reason !== 'host_dpms') {
                     this.streamEventsSocket.disconnect();
                 }
             }
@@ -5120,6 +5123,18 @@ export class MultiStreamManager {
                 this.wsReconnectAttempts = 0;
                 console.log('[WEBSOCKET] Recovery mode: WebSocket (instant notifications)');
             });
+
+            // Bridge host-agent display_state events into the visibility manager.
+            // hostLabel resolution: ?host_label= URL param > localStorage > null
+            // (null = single-kiosk default; first reporting host wins).
+            try {
+                const urlLabel = new URLSearchParams(window.location.search).get('host_label');
+                const lsLabel = (typeof localStorage !== 'undefined') ? localStorage.getItem('mobius_host_label') : null;
+                const hostLabel = urlLabel || lsLabel || null;
+                this.visibilityManager?.attachHostStateSocket(this.streamEventsSocket, hostLabel);
+            } catch (e) {
+                console.warn('[WEBSOCKET] Failed to attach host-agent DPMS bridge:', e);
+            }
 
             this.streamEventsSocket.on('connected', (data) => {
                 console.log('[WEBSOCKET] Server confirmed subscription:', data);

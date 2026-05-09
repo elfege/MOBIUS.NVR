@@ -78,8 +78,9 @@ export class ThrottleController {
             });
             if (!r.ok) return;
             const j = await r.json();
-            if (j && j.settings) {
-                Object.assign(this._settings, j.settings);
+            // GET /api/host/<label>/settings returns a flat row (no envelope).
+            if (j && typeof j === 'object') {
+                this._applySettings(j);
                 console.log('[Throttle] Settings loaded:', this._settings);
             }
         } catch (e) {
@@ -91,12 +92,28 @@ export class ThrottleController {
         if (!msg || !msg.host_label) return;
         if (this._hostLabel && msg.host_label !== this._hostLabel) return;
         if (msg.settings) {
-            Object.assign(this._settings, msg.settings);
+            this._applySettings(msg.settings);
             console.log('[Throttle] Settings updated:', this._settings);
         }
         // If the user just disabled throttling, restore everything we demoted.
         if (this._settings.performance_throttle_enabled === false) {
             this._restoreAll();
+        }
+    }
+
+    /**
+     * Pick known fields from a settings dict and apply them. Defends against
+     * extra DB columns and missing values (keeps prior defaults when absent).
+     */
+    _applySettings(s) {
+        if (typeof s.performance_throttle_enabled === 'boolean') {
+            this._settings.performance_throttle_enabled = s.performance_throttle_enabled;
+        }
+        if (typeof s.performance_max_cpu_pct === 'number') {
+            this._settings.performance_max_cpu_pct = s.performance_max_cpu_pct;
+        }
+        if (typeof s.performance_restore_hysteresis_pct === 'number') {
+            this._settings.performance_restore_hysteresis_pct = s.performance_restore_hysteresis_pct;
         }
     }
 

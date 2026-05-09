@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from typing import Any, Dict, Optional
 
@@ -37,6 +38,15 @@ from flask_login import login_required
 logger = logging.getLogger(__name__)
 
 host_state_bp = Blueprint("host_state", __name__)
+
+# --------------------------------------------------------------------------
+# Liveness thresholds (server-side classifier).
+# An agent pings every POLL_INTERVAL s (default 5). Allow ~3 missed pings
+# before flagging "stale", and ~6 before "offline".
+# --------------------------------------------------------------------------
+HOST_ONLINE_MAX_AGE_S = 15.0   # < 15s since last ping → "online"
+HOST_STALE_MAX_AGE_S  = 30.0   # 15..30s → "stale"; > 30s → "offline"
+HOST_MONITOR_TICK_S   = 5.0    # how often the background thread re-evaluates
 
 # --------------------------------------------------------------------------
 # Auth — bearer token, same source of truth as services/external_api_routes.py.
@@ -77,6 +87,93 @@ def init_host_state(socketio_instance) -> None:
     global _socketio
     _socketio = socketio_instance
     logger.info("host_state: SocketIO bound; ready to broadcast host_state_changed")
+
+    # Spin the liveness monitor exactly once. The thread is daemonized so
+    # gunicorn shutdown is not blocked. Re-entry guarded by _monitor_started.
+    _start_monitor_thread()
+
+
+# --------------------------------------------------------------------------
+# Liveness classifier + monitor thread
+# --------------------------------------------------------------------------
+# Last-known status per host_label. Only used to detect transitions so we
+# emit host_status_changed once on edge rather than every tick.
+_last_status: Dict[str, str] = {}
+_monitor_started = False
+_monitor_lock = threading.Lock()
+
+
+def _classify_status(received_at: Optional[float], now: Optional[float] = None) -> str:
+    """
+    Map (now - received_at) onto one of: 'online', 'stale', 'offline', 'never'.
+    'never' is reserved for hosts present in host_settings (DB) but for which
+    no agent ping has ever been received in this process lifetime.
+    """
+    if received_at is None:
+        return "never"
+    if now is None:
+        now = time.time()
+    age = now - received_at
+    if age < HOST_ONLINE_MAX_AGE_S:
+        return "online"
+    if age < HOST_STALE_MAX_AGE_S:
+        return "stale"
+    return "offline"
+
+
+def _start_monitor_thread() -> None:
+    global _monitor_started
+    with _monitor_lock:
+        if _monitor_started:
+            return
+        _monitor_started = True
+
+    t = threading.Thread(
+        target=_monitor_loop,
+        name="host_state_monitor",
+        daemon=True,
+    )
+    t.start()
+    logger.info(
+        "host_state: liveness monitor started (online<%ss, stale<%ss, offline>=%ss; tick %ss)",
+        HOST_ONLINE_MAX_AGE_S, HOST_STALE_MAX_AGE_S, HOST_STALE_MAX_AGE_S, HOST_MONITOR_TICK_S,
+    )
+
+
+def _monitor_loop() -> None:
+    """
+    Re-classify every known host on each tick. When a host transitions
+    (e.g. online → offline because the kiosk was unplugged), emit
+    host_status_changed on /stream_events so the UI can flip its dot.
+    """
+    while True:
+        try:
+            now = time.time()
+            for host_label, body in list(_latest_state.items()):
+                received_at = body.get("server_received_at")
+                status = _classify_status(received_at, now)
+                prev = _last_status.get(host_label)
+                if status == prev:
+                    continue
+                _last_status[host_label] = status
+                logger.info("host_state[%s]: %s -> %s", host_label, prev or "<unknown>", status)
+                if _socketio is not None:
+                    try:
+                        _socketio.emit(
+                            "host_status_changed",
+                            {
+                                "host_label": host_label,
+                                "status": status,
+                                "server_received_at": received_at,
+                                "age_s": (now - received_at) if received_at else None,
+                            },
+                            namespace="/stream_events",
+                        )
+                    except Exception:
+                        logger.exception("host_state: failed to broadcast status change")
+        except Exception:
+            logger.exception("host_state monitor tick failed")
+        time.sleep(HOST_MONITOR_TICK_S)
 
 
 def get_latest_state(host_label: Optional[str] = None) -> Dict[str, Any]:
@@ -371,15 +468,106 @@ def api_host_settings_put(host_label: str):
             row[k] = row[k].isoformat()
     settings = dict(row)
 
-    # Broadcast so the page picks up the change immediately
+    # Broadcast so the page picks up the change immediately. Schema:
+    # {host_label, settings: {...flat row...}} — matches the throttle
+    # controller and the performance-throttle settings panel which both
+    # read msg.host_label and msg.settings.
     if _socketio is not None:
         try:
             _socketio.emit(
                 "host_settings_changed",
-                {"host": host_label, "host_settings": settings},
+                {"host_label": host_label, "settings": settings},
                 namespace="/stream_events",
             )
         except Exception:
             logger.exception("host_state: failed to broadcast settings change")
 
     return jsonify(settings)
+
+
+# --------------------------------------------------------------------------
+# GET /api/host/list — admin overview of every known kiosk.
+#
+# Combines two sources:
+#   1. host_settings (DB)          — every host_label that ever pinged or
+#                                     was configured via the Settings UI
+#   2. _latest_state (in-process)  — the most recent push body per host
+#
+# Returns one row per host with status, last-seen age, current display
+# state, current normalized CPU load, and the throttle settings — enough
+# for an admin "Hosts" panel to render dots, age, and a row per kiosk.
+# --------------------------------------------------------------------------
+@host_state_bp.route("/api/host/list", methods=["GET"])
+@login_required
+def api_host_list():
+    now = time.time()
+
+    # 1) Pull settings rows so even hosts that aren't currently in
+    #    _latest_state (process restarted, kiosk offline, etc.) still
+    #    appear in the list with their persisted last_seen.
+    rows: Dict[str, Dict[str, Any]] = {}
+    try:
+        with _db_conn() as conn, conn.cursor(
+            cursor_factory=psycopg2.extras.RealDictCursor
+        ) as cur:
+            cur.execute(
+                """
+                SELECT host_label,
+                       performance_throttle_enabled,
+                       performance_max_cpu_pct,
+                       performance_restore_hysteresis_pct,
+                       last_seen, updated_at
+                FROM host_settings
+                ORDER BY host_label ASC
+                """
+            )
+            for r in cur.fetchall():
+                d = dict(r)
+                for k in ("last_seen", "updated_at"):
+                    if d.get(k):
+                        d[k] = d[k].isoformat()
+                rows[d["host_label"]] = d
+    except Exception:
+        logger.exception("host_state list: DB read failed")
+        # Continue with whatever in-process state we have — better than 500.
+
+    # 2) Overlay current snapshot from in-process state.
+    for host_label, body in _latest_state.items():
+        row = rows.setdefault(host_label, {"host_label": host_label})
+        received_at = body.get("server_received_at")
+        row["status"] = _classify_status(received_at, now)
+        row["server_received_at"] = received_at
+        row["age_s"] = (now - received_at) if received_at else None
+        row["display_state"] = body.get("display_state")
+        row["cpu_load_norm"] = body.get("cpu_load_norm")
+        row["cpu_count"] = body.get("cpu_count")
+        row["gpu_util"] = body.get("gpu_util")
+        row["gpu_temp_c"] = body.get("gpu_temp_c")
+
+    # 3) For DB rows that have no in-process snapshot, classify from the
+    #    persisted last_seen so the UI still gets a meaningful dot.
+    for host_label, row in rows.items():
+        if "status" in row:
+            continue
+        ls_iso = row.get("last_seen")
+        # Best-effort: derive an age from the ISO string. Skipping if absent.
+        if ls_iso:
+            try:
+                from datetime import datetime
+                # last_seen is ISO with timezone offset
+                ls = datetime.fromisoformat(ls_iso)
+                age = now - ls.timestamp()
+                row["age_s"] = age
+                row["status"] = _classify_status(now - age, now)
+            except Exception:
+                row["status"] = "never"
+        else:
+            row["status"] = "never"
+
+    return jsonify({
+        "hosts": sorted(rows.values(), key=lambda r: r.get("host_label") or ""),
+        "thresholds": {
+            "online_max_age_s": HOST_ONLINE_MAX_AGE_S,
+            "stale_max_age_s": HOST_STALE_MAX_AGE_S,
+        },
+    })

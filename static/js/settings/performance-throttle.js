@@ -124,6 +124,23 @@ export const performanceThrottle = {
                 </div>
 
             </div>
+
+            <div class="setting-row" id="perf-all-hosts-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-network-wired"></i> All Reporting Hosts</div>
+                    <div class="setting-control">
+                        <button id="perf-refresh-hosts" class="setting-btn setting-btn-secondary" style="font-size:12px;padding:5px 12px;">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    Every host_label seen by this NVR — online status is computed from
+                    each agent's last ping. Status auto-updates via SocketIO.
+                </div>
+                <div id="perf-host-list" style="margin-top:8px;font-size:12px;"></div>
+            </div>
+
         </div>`;
     },
 
@@ -174,7 +191,98 @@ export const performanceThrottle = {
         $panel.find('#perf-throttle-enabled').off('change.perf').on('change.perf', () => this.saveSettings($panel));
         $panel.find('#perf-max-cpu, #perf-hyst').off('change.perf input.perf').on('input.perf change.perf', saveDebounced);
 
+        $panel.find('#perf-refresh-hosts').off('click.perf').on('click.perf', () => this.loadHostList($panel));
+
         await this.loadSettings($panel);
+        await this.loadHostList($panel);
+
+        // Live updates: subscribe to host_status_changed so dots flip without refresh.
+        // The /stream_events socket is owned by stream.js — we tap it via window.io
+        // each time the panel opens (idempotent: socket.on is a no-op if same handler
+        // re-registered, but we use a marker on $panel to be safe).
+        if (!$panel.data('perf-socket-bound')) {
+            try {
+                if (typeof io !== 'undefined') {
+                    const sock = io('/stream_events', { transports: ['websocket', 'polling'] });
+                    sock.on('host_status_changed', () => this.loadHostList($panel));
+                    sock.on('host_state_changed', (msg) => {
+                        // Only re-render if the changed host is on the current page.
+                        if (msg && msg.host_label) this._patchHostRow($panel, msg);
+                    });
+                    $panel.data('perf-socket-bound', true);
+                }
+            } catch (e) {
+                console.warn('[PerformanceThrottle] socket bind failed:', e);
+            }
+        }
+    },
+
+    async loadHostList($panel) {
+        try {
+            const r = await fetch('/api/host/list', { credentials: 'same-origin' });
+            if (!r.ok) {
+                $panel.find('#perf-host-list').text(`(failed to load: HTTP ${r.status})`);
+                return;
+            }
+            const j = await r.json();
+            const hosts = (j && Array.isArray(j.hosts)) ? j.hosts : [];
+            this._renderHostList($panel, hosts);
+        } catch (e) {
+            $panel.find('#perf-host-list').text(`(load error: ${e.message || e})`);
+        }
+    },
+
+    _renderHostList($panel, hosts) {
+        if (!hosts.length) {
+            $panel.find('#perf-host-list').html('<em style="color:#888;">No hosts have reported yet.</em>');
+            return;
+        }
+        const dot = (status) => {
+            const color = ({
+                online:  '#28a745',
+                stale:   '#ffc107',
+                offline: '#dc3545',
+                never:   '#888',
+            })[status] || '#888';
+            return `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};margin-right:6px;vertical-align:middle;"></span>`;
+        };
+        const fmtAge = (s) => {
+            if (s == null) return 'never';
+            if (s < 60) return `${s.toFixed(0)}s ago`;
+            if (s < 3600) return `${(s/60).toFixed(1)}m ago`;
+            return `${(s/3600).toFixed(1)}h ago`;
+        };
+        const rows = hosts.map(h => {
+            const cpu = (typeof h.cpu_load_norm === 'number') ? `${(h.cpu_load_norm*100).toFixed(0)}%` : '—';
+            const dpms = h.display_state || '—';
+            const thr = (h.performance_throttle_enabled === false) ? 'off' : `≤${h.performance_max_cpu_pct ?? 50}%`;
+            return `<div data-host-row="${h.host_label}" style="padding:4px 0;border-bottom:1px solid #2a2a2a;display:flex;gap:10px;align-items:center;">
+                ${dot(h.status)}
+                <strong style="min-width:120px;">${h.host_label}</strong>
+                <span style="color:#aaa;min-width:90px;">${h.status}</span>
+                <span style="color:#aaa;min-width:90px;">${fmtAge(h.age_s)}</span>
+                <span style="color:#aaa;min-width:80px;">display: ${dpms}</span>
+                <span style="color:#aaa;min-width:80px;">CPU: ${cpu}</span>
+                <span style="color:#aaa;">throttle: ${thr}</span>
+            </div>`;
+        }).join('');
+        $panel.find('#perf-host-list').html(rows);
+    },
+
+    /**
+     * Live-patch one row when host_state_changed arrives. Falls back to a
+     * full reload if the row isn't present yet (host appeared mid-session).
+     */
+    _patchHostRow($panel, msg) {
+        const $row = $panel.find(`[data-host-row="${msg.host_label}"]`);
+        if (!$row.length) {
+            this.loadHostList($panel);
+            return;
+        }
+        const cpu = (typeof msg.cpu_load_norm === 'number') ? `${(msg.cpu_load_norm*100).toFixed(0)}%` : '—';
+        const dpms = msg.display_state || '—';
+        $row.find('span').filter((_, el) => el.textContent.startsWith('display:')).text(`display: ${dpms}`);
+        $row.find('span').filter((_, el) => el.textContent.startsWith('CPU:')).text(`CPU: ${cpu}`);
     },
 
     async loadSettings($panel) {
@@ -192,7 +300,8 @@ export const performanceThrottle = {
                 return;
             }
             const j = await r.json();
-            const s = j && j.settings ? j.settings : {};
+            // GET returns a flat row (no envelope).
+            const s = (j && typeof j === 'object') ? j : {};
             $panel.find('#perf-throttle-enabled').prop('checked', s.performance_throttle_enabled !== false);
             const maxCpu = Number(s.performance_max_cpu_pct ?? 50);
             const hyst   = Number(s.performance_restore_hysteresis_pct ?? 10);
@@ -208,10 +317,15 @@ export const performanceThrottle = {
                 });
                 if (r2.ok) {
                     const js = await r2.json();
-                    if (js && js.host_label) {
+                    // /api/host/state?host=<label> returns the agent's last
+                    // pushed body (keys: host, display_state, cpu_load_norm,
+                    // server_received_at, …) or {} if no agent has reported.
+                    if (js && js.host) {
                         const cpu = (typeof js.cpu_load_norm === 'number') ? `${(js.cpu_load_norm * 100).toFixed(0)}%` : '—';
                         const dpms = js.display_state || '—';
-                        $panel.find('#perf-host-status').text(`Host "${label}": display=${dpms}, CPU=${cpu}, last seen ${js.last_seen || 'never'}.`);
+                        const ageS = (typeof js.server_received_at === 'number') ? Math.max(0, (Date.now()/1000) - js.server_received_at) : null;
+                        const ageStr = (ageS == null) ? '—' : (ageS < 60 ? `${ageS.toFixed(0)}s ago` : `${(ageS/60).toFixed(1)}m ago`);
+                        $panel.find('#perf-host-status').text(`Host "${label}": display=${dpms}, CPU=${cpu}, last seen ${ageStr}.`);
                     } else {
                         $panel.find('#perf-host-status').text(`Host "${label}" has not reported yet — install and start the host-agent.`);
                     }

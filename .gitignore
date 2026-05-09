@@ -224,3 +224,5 @@ Thumbs.db
 **/retrieved_files_post_catastrophic_loss_of_feb_15_2026/
 # TLS certificates (contain private keys)
 certs/
+services/evidence/models/
+services/evidence/__pycache__/

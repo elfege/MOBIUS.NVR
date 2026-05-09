@@ -1,0 +1,32 @@
+[Unit]
+Description=MOBIUS.NVR host agent (display state + load reporting to NVR)
+Documentation=https://github.com/elfege/MOBIUS.NVR
+After=graphical-session.target network-online.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+
+# AGENT_PATH is substituted by install_host_agent.sh at install time.
+ExecStart=/usr/bin/env python3 __AGENT_PATH__
+
+# Inherit the user's DISPLAY/XAUTHORITY so xset can talk to X11.
+# install_host_agent.sh runs `systemctl --user import-environment
+# DISPLAY XAUTHORITY` before starting, which populates these here.
+Environment=DISPLAY=:0
+
+# Restart-on-failure with exponential backoff so a broken xset/network
+# doesn't crash-loop the daemon. systemd's StartLimit caps repeats.
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=60
+StartLimitBurst=10
+
+# Resource ceiling — agent should be cheap. If it goes over either,
+# something's wrong and we'd rather kill it than have it hog the
+# kiosk machine that the agent is supposed to be protecting.
+MemoryMax=64M
+CPUQuota=10%
+
+[Install]
+WantedBy=default.target

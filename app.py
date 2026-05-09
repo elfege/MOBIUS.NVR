@@ -70,6 +70,7 @@ from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
+from routes.host_state import host_state_bp, init_host_state
 from services.license_service import license, validate_license
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
@@ -176,6 +177,7 @@ app.register_blueprint(streaming_bp)
 app.register_blueprint(talkback_bp)
 app.register_blueprint(settings_bp)
 app.register_blueprint(evidence_bp)
+app.register_blueprint(host_state_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).
@@ -396,6 +398,13 @@ socketio = SocketIO(
 
 # Set SocketIO instance in websocket_mjpeg_service
 websocket_mjpeg_service.set_socketio(socketio)
+
+# Bind SocketIO to the host_state route so it can broadcast
+# host_state_changed events to /stream_events subscribers when the
+# host agent posts new metrics. Done HERE (after socketio construction)
+# rather than at blueprint register time because the SocketIO instance
+# doesn't exist yet at that point.
+init_host_state(socketio)
 
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.WARNING)

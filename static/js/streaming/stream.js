@@ -24,6 +24,7 @@ import { WebSocketMJPEGStreamManager } from './websocket-mjpeg-stream.js';
 import { SnapshotStreamManager } from './snapshot-stream.js';
 import { talkbackManager } from './talkback-manager.js';
 import { VisibilityManager } from './visibility-manager.js';
+import { ThrottleController } from './throttle-controller.js';
 import { pinnedWindowManager } from './pinned-window-manager.js';
 import { tileArrangeManager } from './tile-arrange-manager.js';
 
@@ -219,6 +220,12 @@ export class MultiStreamManager {
                     console.log(`[CameraState] ${cameraId}: ${newState} — stopping snapshot polling`);
                     this.snapshotManager.stopStream(cameraId);
                 }
+                // If a recovery refresh was queued (debounced via
+                // ui_health_refresh_delay_ms) and the camera went degraded
+                // again before it fired, cancel it — the eventual stop+start
+                // would do nothing useful and would only trigger a stale
+                // Signal Lost flash on a still-broken stream.
+                this._cancelHealthRecovery(cameraId);
             },
             onRecovery: (cameraId, $streamItem, previousState, newState) => {
                 // Suppress recovery while globally paused
@@ -234,6 +241,9 @@ export class MultiStreamManager {
                     return;
                 }
 
+                // (ui_health_monitor=false opt-out moved to
+                // handleBackendRecovery — see invariant comment there.)
+
                 // When WebSocket is active, still check if this WebRTC stream needs help
                 // The WebSocket notification fires BEFORE FFmpeg is ready, but poll-based
                 // recovery fires when backend actually shows 'online' (MediaMTX has stream)
@@ -246,7 +256,7 @@ export class MultiStreamManager {
                     if ((streamType === 'WEBRTC' || streamType === 'GO2RTC') && videoElement &&
                         (videoElement.readyState < 2 || videoElement.videoWidth === 0)) {
                         console.log(`[Recovery] ${cameraId}: Poll-based secondary recovery for black ${streamType} stream (${previousState} → ${newState})`);
-                        this.handleBackendRecovery(cameraId, $streamItem);
+                        this._scheduleHealthRecovery(cameraId, $streamItem);
                         return;
                     }
 
@@ -254,7 +264,7 @@ export class MultiStreamManager {
                     return;
                 }
                 console.log(`[Recovery] ${cameraId}: Poll-based recovery (WebSocket down) - ${previousState} → ${newState}`);
-                this.handleBackendRecovery(cameraId, $streamItem);
+                this._scheduleHealthRecovery(cameraId, $streamItem);
             }
         });
         // Arrow function preserves context
@@ -512,8 +522,8 @@ export class MultiStreamManager {
         this.visibilityManager = new VisibilityManager({
             graceMs: 3000,       // Ignore tab switches < 3 seconds
             reloadDelayMs: 1800, // Show wake animation before reload
-            onSleep: () => {
-                console.log('[Visibility] Tearing down all browser-side stream consumers');
+            onSleep: ({ reason } = {}) => {
+                console.log(`[Visibility] Tearing down all browser-side stream consumers (reason=${reason || 'visibility'})`);
                 // Stop all stream types (HLS.js, WebRTC PeerConnections, MJPEG img polling)
                 this.stopAllStreams();
                 // Stop health monitor (no point checking dead streams)
@@ -522,13 +532,24 @@ export class MultiStreamManager {
                 }
                 // Stop camera state polling
                 this.cameraStateMonitor?.stop();
-                // Disconnect stream events WebSocket
-                if (this.streamEventsSocket) {
+                // Disconnect stream events WebSocket — but ONLY for the Page Visibility
+                // path. When standby is triggered by the host-agent's DPMS signal we
+                // need this socket alive to hear the wake-up host_state_changed event,
+                // since visibilitychange does NOT fire on Linux X11 DPMS-off.
+                if (this.streamEventsSocket && reason !== 'host_dpms') {
                     this.streamEventsSocket.disconnect();
                 }
             }
         });
         this.visibilityManager.start();
+
+        // Per-machine performance throttle: when CPU sustains above the
+        // host_settings threshold, stop one stream tile at a time until the
+        // load drops below threshold. Restores tiles when CPU recovers.
+        this.throttleController = new ThrottleController({
+            streamManager: this,
+            $container: this.$container,
+        });
     }
 
     async nuclear(cameraId, streamItem, cameraType, streamType) {
@@ -557,8 +578,17 @@ export class MultiStreamManager {
     }
 
     setupLayout() {
+        // Count VISIBLE stream items only — hidden cameras (filtered out
+        // via the navbar's "hide" toggle, or temporarily display:none'd
+        // during fullscreen via CSS :has()) must NOT inflate the column
+        // count. The full layout pipeline in camera-selector-controller
+        // already handles this correctly via _updateGridLayout(visibleCount);
+        // setupLayout() runs on close-fullscreen and other ad-hoc paths and
+        // had been using $streamItems.length (DOM total) which produced
+        // grid-5 for 17 DOM items even when only 16 were visible — leaving
+        // an orphan tile in the last row after fullscreen exit.
         const $streamItems = this.$container.find('.stream-item');
-        const count = $streamItems.length;
+        const count = this.$container.find('.stream-item:visible').length;
 
         // Calculate optimal grid layout
         let cols;
@@ -3141,6 +3171,63 @@ export class MultiStreamManager {
     }
 
     /**
+     * Schedule a backend recovery — debounced by the per-camera
+     * `data-ui-health-refresh-delay-ms` attribute.
+     *
+     * Wraps handleBackendRecovery() so callers (the CameraStateMonitor's
+     * onRecovery hook) get a single entry point that already honors the
+     * configured delay. delay <= 0 dispatches immediately; delay > 0
+     * sets a timer per cameraId that any subsequent recovery / degraded
+     * event will replace, debouncing flapping cameras.
+     *
+     * @param {string} cameraId    Camera serial.
+     * @param {jQuery} $streamItem Tile DOM element (carries the delay attr).
+     */
+    _scheduleHealthRecovery(cameraId, $streamItem) {
+        if (!this._healthRecoveryTimers) {
+            this._healthRecoveryTimers = new Map();
+        }
+
+        const existing = this._healthRecoveryTimers.get(cameraId);
+        if (existing) {
+            clearTimeout(existing);
+            this._healthRecoveryTimers.delete(cameraId);
+        }
+
+        let delayMs = parseInt($streamItem.attr('data-ui-health-refresh-delay-ms'), 10);
+        if (!Number.isFinite(delayMs) || delayMs < 0) delayMs = 0;
+        // Cap at the migration's documented ceiling so a misconfigured
+        // value can't park the recovery indefinitely.
+        if (delayMs > 60000) delayMs = 60000;
+
+        if (delayMs === 0) {
+            this.handleBackendRecovery(cameraId, $streamItem);
+            return;
+        }
+
+        console.log(`[Recovery] ${cameraId}: Deferred ${delayMs}ms (ui_health_refresh_delay_ms)`);
+        const timer = setTimeout(() => {
+            this._healthRecoveryTimers.delete(cameraId);
+            this.handleBackendRecovery(cameraId, $streamItem);
+        }, delayMs);
+        this._healthRecoveryTimers.set(cameraId, timer);
+    }
+
+    /**
+     * Cancel any pending debounced health-recovery for a camera.
+     * Called from the onDegraded path so a flapping camera doesn't fire a
+     * stale "recovered → refresh" after going degraded again mid-delay.
+     */
+    _cancelHealthRecovery(cameraId) {
+        const t = this._healthRecoveryTimers?.get(cameraId);
+        if (t) {
+            clearTimeout(t);
+            this._healthRecoveryTimers.delete(cameraId);
+            console.log(`[Recovery] ${cameraId}: Cancelled pending recovery (camera went unhealthy again)`);
+        }
+    }
+
+    /**
      * Handle backend recovery notification from CameraStateMonitor.
      * Called when StreamWatchdog has successfully restarted a stream.
      *
@@ -3152,6 +3239,15 @@ export class MultiStreamManager {
      * @param {jQuery} $streamItem - Stream item element
      */
     async handleBackendRecovery(cameraId, $streamItem) {
+        // ARCHITECTURAL INVARIANT: this method is the single chokepoint for
+        // backend-driven recovery. Three upstream paths can reach it:
+        //   1. CameraStateMonitor.onRecovery (degraded → online) via _scheduleHealthRecovery
+        //   2. WebSocket 'stream_restarted' event (line ~5131) via _scheduleHealthRecovery
+        //   3. Future entry points
+        // All gating (global pause, user-stopped, ui_health_monitor opt-out)
+        // MUST live here, not at the call sites — call sites have proven to
+        // multiply faster than the gates can be kept in sync.
+
         // Suppress recovery while globally paused
         if (this._globalPaused) {
             console.log(`[Recovery] ${cameraId}: Skipping backend recovery — global pause is active`);
@@ -3163,6 +3259,29 @@ export class MultiStreamManager {
             // User explicitly stopped this stream via UI, don't auto-restart
             if (this.isUserStoppedStream(cameraId)) {
                 console.log(`[Recovery] ${cameraId}: Skipping backend recovery - user manually stopped this stream`);
+                return;
+            }
+
+            // Per-camera opt-out: ui_health_monitor=false suppresses the
+            // entire recovery path (no Signal Lost overlay, no refresh).
+            // Use case: streams that are working continuously (e.g. MJPEG
+            // via the streaming hub) but where the backend's degraded →
+            // online transitions or stream_restarted events produce
+            // false-positive UI churn.
+            if ($streamItem.attr('data-ui-health-monitor') === 'false') {
+                console.log(`[Recovery] ${cameraId}: Skipping backend recovery — ui_health_monitor=false for this camera`);
+                return;
+            }
+
+            // Server-hidden cameras: the StartAll routine skips starting
+            // them, but their stream-items remain in the DOM (so admins
+            // can reveal them via the show-hidden toggle). Backend still
+            // emits stream_restarted for them on its restart loop, which
+            // bombarded the frontend recovery path. Honor the hidden flag
+            // here — if the tile isn't being shown, don't fight to refresh
+            // a stream the user isn't watching.
+            if ($streamItem.attr('data-hidden') === 'true') {
+                console.log(`[Recovery] ${cameraId}: Skipping backend recovery — camera is server-hidden`);
                 return;
             }
 
@@ -3579,9 +3698,18 @@ export class MultiStreamManager {
         const $statusText = $indicator.find('span');
 
         // Handle "Signal Lost" overlay - show when stream fails/is loading, hide when live
-        // Signal Lost is shown for error, failed, and extended loading states
-        const showSignalLost = ['error', 'failed'].includes(status) ||
-            (status === 'loading' && /retry|nuclear|reconnect/i.test(text));
+        // Signal Lost has two trigger families:
+        //   - Real failures   — status 'error' / 'failed'. Always show.
+        //   - Health refresh  — status 'loading' + text matching
+        //     retry/nuclear/reconnect. Only show when the per-camera
+        //     ui_health_monitor toggle is true. The recovery path is
+        //     also short-circuited upstream when that toggle is false,
+        //     but we double-gate here so any transient text update can't
+        //     flash the overlay on a working stream.
+        const isRealFailure = ['error', 'failed'].includes(status);
+        const isHealthRefresh = status === 'loading' && /retry|nuclear|reconnect/i.test(text);
+        const healthMonitorOn = $streamItem.attr('data-ui-health-monitor') !== 'false';
+        const showSignalLost = isRealFailure || (isHealthRefresh && healthMonitorOn);
 
         if (showSignalLost) {
             $streamItem.addClass('signal-lost');
@@ -5005,6 +5133,19 @@ export class MultiStreamManager {
                 console.log('[WEBSOCKET] Recovery mode: WebSocket (instant notifications)');
             });
 
+            // Bridge host-agent display_state events into the visibility manager.
+            // hostLabel resolution: ?host_label= URL param > localStorage > null
+            // (null = single-kiosk default; first reporting host wins).
+            try {
+                const urlLabel = new URLSearchParams(window.location.search).get('host_label');
+                const lsLabel = (typeof localStorage !== 'undefined') ? localStorage.getItem('mobius_host_label') : null;
+                const hostLabel = urlLabel || lsLabel || null;
+                this.visibilityManager?.attachHostStateSocket(this.streamEventsSocket, hostLabel);
+                this.throttleController?.attach(this.streamEventsSocket, hostLabel);
+            } catch (e) {
+                console.warn('[WEBSOCKET] Failed to attach host-agent bridges:', e);
+            }
+
             this.streamEventsSocket.on('connected', (data) => {
                 console.log('[WEBSOCKET] Server confirmed subscription:', data);
             });
@@ -5031,12 +5172,20 @@ export class MultiStreamManager {
                     return;
                 }
 
-                // Find the stream item and trigger recovery
+                // Find the stream item and trigger recovery via the
+                // debounced wrapper so this path ALSO honors the
+                // per-camera ui_health_refresh_delay_ms and the gates
+                // inside handleBackendRecovery (ui_health_monitor opt-out,
+                // global pause, user-stopped streams). Going direct to
+                // handleBackendRecovery here was the bug that let
+                // ui_health_monitor=false leak through and caused the
+                // Signal Lost / Recovered-Reconnecting churn the user
+                // reported on Terrace South.
                 const $streamItem = $(`.stream-item[data-camera-serial="${camera_id}"]`);
                 if ($streamItem.length) {
                     console.log(`[WEBSOCKET] Triggering refresh for ${camera_id}`);
                     this.recentRecoveries.set(camera_id, now);
-                    this.handleBackendRecovery(camera_id, $streamItem);
+                    this._scheduleHealthRecovery(camera_id, $streamItem);
                 } else {
                     console.log(`[WEBSOCKET] Camera ${camera_id} not on this page, ignoring`);
                 }

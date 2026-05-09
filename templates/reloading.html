@@ -300,14 +300,29 @@
         </div>
         <p class="retry-count" id="poll-status">Waiting for server...</p>
         <div class="manual-retry">
-            <button onclick="window.location.replace(window.location.pathname + '?_t=' + Date.now())">Retry Now</button>
+            <button onclick="(function(){const u=localStorage.getItem('nvr_return_url')||'/streams';localStorage.removeItem('nvr_return_url');const url=new URL(u,window.location.origin);url.searchParams.set('_t',Date.now());window.location.replace(url.pathname+url.search);})()">Retry Now</button>
         </div>
 
         <div class="log-box">
-            <div class="log-box-label">Follow restart logs</div>
-            <div class="log-box-cmd">
-                <code id="tail-cmd">tail -f ~/0_MOBIUS.NVR/restart_from_app.log</code>
-                <button class="copy-btn" id="copy-tail-btn" title="Copy to clipboard">Copy</button>
+            <div class="log-box-label">Restart logs (live)</div>
+            <pre id="log-stream" style="
+                margin:0;
+                padding:12px;
+                background:#000;
+                color:#0f0;
+                font-family:'SF Mono', 'Monaco', 'Consolas', monospace;
+                font-size:11px;
+                line-height:1.4;
+                max-height:240px;
+                min-height:100px;
+                overflow:auto;
+                border-radius:6px;
+                white-space:pre-wrap;
+                word-break:break-all;
+            ">connecting to log stream…</pre>
+            <div class="log-box-cmd" style="margin-top:8px;">
+                <code id="tail-cmd" style="font-size:10px;opacity:0.6;">tail -f ~/0_MOBIUS.NVR/restart_from_app.log</code>
+                <button class="copy-btn" id="copy-tail-btn" title="Copy fallback command to clipboard">Copy</button>
             </div>
         </div>
     </div>
@@ -397,20 +412,26 @@
                     .catch(() => {});
             }, 1500);
 
+            // Grace window: if the page never observes the server going DOWN
+            // (because the restart was fast, or because nothing actually
+            // restarted) — redirect anyway after this many seconds of the
+            // server staying responsive. Without this the page hangs forever
+            // on "Waiting for server" while the app is alive behind it.
+            const GRACE_REDIRECT_AFTER_SEC = 15;
             const healthCheck = setInterval(() => {
                 fetch('/api/status', { method: 'GET', cache: 'no-store' })
                     .then(r => {
-                        if (r.ok && serverWentDown) {
-                            // Phase 2 complete — server is back
-                            clearInterval(healthCheck);
-                            clearInterval(adminPoll);
-                            localStorage.removeItem('nvr_reconnect_attempt');
-                            let returnUrl = localStorage.getItem('nvr_return_url') || '/';
-                            localStorage.removeItem('nvr_return_url');
-                            const url = new URL(returnUrl, window.location.origin);
-                            url.searchParams.set('_t', Date.now());
-                            window.location.replace(url.pathname + url.search);
-                        }
+                        if (!r.ok) return;
+                        const ready = serverWentDown || elapsedSeconds >= GRACE_REDIRECT_AFTER_SEC;
+                        if (!ready) return;
+                        clearInterval(healthCheck);
+                        clearInterval(adminPoll);
+                        localStorage.removeItem('nvr_reconnect_attempt');
+                        let returnUrl = localStorage.getItem('nvr_return_url') || '/streams';
+                        localStorage.removeItem('nvr_return_url');
+                        const url = new URL(returnUrl, window.location.origin);
+                        url.searchParams.set('_t', Date.now());
+                        window.location.replace(url.pathname + url.search);
                     })
                     .catch(() => {
                         // Server is down — phase 1 complete
@@ -420,6 +441,50 @@
                         }
                     });
             }, 1000);
+
+            // ─────────────────────────────────────────────────────────────
+            // Live log streamer — SSE from /api/admin/restart-log/stream.
+            // Tails ~/0_MOBIUS.NVR/restart_from_app.log on the host (visible
+            // inside the container via the ./:/app bind mount) and pushes
+            // every appended line to this <pre>.
+            // ─────────────────────────────────────────────────────────────
+            const logEl = document.getElementById('log-stream');
+            let logBuf = [];
+            const MAX_LOG_LINES = 500;
+            let evtSource = null;
+            let logRetryDelay = 1000;
+
+            function attachLogStream() {
+                if (evtSource) {
+                    try { evtSource.close(); } catch (_) {}
+                }
+                try {
+                    evtSource = new EventSource('/api/admin/restart-log/stream');
+                } catch (e) {
+                    logEl.textContent = 'log stream unavailable: ' + e.message;
+                    return;
+                }
+                evtSource.onopen = () => {
+                    logRetryDelay = 1000;
+                    if (logEl.textContent === 'connecting to log stream…') {
+                        logEl.textContent = '';
+                    }
+                };
+                evtSource.onmessage = (e) => {
+                    if (!e.data) return;
+                    logBuf.push(e.data);
+                    if (logBuf.length > MAX_LOG_LINES) logBuf.shift();
+                    logEl.textContent = logBuf.join('\n');
+                    logEl.scrollTop = logEl.scrollHeight;
+                };
+                evtSource.onerror = () => {
+                    // Server may have just bounced — close and retry with backoff
+                    try { evtSource.close(); } catch (_) {}
+                    setTimeout(attachLogStream, logRetryDelay);
+                    logRetryDelay = Math.min(logRetryDelay * 2, 8000);
+                };
+            }
+            attachLogStream();
         })();
     </script>
 </body>

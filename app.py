@@ -70,6 +70,7 @@ from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
+from routes.host_state import host_state_bp, init_host_state
 from services.license_service import license, validate_license
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
@@ -88,6 +89,7 @@ from routes.storage import storage_bp
 from routes.streaming import streaming_bp, init_socketio as _init_streaming_socketio
 from routes.settings_routes import settings_bp
 from routes.talkback import talkback_bp, init_socketio as _init_talkback_socketio
+from routes.evidence_routes import evidence_bp
 
 # Flask-SocketIO for WebSocket MJPEG multiplexing
 # Uses simple-websocket for Gunicorn compatibility (gthread workers)
@@ -174,6 +176,8 @@ app.register_blueprint(storage_bp)
 app.register_blueprint(streaming_bp)
 app.register_blueprint(talkback_bp)
 app.register_blueprint(settings_bp)
+app.register_blueprint(evidence_bp)
+app.register_blueprint(host_state_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).
@@ -182,7 +186,7 @@ app.register_blueprint(settings_bp)
 # so we must register exemptions via the CSRFProtect instance directly.
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
-           external_api_bp]:
+           external_api_bp, evidence_bp]:
     csrf.exempt(bp)
 
 # ===== License Validation =====
@@ -394,6 +398,13 @@ socketio = SocketIO(
 
 # Set SocketIO instance in websocket_mjpeg_service
 websocket_mjpeg_service.set_socketio(socketio)
+
+# Bind SocketIO to the host_state route so it can broadcast
+# host_state_changed events to /stream_events subscribers when the
+# host agent posts new metrics. Done HERE (after socketio construction)
+# rather than at blueprint register time because the SocketIO instance
+# doesn't exist yet at that point.
+init_host_state(socketio)
 
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.WARNING)
@@ -971,6 +982,59 @@ try:
     print("✅ Presence Service started")
 except Exception as e:
     print(f"⚠️  Presence Service startup warning: {e}")
+
+
+# ===== Start Evidence Pipeline (audio extractor) =====
+# Reconciles the live extractor set against evidence_camera_settings every
+# poll_seconds. Cameras with enabled=true AND capture_audio=true AND
+# cameras.audio_input_supported=true get a CameraAudioExtractor running:
+# RTSP audio tap -> sliding window -> silence prune -> mp3 -> manifest entry.
+# YAMNet classifier and Whisper transcriber are downstream services that
+# read the manifest; they boot separately in the same pattern but are
+# left for the operator to enable when models are warm-cached locally.
+evidence_extractor_supervisor = None
+try:
+    from services.evidence.audio_extractor import ExtractorSupervisor
+    print("\n🎙  Initializing Evidence Audio Extractor supervisor...")
+    evidence_extractor_supervisor = ExtractorSupervisor()
+    Thread(
+        target=evidence_extractor_supervisor.run_forever,
+        daemon=True,
+        name='evidence-extractor-supervisor',
+    ).start()
+    print("✅ Evidence Audio Extractor supervisor started")
+except Exception as e:
+    print(f"⚠️  Evidence Audio Extractor startup warning: {e}")
+    import traceback
+    traceback.print_exc()
+
+
+# ===== Start Evidence YAMNet Classifier =====
+# Downstream consumer of the audio_extractor's output. Polls the manifest
+# for newly-extracted audio segments, runs each through YAMNet, and writes
+# audio_events rows (read by the Collected Data UI) for clips that match
+# flagged categories (screams / crying / impacts / raised-voices).
+#
+# The classifier loads a TensorFlow Lite model at first inference; the
+# load is lazy so a missing model file doesn't take down container boot
+# — it would surface as a runtime error in the classifier's poll loop.
+# Try/except around startup catches import-time failures (no tflite
+# runtime, no model path, etc.) and lets the rest of the app come up.
+evidence_yamnet_classifier = None
+try:
+    from services.evidence.yamnet_classifier import YamnetClassifierService
+    print("\n🔊 Initializing Evidence YAMNet Classifier...")
+    evidence_yamnet_classifier = YamnetClassifierService()
+    Thread(
+        target=evidence_yamnet_classifier.run,
+        daemon=True,
+        name='evidence-yamnet-classifier',
+    ).start()
+    print("✅ Evidence YAMNet Classifier started")
+except Exception as e:
+    print(f"⚠️  Evidence YAMNet Classifier startup warning: {e}")
+    import traceback
+    traceback.print_exc()
 
 # ===== Auto-start Reolink Motion Detection =====
 if reolink_motion_service:

@@ -272,6 +272,27 @@ export class FullscreenHandler {
     handleFullscreenExit() {
         this.state.lastExitTime = Date.now();
 
+        // Force a layout recalc on the streams grid. The masonry layout
+        // engine (GridLayoutEngine) listens to window.resize, but
+        // browsers do NOT reliably fire 'resize' on fullscreenchange —
+        // the viewport size update happens asynchronously after the
+        // event, and the engine's debounced handler may have run before
+        // the new dimensions were committed. Result: tile positions
+        // calculated for the fullscreen viewport remain in place,
+        // leaving holes / overflow once the viewport shrinks back.
+        //
+        // Dispatching the resize event twice (immediate + 200 ms later)
+        // covers both timing windows: the first catches the case where
+        // viewport metrics are already settled, the second catches
+        // browsers that resize the window slightly after the
+        // fullscreenchange event fires.
+        const dispatchResize = () => {
+            try { window.dispatchEvent(new Event('resize')); }
+            catch (e) { /* IE/old WebView fallback — engine just stays stale */ }
+        };
+        dispatchResize();
+        setTimeout(dispatchResize, 200);
+
         if (this.settings.autoFullscreenEnabled && this.state.pageLoadComplete && this.state.userHasInteracted) {
             console.log('[FullscreenHandler] User exited fullscreen - scheduling auto re-entry');
             this.scheduleAutoFullscreen('exit-fullscreen');

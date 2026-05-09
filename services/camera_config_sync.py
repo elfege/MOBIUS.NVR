@@ -27,7 +27,8 @@ DIRECT_FIELDS = [
     'serial', 'name', 'type', 'camera_id', 'host', 'mac', 'packager_path',
     'stream_type', 'streaming_hub', 'go2rtc_source', 'rtsp_alias',
     'max_connections', 'onvif_port', 'power_supply', 'hidden',
-    'ui_health_monitor', 'reversed_pan', 'reversed_tilt', 'notes',
+    'ui_health_monitor', 'ui_health_refresh_delay_ms',
+    'reversed_pan', 'reversed_tilt', 'notes',
     'power_supply_device_id',
 ]
 

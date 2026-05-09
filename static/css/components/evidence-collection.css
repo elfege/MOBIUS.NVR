@@ -1,0 +1,164 @@
+/**
+ * Evidence Collection tab — specific styles.
+ *
+ * Imported by the global settings stylesheet (or whatever umbrella
+ * import file pulls in tab-specific styles). Scoped tightly under
+ * .evidence-* class names so it never leaks into other tabs.
+ *
+ * Visual goals:
+ *   - Per-camera matrix is dense but legible. Treats it like a
+ *     compact table rather than a sea of standalone setting rows.
+ *   - The legal disclosure box reads like a serious notice — boxed,
+ *     left-bordered, slightly muted background — without being
+ *     visually heavy enough to dominate the tab.
+ *   - The status box is a 3-cell grid of small-typeface info that
+ *     doesn't compete with the actionable controls above it.
+ */
+
+/* ------------------------------------------------------------------
+ * Per-camera matrix
+ * ------------------------------------------------------------------
+ * Each row is `name | enable | audio | video`. We use CSS grid so
+ * columns line up across all rows without resorting to a real <table>
+ * (which would inherit a bunch of base styles we'd then have to undo).
+ */
+.evidence-matrix {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+    font-size: 14px;
+}
+
+.evidence-matrix-row {
+    display: grid;
+    /* "Name takes the slack; checkboxes are fixed-width." */
+    grid-template-columns: 1fr 110px 110px 110px;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.03);
+    transition: background 0.12s ease;
+}
+.evidence-matrix-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.evidence-matrix-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* The serial is in the title attribute — show a hint cursor. */
+    cursor: help;
+}
+
+.evidence-matrix-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    cursor: pointer;
+    color: #ccc;
+    font-size: 13px;
+}
+.evidence-matrix-cell input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.evidence-matrix-loading,
+.evidence-matrix-error {
+    color: #888;
+    font-style: italic;
+    padding: 8px;
+    display: block;
+}
+.evidence-matrix-error { color: #e74c3c; }
+
+
+/* ------------------------------------------------------------------
+ * Status box (free space, manifest stats, chain check)
+ * ------------------------------------------------------------------ */
+.evidence-status-box {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+    font-size: 13px;
+    line-height: 1.4;
+}
+.evidence-status-box > div {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 8px 10px;
+    border-radius: 4px;
+    color: #ccc;
+}
+.evidence-status-box code {
+    font-size: 12px;
+    color: #ddd;
+}
+
+
+/* ------------------------------------------------------------------
+ * Legal disclosure box
+ * ------------------------------------------------------------------ */
+.evidence-disclosure {
+    /* Treat as one continuous block; no setting-top split. */
+    display: block;
+}
+.evidence-disclosure-jurisdiction {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 13px;
+    color: #ccc;
+}
+.evidence-disclosure-jurisdiction select {
+    flex: 1;
+    max-width: 320px;
+}
+.evidence-disclosure-box {
+    background: rgba(255, 235, 130, 0.06);
+    border-left: 3px solid #d4a017;
+    padding: 12px 16px;
+    margin-top: 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #d8d8d8;
+}
+.evidence-disclosure-box p {
+    margin: 0 0 8px 0;
+}
+.evidence-disclosure-box p:last-of-type {
+    margin-bottom: 12px;
+}
+.evidence-disclosure-ack {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-weight: 500;
+    color: #f0e8d0;
+    cursor: pointer;
+    user-select: none;
+}
+.evidence-disclosure-ack input[type="checkbox"] {
+    margin: 0;
+    transform: scale(1.1);
+    cursor: pointer;
+}
+
+
+/* ------------------------------------------------------------------
+ * Save status line
+ * ------------------------------------------------------------------ */
+.evidence-save-status {
+    margin-top: 10px;
+    font-size: 13px;
+    min-height: 18px;
+    text-align: right;
+    padding-right: 4px;
+}

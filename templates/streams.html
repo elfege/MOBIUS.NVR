@@ -114,9 +114,19 @@
                 <i class="fas fa-th"></i>
             </button>
 
+            <!-- Switch to Light Mode (snapshot-based, low-power) -->
+            <a href="/light" id="light-mode-btn" class="navbar-action-btn" title="Switch to Light Mode (snapshot-based, low CPU)" style="text-decoration: none; color: inherit;">
+                <i class="fas fa-feather-alt"></i>
+            </a>
+
             <!-- Install Certificate -->
             <a href="/install-cert" id="cert-install-btn" class="navbar-action-btn" title="Install Certificate" style="text-decoration: none; color: inherit;">
                 <i class="fas fa-shield-alt"></i>
+            </a>
+
+            <!-- Collected Data (browse evidence pipeline output) -->
+            <a href="/evidence" id="collected-data-btn" class="navbar-action-btn" title="Collected Data" style="text-decoration: none; color: inherit;">
+                <i class="fas fa-folder-tree"></i>
             </a>
 
             <!-- Settings gear -->
@@ -185,6 +195,10 @@
             <a href="/install-cert" class="nav-menu-item" style="text-decoration: none; color: inherit;">
                 <i class="fas fa-shield-alt"></i>
                 <span>Install Certificate</span>
+            </a>
+            <a href="/evidence" class="nav-menu-item" style="text-decoration: none; color: inherit;">
+                <i class="fas fa-folder-tree"></i>
+                <span>Collected Data</span>
             </a>
         </div>
 
@@ -381,6 +395,7 @@
             data-streaming-hub="{{ info.get('streaming_hub', 'mediamtx') }}"
             data-mjpeg-source="{{ info.get('mjpeg_source', '') }}"
             data-ui-health-monitor="{{ info.get('ui_health_monitor', True)|lower }}"
+            data-ui-health-refresh-delay-ms="{{ info.get('ui_health_refresh_delay_ms', 0) }}"
             data-video-fit="{{ info.get('video_fit_mode') or '' }}"
             data-hidden="{{ info.get('hidden', False)|lower }}">
 

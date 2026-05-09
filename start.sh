@@ -450,6 +450,55 @@ if docker ps | grep -q unified-nvr; then
 	> secrets.env
 	echo -e "${GREEN}secrets.env truncated — no plaintext secrets on disk${NC}"
 
+	# ─────────────────────────────────────────────────────────────────
+	# Host-agent install hints for kiosks that don't have a recent ping.
+	#
+	# We query the DB for host_settings rows that are either offline
+	# (last_seen older than 5 minutes) or have never reported. For each,
+	# print a one-liner the operator can paste into THAT kiosk's terminal
+	# to install/refresh the host-agent. start.sh runs on dellserver and
+	# can't SSH to the kiosks without credentials, so this is print-only.
+	# ─────────────────────────────────────────────────────────────────
+	if [[ -n "${NVR_API_TOKEN:-}" ]]; then
+		_NVR_HOST_FOR_AGENT="$(hostname -I 2>/dev/null | awk '{print $1}')"
+		_NVR_PORT_FOR_AGENT="${NVR_EDGE_HTTPS_PORT:-8444}"
+		_NVR_URL_FOR_AGENT="https://${_NVR_HOST_FOR_AGENT}:${_NVR_PORT_FOR_AGENT}"
+
+		_STALE_HOSTS="$(docker exec -i nvr-postgres psql -U nvr_api -d nvr -At -F '|' -c \
+			"SELECT host_label,
+			        COALESCE(to_char(last_seen, 'YYYY-MM-DD HH24:MI:SS TZ'), 'never')
+			   FROM host_settings
+			  WHERE last_seen IS NULL
+			     OR last_seen < NOW() - INTERVAL '5 minutes'
+			  ORDER BY host_label;" 2>/dev/null)"
+
+		if [[ -n "$_STALE_HOSTS" ]]; then
+			echo ""
+			echo "================================================================="
+			echo "  Host-agent install / refresh — kiosks not currently reporting"
+			echo "================================================================="
+			echo "  Paste the matching one-liner into EACH kiosk's terminal once."
+			echo "  Re-running on a kiosk that already has the agent refreshes"
+			echo "  the unit (idempotent) and leaves the existing config alone."
+			echo ""
+			while IFS='|' read -r _host _last; do
+				[[ -z "$_host" ]] && continue
+				echo -e "  ${YELLOW}# ${_host}${NC}  (last seen: ${_last})"
+				echo "  curl -sSLk \"${_NVR_URL_FOR_AGENT}/host-agent/install.sh?label=${_host}&token=${NVR_API_TOKEN}\" | bash"
+				echo ""
+			done <<< "$_STALE_HOSTS"
+			echo "  (If /host-agent/install.sh isn't yet served by the NVR,"
+			echo "   install manually on each kiosk:"
+			echo "       cd ~/0_MOBIUS.NVR && ./services/host_agent/install_host_agent.sh"
+			echo "       edit ~/.config/mobius-nvr-host-agent/config to set API_TOKEN)"
+			echo "================================================================="
+		else
+			echo -e "${GREEN}All known kiosks have a recent host-agent ping.${NC}"
+		fi
+	else
+		echo -e "${YELLOW}NVR_API_TOKEN unset — skipping host-agent install hints${NC}"
+	fi
+
 else
 	_CURRENT_STEP="container startup"
 	echo -e "${RED}Container failed to start${NC}"

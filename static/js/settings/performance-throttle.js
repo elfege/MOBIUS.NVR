@@ -19,6 +19,9 @@
 const LS_KEY = 'mobius_host_label';
 
 function resolveHostLabel() {
+    // Sync resolver — used by ThrottleController and VisibilityManager at
+    // socket-attach time before any async lookup completes. Order:
+    //   URL ?host_label= > localStorage > '' (no binding yet)
     try {
         const url = new URLSearchParams(window.location.search).get('host_label');
         if (url) return url;
@@ -30,11 +33,36 @@ function resolveHostLabel() {
     }
 }
 
+/**
+ * Async resolver — calls /api/host/whoami which consults the
+ * trusted_devices.host_label FK populated by the host-agent ping.
+ * On hit, latches the value into localStorage so resolveHostLabel()
+ * picks it up everywhere (throttle controller, visibility manager).
+ *
+ * Returns the resolved label or '' if no binding exists.
+ */
+async function resolveHostLabelFromServer() {
+    try {
+        const r = await fetch('/api/host/whoami', { credentials: 'same-origin' });
+        if (!r.ok) return '';
+        const j = await r.json();
+        if (j && j.host_label) {
+            try { localStorage.setItem(LS_KEY, j.host_label); } catch (_) {}
+            return j.host_label;
+        }
+    } catch (_) {}
+    return '';
+}
+
 function setHostLabel(label) {
     try {
         if (label) localStorage.setItem(LS_KEY, label);
         else localStorage.removeItem(LS_KEY);
     } catch (_) {}
+}
+
+function isPortableUA() {
+    return /iPad|iPhone|iPod|Android|Silk\/|Fire/i.test(navigator.userAgent);
 }
 
 export const performanceThrottle = {
@@ -161,6 +189,37 @@ export const performanceThrottle = {
      */
     async init($panel) {
         if (!$panel || !$panel.length) return;
+
+        // Try to auto-resolve host_label from trusted_devices (FK populated
+        // by the host-agent's ping). If it succeeds and the input is empty,
+        // pre-fill it so the user doesn't have to type their hostname.
+        const resolved = await resolveHostLabelFromServer();
+        if (resolved && !$panel.find('#perf-host-label').val().trim()) {
+            $panel.find('#perf-host-label').val(resolved);
+            $panel.find('#perf-throttle-controls').css({ opacity: '', pointerEvents: '' });
+        }
+
+        // Portable UA: replace the throttle controls with a friendly empty
+        // state. iOS/Android have OS-level power management; we don't try
+        // to fight them. Users can still pop into the full UI via /streams?full=1.
+        if (isPortableUA() && !resolved) {
+            $panel.find('#perf-throttle-controls').html(`
+                <div class="setting-row" style="border-left-color:#888;">
+                    <div class="setting-top">
+                        <div class="setting-label"><i class="fas fa-mobile-alt"></i> Portable Device</div>
+                    </div>
+                    <div class="setting-description">
+                        Performance throttling is a Linux-kiosk feature.
+                        On this device the OS already handles power management
+                        (background CPU throttling, screen-lock decode pause,
+                        memory pressure). The light UI at <code>/light</code>
+                        is the default for portable devices — switch back to
+                        the full UI any time via the navigation menu or
+                        <code>?full=1</code> on /streams.
+                    </div>
+                </div>
+            `);
+        }
 
         // Bind/Save host label
         $panel.find('#perf-host-label-save').off('click.perf').on('click.perf', () => {

@@ -255,6 +255,12 @@ def api_host_state_push():
             host_label, prev.get("display_state"), body.get("display_state"),
         )
 
+    # Auto-bind any trusted_devices rows from this kiosk's IP to this
+    # host_label, so the page can resolve "what machine am I on?" on its
+    # own next time the user opens it. Idempotent: only touches rows where
+    # host_label is currently NULL — never overwrites a manual binding.
+    _bind_devices_to_host(host_label)
+
     return ("", 204)
 
 
@@ -294,6 +300,49 @@ def _db_conn():
         password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
         connect_timeout=3,
     )
+
+
+def _client_ip() -> str:
+    """Best-effort source IP for the current request, honoring X-Forwarded-For."""
+    fwd = request.headers.get("X-Forwarded-For", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.remote_addr or ""
+
+
+def _bind_devices_to_host(host_label: str) -> None:
+    """
+    Auto-populate trusted_devices.host_label for any rows whose ip_address
+    matches the agent's source IP and that don't already have a binding.
+
+    Why best-effort: a kiosk behind NAT shares an IP with other browsers
+    inside the same LAN. The IP-match is good enough for "the agent and
+    the browser are on the same wire" — false positives just give other
+    browsers on that subnet the same host_label, which is fine for the
+    Performance UI's auto-fill (the worst case is the user sees the wrong
+    label and edits it).
+    """
+    ip = _client_ip()
+    if not ip:
+        return
+    try:
+        with _db_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE trusted_devices
+                   SET host_label = %s
+                 WHERE host_label IS NULL
+                   AND ip_address = %s
+                """,
+                (host_label, ip),
+            )
+            if cur.rowcount:
+                logger.info(
+                    "host_state[%s]: auto-bound %d trusted_devices row(s) from IP %s",
+                    host_label, cur.rowcount, ip,
+                )
+    except Exception:
+        logger.exception("host_state: trusted_devices auto-bind failed")
 
 
 def _upsert_and_get_host_settings(host_label: str) -> Dict[str, Any]:
@@ -483,6 +532,70 @@ def api_host_settings_put(host_label: str):
             logger.exception("host_state: failed to broadcast settings change")
 
     return jsonify(settings)
+
+
+# --------------------------------------------------------------------------
+# GET /api/host/whoami — resolve the host_label for the current browser.
+#
+# Reads the device_token cookie (set by routes/auth.py), looks up the
+# trusted_devices row, returns its host_label (and as a fallback, attempts
+# an IP match against any host_settings row whose last-known IP matches).
+# Used by the Performance settings tab to auto-fill the host_label field
+# without making the user type their hostname.
+# --------------------------------------------------------------------------
+@host_state_bp.route("/api/host/whoami", methods=["GET"])
+@login_required
+def api_host_whoami():
+    device_token = request.cookies.get("device_token")
+    host_label: Optional[str] = None
+    source = "none"
+
+    # 1) Direct lookup via the device_token FK
+    if device_token:
+        try:
+            with _db_conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT host_label FROM trusted_devices WHERE device_token = %s",
+                    (device_token,),
+                )
+                row = cur.fetchone()
+                if row and row[0]:
+                    host_label = row[0]
+                    source = "trusted_devices"
+        except Exception:
+            logger.exception("host_state whoami: trusted_devices lookup failed")
+
+    # 2) Fallback: match by current request IP against any device that
+    #    HAS a host_label bound. Useful when the user just installed the
+    #    agent on a new browser whose token hasn't been auto-bound yet.
+    if not host_label:
+        ip = _client_ip()
+        if ip:
+            try:
+                with _db_conn() as conn, conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT host_label
+                          FROM trusted_devices
+                         WHERE ip_address = %s
+                           AND host_label IS NOT NULL
+                         ORDER BY last_seen DESC
+                         LIMIT 1
+                        """,
+                        (ip,),
+                    )
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        host_label = row[0]
+                        source = "ip_match"
+            except Exception:
+                logger.exception("host_state whoami: ip_match lookup failed")
+
+    return jsonify({
+        "host_label": host_label,
+        "source": source,
+        "client_ip": _client_ip(),
+    })
 
 
 # --------------------------------------------------------------------------

@@ -35,7 +35,10 @@ const api = {
         return resp.json();
     },
     status:   ()       => api._json('/api/evidence/status'),
-    feed:     (cursor) => api._json('/api/evidence/feed' + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '')),
+    // Backend pagination uses since=<manifest_id> + returns next_since/has_more.
+    // Earlier draft assumed an opaque cursor — that mismatch is why the feed
+    // rendered as empty despite 13k+ audio_capture entries in the manifest.
+    feed:     (since) => api._json('/api/evidence/feed' + (since ? `?since=${encodeURIComponent(since)}` : '')),
     event:    (id)     => api._json(`/api/evidence/event/${id}`),
     cameras:  ()       => api._json('/api/evidence/cameras'),
     cases:    ()       => api._json('/api/evidence/cases'),
@@ -53,7 +56,7 @@ const api = {
 
 const state = {
     feedItems:  [],
-    feedCursor: null,
+    feedSince:  0,        // last-seen manifest_id; backend wants `since=<int>`
     feedFinished: false,
     cameras:    [],
     cases:      [],
@@ -208,7 +211,7 @@ async function loadFeedPage(reset = false) {
 
     if (reset) {
         state.feedItems = [];
-        state.feedCursor = null;
+        state.feedSince = 0;
         state.feedFinished = false;
         $('#cd-feed-tbody').html(`
             <tr class="cd-empty-row"><td colspan="7">
@@ -221,7 +224,7 @@ async function loadFeedPage(reset = false) {
     $('#cd-load-more').prop('disabled', true);
     let page;
     try {
-        page = await api.feed(state.feedCursor);
+        page = await api.feed(state.feedSince || 0);
     } catch (e) {
         console.error('[CollectedData] feed fetch failed', e);
         $('#cd-feed-status').text(`error: ${e.message}`);
@@ -229,10 +232,11 @@ async function loadFeedPage(reset = false) {
         return;
     }
 
-    const items = page.items || [];
+    const items = page.entries || [];
     state.feedItems.push(...items);
-    state.feedCursor = page.next_cursor || null;
-    state.feedFinished = !state.feedCursor || items.length === 0;
+    // Backend returns next_since (last seen manifest_id) and has_more.
+    state.feedSince = (typeof page.next_since === 'number') ? page.next_since : state.feedSince;
+    state.feedFinished = !page.has_more || items.length === 0;
     state.loading = false;
 
     renderFeed();

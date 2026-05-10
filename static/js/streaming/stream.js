@@ -1124,10 +1124,20 @@ export class MultiStreamManager {
         });
 
         // Global emergency exit - triple-click anywhere to force exit fullscreen
-        // Useful when stream is frozen and button/ESC not responding
+        // Useful when stream is frozen and button/ESC not responding.
+        //
+        // CRITICAL: ignore clicks whose target is inside any interactive
+        // element (PTZ pad, stream controls, more-menu, buttons, inputs).
+        // Without this filter, rapid PTZ presses (pan/pan/pan) reach 3
+        // clicks inside 500ms and trigger an accidental fullscreen exit —
+        // exactly the regression reported on 2026-05-10. Same predicate
+        // the expand-on-tap handler uses below.
         let tripleClickTimer = null;
         let clickCount = 0;
-        $(document).on('click', () => {
+        $(document).on('click', (e) => {
+            if ($(e.target).closest('button, .ptz-controls, .stream-controls, .stream-more-menu, a, input, select').length) {
+                return;
+            }
             clickCount++;
             if (clickCount >= 3) {
                 const $fullscreenItem = $('.stream-item.css-fullscreen');

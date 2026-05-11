@@ -5169,6 +5169,33 @@ export class MultiStreamManager {
                 // 'fullscreen_request' on /stream_events. Open fullscreen the
                 // same way a click would (openFullscreen writes localStorage,
                 // so the chosen camera persists on reload).
+                this.streamEventsSocket.on('fullscreen_exit', async (msg) => {
+                    try {
+                        if (msg && msg.host_label && hostLabel && msg.host_label !== hostLabel) return;
+                        const $current = $('.stream-item.css-fullscreen');
+                        if (!$current.length) {
+                            // Even if not currently fullscreen, clear the
+                            // persisted target so a later reload doesn't
+                            // restore one.
+                            localStorage.removeItem('fullscreenCameraSerial');
+                            console.log('[Fullscreen] remote exit (nothing was fullscreen — cleared persistence)');
+                            return;
+                        }
+                        console.log('[Fullscreen] remote exit -> closing current');
+                        try {
+                            await this.closeFullscreen();
+                        } catch (e) {
+                            console.warn('[Fullscreen] closeFullscreen failed, forcing:', e);
+                            this.forceExitFullscreen();
+                        }
+                        // closeFullscreen() already removes the localStorage
+                        // entry; this is belt-and-suspenders for the force path.
+                        localStorage.removeItem('fullscreenCameraSerial');
+                    } catch (e) {
+                        console.warn('[Fullscreen] remote exit handler error:', e);
+                    }
+                });
+
                 this.streamEventsSocket.on('fullscreen_request', async (msg) => {
                     try {
                         if (!msg || !msg.serial) return;

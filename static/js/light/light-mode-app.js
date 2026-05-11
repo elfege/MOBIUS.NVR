@@ -135,6 +135,16 @@ class LightModeApp {
                 if (idx < 0) return;
                 this.fullscreen.open(idx);
             });
+            sock.on('fullscreen_exit', (msg) => {
+                if (msg && msg.host_label && myLabel && msg.host_label !== myLabel) return;
+                if (this.fullscreen.isActive) {
+                    this.fullscreen.close();
+                } else {
+                    // Not currently fullscreen — still clear persistence so
+                    // the next page reload doesn't restore one.
+                    try { localStorage.removeItem('nvr_light_fs_cam'); } catch (_) {}
+                }
+            });
         } catch (e) {
             console.warn('[LightModeApp] remote fullscreen-switch bind failed:', e);
         }

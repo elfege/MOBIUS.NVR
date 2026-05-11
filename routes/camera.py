@@ -985,6 +985,42 @@ def api_fullscreen_switch():
     return jsonify(payload)
 
 
+@camera_bp.route('/api/fullscreen/exit', methods=['POST'])
+@csrf_exempt
+def api_fullscreen_exit():
+    """
+    Tell the kiosk(s) to exit fullscreen and return to the grid view.
+    Also clears the local persistence (localStorage.fullscreenCameraSerial
+    on /streams, localStorage.nvr_light_fs_cam on /light) so the next
+    page reload doesn't restore the prior fullscreen.
+
+    Body:
+        {"host_label": "rog"}    optional — scope to one kiosk; absent
+                                 means every viewer.
+
+    Auth: Bearer NVR_API_TOKEN only. Same authority as the switch
+    endpoint — both are remote-control mutations.
+    """
+    if not _bearer_only_auth():
+        return jsonify({'error': 'unauthorized'}), 401
+
+    body = request.get_json(silent=True) or {}
+    host_label = (body.get('host_label') or '').strip() or None
+
+    if _socketio is None:
+        return jsonify({'error': 'socketio not ready'}), 503
+
+    payload = {'host_label': host_label, 'ts': time.time()}
+    try:
+        _socketio.emit('fullscreen_exit', payload, namespace='/stream_events')
+    except Exception as e:
+        logger.exception('fullscreen_exit: emit failed')
+        return jsonify({'error': f'emit failed: {e}'}), 500
+
+    logger.info('fullscreen_exit: host_label=%s', host_label or '<any>')
+    return jsonify(payload)
+
+
 def _nickname_db_conn():
     """Minimal direct connection — same pattern as routes/host_state.py."""
     return psycopg2.connect(

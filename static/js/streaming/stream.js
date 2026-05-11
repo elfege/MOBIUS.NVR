@@ -4865,14 +4865,26 @@ export class MultiStreamManager {
     }
 
     async restoreFullscreenFromLocalStorage() {
-        const savedCameraId = localStorage.getItem('fullscreenCameraSerial');
+        // Priority: ?fullscreen=<nickname|serial> from the URL (server
+        // already resolved nickname -> serial and put it in
+        // window.FULLSCREEN_REQUEST) overrides any saved state. Calling
+        // openFullscreen() below also writes to localStorage, so a fresh
+        // reload without the query param still lands on the same camera.
+        const requested = (typeof window.FULLSCREEN_REQUEST === 'string' && window.FULLSCREEN_REQUEST)
+            ? window.FULLSCREEN_REQUEST
+            : null;
+        const savedCameraId = requested || localStorage.getItem('fullscreenCameraSerial');
 
         if (!savedCameraId) {
             console.log('[Fullscreen] No saved fullscreen camera found');
             return;
         }
 
-        console.log(`[Fullscreen] Found saved camera in localStorage: ${savedCameraId}`);
+        if (requested) {
+            console.log(`[Fullscreen] URL-requested camera: ${requested}`);
+        } else {
+            console.log(`[Fullscreen] Found saved camera in localStorage: ${savedCameraId}`);
+        }
         console.log('[Fullscreen] Restoring CSS fullscreen (no user interaction required)...');
 
         // Find the stream-item

@@ -552,9 +552,12 @@ def _resolve_free_nickname(bases, taken: set) -> str | None:
         if base not in taken:
             return base
 
-    # 2) Digit-suffix the primary base.
+    # 2) Digit-suffix the primary base. Starts at 1, not 0 — the bare
+    #    base is conceptually the "first" of its line, so the next
+    #    collision is "<base>1" rather than "<base>0". Regex allows any
+    #    single digit so 1..9 covers nine duplicates per base.
     primary = bases[0]
-    for d in range(10):
+    for d in range(1, 10):
         candidate = f'{primary}{d}'
         if candidate in _NICKNAME_BRAND_BLACKLIST:
             continue

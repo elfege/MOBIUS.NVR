@@ -490,47 +490,86 @@ _NICKNAME_BRAND_BLACKLIST = frozenset({
 })
 
 
-def _autogen_base_from_last_word(name: str) -> str:
+def _autogen_bases_from_name(name: str) -> list:
     """
-    Derive an auto-generated nickname base from the last token of the
-    camera's display name. Rule (per operator request 2026-05-11):
+    Derive candidate nickname bases from the display name, in priority
+    order (per operator request 2026-05-11):
 
-        split on '_' or ' ', take last word, lowercase, strip non-alpha.
+        1. Last word              (split on '_' or ' ', lowercase, strip non-alpha)
+        2. Penultimate word       — only if it isn't a brand/vendor name
 
-    Examples:
-        'AMCREST LOBBY'        -> 'lobby'
-        'Entrance door'        -> 'door'
-        'Former CAM STAIRS'    -> 'stairs'
-        'Reolink 1'            -> ''       (last token is digits-only)
-        ''                     -> ''
-        'T821451024233587'     -> 't'      (one alpha char; valid regex but
-                                            short — caller can decide to skip)
+    The penultimate fallback addresses collisions where two cameras
+    share a last word but differ in the word before:
+
+        LAUNDRY ROOM   -> last='room',  penult='laundry'  -> ['room', 'laundry']
+        Living Room    -> last='room',  penult='living'   -> ['room', 'living']
+        AMCREST LOBBY  -> last='lobby', penult='amcrest' (BRAND -> dropped)
+                       -> ['lobby']
+        Former CAM STAIRS -> ['stairs', 'cam']
+        STAIRS         -> ['stairs']                       (only one word)
+        Reolink 1      -> last='1' (digits) -> stripped to '' -> []
     """
     if not name:
-        return ''
-    parts = re.split(r'[_ ]+', name.strip())
-    if not parts:
-        return ''
-    last = parts[-1].lower()
-    return re.sub(r'[^a-z]', '', last)
+        return []
+    parts = [p for p in re.split(r'[_ ]+', name.strip()) if p]
+    bases = []
+    if parts:
+        last = re.sub(r'[^a-z]', '', parts[-1].lower())
+        if last:
+            bases.append(last)
+    if len(parts) >= 2:
+        penult = re.sub(r'[^a-z]', '', parts[-2].lower())
+        if penult and penult not in _NICKNAME_BRAND_BLACKLIST:
+            bases.append(penult)
+    return bases
 
 
-def _resolve_free_nickname(base: str, taken: set) -> str | None:
+def _resolve_free_nickname(bases, taken: set) -> str | None:
     """
-    Given an auto-generated base, return the first free variant:
-    `<base>`, `<base>0`, `<base>1`, …, `<base>9`. None if base is
-    invalid (empty, reserved brand) or all 10 slots are taken.
+    Given a priority-ordered list of base candidates, find the first
+    free nickname:
+
+        For each base in order, try the BARE base (no digit) — this is
+        the "use previous word on collision" fallback.
+
+        If every bare base is taken, fall back to digit-suffixing the
+        FIRST (primary) base: <primary>0, <primary>1, …, <primary>9.
+
+    Returns None if every bare variant is taken or reserved, AND every
+    digit-suffix slot for the primary base is also taken. Caller can
+    surface this as "all variants exhausted, please pick manually."
     """
-    if not base or base in _NICKNAME_BRAND_BLACKLIST:
+    # Accept either a single string (legacy callers) or a list.
+    if isinstance(bases, str):
+        bases = [bases]
+    bases = [b for b in (bases or []) if b and b not in _NICKNAME_BRAND_BLACKLIST]
+    if not bases:
         return None
-    candidates = [base] + [f'{base}{d}' for d in range(10)]
-    for c in candidates:
-        if c in _NICKNAME_BRAND_BLACKLIST:
+
+    # 1) Try every bare base in priority order — last word first, then
+    #    penultimate (already brand-filtered above).
+    for base in bases:
+        if base not in taken:
+            return base
+
+    # 2) Digit-suffix the primary base.
+    primary = bases[0]
+    for d in range(10):
+        candidate = f'{primary}{d}'
+        if candidate in _NICKNAME_BRAND_BLACKLIST:
             continue
-        if c in taken:
-            continue
-        return c
+        if candidate not in taken:
+            return candidate
+
     return None
+
+
+# Backward-compat wrapper for callers (e.g. /api/cameras/nicknames?suggest_for=)
+# that still pass a single name and expect the same behavior the field
+# used to have. Internally just routes through the new bases pipeline.
+def _autogen_base_from_last_word(name: str) -> str:
+    bases = _autogen_bases_from_name(name)
+    return bases[0] if bases else ''
 
 
 def autogenerate_missing_nicknames() -> dict:
@@ -563,13 +602,13 @@ def autogenerate_missing_nicknames() -> dict:
                 if nick is not None:
                     continue
                 summary["considered"] += 1
-                base = _autogen_base_from_last_word(name or '')
-                if not base:
+                bases = _autogen_bases_from_name(name or '')
+                if not bases:
                     summary["skipped"][serial] = 'no alphabetic last word'
                     continue
-                chosen = _resolve_free_nickname(base, taken)
+                chosen = _resolve_free_nickname(bases, taken)
                 if not chosen:
-                    summary["skipped"][serial] = f'base "{base}" exhausted or reserved'
+                    summary["skipped"][serial] = f'bases {bases} exhausted or reserved'
                     continue
                 try:
                     cur.execute(
@@ -609,21 +648,15 @@ def api_cameras_nicknames_autogen():
 
 def _suggest_nickname(camera_name: str, existing_nicknames: set) -> str | None:
     """
-    Derive a candidate nickname from a camera's display name.
-    Strips non-alpha, lowercases; if the bare base is taken or invalid,
-    tries base0..base9. Returns None if all 10 are taken (caller asks
-    the user for a different prefix).
+    Derive a candidate nickname from a camera's display name for the
+    Settings UI Suggest button. Uses the same priority order as the
+    boot autogenerator:
+        last word > penultimate word (if not brand) > <last>0..9
     """
-    base = re.sub(r'[^a-z]', '', (camera_name or '').lower()) or 'camera'
-    if base in _NICKNAME_BRAND_BLACKLIST:
-        # Don't suggest brand-only bases — operator should rename camera
-        # or pick something else.
-        return None
-    candidates = [base] + [f'{base}{d}' for d in range(10)]
-    for c in candidates:
-        if c not in existing_nicknames and c not in _NICKNAME_BRAND_BLACKLIST:
-            return c
-    return None
+    bases = _autogen_bases_from_name(camera_name or '')
+    if not bases:
+        bases = ['camera']
+    return _resolve_free_nickname(bases, set(existing_nicknames or ()))
 
 
 @camera_bp.route('/api/camera/<camera_serial>/nickname', methods=['PUT'])

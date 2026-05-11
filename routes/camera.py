@@ -524,45 +524,53 @@ def _autogen_bases_from_name(name: str) -> list:
     return bases
 
 
-def _resolve_free_nickname(bases, taken: set) -> str | None:
+def _resolve_free_nickname(bases, taken: set, digit_base: str | None = None) -> str | None:
     """
     Given a priority-ordered list of base candidates, find the first
     free nickname:
 
-        For each base in order, try the BARE base (no digit) — this is
-        the "use previous word on collision" fallback.
+        1. Try every bare base in order (last word, then penultimate
+           if not a brand).
+        2. Fall back to digit-suffixing — using `digit_base` if the
+           caller supplied one (so a contested primary that was
+           stripped from `bases` can still receive its <primary>N
+           cascade), else `bases[0]`.
 
-        If every bare base is taken, fall back to digit-suffixing the
-        FIRST (primary) base: <primary>0, <primary>1, …, <primary>9.
-
-    Returns None if every bare variant is taken or reserved, AND every
-    digit-suffix slot for the primary base is also taken. Caller can
-    surface this as "all variants exhausted, please pick manually."
+    Returns None if every option is exhausted.
     """
     # Accept either a single string (legacy callers) or a list.
     if isinstance(bases, str):
         bases = [bases]
     bases = [b for b in (bases or []) if b and b not in _NICKNAME_BRAND_BLACKLIST]
-    if not bases:
+    digit_root = digit_base if (digit_base and digit_base not in _NICKNAME_BRAND_BLACKLIST) \
+        else (bases[0] if bases else None)
+    if not bases and not digit_root:
         return None
 
-    # 1) Try every bare base in priority order — last word first, then
-    #    penultimate (already brand-filtered above).
+    # 1) Bare bases in priority order. Skip a bare base if numbered
+    #    siblings (<base>1..9) already exist in `taken` — otherwise we'd
+    #    end up with mixed `living` + `living1` + `living2` assignments,
+    #    which contradicts the "all-numbered if contested" rule the
+    #    operator set on 2026-05-11. If the bare slot is "alone" it's
+    #    still usable.
+    def _has_numbered_sibling(b):
+        return any(f'{b}{d}' in taken for d in range(1, 10))
+
     for base in bases:
-        if base not in taken:
+        if base not in taken and not _has_numbered_sibling(base):
             return base
 
-    # 2) Digit-suffix the primary base. Starts at 1, not 0 — the bare
-    #    base is conceptually the "first" of its line, so the next
-    #    collision is "<base>1" rather than "<base>0". Regex allows any
-    #    single digit so 1..9 covers nine duplicates per base.
-    primary = bases[0]
-    for d in range(1, 10):
-        candidate = f'{primary}{d}'
-        if candidate in _NICKNAME_BRAND_BLACKLIST:
-            continue
-        if candidate not in taken:
-            return candidate
+    # 2) Digit cascade — starts at 1 because the bare base is
+    #    conceptually the "first" of its line, so a sibling is
+    #    "<base>1" rather than "<base>0". Regex allows any single
+    #    digit so 1..9 covers nine duplicates per base.
+    if digit_root:
+        for d in range(1, 10):
+            candidate = f'{digit_root}{d}'
+            if candidate in _NICKNAME_BRAND_BLACKLIST:
+                continue
+            if candidate not in taken:
+                return candidate
 
     return None
 
@@ -592,6 +600,8 @@ def autogenerate_missing_nicknames() -> dict:
     raise) and also reachable via POST /api/cameras/nicknames/auto-generate
     for re-runs after a batch of camera renames.
     """
+    from collections import Counter
+
     summary = {"considered": 0, "assigned": {}, "skipped": {}}
     try:
         with _nickname_db_conn() as conn, conn.cursor() as cur:
@@ -601,17 +611,68 @@ def autogenerate_missing_nicknames() -> dict:
             rows = cur.fetchall()
             taken = {nick for (_s, _n, nick) in rows if nick}
 
-            for (serial, name, nick) in rows:
-                if nick is not None:
-                    continue
+            # Pre-pass: tally every primary base that would be claimed
+            # by a NULL row AND every primary base already occupied by an
+            # existing nickname. Treats "lobby" and "lobby1" both as
+            # claiming the base "lobby" so contests are detected
+            # regardless of the digit suffix already present in the DB.
+            #
+            # If a primary ends up with more than one claimant we drop
+            # the BARE primary from that camera's candidate list — the
+            # rule is "either uniquely named bare, or all numbered".
+            # Avoids the awkward `living` + `living1` mix the operator
+            # flagged on 2026-05-11.
+            null_rows = [(s, n) for (s, n, nick) in rows if nick is None]
+            bases_per_serial = {}
+            primary_count = Counter()
+            for serial, name in null_rows:
+                # Brand-filter at the pre-pass so primary_count reflects
+                # the EFFECTIVE primary each camera would actually claim.
+                # Without this filter `Living_REOLINK` (raw bases
+                # [reolink, living]) would be counted under 'reolink'
+                # while its real claim is on 'living'.
+                b = [bb for bb in _autogen_bases_from_name(name or '')
+                     if bb not in _NICKNAME_BRAND_BLACKLIST]
+                bases_per_serial[serial] = b
+                if b:
+                    primary_count[b[0]] += 1
+            for nick in taken:
+                m = re.match(r'^([a-z]+)[0-9]?$', nick)
+                if m:
+                    primary_count[m.group(1)] += 1
+
+            # Process order: cameras with FEWER viable bases first.
+            # A single-option camera has no fallback — its primary is
+            # forced and locking it in early lets multi-option cameras
+            # adapt around it. Without this ordering, a multi-option
+            # camera with a unique penultimate can claim a bare base
+            # like 'living' before its single-option siblings arrive,
+            # ending up with the forbidden `living` + `living1` mix.
+            def _ord_key(row):
+                serial, name = row
+                viable = [b for b in (bases_per_serial.get(serial) or [])
+                          if b and b not in _NICKNAME_BRAND_BLACKLIST]
+                return (len(viable) or 99, name or '')
+            ordered_rows = sorted(null_rows, key=_ord_key)
+
+            for (serial, name) in ordered_rows:
                 summary["considered"] += 1
-                bases = _autogen_bases_from_name(name or '')
+                bases = bases_per_serial.get(serial) or _autogen_bases_from_name(name or '')
                 if not bases:
                     summary["skipped"][serial] = 'no alphabetic last word'
                     continue
-                chosen = _resolve_free_nickname(bases, taken)
+                # If the primary is contested, strip it from the bare-base
+                # candidate list (penultimate fallback still tried bare;
+                # digit-cascade still uses primary).
+                primary = bases[0]
+                contested = primary_count[primary] > 1
+                effective_bases = bases[1:] if contested else bases
+                chosen = _resolve_free_nickname(effective_bases, taken, digit_base=primary)
                 if not chosen:
-                    summary["skipped"][serial] = f'bases {bases} exhausted or reserved'
+                    summary["skipped"][serial] = (
+                        f'bases {bases} exhausted or reserved'
+                        + (' (contested primary)' if contested else '')
+                    )
                     continue
                 try:
                     cur.execute(

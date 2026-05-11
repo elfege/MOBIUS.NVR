@@ -5169,7 +5169,7 @@ export class MultiStreamManager {
                 // 'fullscreen_request' on /stream_events. Open fullscreen the
                 // same way a click would (openFullscreen writes localStorage,
                 // so the chosen camera persists on reload).
-                this.streamEventsSocket.on('fullscreen_request', (msg) => {
+                this.streamEventsSocket.on('fullscreen_request', async (msg) => {
                     try {
                         if (!msg || !msg.serial) return;
                         // Targeted broadcast — only act if our host_label
@@ -5180,11 +5180,31 @@ export class MultiStreamManager {
                             console.warn('[Fullscreen] remote request for unknown serial', msg.serial);
                             return;
                         }
+
+                        // openFullscreen() early-returns if any tile is already
+                        // in .css-fullscreen, so a remote switch from camera A
+                        // to camera B is a no-op without closing first. If we
+                        // are already fullscreen on the SAME camera, skip.
+                        const $current = $('.stream-item.css-fullscreen');
+                        if ($current.length) {
+                            if ($current.data('camera-serial') === msg.serial) {
+                                console.log('[Fullscreen] remote request matches current fullscreen — no-op');
+                                return;
+                            }
+                            console.log('[Fullscreen] closing current fullscreen before opening', msg.serial);
+                            try {
+                                await this.closeFullscreen();
+                            } catch (e) {
+                                console.warn('[Fullscreen] closeFullscreen failed, forcing:', e);
+                                this.forceExitFullscreen();
+                            }
+                        }
+
                         const name = $item.data('camera-name');
                         const cameraType = $item.data('camera-type');
                         const streamType = $item.data('stream-type');
                         console.log(`[Fullscreen] remote request -> ${msg.serial} (nickname=${msg.nickname || 'n/a'})`);
-                        this.openFullscreen(msg.serial, name, cameraType, streamType);
+                        await this.openFullscreen(msg.serial, name, cameraType, streamType);
                     } catch (e) {
                         console.warn('[Fullscreen] remote request handler error:', e);
                     }

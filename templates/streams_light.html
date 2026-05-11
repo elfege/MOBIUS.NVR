@@ -318,6 +318,15 @@
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
 <!--
+    Socket.IO client — only used to receive remote fullscreen-switch
+    pushes from POST /api/fullscreen/switch (which emits the
+    'fullscreen_request' event on /stream_events). One ws connection,
+    one event. Tiny by /light standards; the benefit is real-time
+    switching from external integrations.
+-->
+<script src="/socket.io/socket.io.js"></script>
+
+<!--
     Application entry point — ES6 module that wires LightModeApp,
     LightGridRenderer, and LightFullscreenManager together. Replaces
     the prior inline IIFE (which violated §3.10.5: ES6 modules and

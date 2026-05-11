@@ -5164,6 +5164,31 @@ export class MultiStreamManager {
                 const hostLabel = urlLabel || lsLabel || null;
                 this.visibilityManager?.attachHostStateSocket(this.streamEventsSocket, hostLabel);
                 this.throttleController?.attach(this.streamEventsSocket, hostLabel);
+
+                // Remote fullscreen-switch: POST /api/fullscreen/switch emits
+                // 'fullscreen_request' on /stream_events. Open fullscreen the
+                // same way a click would (openFullscreen writes localStorage,
+                // so the chosen camera persists on reload).
+                this.streamEventsSocket.on('fullscreen_request', (msg) => {
+                    try {
+                        if (!msg || !msg.serial) return;
+                        // Targeted broadcast — only act if our host_label
+                        // matches (or the broadcast is unscoped).
+                        if (msg.host_label && hostLabel && msg.host_label !== hostLabel) return;
+                        const $item = $(`.stream-item[data-camera-serial="${msg.serial}"]`);
+                        if (!$item.length) {
+                            console.warn('[Fullscreen] remote request for unknown serial', msg.serial);
+                            return;
+                        }
+                        const name = $item.data('camera-name');
+                        const cameraType = $item.data('camera-type');
+                        const streamType = $item.data('stream-type');
+                        console.log(`[Fullscreen] remote request -> ${msg.serial} (nickname=${msg.nickname || 'n/a'})`);
+                        this.openFullscreen(msg.serial, name, cameraType, streamType);
+                    } catch (e) {
+                        console.warn('[Fullscreen] remote request handler error:', e);
+                    }
+                });
             } catch (e) {
                 console.warn('[WEBSOCKET] Failed to attach host-agent bridges:', e);
             }

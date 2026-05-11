@@ -104,10 +104,40 @@ class LightModeApp {
         this._wireTopBar();
         this._wireKeyboard();
         this._wireVisibility();
+        this._wireRemoteFullscreenSwitch();
 
         this.grid.render();
         this._restoreFullscreenIfPersisted();
         this._scheduleAutoReload();
+    }
+
+    /**
+     * Subscribe to the SocketIO 'fullscreen_request' event broadcast by
+     * POST /api/fullscreen/switch. Reuses fullscreen.open() so the same
+     * localStorage persistence native taps trigger applies.
+     *
+     * host_label filtering: if the broadcast specifies a host_label and
+     * this browser has one bound (localStorage.mobius_host_label, the
+     * same key the throttle controller / visibility bridge use), we only
+     * act on a match. Unscoped broadcasts (no host_label) reach every
+     * viewer.
+     */
+    _wireRemoteFullscreenSwitch() {
+        if (typeof io === 'undefined') return;  // socket.io-client not loaded
+        let myLabel = null;
+        try { myLabel = localStorage.getItem('mobius_host_label') || null; } catch (_) {}
+        try {
+            const sock = io('/stream_events', { transports: ['websocket', 'polling'] });
+            sock.on('fullscreen_request', (msg) => {
+                if (!msg || !msg.serial) return;
+                if (msg.host_label && myLabel && msg.host_label !== myLabel) return;
+                const idx = this.cameras.findIndex((c) => c.id === msg.serial);
+                if (idx < 0) return;
+                this.fullscreen.open(idx);
+            });
+        } catch (e) {
+            console.warn('[LightModeApp] remote fullscreen-switch bind failed:', e);
+        }
     }
 
 

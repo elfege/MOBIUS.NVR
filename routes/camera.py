@@ -575,11 +575,43 @@ def api_camera_set_nickname(camera_serial):
     return jsonify({'serial': camera_serial, 'nickname': nickname})
 
 
+def _nickname_read_authorized() -> bool:
+    """
+    Authorize the GET /api/cameras/nicknames endpoint.
+
+    Three accepted paths, in order:
+      1. Active Flask-Login session (the normal browser case).
+      2. Authorization: Bearer <NVR_API_TOKEN>  (external integrations,
+         same token routes/external_api_routes.py and routes/host_state.py
+         already accept).
+      3. LAN-only fallback when NVR_API_TOKEN is unset (dev convenience,
+         matches the pattern in routes/host_state.py:_check_bearer).
+    """
+    # 1) session
+    if getattr(current_user, 'is_authenticated', False):
+        return True
+    # 2) bearer
+    token_env = os.environ.get('NVR_API_TOKEN', '').strip()
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer ') and token_env:
+        return auth[7:] == token_env
+    # 3) LAN fallback (only when no token configured — dev mode)
+    if not token_env:
+        ip = (request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+              or request.remote_addr or '')
+        return ip.startswith(('10.', '172.', '192.168.', '127.')) or ip == '::1'
+    return False
+
+
 @camera_bp.route('/api/cameras/nicknames', methods=['GET'])
-@login_required
 def api_cameras_nicknames():
     """
     List every camera with its nickname (null if unset).
+
+    Auth: session OR Bearer NVR_API_TOKEN OR LAN-fallback (when no token
+    configured). Intentionally NOT @login_required so external systems
+    (home automation, dashboards) can discover the URL handle for each
+    feed without a browser session.
 
     Response:
         {"cameras": [
@@ -593,6 +625,9 @@ def api_cameras_nicknames():
     that camera based on its display name. The suggestion is just a hint
     — the caller still has to PUT /api/camera/<serial>/nickname.
     """
+    if not _nickname_read_authorized():
+        return jsonify({'error': 'unauthorized'}), 401
+
     try:
         with _nickname_db_conn() as conn, conn.cursor() as cur:
             cur.execute(
@@ -621,6 +656,119 @@ def api_cameras_nicknames():
             out['suggestion'] = suggestion
 
     return jsonify(out)
+
+
+# ===== Remote fullscreen switch =====
+#
+# Allows an external integration (home automation, dashboard, voice
+# assistant) to push "show this camera fullscreen on the kiosk(s)"
+# without a browser session.
+#
+# Auth: Bearer NVR_API_TOKEN only. No session, no LAN fallback — this is
+# a mutation that affects what every viewer sees, so we require an
+# explicit credential. Use the same NVR_API_TOKEN that gates
+# /api/host/state and /api/external/*.
+#
+# Real-time path: emits a `fullscreen_request` event on the
+# /stream_events SocketIO namespace. Subscribers on /streams (stream.js)
+# and /light (light-mode-app.js) listen for this and call their
+# respective openFullscreen() — which writes localStorage exactly as a
+# native click would, so the chosen camera persists across reloads.
+#
+# Targeting: optional host_label scopes the event to one kiosk; absent
+# means "all viewers". Each browser reads its own host_label from
+# localStorage.mobius_host_label (same key the throttle controller uses)
+# and filters server events accordingly.
+
+_socketio = None  # injected by app.py via init_camera_socketio()
+
+
+def init_camera_socketio(socketio_instance) -> None:
+    """Called from app.py after socketio is constructed."""
+    global _socketio
+    _socketio = socketio_instance
+
+
+def _bearer_only_auth() -> bool:
+    """Bearer NVR_API_TOKEN required. No session, no LAN fallback."""
+    token_env = os.environ.get('NVR_API_TOKEN', '').strip()
+    if not token_env:
+        return False
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        return False
+    return auth[7:] == token_env
+
+
+@camera_bp.route('/api/fullscreen/switch', methods=['POST'])
+@csrf_exempt
+def api_fullscreen_switch():
+    """
+    Push a fullscreen target to the kiosk(s) in real time.
+
+    Body:
+        {
+          "target":     "lobby" | "T8416P0023352DA9",   (required)
+          "host_label": "rog"                            (optional;
+              if present, only browsers bound to this host_label react)
+        }
+
+    Returns:
+        200 {"serial": "...", "nickname": "...|null", "host_label": "...|null"}
+        400 {"error": "missing target"}
+        401 {"error": "unauthorized"}    (token missing/invalid)
+        404 {"error": "unknown target"}  (nickname or serial not found)
+        503 {"error": "socketio not ready"}
+    """
+    if not _bearer_only_auth():
+        return jsonify({'error': 'unauthorized'}), 401
+
+    body = request.get_json(silent=True) or {}
+    target = (body.get('target') or '').strip()
+    host_label = (body.get('host_label') or '').strip() or None
+    if not target:
+        return jsonify({'error': 'missing target'}), 400
+
+    # Resolve target -> canonical serial. Accept either an exact serial
+    # match or a nickname (case-insensitive).
+    cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
+    resolved_serial = None
+    resolved_nick = None
+    if target in cameras:
+        resolved_serial = target
+        resolved_nick = cameras[target].get('nickname')
+    else:
+        needle = target.lower()
+        for serial, info in cameras.items():
+            nick = (info.get('nickname') or '').lower()
+            if nick and nick == needle:
+                resolved_serial = serial
+                resolved_nick = info.get('nickname')
+                break
+
+    if not resolved_serial:
+        return jsonify({'error': 'unknown target', 'target': target}), 404
+
+    if _socketio is None:
+        return jsonify({'error': 'socketio not ready'}), 503
+
+    payload = {
+        'serial':     resolved_serial,
+        'nickname':   resolved_nick,
+        'host_label': host_label,
+        'ts':         time.time(),
+    }
+    try:
+        _socketio.emit('fullscreen_request', payload, namespace='/stream_events')
+    except Exception as e:
+        logger.exception('fullscreen_switch: emit failed')
+        return jsonify({'error': f'emit failed: {e}'}), 500
+
+    logger.info(
+        'fullscreen_switch: target=%r -> serial=%s (host_label=%s)',
+        target, resolved_serial, host_label or '<any>',
+    )
+    return jsonify(payload)
 
 
 def _nickname_db_conn():

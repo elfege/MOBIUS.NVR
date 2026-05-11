@@ -24,6 +24,7 @@ All service singletons are accessed via routes.shared to avoid circular imports.
 
 import os
 import logging
+import re
 import traceback
 import time
 from threading import Thread
@@ -466,6 +467,172 @@ def api_camera_rename(camera_serial):
     except Exception as e:
         logger.error(f"Error renaming camera {camera_serial}: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ===== Camera Nickname =====
+#
+# Optional short handle for URL-based addressing:
+#   GET /streams?fullscreen=lobby   (resolves nickname -> serial server-side)
+#   GET /light?fullscreen=lobby
+#
+# Validation lives both here (clear error messages) and in the DB
+# (migration 034 CHECK constraints). Keeping them in sync is intentional
+# — the DB is the final guard, this is the friendly one.
+
+_NICKNAME_REGEX = re.compile(r'^[a-z]+[0-9]?$')
+
+# Same blacklist as cameras_nickname_not_brand_chk in migration 034.
+# Keep in sync if either side changes.
+_NICKNAME_BRAND_BLACKLIST = frozenset({
+    'reolink', 'eufy', 'amcrest', 'sv3c', 'unifi',
+    'hikvision', 'dahua', 'axis', 'foscam', 'wyze',
+    'neolink', 'mediamtx', 'go2rtc', 'baichuan',
+})
+
+
+def _suggest_nickname(camera_name: str, existing_nicknames: set) -> str | None:
+    """
+    Derive a candidate nickname from a camera's display name.
+    Strips non-alpha, lowercases; if the bare base is taken or invalid,
+    tries base0..base9. Returns None if all 10 are taken (caller asks
+    the user for a different prefix).
+    """
+    base = re.sub(r'[^a-z]', '', (camera_name or '').lower()) or 'camera'
+    if base in _NICKNAME_BRAND_BLACKLIST:
+        # Don't suggest brand-only bases — operator should rename camera
+        # or pick something else.
+        return None
+    candidates = [base] + [f'{base}{d}' for d in range(10)]
+    for c in candidates:
+        if c not in existing_nicknames and c not in _NICKNAME_BRAND_BLACKLIST:
+            return c
+    return None
+
+
+@camera_bp.route('/api/camera/<camera_serial>/nickname', methods=['PUT'])
+@csrf_exempt
+@login_required
+def api_camera_set_nickname(camera_serial):
+    """
+    Set or clear a camera's nickname.
+
+    Body: {"nickname": "lobby"}     — set
+          {"nickname": null}        — clear
+          {"nickname": ""}          — clear
+
+    Returns:
+        200 {"serial": "...", "nickname": "..."} on success
+        400 {"error": "..."} on regex / brand / type errors
+        404 if camera not found
+        409 {"error": "...", "owner": "<other_serial>"} on collision
+    """
+    if not shared.camera_repo.get_camera(camera_serial):
+        return jsonify({'error': f'Camera not found: {camera_serial}'}), 404
+
+    body = request.get_json(silent=True) or {}
+    raw = body.get('nickname', None)
+
+    # Normalize: empty/whitespace/None -> clear
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        nickname = None
+    elif isinstance(raw, str):
+        nickname = raw.strip().lower()
+    else:
+        return jsonify({'error': 'nickname must be a string or null'}), 400
+
+    if nickname is not None:
+        if not _NICKNAME_REGEX.match(nickname):
+            return jsonify({'error': 'nickname must match ^[a-z]+[0-9]?$'}), 400
+        if nickname in _NICKNAME_BRAND_BLACKLIST:
+            return jsonify({'error': 'nickname is a reserved brand name'}), 409
+
+        # Collision check before write so we can return the conflicting
+        # serial in the error body — the DB UNIQUE index would also catch
+        # this but with an opaque IntegrityError.
+        try:
+            with _nickname_db_conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT serial FROM cameras "
+                    "WHERE nickname = %s AND serial != %s",
+                    (nickname, camera_serial),
+                )
+                hit = cur.fetchone()
+                if hit:
+                    return jsonify({
+                        'error': 'nickname already used by another camera',
+                        'owner': hit[0],
+                    }), 409
+        except Exception as e:
+            logger.exception("nickname collision-check failed")
+            return jsonify({'error': f'DB error: {e}'}), 500
+
+    success = shared.camera_repo.update_camera_setting(
+        camera_serial, 'nickname', nickname,
+    )
+    if not success:
+        return jsonify({'error': 'failed to write nickname'}), 500
+
+    return jsonify({'serial': camera_serial, 'nickname': nickname})
+
+
+@camera_bp.route('/api/cameras/nicknames', methods=['GET'])
+@login_required
+def api_cameras_nicknames():
+    """
+    List every camera with its nickname (null if unset).
+
+    Response:
+        {"cameras": [
+            {"serial": "...", "name": "Lobby", "nickname": "lobby"},
+            ...
+        ],
+         "suggestion_for": "<serial>": "<suggested_nickname>"   # optional
+        }
+
+    If ?suggest_for=<serial> is passed, attempt an auto-suggestion for
+    that camera based on its display name. The suggestion is just a hint
+    — the caller still has to PUT /api/camera/<serial>/nickname.
+    """
+    try:
+        with _nickname_db_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT serial, name, nickname "
+                "FROM cameras "
+                "ORDER BY nickname ASC NULLS LAST, name ASC"
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        logger.exception("nickname list failed")
+        return jsonify({'error': f'DB error: {e}'}), 500
+
+    cameras = [
+        {'serial': s, 'name': n, 'nickname': nick}
+        for (s, n, nick) in rows
+    ]
+    out = {'cameras': cameras}
+
+    suggest_for = (request.args.get('suggest_for') or '').strip()
+    if suggest_for:
+        target = next((c for c in cameras if c['serial'] == suggest_for), None)
+        if target:
+            taken = {c['nickname'] for c in cameras if c['nickname']}
+            suggestion = _suggest_nickname(target['name'] or '', taken)
+            out['suggestion_for'] = suggest_for
+            out['suggestion'] = suggestion
+
+    return jsonify(out)
+
+
+def _nickname_db_conn():
+    """Minimal direct connection — same pattern as routes/host_state.py."""
+    return psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST', 'postgres'),
+        port=os.getenv('POSTGRES_PORT', '5432'),
+        dbname=os.getenv('POSTGRES_DB', 'nvr'),
+        user=os.getenv('POSTGRES_USER', 'nvr_api'),
+        password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+        connect_timeout=3,
+    )
 
 
 # ===== Camera Settings (Generic) =====

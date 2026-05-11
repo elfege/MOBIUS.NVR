@@ -213,9 +213,26 @@ class LightModeApp {
         });
     }
 
-    /** If the user reloaded while in fullscreen, reopen on the same camera. */
+    /**
+     * Reopen fullscreen on page load.
+     *
+     * Priority:
+     *   1. ?fullscreen=<nickname|serial> from the URL — the server resolved
+     *      nickname to a canonical serial in window.FULLSCREEN_REQUEST.
+     *      Wins over a saved state so external links / shares behave
+     *      predictably.
+     *   2. localStorage 'nvr_light_fs_cam' — the camera the user was on
+     *      last time the page reloaded.
+     *
+     * fullscreen.open() writes the localStorage entry itself, so the URL
+     * path also rewrites memory and a subsequent reload without the query
+     * param keeps the user where they were.
+     */
     _restoreFullscreenIfPersisted() {
-        const savedSerial = localStorage.getItem('nvr_light_fs_cam');
+        const requested = (typeof window.FULLSCREEN_REQUEST === 'string' && window.FULLSCREEN_REQUEST)
+            ? window.FULLSCREEN_REQUEST
+            : null;
+        const savedSerial = requested || localStorage.getItem('nvr_light_fs_cam');
         if (!savedSerial) return;
         const idx = this.cameras.findIndex((c) => c.id === savedSerial);
         if (idx >= 0) this.fullscreen.open(idx);

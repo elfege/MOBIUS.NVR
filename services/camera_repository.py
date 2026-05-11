@@ -141,7 +141,7 @@ class CameraRepository:
         # Direct scalar fields — preserve nulls so consuming code that checks
         # key presence (e.g., 'rtsp_alias' in config) works the same as JSON
         direct_fields = [
-            'serial', 'name', 'type', 'camera_id', 'host', 'mac',
+            'serial', 'name', 'nickname', 'type', 'camera_id', 'host', 'mac',
             'packager_path', 'stream_type', 'streaming_hub', 'go2rtc_source',
             'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
             'hidden', 'ui_health_monitor', 'ui_health_refresh_delay_ms',

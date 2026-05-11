@@ -84,8 +84,9 @@ export class RecordingSettingsForm {
      * @param {string|null} videoFitMode - Per-camera video fit override
      * @returns {string} - Complete form HTML
      */
-    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null, cameraName = '', videoFitMode = null, streamingHub = 'mediamtx', go2rtcSource = null) {
+    generateForm(cameraId, settings, cameraCapabilities = [], cameraType = null, streamType = null, cameraName = '', videoFitMode = null, streamingHub = 'mediamtx', go2rtcSource = null, nickname = null) {
         this.currentCameraId = cameraId;
+        this._initialNickname = nickname || '';
         this.currentSettings = settings;
         this.currentCameraName = cameraName;
         this._streamingHub = streamingHub;
@@ -148,6 +149,40 @@ export class RecordingSettingsForm {
                             </div>
                             <span class="form-description">Name shown in UI, saved to database and config</span>
                             <div id="rename-status" style="display: none; margin-top: 6px;"></div>
+                        </div>
+                        <div class="recording-form-group">
+                            <label for="camera-nickname">Nickname</label>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="text"
+                                       id="camera-nickname"
+                                       name="camera_nickname"
+                                       value="${(nickname || '').replace(/"/g, '&quot;')}"
+                                       maxlength="32"
+                                       pattern="^[a-z]+[0-9]?$"
+                                       placeholder="lobby"
+                                       style="flex: 1; font-family: monospace;">
+                                <button type="button" id="suggest-nickname-btn"
+                                        class="recording-btn recording-btn-secondary"
+                                        style="white-space: nowrap; padding: 8px 14px;"
+                                        title="Suggest a nickname based on the display name">
+                                    <i class="fas fa-magic"></i> Suggest
+                                </button>
+                                <button type="button" id="save-nickname-btn"
+                                        class="recording-btn recording-btn-primary"
+                                        style="white-space: nowrap; padding: 8px 14px;">
+                                    <i class="fas fa-save"></i> Save
+                                </button>
+                            </div>
+                            <span class="form-description">
+                                Short handle used to address this feed via the API
+                                (e.g. <code>/streams?fullscreen=lobby</code>,
+                                <code>/light?fullscreen=lobby</code>,
+                                <code>GET /api/cameras/nicknames</code>).
+                                Lowercase letters with an optional single trailing digit
+                                (regex <code>^[a-z]+[0-9]?$</code>). Must be unique and
+                                cannot be a brand name. Leave empty to clear.
+                            </span>
+                            <div id="nickname-status" style="display: none; margin-top: 6px;"></div>
                         </div>
                         <div class="recording-form-group">
                             <label>Serial Number</label>
@@ -1196,6 +1231,20 @@ export class RecordingSettingsForm {
             }
         });
 
+        // ── Camera nickname ──
+        $('#save-nickname-btn').on('click', async () => {
+            await this.handleSaveNickname();
+        });
+        $('#camera-nickname').on('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                await this.handleSaveNickname();
+            }
+        });
+        $('#suggest-nickname-btn').on('click', async () => {
+            await this.handleSuggestNickname();
+        });
+
         // ── Video fit select (3-option: cover / contain / fill, or blank for default) ──
         $('#video-fit-camera-select').on('change', async function() {
             const fit = $(this).val() || null; // empty string → null (use account default)
@@ -1491,6 +1540,101 @@ export class RecordingSettingsForm {
                 `<span style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> ${msg}</span>`
             );
             console.error('Rename failed:', error);
+        } finally {
+            $btn.prop('disabled', false).html(originalBtnHtml);
+        }
+    }
+
+    /**
+     * Save the nickname field. Empty string / whitespace clears the nickname.
+     * Surfaces backend validation errors (regex, brand, collision) inline.
+     */
+    async handleSaveNickname() {
+        const raw = ($('#camera-nickname').val() || '').trim().toLowerCase();
+        const nickname = raw || null;
+        const $btn = $('#save-nickname-btn');
+        const $status = $('#nickname-status');
+        const originalBtnHtml = $btn.html();
+
+        // Light client-side regex check — backend is the authoritative guard.
+        if (nickname !== null && !/^[a-z]+[0-9]?$/.test(nickname)) {
+            $status.show().html(
+                '<span style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> '
+                + 'Invalid format. Use lowercase letters with an optional single trailing digit.'
+                + '</span>'
+            );
+            return;
+        }
+
+        try {
+            $btn.prop('disabled', true).html(
+                '<span class="recording-loading" style="width: 14px; height: 14px; border-width: 2px;"></span>'
+            );
+            $status.hide();
+
+            const response = await axios.put(
+                `/api/camera/${this.currentCameraId}/nickname`,
+                { nickname },
+            );
+
+            const saved = response.data.nickname;
+            this._initialNickname = saved || '';
+            $('#camera-nickname').val(saved || '');
+
+            $status.show().html(
+                `<span style="color: #27ae60;"><i class="fas fa-check-circle"></i> `
+                + (saved ? `Nickname set to "${saved}"` : 'Nickname cleared')
+                + `</span>`
+            );
+            setTimeout(() => $status.fadeOut(300), 3000);
+        } catch (error) {
+            const data = error.response?.data || {};
+            const msg = data.error || error.message;
+            const ownerHint = data.owner ? ` (owned by ${data.owner})` : '';
+            $status.show().html(
+                `<span style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> ${msg}${ownerHint}</span>`
+            );
+            console.error('Nickname save failed:', error);
+        } finally {
+            $btn.prop('disabled', false).html(originalBtnHtml);
+        }
+    }
+
+    /**
+     * Ask the server for an auto-suggestion derived from this camera's
+     * display name, then drop it into the input. User still has to click
+     * Save to persist.
+     */
+    async handleSuggestNickname() {
+        const $btn = $('#suggest-nickname-btn');
+        const $status = $('#nickname-status');
+        const originalBtnHtml = $btn.html();
+        try {
+            $btn.prop('disabled', true).html(
+                '<span class="recording-loading" style="width: 14px; height: 14px; border-width: 2px;"></span>'
+            );
+            $status.hide();
+            const r = await axios.get(
+                `/api/cameras/nicknames?suggest_for=${encodeURIComponent(this.currentCameraId)}`,
+            );
+            const sug = r.data?.suggestion;
+            if (!sug) {
+                $status.show().html(
+                    '<span style="color: #f39c12;"><i class="fas fa-info-circle"></i> '
+                    + 'No suggestion available — all <code>&lt;base&gt;0..9</code> already taken. Pick a different prefix manually.'
+                    + '</span>'
+                );
+                return;
+            }
+            $('#camera-nickname').val(sug);
+            $status.show().html(
+                `<span style="color: #3498db;"><i class="fas fa-info-circle"></i> `
+                + `Suggested: <code>${sug}</code>. Click Save to apply.</span>`
+            );
+        } catch (e) {
+            $status.show().html(
+                `<span style="color: #e74c3c;"><i class="fas fa-exclamation-circle"></i> ${e.message}</span>`
+            );
         } finally {
             $btn.prop('disabled', false).html(originalBtnHtml);
         }

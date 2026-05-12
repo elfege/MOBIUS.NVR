@@ -944,20 +944,81 @@ def api_mediaserver_mjpeg_status_single(camera_id):
 #                  SNAPSHOT ROUTE
 ########################################################
 
+# Lazy-bootstrap tracking: which cameras have we already kicked into
+# capture for snap polling, and when. Without this, every snap poll
+# would call add_client and inflate client counts unboundedly. We kick
+# at most once per BOOTSTRAP_DEDUP_SECONDS per camera.
+_snap_bootstrap_seen: dict = {}
+_SNAP_BOOTSTRAP_DEDUP_SECONDS = 60.0
+
+
+def _kick_capture(camera_id: str, camera: dict):
+    """
+    Idempotent (per-window) start of the appropriate MJPEG capture
+    service for this camera. Called by /api/snap when no frame buffer
+    exists so /light tiles can self-bootstrap their feed without the
+    operator having to first open a streaming view.
+
+    Each camera is kicked at most once every _SNAP_BOOTSTRAP_DEDUP_SECONDS
+    to avoid amplifying the per-tile poll rate into a flood of add_client
+    calls. The capture service's own add_client is reference-counted —
+    repeated kicks would inflate the count but not actually re-start the
+    capture; we just don't bother.
+    """
+    import logging
+    import time as _t
+    logger = logging.getLogger(__name__)
+    now = _t.time()
+    last = _snap_bootstrap_seen.get(camera_id, 0)
+    if now - last < _SNAP_BOOTSTRAP_DEDUP_SECONDS:
+        return
+    _snap_bootstrap_seen[camera_id] = now
+    ctype = (camera.get('type') or '').lower()
+    try:
+        if ctype == 'reolink':
+            shared.reolink_mjpeg_capture_service.add_client(
+                camera_id, camera, shared.camera_repo,
+            )
+        elif ctype == 'unifi':
+            shared.unifi_mjpeg_capture_service.add_client(camera_id, camera)
+        elif ctype == 'sv3c':
+            shared.sv3c_mjpeg_capture_service.add_client(
+                camera_id, camera, shared.camera_repo,
+            )
+        elif ctype == 'amcrest':
+            shared.amcrest_mjpeg_capture_service.add_client(
+                camera_id, camera, shared.camera_repo,
+            )
+        else:
+            # eufy, neolink, generic — go through MediaMTX RTSP
+            shared.mediaserver_mjpeg_service.add_client(camera_id, camera)
+        logger.info(
+            "snap bootstrap: kicked %s capture for %s (%s)",
+            ctype or 'mediaserver', camera_id, camera.get('name', '?'),
+        )
+    except Exception as e:
+        logger.warning("snap bootstrap kick failed for %s: %s", camera_id, e)
+
+
 @streaming_bp.route('/api/snap/<camera_id>')
 @csrf_exempt
 @login_required
 def api_snap_camera(camera_id):
     """
     Get a single JPEG snapshot from any camera.
-    Used for iOS grid view (polling snapshots instead of MJPEG streams).
+    Used by /light + the iOS grid view.
 
     Checks frame buffers in order:
-    1. reolink_mjpeg_capture_service (for Reolink cameras)
-    2. mediaserver_mjpeg_service (for eufy, sv3c, neolink via MediaMTX)
-    3. unifi_mjpeg_service (for UniFi cameras)
+    1. reolink_mjpeg_capture_service (Reolink cameras)
+    2. unifi_mjpeg_capture_service   (UniFi cameras)
+    3. sv3c_mjpeg_capture_service    (SV3C — direct HTTP /tmpfs/auto.jpg)
+    4. mediaserver_mjpeg_service     (fallback: eufy / neolink via MediaMTX)
 
-    Returns latest cached frame if available, or 503 if no frame ready.
+    If no frame is cached, lazy-start the appropriate capture service via
+    add_client so the NEXT poll returns a frame (the current call still
+    returns 503 — client retries on its existing polling interval). Without
+    this bootstrap, /light shows "No signal" on every tile until the
+    operator opens a streaming view for each camera by hand.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -974,13 +1035,11 @@ def api_snap_camera(camera_id):
         if camera_type == 'reolink':
             frame_data = shared.reolink_mjpeg_capture_service.get_latest_frame(camera_id)
         elif camera_type == 'unifi':
-            # UniFi uses MJPEG capture service
             frame_data = shared.unifi_mjpeg_capture_service.get_latest_frame(camera_id)
         elif camera_type == 'sv3c':
-            # SV3C uses direct HTTP snapshots (/tmpfs/auto.jpg)
             frame_data = shared.sv3c_mjpeg_capture_service.get_latest_frame(camera_id)
 
-        # Fallback to mediaserver (works for any camera with HLS running)
+        # Fallback to mediaserver (any camera publishing to MediaMTX).
         if not frame_data:
             frame_data = shared.mediaserver_mjpeg_service.get_latest_frame(camera_id)
 
@@ -995,8 +1054,11 @@ def api_snap_camera(camera_id):
                 }
             )
         else:
-            # No frame available - return 503 so client knows to retry
-            return "No frame available", 503
+            # No frame buffered — kick the capture service so the next
+            # poll returns a frame. Return 503 now; client's own polling
+            # interval (light-grid-renderer reloads on error) will retry.
+            _kick_capture(camera_id, camera)
+            return "No frame available — starting capture", 503
 
     except Exception as e:
         logger.error(f"Snapshot error for {camera_id}: {e}")

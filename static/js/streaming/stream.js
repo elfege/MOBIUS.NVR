@@ -1124,10 +1124,20 @@ export class MultiStreamManager {
         });
 
         // Global emergency exit - triple-click anywhere to force exit fullscreen
-        // Useful when stream is frozen and button/ESC not responding
+        // Useful when stream is frozen and button/ESC not responding.
+        //
+        // CRITICAL: ignore clicks whose target is inside any interactive
+        // element (PTZ pad, stream controls, more-menu, buttons, inputs).
+        // Without this filter, rapid PTZ presses (pan/pan/pan) reach 3
+        // clicks inside 500ms and trigger an accidental fullscreen exit —
+        // exactly the regression reported on 2026-05-10. Same predicate
+        // the expand-on-tap handler uses below.
         let tripleClickTimer = null;
         let clickCount = 0;
-        $(document).on('click', () => {
+        $(document).on('click', (e) => {
+            if ($(e.target).closest('button, .ptz-controls, .stream-controls, .stream-more-menu, a, input, select').length) {
+                return;
+            }
             clickCount++;
             if (clickCount >= 3) {
                 const $fullscreenItem = $('.stream-item.css-fullscreen');
@@ -4855,14 +4865,42 @@ export class MultiStreamManager {
     }
 
     async restoreFullscreenFromLocalStorage() {
-        const savedCameraId = localStorage.getItem('fullscreenCameraSerial');
+        // Priority: ?fullscreen=<nickname|serial> from the URL (server
+        // already resolved nickname -> serial and put it in
+        // window.FULLSCREEN_REQUEST) overrides any saved state. Calling
+        // openFullscreen() below also writes to localStorage, so a fresh
+        // reload without the query param still lands on the same camera.
+        const requested = (typeof window.FULLSCREEN_REQUEST === 'string' && window.FULLSCREEN_REQUEST)
+            ? window.FULLSCREEN_REQUEST
+            : null;
+
+        // Kiosk-relaunch signal: chrome_nvr is the only thing that adds
+        // ?host_label=<hostname> to the URL. If that param is present
+        // and no fullscreen target was passed alongside it, the operator
+        // wanted a clean grid view — wipe the persisted fullscreen and
+        // skip restoration. Without this, `chrome_nvr rog --feed=all`
+        // still restores the previous fullscreen because the targeted
+        // /api/fullscreen/exit event arrives before localStorage is
+        // bound on the still-old page, so the strict filter rejects it.
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('host_label') && !requested) {
+            try { localStorage.removeItem('fullscreenCameraSerial'); } catch (_) {}
+            console.log('[Fullscreen] kiosk relaunch detected (host_label without fullscreen) — cleared persistence, grid view');
+            return;
+        }
+
+        const savedCameraId = requested || localStorage.getItem('fullscreenCameraSerial');
 
         if (!savedCameraId) {
             console.log('[Fullscreen] No saved fullscreen camera found');
             return;
         }
 
-        console.log(`[Fullscreen] Found saved camera in localStorage: ${savedCameraId}`);
+        if (requested) {
+            console.log(`[Fullscreen] URL-requested camera: ${requested}`);
+        } else {
+            console.log(`[Fullscreen] Found saved camera in localStorage: ${savedCameraId}`);
+        }
         console.log('[Fullscreen] Restoring CSS fullscreen (no user interaction required)...');
 
         // Find the stream-item
@@ -5140,8 +5178,99 @@ export class MultiStreamManager {
                 const urlLabel = new URLSearchParams(window.location.search).get('host_label');
                 const lsLabel = (typeof localStorage !== 'undefined') ? localStorage.getItem('mobius_host_label') : null;
                 const hostLabel = urlLabel || lsLabel || null;
+                // Persist URL-provided host_label so subsequent reloads
+                // (without the query) keep the binding. chrome_nvr's
+                // launch_chrome adds ?host_label=<hostname> for exactly
+                // this purpose.
+                if (urlLabel && urlLabel !== lsLabel) {
+                    try { localStorage.setItem('mobius_host_label', urlLabel); } catch (_) {}
+                }
                 this.visibilityManager?.attachHostStateSocket(this.streamEventsSocket, hostLabel);
                 this.throttleController?.attach(this.streamEventsSocket, hostLabel);
+
+                // Remote fullscreen-switch: POST /api/fullscreen/switch emits
+                // 'fullscreen_request' on /stream_events. Open fullscreen the
+                // same way a click would (openFullscreen writes localStorage,
+                // so the chosen camera persists on reload).
+                this.streamEventsSocket.on('fullscreen_exit', async (msg) => {
+                    try {
+                        // Strict targeting: if the event names a host_label,
+                        // this browser MUST have a matching bound label to
+                        // act. Without a bound label we treat the event as
+                        // 'not for us' rather than 'for everyone' — otherwise
+                        // a targeted close fires on every kiosk that hasn't
+                        // yet bound its host_label.
+                        if (msg && msg.host_label) {
+                            if (!hostLabel || msg.host_label !== hostLabel) return;
+                        }
+                        const $current = $('.stream-item.css-fullscreen');
+                        if (!$current.length) {
+                            // Even if not currently fullscreen, clear the
+                            // persisted target so a later reload doesn't
+                            // restore one.
+                            localStorage.removeItem('fullscreenCameraSerial');
+                            console.log('[Fullscreen] remote exit (nothing was fullscreen — cleared persistence)');
+                            return;
+                        }
+                        console.log('[Fullscreen] remote exit -> closing current');
+                        try {
+                            await this.closeFullscreen();
+                        } catch (e) {
+                            console.warn('[Fullscreen] closeFullscreen failed, forcing:', e);
+                            this.forceExitFullscreen();
+                        }
+                        // closeFullscreen() already removes the localStorage
+                        // entry; this is belt-and-suspenders for the force path.
+                        localStorage.removeItem('fullscreenCameraSerial');
+                    } catch (e) {
+                        console.warn('[Fullscreen] remote exit handler error:', e);
+                    }
+                });
+
+                this.streamEventsSocket.on('fullscreen_request', async (msg) => {
+                    try {
+                        if (!msg || !msg.serial) return;
+                        // Strict targeting (see fullscreen_exit handler for
+                        // the same rule): a host_label in the event requires
+                        // a matching bound label on this browser; an unset
+                        // local label means "not for us".
+                        if (msg.host_label) {
+                            if (!hostLabel || msg.host_label !== hostLabel) return;
+                        }
+                        const $item = $(`.stream-item[data-camera-serial="${msg.serial}"]`);
+                        if (!$item.length) {
+                            console.warn('[Fullscreen] remote request for unknown serial', msg.serial);
+                            return;
+                        }
+
+                        // openFullscreen() early-returns if any tile is already
+                        // in .css-fullscreen, so a remote switch from camera A
+                        // to camera B is a no-op without closing first. If we
+                        // are already fullscreen on the SAME camera, skip.
+                        const $current = $('.stream-item.css-fullscreen');
+                        if ($current.length) {
+                            if ($current.data('camera-serial') === msg.serial) {
+                                console.log('[Fullscreen] remote request matches current fullscreen — no-op');
+                                return;
+                            }
+                            console.log('[Fullscreen] closing current fullscreen before opening', msg.serial);
+                            try {
+                                await this.closeFullscreen();
+                            } catch (e) {
+                                console.warn('[Fullscreen] closeFullscreen failed, forcing:', e);
+                                this.forceExitFullscreen();
+                            }
+                        }
+
+                        const name = $item.data('camera-name');
+                        const cameraType = $item.data('camera-type');
+                        const streamType = $item.data('stream-type');
+                        console.log(`[Fullscreen] remote request -> ${msg.serial} (nickname=${msg.nickname || 'n/a'})`);
+                        await this.openFullscreen(msg.serial, name, cameraType, streamType);
+                    } catch (e) {
+                        console.warn('[Fullscreen] remote request handler error:', e);
+                    }
+                });
             } catch (e) {
                 console.warn('[WEBSOCKET] Failed to attach host-agent bridges:', e);
             }

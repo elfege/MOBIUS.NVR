@@ -38,6 +38,36 @@ logger = logging.getLogger(__name__)
 config_bp = Blueprint('config', __name__)
 
 
+def _resolve_fullscreen_request(cameras: dict) -> str | None:
+    """
+    Read ?fullscreen=<value> from the current request. The value may be
+    a camera nickname (cameras.nickname) or a raw serial number. Returns
+    the canonical serial if it resolves to a camera the caller has access
+    to (i.e. present in the filtered ``cameras`` dict), else None.
+
+    Unknown values silently return None — the page renders normally and
+    no fullscreen is triggered. We never error here so a stale bookmark
+    or typo doesn't break the page load.
+    """
+    raw = (request.args.get('fullscreen') or '').strip()
+    if not raw:
+        return None
+
+    # Fast path: exact serial match.
+    if raw in cameras:
+        return raw
+
+    # Nickname match — case-insensitive, normalized to lowercase to
+    # match the DB CHECK constraint. Scan the dict; with O(20) cameras
+    # this is cheaper than a separate DB round-trip.
+    needle = raw.lower()
+    for serial, info in cameras.items():
+        nick = (info.get('nickname') or '').lower()
+        if nick and nick == needle:
+            return serial
+    return None
+
+
 # ===== Main UI Routes =====
 
 @config_bp.route('/')
@@ -101,8 +131,15 @@ def streams_page():
             )
         ))
 
+        fullscreen_serial = _resolve_fullscreen_request(cameras)
+
         # Pass full camera configs (includes ui_health_monitor per camera)
-        return render_template('streams.html', cameras=cameras, ui_health=ui_health)
+        return render_template(
+            'streams.html',
+            cameras=cameras,
+            ui_health=ui_health,
+            fullscreen_serial=fullscreen_serial,
+        )
     except Exception as e:
         print(f"Error loading streams page: {e}")
         return f"Error loading streams page: {e}", 500
@@ -166,7 +203,12 @@ def streams_light_page():
         cameras_ordered = [
             {"serial": serial, **info} for serial, info in cameras.items()
         ]
-        return render_template('streams_light.html', cameras=cameras_ordered)
+        fullscreen_serial = _resolve_fullscreen_request(cameras)
+        return render_template(
+            'streams_light.html',
+            cameras=cameras_ordered,
+            fullscreen_serial=fullscreen_serial,
+        )
     except Exception as e:
         logger.error(f"Error loading light streams page: {e}")
         return f"Error loading light streams page: {e}", 500

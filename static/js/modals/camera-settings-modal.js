@@ -124,11 +124,13 @@ export class CameraSettingsModal {
             const videoFitMode = displayResp.video_fit_mode || null;
             const streamingHub = cameraConfig.streaming_hub || 'mediamtx';
             const go2rtcSource = cameraConfig.go2rtc_source || null;
+            const nickname = cameraConfig.nickname || null;
 
             // Generate and insert form
             const formHtml = this.form.generateForm(
                 cameraId, settings.settings, capabilities, cameraType,
-                this.streamType, cameraName, videoFitMode, streamingHub, go2rtcSource
+                this.streamType, cameraName, videoFitMode, streamingHub, go2rtcSource,
+                nickname
             );
             this.$modalBody.html(formHtml);
 

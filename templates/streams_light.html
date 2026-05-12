@@ -301,10 +301,30 @@
 </script>
 
 <!--
+    /light?fullscreen=<nickname|serial> — server resolved nickname to
+    a canonical serial (or empty string if unknown). The light-mode-app
+    init reads this and dispatches the same fullscreen-open path a tap
+    on a tile would, so the localStorage-backed restore-on-reload still
+    works for users who land here from an external bookmark or share.
+-->
+<script>
+    window.FULLSCREEN_REQUEST = {{ (fullscreen_serial or '')|tojson }};
+</script>
+
+<!--
     jQuery — required by every ES6 frontend module per CLAUDE.md §3.10.5.
     Loaded synchronously before the module so the module body can use $.
 -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+<!--
+    Socket.IO client — only used to receive remote fullscreen-switch
+    pushes from POST /api/fullscreen/switch (which emits the
+    'fullscreen_request' event on /stream_events). One ws connection,
+    one event. Tiny by /light standards; the benefit is real-time
+    switching from external integrations.
+-->
+<script src="/socket.io/socket.io.js"></script>
 
 <!--
     Application entry point — ES6 module that wires LightModeApp,

@@ -1095,6 +1095,11 @@
         const UI_HEALTH = JSON.parse($('#ui-health').text());
         window.UI_HEALTH = UI_HEALTH; // make it global
         window.USER_ROLE = '{{ current_user.role }}';
+        // /streams?fullscreen=<nickname|serial> — server resolved nickname
+        // to serial. Stream init reads this and opens fullscreen the same
+        // way a native click would (so localStorage.lastFullscreenCamera
+        // is updated, restore-on-reload still works).
+        window.FULLSCREEN_REQUEST = {{ (fullscreen_serial or '')|tojson }};
     </script>
     <script>
         // reload every hour

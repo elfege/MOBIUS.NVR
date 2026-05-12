@@ -78,7 +78,7 @@ from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill
 # New Blueprint imports
 import routes.shared as _shared
 from routes.auth import auth_bp
-from routes.camera import camera_bp
+from routes.camera import camera_bp, init_camera_socketio, autogenerate_missing_nicknames
 from routes.config import config_bp
 from routes.eufy import eufy_bp
 from routes.power import power_bp
@@ -405,6 +405,14 @@ websocket_mjpeg_service.set_socketio(socketio)
 # rather than at blueprint register time because the SocketIO instance
 # doesn't exist yet at that point.
 init_host_state(socketio)
+init_camera_socketio(socketio)
+# Best-effort backfill of nicknames for cameras that don't have one yet.
+# Rule: last word of the display name, lowercased, with a 0..9 suffix on
+# collision. Idempotent — only touches NULL rows.
+try:
+    autogenerate_missing_nicknames()
+except Exception:
+    logging.getLogger(__name__).exception("nickname auto-generate on boot failed")
 
 logger = logging.getLogger('werkzeug')
 logger.setLevel(logging.WARNING)

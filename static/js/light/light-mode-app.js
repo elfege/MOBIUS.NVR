@@ -104,10 +104,68 @@ class LightModeApp {
         this._wireTopBar();
         this._wireKeyboard();
         this._wireVisibility();
+        this._wireRemoteFullscreenSwitch();
 
         this.grid.render();
         this._restoreFullscreenIfPersisted();
         this._scheduleAutoReload();
+    }
+
+    /**
+     * Subscribe to the SocketIO 'fullscreen_request' event broadcast by
+     * POST /api/fullscreen/switch. Reuses fullscreen.open() so the same
+     * localStorage persistence native taps trigger applies.
+     *
+     * host_label filtering: if the broadcast specifies a host_label and
+     * this browser has one bound (localStorage.mobius_host_label, the
+     * same key the throttle controller / visibility bridge use), we only
+     * act on a match. Unscoped broadcasts (no host_label) reach every
+     * viewer.
+     */
+    _wireRemoteFullscreenSwitch() {
+        if (typeof io === 'undefined') return;  // socket.io-client not loaded
+        // Latch a URL-provided host_label (chrome_nvr's launch_chrome adds
+        // ?host_label=<hostname>) into localStorage so the strict filter
+        // on host-targeted events recognizes this kiosk on subsequent
+        // reloads without the query string.
+        let myLabel = null;
+        try {
+            const urlLabel = new URLSearchParams(window.location.search).get('host_label');
+            const lsLabel  = localStorage.getItem('mobius_host_label') || null;
+            if (urlLabel && urlLabel !== lsLabel) {
+                try { localStorage.setItem('mobius_host_label', urlLabel); } catch (_) {}
+            }
+            myLabel = urlLabel || lsLabel || null;
+        } catch (_) {}
+        try {
+            const sock = io('/stream_events', { transports: ['websocket', 'polling'] });
+            sock.on('fullscreen_request', (msg) => {
+                if (!msg || !msg.serial) return;
+                // Strict targeting: a host_label in the event requires a
+                // matching local label. Unbound viewer ignores targeted
+                // events rather than treating them as broadcasts.
+                if (msg.host_label) {
+                    if (!myLabel || msg.host_label !== myLabel) return;
+                }
+                const idx = this.cameras.findIndex((c) => c.id === msg.serial);
+                if (idx < 0) return;
+                this.fullscreen.open(idx);
+            });
+            sock.on('fullscreen_exit', (msg) => {
+                if (msg && msg.host_label) {
+                    if (!myLabel || msg.host_label !== myLabel) return;
+                }
+                if (this.fullscreen.isActive) {
+                    this.fullscreen.close();
+                } else {
+                    // Not currently fullscreen — still clear persistence so
+                    // the next page reload doesn't restore one.
+                    try { localStorage.removeItem('nvr_light_fs_cam'); } catch (_) {}
+                }
+            });
+        } catch (e) {
+            console.warn('[LightModeApp] remote fullscreen-switch bind failed:', e);
+        }
     }
 
 
@@ -213,9 +271,39 @@ class LightModeApp {
         });
     }
 
-    /** If the user reloaded while in fullscreen, reopen on the same camera. */
+    /**
+     * Reopen fullscreen on page load.
+     *
+     * Priority:
+     *   1. ?fullscreen=<nickname|serial> from the URL — the server resolved
+     *      nickname to a canonical serial in window.FULLSCREEN_REQUEST.
+     *      Wins over a saved state so external links / shares behave
+     *      predictably.
+     *   2. localStorage 'nvr_light_fs_cam' — the camera the user was on
+     *      last time the page reloaded.
+     *
+     * fullscreen.open() writes the localStorage entry itself, so the URL
+     * path also rewrites memory and a subsequent reload without the query
+     * param keeps the user where they were.
+     */
     _restoreFullscreenIfPersisted() {
-        const savedSerial = localStorage.getItem('nvr_light_fs_cam');
+        const requested = (typeof window.FULLSCREEN_REQUEST === 'string' && window.FULLSCREEN_REQUEST)
+            ? window.FULLSCREEN_REQUEST
+            : null;
+
+        // chrome_nvr appends ?host_label=<hostname> on kiosk relaunch.
+        // If that's present without a fullscreen target, treat as a
+        // clean launch: clear the persisted fullscreen and stay on the
+        // grid. (Without this, `chrome_nvr rog --feed=all` would still
+        // restore the prior fullscreen because the targeted exit event
+        // is rejected by the strict host_label filter on the old page.)
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('host_label') && !requested) {
+            try { localStorage.removeItem('nvr_light_fs_cam'); } catch (_) {}
+            return;
+        }
+
+        const savedSerial = requested || localStorage.getItem('nvr_light_fs_cam');
         if (!savedSerial) return;
         const idx = this.cameras.findIndex((c) => c.id === savedSerial);
         if (idx >= 0) this.fullscreen.open(idx);

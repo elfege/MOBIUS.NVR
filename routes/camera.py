@@ -24,6 +24,7 @@ All service singletons are accessed via routes.shared to avoid circular imports.
 
 import os
 import logging
+import re
 import traceback
 import time
 from threading import Thread
@@ -466,6 +467,570 @@ def api_camera_rename(camera_serial):
     except Exception as e:
         logger.error(f"Error renaming camera {camera_serial}: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+# ===== Camera Nickname =====
+#
+# Optional short handle for URL-based addressing:
+#   GET /streams?fullscreen=lobby   (resolves nickname -> serial server-side)
+#   GET /light?fullscreen=lobby
+#
+# Validation lives both here (clear error messages) and in the DB
+# (migration 034 CHECK constraints). Keeping them in sync is intentional
+# — the DB is the final guard, this is the friendly one.
+
+_NICKNAME_REGEX = re.compile(r'^[a-z]+[0-9]?$')
+
+# Same blacklist as cameras_nickname_not_brand_chk in migration 034.
+# Keep in sync if either side changes.
+_NICKNAME_BRAND_BLACKLIST = frozenset({
+    'reolink', 'eufy', 'amcrest', 'sv3c', 'unifi',
+    'hikvision', 'dahua', 'axis', 'foscam', 'wyze',
+    'neolink', 'mediamtx', 'go2rtc', 'baichuan',
+})
+
+
+def _autogen_bases_from_name(name: str) -> list:
+    """
+    Derive candidate nickname bases from the display name, in priority
+    order (per operator request 2026-05-11):
+
+        1. Last word              (split on '_' or ' ', lowercase, strip non-alpha)
+        2. Penultimate word       — only if it isn't a brand/vendor name
+
+    The penultimate fallback addresses collisions where two cameras
+    share a last word but differ in the word before:
+
+        LAUNDRY ROOM   -> last='room',  penult='laundry'  -> ['room', 'laundry']
+        Living Room    -> last='room',  penult='living'   -> ['room', 'living']
+        AMCREST LOBBY  -> last='lobby', penult='amcrest' (BRAND -> dropped)
+                       -> ['lobby']
+        Former CAM STAIRS -> ['stairs', 'cam']
+        STAIRS         -> ['stairs']                       (only one word)
+        Reolink 1      -> last='1' (digits) -> stripped to '' -> []
+    """
+    if not name:
+        return []
+    parts = [p for p in re.split(r'[_ ]+', name.strip()) if p]
+    bases = []
+    if parts:
+        last = re.sub(r'[^a-z]', '', parts[-1].lower())
+        if last:
+            bases.append(last)
+    if len(parts) >= 2:
+        penult = re.sub(r'[^a-z]', '', parts[-2].lower())
+        if penult and penult not in _NICKNAME_BRAND_BLACKLIST:
+            bases.append(penult)
+    return bases
+
+
+def _resolve_free_nickname(bases, taken: set, digit_base: str | None = None) -> str | None:
+    """
+    Given a priority-ordered list of base candidates, find the first
+    free nickname:
+
+        1. Try every bare base in order (last word, then penultimate
+           if not a brand).
+        2. Fall back to digit-suffixing — using `digit_base` if the
+           caller supplied one (so a contested primary that was
+           stripped from `bases` can still receive its <primary>N
+           cascade), else `bases[0]`.
+
+    Returns None if every option is exhausted.
+    """
+    # Accept either a single string (legacy callers) or a list.
+    if isinstance(bases, str):
+        bases = [bases]
+    bases = [b for b in (bases or []) if b and b not in _NICKNAME_BRAND_BLACKLIST]
+    digit_root = digit_base if (digit_base and digit_base not in _NICKNAME_BRAND_BLACKLIST) \
+        else (bases[0] if bases else None)
+    if not bases and not digit_root:
+        return None
+
+    # 1) Bare bases in priority order. Skip a bare base if numbered
+    #    siblings (<base>1..9) already exist in `taken` — otherwise we'd
+    #    end up with mixed `living` + `living1` + `living2` assignments,
+    #    which contradicts the "all-numbered if contested" rule the
+    #    operator set on 2026-05-11. If the bare slot is "alone" it's
+    #    still usable.
+    def _has_numbered_sibling(b):
+        return any(f'{b}{d}' in taken for d in range(1, 10))
+
+    for base in bases:
+        if base not in taken and not _has_numbered_sibling(base):
+            return base
+
+    # 2) Digit cascade — starts at 1 because the bare base is
+    #    conceptually the "first" of its line, so a sibling is
+    #    "<base>1" rather than "<base>0". Regex allows any single
+    #    digit so 1..9 covers nine duplicates per base.
+    if digit_root:
+        for d in range(1, 10):
+            candidate = f'{digit_root}{d}'
+            if candidate in _NICKNAME_BRAND_BLACKLIST:
+                continue
+            if candidate not in taken:
+                return candidate
+
+    return None
+
+
+# Backward-compat wrapper for callers (e.g. /api/cameras/nicknames?suggest_for=)
+# that still pass a single name and expect the same behavior the field
+# used to have. Internally just routes through the new bases pipeline.
+def _autogen_base_from_last_word(name: str) -> str:
+    bases = _autogen_bases_from_name(name)
+    return bases[0] if bases else ''
+
+
+def autogenerate_missing_nicknames() -> dict:
+    """
+    Walk every camera with nickname IS NULL and try to assign one
+    derived from the last word of its display name. Idempotent: only
+    touches NULL rows, never overwrites an existing nickname.
+
+    Returns a summary dict:
+        {
+          "considered": <int>,    # rows examined
+          "assigned":   {<serial>: <nickname>, ...},
+          "skipped":    {<serial>: "<reason>", ...},
+        }
+
+    Designed to run at boot (best-effort — failures logged but never
+    raise) and also reachable via POST /api/cameras/nicknames/auto-generate
+    for re-runs after a batch of camera renames.
+    """
+    from collections import Counter
+
+    summary = {"considered": 0, "assigned": {}, "skipped": {}}
+    try:
+        with _nickname_db_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT serial, name, nickname FROM cameras ORDER BY name ASC"
+            )
+            rows = cur.fetchall()
+            taken = {nick for (_s, _n, nick) in rows if nick}
+
+            # Pre-pass: tally every primary base that would be claimed
+            # by a NULL row AND every primary base already occupied by an
+            # existing nickname. Treats "lobby" and "lobby1" both as
+            # claiming the base "lobby" so contests are detected
+            # regardless of the digit suffix already present in the DB.
+            #
+            # If a primary ends up with more than one claimant we drop
+            # the BARE primary from that camera's candidate list — the
+            # rule is "either uniquely named bare, or all numbered".
+            # Avoids the awkward `living` + `living1` mix the operator
+            # flagged on 2026-05-11.
+            null_rows = [(s, n) for (s, n, nick) in rows if nick is None]
+            bases_per_serial = {}
+            primary_count = Counter()
+            for serial, name in null_rows:
+                # Brand-filter at the pre-pass so primary_count reflects
+                # the EFFECTIVE primary each camera would actually claim.
+                # Without this filter `Living_REOLINK` (raw bases
+                # [reolink, living]) would be counted under 'reolink'
+                # while its real claim is on 'living'.
+                b = [bb for bb in _autogen_bases_from_name(name or '')
+                     if bb not in _NICKNAME_BRAND_BLACKLIST]
+                bases_per_serial[serial] = b
+                if b:
+                    primary_count[b[0]] += 1
+            for nick in taken:
+                m = re.match(r'^([a-z]+)[0-9]?$', nick)
+                if m:
+                    primary_count[m.group(1)] += 1
+
+            # Process order: cameras with FEWER viable bases first.
+            # A single-option camera has no fallback — its primary is
+            # forced and locking it in early lets multi-option cameras
+            # adapt around it. Without this ordering, a multi-option
+            # camera with a unique penultimate can claim a bare base
+            # like 'living' before its single-option siblings arrive,
+            # ending up with the forbidden `living` + `living1` mix.
+            def _ord_key(row):
+                serial, name = row
+                viable = [b for b in (bases_per_serial.get(serial) or [])
+                          if b and b not in _NICKNAME_BRAND_BLACKLIST]
+                return (len(viable) or 99, name or '')
+            ordered_rows = sorted(null_rows, key=_ord_key)
+
+            for (serial, name) in ordered_rows:
+                summary["considered"] += 1
+                bases = bases_per_serial.get(serial) or _autogen_bases_from_name(name or '')
+                if not bases:
+                    summary["skipped"][serial] = 'no alphabetic last word'
+                    continue
+                # If the primary is contested, strip it from the bare-base
+                # candidate list (penultimate fallback still tried bare;
+                # digit-cascade still uses primary).
+                primary = bases[0]
+                contested = primary_count[primary] > 1
+                effective_bases = bases[1:] if contested else bases
+                chosen = _resolve_free_nickname(effective_bases, taken, digit_base=primary)
+                if not chosen:
+                    summary["skipped"][serial] = (
+                        f'bases {bases} exhausted or reserved'
+                        + (' (contested primary)' if contested else '')
+                    )
+                    continue
+                try:
+                    cur.execute(
+                        "UPDATE cameras SET nickname = %s WHERE serial = %s",
+                        (chosen, serial),
+                    )
+                    taken.add(chosen)
+                    summary["assigned"][serial] = chosen
+                except Exception as e:
+                    summary["skipped"][serial] = f'db error: {e}'
+                    conn.rollback()
+                    # Re-open the cursor since rollback may have aborted it.
+                    continue
+            conn.commit()
+    except Exception:
+        logger.exception("autogenerate_missing_nicknames: failed")
+    if summary["assigned"]:
+        logger.info(
+            "autogenerated %d nickname(s): %s",
+            len(summary["assigned"]),
+            ', '.join(f'{k}={v}' for k, v in summary["assigned"].items()),
+        )
+    return summary
+
+
+@camera_bp.route('/api/cameras/nicknames/auto-generate', methods=['POST'])
+@csrf_exempt
+@login_required
+def api_cameras_nicknames_autogen():
+    """
+    Trigger autogenerate_missing_nicknames() — fills in NULL nicknames
+    from the last word of each camera's display name. Useful after a
+    batch of camera renames.
+    """
+    return jsonify(autogenerate_missing_nicknames())
+
+
+def _suggest_nickname(camera_name: str, existing_nicknames: set) -> str | None:
+    """
+    Derive a candidate nickname from a camera's display name for the
+    Settings UI Suggest button. Uses the same priority order as the
+    boot autogenerator:
+        last word > penultimate word (if not brand) > <last>0..9
+    """
+    bases = _autogen_bases_from_name(camera_name or '')
+    if not bases:
+        bases = ['camera']
+    return _resolve_free_nickname(bases, set(existing_nicknames or ()))
+
+
+@camera_bp.route('/api/camera/<camera_serial>/nickname', methods=['PUT'])
+@csrf_exempt
+@login_required
+def api_camera_set_nickname(camera_serial):
+    """
+    Set or clear a camera's nickname.
+
+    Body: {"nickname": "lobby"}     — set
+          {"nickname": null}        — clear
+          {"nickname": ""}          — clear
+
+    Returns:
+        200 {"serial": "...", "nickname": "..."} on success
+        400 {"error": "..."} on regex / brand / type errors
+        404 if camera not found
+        409 {"error": "...", "owner": "<other_serial>"} on collision
+    """
+    if not shared.camera_repo.get_camera(camera_serial):
+        return jsonify({'error': f'Camera not found: {camera_serial}'}), 404
+
+    body = request.get_json(silent=True) or {}
+    raw = body.get('nickname', None)
+
+    # Normalize: empty/whitespace/None -> clear
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        nickname = None
+    elif isinstance(raw, str):
+        nickname = raw.strip().lower()
+    else:
+        return jsonify({'error': 'nickname must be a string or null'}), 400
+
+    if nickname is not None:
+        if not _NICKNAME_REGEX.match(nickname):
+            return jsonify({'error': 'nickname must match ^[a-z]+[0-9]?$'}), 400
+        if nickname in _NICKNAME_BRAND_BLACKLIST:
+            return jsonify({'error': 'nickname is a reserved brand name'}), 409
+
+        # Collision check before write so we can return the conflicting
+        # serial in the error body — the DB UNIQUE index would also catch
+        # this but with an opaque IntegrityError.
+        try:
+            with _nickname_db_conn() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "SELECT serial FROM cameras "
+                    "WHERE nickname = %s AND serial != %s",
+                    (nickname, camera_serial),
+                )
+                hit = cur.fetchone()
+                if hit:
+                    return jsonify({
+                        'error': 'nickname already used by another camera',
+                        'owner': hit[0],
+                    }), 409
+        except Exception as e:
+            logger.exception("nickname collision-check failed")
+            return jsonify({'error': f'DB error: {e}'}), 500
+
+    success = shared.camera_repo.update_camera_setting(
+        camera_serial, 'nickname', nickname,
+    )
+    if not success:
+        return jsonify({'error': 'failed to write nickname'}), 500
+
+    return jsonify({'serial': camera_serial, 'nickname': nickname})
+
+
+def _nickname_read_authorized() -> bool:
+    """
+    Authorize the GET /api/cameras/nicknames endpoint.
+
+    Three accepted paths, in order:
+      1. Active Flask-Login session (the normal browser case).
+      2. Authorization: Bearer <NVR_API_TOKEN>  (external integrations,
+         same token routes/external_api_routes.py and routes/host_state.py
+         already accept).
+      3. LAN-only fallback when NVR_API_TOKEN is unset (dev convenience,
+         matches the pattern in routes/host_state.py:_check_bearer).
+    """
+    # 1) session
+    if getattr(current_user, 'is_authenticated', False):
+        return True
+    # 2) bearer
+    token_env = os.environ.get('NVR_API_TOKEN', '').strip()
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer ') and token_env:
+        return auth[7:] == token_env
+    # 3) LAN fallback (only when no token configured — dev mode)
+    if not token_env:
+        ip = (request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+              or request.remote_addr or '')
+        return ip.startswith(('10.', '172.', '192.168.', '127.')) or ip == '::1'
+    return False
+
+
+@camera_bp.route('/api/cameras/nicknames', methods=['GET'])
+def api_cameras_nicknames():
+    """
+    List every camera with its nickname (null if unset).
+
+    Auth: session OR Bearer NVR_API_TOKEN OR LAN-fallback (when no token
+    configured). Intentionally NOT @login_required so external systems
+    (home automation, dashboards) can discover the URL handle for each
+    feed without a browser session.
+
+    Response:
+        {"cameras": [
+            {"serial": "...", "name": "Lobby", "nickname": "lobby"},
+            ...
+        ],
+         "suggestion_for": "<serial>": "<suggested_nickname>"   # optional
+        }
+
+    If ?suggest_for=<serial> is passed, attempt an auto-suggestion for
+    that camera based on its display name. The suggestion is just a hint
+    — the caller still has to PUT /api/camera/<serial>/nickname.
+    """
+    if not _nickname_read_authorized():
+        return jsonify({'error': 'unauthorized'}), 401
+
+    try:
+        with _nickname_db_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT serial, name, nickname "
+                "FROM cameras "
+                "ORDER BY nickname ASC NULLS LAST, name ASC"
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        logger.exception("nickname list failed")
+        return jsonify({'error': f'DB error: {e}'}), 500
+
+    cameras = [
+        {'serial': s, 'name': n, 'nickname': nick}
+        for (s, n, nick) in rows
+    ]
+    out = {'cameras': cameras}
+
+    suggest_for = (request.args.get('suggest_for') or '').strip()
+    if suggest_for:
+        target = next((c for c in cameras if c['serial'] == suggest_for), None)
+        if target:
+            taken = {c['nickname'] for c in cameras if c['nickname']}
+            suggestion = _suggest_nickname(target['name'] or '', taken)
+            out['suggestion_for'] = suggest_for
+            out['suggestion'] = suggestion
+
+    return jsonify(out)
+
+
+# ===== Remote fullscreen switch =====
+#
+# Allows an external integration (home automation, dashboard, voice
+# assistant) to push "show this camera fullscreen on the kiosk(s)"
+# without a browser session.
+#
+# Auth: Bearer NVR_API_TOKEN only. No session, no LAN fallback — this is
+# a mutation that affects what every viewer sees, so we require an
+# explicit credential. Use the same NVR_API_TOKEN that gates
+# /api/host/state and /api/external/*.
+#
+# Real-time path: emits a `fullscreen_request` event on the
+# /stream_events SocketIO namespace. Subscribers on /streams (stream.js)
+# and /light (light-mode-app.js) listen for this and call their
+# respective openFullscreen() — which writes localStorage exactly as a
+# native click would, so the chosen camera persists across reloads.
+#
+# Targeting: optional host_label scopes the event to one kiosk; absent
+# means "all viewers". Each browser reads its own host_label from
+# localStorage.mobius_host_label (same key the throttle controller uses)
+# and filters server events accordingly.
+
+_socketio = None  # injected by app.py via init_camera_socketio()
+
+
+def init_camera_socketio(socketio_instance) -> None:
+    """Called from app.py after socketio is constructed."""
+    global _socketio
+    _socketio = socketio_instance
+
+
+def _bearer_only_auth() -> bool:
+    """Bearer NVR_API_TOKEN required. No session, no LAN fallback."""
+    token_env = os.environ.get('NVR_API_TOKEN', '').strip()
+    if not token_env:
+        return False
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        return False
+    return auth[7:] == token_env
+
+
+@camera_bp.route('/api/fullscreen/switch', methods=['POST'])
+@csrf_exempt
+def api_fullscreen_switch():
+    """
+    Push a fullscreen target to the kiosk(s) in real time.
+
+    Body:
+        {
+          "target":     "lobby" | "T8416P0023352DA9",   (required)
+          "host_label": "rog"                            (optional;
+              if present, only browsers bound to this host_label react)
+        }
+
+    Returns:
+        200 {"serial": "...", "nickname": "...|null", "host_label": "...|null"}
+        400 {"error": "missing target"}
+        401 {"error": "unauthorized"}    (token missing/invalid)
+        404 {"error": "unknown target"}  (nickname or serial not found)
+        503 {"error": "socketio not ready"}
+    """
+    if not _bearer_only_auth():
+        return jsonify({'error': 'unauthorized'}), 401
+
+    body = request.get_json(silent=True) or {}
+    target = (body.get('target') or '').strip()
+    host_label = (body.get('host_label') or '').strip() or None
+    if not target:
+        return jsonify({'error': 'missing target'}), 400
+
+    # Resolve target -> canonical serial. Accept either an exact serial
+    # match or a nickname (case-insensitive).
+    cameras = shared.camera_repo.get_streaming_cameras(include_hidden=True)
+    resolved_serial = None
+    resolved_nick = None
+    if target in cameras:
+        resolved_serial = target
+        resolved_nick = cameras[target].get('nickname')
+    else:
+        needle = target.lower()
+        for serial, info in cameras.items():
+            nick = (info.get('nickname') or '').lower()
+            if nick and nick == needle:
+                resolved_serial = serial
+                resolved_nick = info.get('nickname')
+                break
+
+    if not resolved_serial:
+        return jsonify({'error': 'unknown target', 'target': target}), 404
+
+    if _socketio is None:
+        return jsonify({'error': 'socketio not ready'}), 503
+
+    payload = {
+        'serial':     resolved_serial,
+        'nickname':   resolved_nick,
+        'host_label': host_label,
+        'ts':         time.time(),
+    }
+    try:
+        _socketio.emit('fullscreen_request', payload, namespace='/stream_events')
+    except Exception as e:
+        logger.exception('fullscreen_switch: emit failed')
+        return jsonify({'error': f'emit failed: {e}'}), 500
+
+    logger.info(
+        'fullscreen_switch: target=%r -> serial=%s (host_label=%s)',
+        target, resolved_serial, host_label or '<any>',
+    )
+    return jsonify(payload)
+
+
+@camera_bp.route('/api/fullscreen/exit', methods=['POST'])
+@csrf_exempt
+def api_fullscreen_exit():
+    """
+    Tell the kiosk(s) to exit fullscreen and return to the grid view.
+    Also clears the local persistence (localStorage.fullscreenCameraSerial
+    on /streams, localStorage.nvr_light_fs_cam on /light) so the next
+    page reload doesn't restore the prior fullscreen.
+
+    Body:
+        {"host_label": "rog"}    optional — scope to one kiosk; absent
+                                 means every viewer.
+
+    Auth: Bearer NVR_API_TOKEN only. Same authority as the switch
+    endpoint — both are remote-control mutations.
+    """
+    if not _bearer_only_auth():
+        return jsonify({'error': 'unauthorized'}), 401
+
+    body = request.get_json(silent=True) or {}
+    host_label = (body.get('host_label') or '').strip() or None
+
+    if _socketio is None:
+        return jsonify({'error': 'socketio not ready'}), 503
+
+    payload = {'host_label': host_label, 'ts': time.time()}
+    try:
+        _socketio.emit('fullscreen_exit', payload, namespace='/stream_events')
+    except Exception as e:
+        logger.exception('fullscreen_exit: emit failed')
+        return jsonify({'error': f'emit failed: {e}'}), 500
+
+    logger.info('fullscreen_exit: host_label=%s', host_label or '<any>')
+    return jsonify(payload)
+
+
+def _nickname_db_conn():
+    """Minimal direct connection — same pattern as routes/host_state.py."""
+    return psycopg2.connect(
+        host=os.getenv('POSTGRES_HOST', 'postgres'),
+        port=os.getenv('POSTGRES_PORT', '5432'),
+        dbname=os.getenv('POSTGRES_DB', 'nvr'),
+        user=os.getenv('POSTGRES_USER', 'nvr_api'),
+        password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
+        connect_timeout=3,
+    )
 
 
 # ===== Camera Settings (Generic) =====

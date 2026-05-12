@@ -5162,6 +5162,13 @@ export class MultiStreamManager {
                 const urlLabel = new URLSearchParams(window.location.search).get('host_label');
                 const lsLabel = (typeof localStorage !== 'undefined') ? localStorage.getItem('mobius_host_label') : null;
                 const hostLabel = urlLabel || lsLabel || null;
+                // Persist URL-provided host_label so subsequent reloads
+                // (without the query) keep the binding. chrome_nvr's
+                // launch_chrome adds ?host_label=<hostname> for exactly
+                // this purpose.
+                if (urlLabel && urlLabel !== lsLabel) {
+                    try { localStorage.setItem('mobius_host_label', urlLabel); } catch (_) {}
+                }
                 this.visibilityManager?.attachHostStateSocket(this.streamEventsSocket, hostLabel);
                 this.throttleController?.attach(this.streamEventsSocket, hostLabel);
 
@@ -5171,7 +5178,15 @@ export class MultiStreamManager {
                 // so the chosen camera persists on reload).
                 this.streamEventsSocket.on('fullscreen_exit', async (msg) => {
                     try {
-                        if (msg && msg.host_label && hostLabel && msg.host_label !== hostLabel) return;
+                        // Strict targeting: if the event names a host_label,
+                        // this browser MUST have a matching bound label to
+                        // act. Without a bound label we treat the event as
+                        // 'not for us' rather than 'for everyone' — otherwise
+                        // a targeted close fires on every kiosk that hasn't
+                        // yet bound its host_label.
+                        if (msg && msg.host_label) {
+                            if (!hostLabel || msg.host_label !== hostLabel) return;
+                        }
                         const $current = $('.stream-item.css-fullscreen');
                         if (!$current.length) {
                             // Even if not currently fullscreen, clear the
@@ -5199,9 +5214,13 @@ export class MultiStreamManager {
                 this.streamEventsSocket.on('fullscreen_request', async (msg) => {
                     try {
                         if (!msg || !msg.serial) return;
-                        // Targeted broadcast — only act if our host_label
-                        // matches (or the broadcast is unscoped).
-                        if (msg.host_label && hostLabel && msg.host_label !== hostLabel) return;
+                        // Strict targeting (see fullscreen_exit handler for
+                        // the same rule): a host_label in the event requires
+                        // a matching bound label on this browser; an unset
+                        // local label means "not for us".
+                        if (msg.host_label) {
+                            if (!hostLabel || msg.host_label !== hostLabel) return;
+                        }
                         const $item = $(`.stream-item[data-camera-serial="${msg.serial}"]`);
                         if (!$item.length) {
                             console.warn('[Fullscreen] remote request for unknown serial', msg.serial);

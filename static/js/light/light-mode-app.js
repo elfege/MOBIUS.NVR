@@ -124,19 +124,37 @@ class LightModeApp {
      */
     _wireRemoteFullscreenSwitch() {
         if (typeof io === 'undefined') return;  // socket.io-client not loaded
+        // Latch a URL-provided host_label (chrome_nvr's launch_chrome adds
+        // ?host_label=<hostname>) into localStorage so the strict filter
+        // on host-targeted events recognizes this kiosk on subsequent
+        // reloads without the query string.
         let myLabel = null;
-        try { myLabel = localStorage.getItem('mobius_host_label') || null; } catch (_) {}
+        try {
+            const urlLabel = new URLSearchParams(window.location.search).get('host_label');
+            const lsLabel  = localStorage.getItem('mobius_host_label') || null;
+            if (urlLabel && urlLabel !== lsLabel) {
+                try { localStorage.setItem('mobius_host_label', urlLabel); } catch (_) {}
+            }
+            myLabel = urlLabel || lsLabel || null;
+        } catch (_) {}
         try {
             const sock = io('/stream_events', { transports: ['websocket', 'polling'] });
             sock.on('fullscreen_request', (msg) => {
                 if (!msg || !msg.serial) return;
-                if (msg.host_label && myLabel && msg.host_label !== myLabel) return;
+                // Strict targeting: a host_label in the event requires a
+                // matching local label. Unbound viewer ignores targeted
+                // events rather than treating them as broadcasts.
+                if (msg.host_label) {
+                    if (!myLabel || msg.host_label !== myLabel) return;
+                }
                 const idx = this.cameras.findIndex((c) => c.id === msg.serial);
                 if (idx < 0) return;
                 this.fullscreen.open(idx);
             });
             sock.on('fullscreen_exit', (msg) => {
-                if (msg && msg.host_label && myLabel && msg.host_label !== myLabel) return;
+                if (msg && msg.host_label) {
+                    if (!myLabel || msg.host_label !== myLabel) return;
+                }
                 if (this.fullscreen.isActive) {
                     this.fullscreen.close();
                 } else {

@@ -290,6 +290,19 @@ class LightModeApp {
         const requested = (typeof window.FULLSCREEN_REQUEST === 'string' && window.FULLSCREEN_REQUEST)
             ? window.FULLSCREEN_REQUEST
             : null;
+
+        // chrome_nvr appends ?host_label=<hostname> on kiosk relaunch.
+        // If that's present without a fullscreen target, treat as a
+        // clean launch: clear the persisted fullscreen and stay on the
+        // grid. (Without this, `chrome_nvr rog --feed=all` would still
+        // restore the prior fullscreen because the targeted exit event
+        // is rejected by the strict host_label filter on the old page.)
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('host_label') && !requested) {
+            try { localStorage.removeItem('nvr_light_fs_cam'); } catch (_) {}
+            return;
+        }
+
         const savedSerial = requested || localStorage.getItem('nvr_light_fs_cam');
         if (!savedSerial) return;
         const idx = this.cameras.findIndex((c) => c.id === savedSerial);

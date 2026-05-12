@@ -4873,6 +4873,22 @@ export class MultiStreamManager {
         const requested = (typeof window.FULLSCREEN_REQUEST === 'string' && window.FULLSCREEN_REQUEST)
             ? window.FULLSCREEN_REQUEST
             : null;
+
+        // Kiosk-relaunch signal: chrome_nvr is the only thing that adds
+        // ?host_label=<hostname> to the URL. If that param is present
+        // and no fullscreen target was passed alongside it, the operator
+        // wanted a clean grid view — wipe the persisted fullscreen and
+        // skip restoration. Without this, `chrome_nvr rog --feed=all`
+        // still restores the previous fullscreen because the targeted
+        // /api/fullscreen/exit event arrives before localStorage is
+        // bound on the still-old page, so the strict filter rejects it.
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('host_label') && !requested) {
+            try { localStorage.removeItem('fullscreenCameraSerial'); } catch (_) {}
+            console.log('[Fullscreen] kiosk relaunch detected (host_label without fullscreen) — cleared persistence, grid view');
+            return;
+        }
+
         const savedCameraId = requested || localStorage.getItem('fullscreenCameraSerial');
 
         if (!savedCameraId) {

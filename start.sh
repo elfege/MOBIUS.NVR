@@ -530,6 +530,41 @@ if docker ps | grep -q unified-nvr; then
 		echo -e "${YELLOW}NVR_API_TOKEN unset — skipping host-agent install hints${NC}"
 	fi
 
+	# ─────────────────────────────────────────────────────────────────────
+	# SSH-config mirror sync (Phase 2c v2, operator addendum 2026-05-13).
+	#
+	# When the operator installs the host-agent on a remote machine via
+	# /api/host-agent/install-via-ssh, the server writes a minimal
+	#   Host <label>
+	#     HostName <ip>
+	#     User <user>
+	# stanza into ${NVR_SSH_CONFIG_ENTRIES_PATH:-./data/ssh_config_entries}.
+	# This block invokes the host-side sync script which, in v2, DRY-RUNS
+	# the merge into ~/.ssh/config — it prints the candidate stanzas but
+	# does NOT modify the file. Once the operator has vetted at least one
+	# install cycle's output, flip the `false` guard inside the script
+	# (search "FUTURE: enable real merge after vetting") AND swap this
+	# block's invocation from default (dry-run) to `--commit`.
+	#
+	# FUTURE: enable real merge after vetting
+	#         → change the next line to:
+	#             ./scripts/sync_ssh_config_entries.sh --commit || true
+	#         AND remove the `false` guard inside that script.
+	# ─────────────────────────────────────────────────────────────────────
+	_SYNC_SCRIPT="$(dirname "$(readlink -f "$0")")/scripts/sync_ssh_config_entries.sh"
+	if [[ -x "$_SYNC_SCRIPT" ]]; then
+		echo
+		echo "================================================================="
+		echo "  SSH-config mirror — dry-run preview (Phase 2c v2)"
+		echo "================================================================="
+		# Never let a non-zero exit from the dry-run abort start.sh — it is
+		# an advisory step, not load-bearing.
+		"$_SYNC_SCRIPT" || true
+	else
+		# Script not present (older checkouts, manual deploys) — silent skip.
+		:
+	fi
+
 else
 	_CURRENT_STEP="container startup"
 	echo -e "${RED}Container failed to start${NC}"

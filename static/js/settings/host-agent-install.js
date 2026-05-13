@@ -379,7 +379,7 @@ function showSshInstallModal(label) {
         // after the fetch starts. Frontend best-effort hygiene.
         let ssh_password = $modal.find('#hai-ssh-pass').val() || '';
         if (!target_host || !ssh_user) {
-            $status.css('color', '#ff8a8a').text('Target host and SSH user are required.');
+            $status.css('color', '#ff8a8a').text('IP / hostname and SSH user are required.');
             return;
         }
 

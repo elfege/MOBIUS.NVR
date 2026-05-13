@@ -99,6 +99,14 @@ services:
       # at ~/0_MOBIUS.NVR/litigation -> /litigation).
       - ${NVR_LITIGATION_PATH:-/litigation}:/litigation
       - ${NVR_LITIGATION_PATH:-/litigation}:/app/litigation
+      # SSH-config mirror (Phase 2c v2 operator request 2026-05-13).
+      # When the SSH-install endpoint succeeds, it writes a minimal
+      # `Host <label>` stanza into this directory. The host-side script
+      # `scripts/sync_ssh_config_entries.sh` reads from here on next
+      # start.sh to offer (currently DRY-RUN only) merging into the
+      # operator's ~/.ssh/config. Each file is one stanza, keyed by
+      # host_label, atomic-rename writes.
+      - ${NVR_SSH_CONFIG_ENTRIES_PATH:-./data/ssh_config_entries}:/data/ssh_config_entries
       # Mount Python source code for hot-reloading
       - ./:/app
       # Restart trigger — container writes "reboot" to trigger file,

@@ -1481,6 +1481,10 @@ export class RecordingSettingsForm {
         } catch (error) {
             console.error('Form submission error:', error);
             this.showAlert('error', error.message);
+        } finally {
+            // ALWAYS restore the button — without this, the success path
+            // leaves the spinner running and the button disabled forever,
+            // blocking every subsequent save. Operator-reported on 2026-05-13.
             submitBtn.prop('disabled', false).html(originalHtml);
         }
     }

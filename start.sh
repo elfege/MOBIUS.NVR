@@ -492,6 +492,37 @@ if docker ps | grep -q unified-nvr; then
 			echo "       cd ~/0_MOBIUS.NVR && ./services/host_agent/install_host_agent.sh"
 			echo "       edit ~/.config/mobius-nvr-host-agent/config to set API_TOKEN)"
 			echo "================================================================="
+			# ─────────────────────────────────────────────────────────
+			# TODO (Phase 2c v3): SSH-key distribution from the server.
+			#
+			# Phase 2c v2 added /api/host-agent/install-via-ssh, which
+			# lets the server SSH into a target kiosk and run the
+			# installer directly — but the operator still has to either
+			# (a) have pubkey-auth pre-arranged, or (b) supply a password
+			# via the UI on first install.
+			#
+			# v3 should automate (a): on first contact, the server reads
+			# the network_devices table for the target's resolved IP,
+			# generates a per-host install key (or reuses the existing
+			# admin key), copies the pubkey to the kiosk's
+			# ~/.ssh/authorized_keys via `ssh-copy-id` (one-time password
+			# prompt), then performs all subsequent host-agent ops via
+			# pubkey. Equivalent of `start.sh ensure_ssh_between_machines`
+			# but driven by the DB's known-machine list, not a static
+			# inventory file.
+			#
+			# Concretely:
+			#   1. Walk `network_devices` for rows with role='kiosk' or
+			#      a non-null host_label.
+			#   2. For each, try `ssh -o BatchMode=yes -o ConnectTimeout=5
+			#      $user@$ip true`. If that succeeds, key auth already
+			#      works — skip.
+			#   3. If it fails, mark the row as 'needs_ssh_keys' and
+			#      surface it in the Performance tab UI with a one-click
+			#      "Push key to this host" button that uses the same
+			#      modal as Phase 2c v2 but runs ssh-copy-id instead of
+			#      the install.
+			# ─────────────────────────────────────────────────────────
 		else
 			echo -e "${GREEN}All known kiosks have a recent host-agent ping.${NC}"
 		fi

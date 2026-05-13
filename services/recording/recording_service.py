@@ -830,25 +830,35 @@ class RecordingService:
                     logger.warning(f"Recording not found for metadata storage: {recording_id}")
                     return
             
-            # Resolve motion_source per Phase 0 attribution (2026-05-13).
-            # Priority:
-            #   1. Explicit `source` passed by the detector (stashed in
-            #      self._pending_motion_source by start_motion_recording).
-            #      Validated against migration-035 enum values.
-            #   2. Legacy heuristic for un-instrumented callers: 'onvif' if
-            #      event_id present, 'manual' otherwise. Kept until every
-            #      caller is updated.
-            #   3. Continuous recordings have recording_type='continuous' and
-            #      shouldn't carry a motion_source — leave NULL there.
-            _VALID = {'onvif', 'ffmpeg', 'eufy_bridge', 'manual',
+            # Resolve motion_source per Phase 0 attribution (2026-05-13,
+            # refined Phase 0a). Semantics:
+            #
+            #   recording_type='manual'   -> 'manual'   (user-pressed record)
+            #   recording_type='continuous' -> NULL      (no motion semantics)
+            #   recording_type='motion':
+            #       explicit source from instrumented detector -> that source
+            #       event_id present but no source (legacy/un-instrumented
+            #           onvif caller) -> 'onvif'
+            #       neither -> NULL  (a real bug: motion fired but no
+            #                        attribution path — leaves a visible
+            #                        gap rather than mis-tagging 'manual')
+            #
+            # 'manual' was previously used as the "I don't know" fallback,
+            # which made the table 100% manual and hid the real attribution
+            # gap. Now 'manual' only appears for actually-manual recordings.
+            _VALID = {'onvif', 'ffmpeg', 'eufy_bridge',
                       'reolink_baichuan', 'evidence'}
             pending = getattr(self._tls, 'pending_motion_source', None)
-            if recording_type != 'motion':
+            if recording_type == 'manual':
+                resolved_source = 'manual'
+            elif recording_type != 'motion':
                 resolved_source = None
             elif pending and pending in _VALID:
                 resolved_source = pending
+            elif event_id is not None:
+                resolved_source = 'onvif'  # legacy heuristic
             else:
-                resolved_source = 'onvif' if event_id is not None else 'manual'
+                resolved_source = None  # unattributed motion — surfaced as a gap
 
             # Build metadata matching database schema
             metadata = {

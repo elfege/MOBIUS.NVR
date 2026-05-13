@@ -225,24 +225,54 @@ class ONVIFEventListener:
             logger.error(f"Error parsing motion state: {e}")
             return False
           
-    def _handle_motion_event(self, camera_id: str):
+    def _handle_motion_event(self, camera_id: str, rule_name: str = None, event_type: str = None):
         """
         Handle motion detection event.
-        
+
         Args:
             camera_id: Camera that detected motion
+            rule_name: ONVIF analytics rule that matched (optional, when
+                       the SOAP event body included one). Stored on the
+                       motion_events row for audit/diagnosis.
+            event_type: SOAP event topic. Same purpose.
         """
         logger.info(f"Motion detected via ONVIF: {camera_id}")
-        
+
         try:
-            # Trigger recording via recording service
-            recording_id = self.recording_service.start_motion_recording(camera_id)
-            
+            # Write motion_events row FIRST so we can carry the id through
+            # to the recording row. Without this every recording defaulted
+            # to motion_source='manual'. Phase 0 attribution, 2026-05-13.
+            from services.motion.motion_event_writer import (
+                record_motion_event, link_recording_to_event,
+            )
+            event_id = record_motion_event(
+                camera_id=camera_id,
+                source='onvif',
+                onvif_rule_name=rule_name,
+                onvif_event_type=event_type,
+            )
+
+            # Trigger recording via recording service, passing the event_id
+            # and explicit source so the recordings row gets the correct
+            # motion_source and the FK back to motion_events.
+            recording_id = self.recording_service.start_motion_recording(
+                camera_id, event_id=str(event_id) if event_id else None,
+                source='onvif',
+            )
+
             if recording_id:
-                logger.info(f"Started motion recording for {camera_id}: {recording_id}")
+                logger.info(f"Started motion recording for {camera_id}: {recording_id} (event_id={event_id})")
+                # Backfill the inverse FK so audit queries can walk both ways.
+                if event_id:
+                    try:
+                        rid_int = int(recording_id) if str(recording_id).isdigit() else None
+                        if rid_int:
+                            link_recording_to_event(event_id, rid_int)
+                    except (ValueError, TypeError):
+                        pass
             else:
                 logger.warning(f"Failed to start motion recording for {camera_id}")
-        
+
         except Exception as e:
             logger.error(f"Error starting motion recording for {camera_id}: {e}")
 

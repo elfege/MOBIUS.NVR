@@ -68,6 +68,13 @@ class RecordingService:
         self.active_recordings: Dict[str, Dict] = {}  # recording_id -> metadata
         self.recording_lock = threading.RLock()
 
+        # Per-thread stash for the motion_source attribution carried from
+        # start_motion_recording() down to _store_recording_metadata().
+        # Threadlocal so concurrent motion events from different cameras
+        # (each on its own detector thread) don't race on a shared instance
+        # variable. Phase 0 attribution, 2026-05-13.
+        self._tls = threading.local()
+
         # Segment buffer manager for pre-buffer recording
         self.segment_buffer_manager = SegmentBufferManager(self.config, camera_repo)
 
@@ -190,7 +197,9 @@ class RecordingService:
         else:
             raise ValueError(f"Unknown camera type: {camera_type}")
         
-    def start_motion_recording(self, camera_id: str, duration: int = 30, event_id: Optional[str] = None) -> Optional[str]:
+    def start_motion_recording(self, camera_id: str, duration: int = 30,
+                                event_id: Optional[str] = None,
+                                source: Optional[str] = None) -> Optional[str]:
         """
         Start motion-triggered recording for camera.
 
@@ -200,11 +209,23 @@ class RecordingService:
         Args:
             camera_id: Camera identifier
             duration: Recording duration in seconds (default: 30)
-            event_id: Optional motion event ID for linking
+            event_id: Optional motion event ID for linking (FK to motion_events.id).
+            source: Optional explicit motion_source label. When provided AND a
+                    valid enum value (per migration 035: 'onvif' | 'ffmpeg' |
+                    'reolink_baichuan' | 'evidence' | 'eufy_bridge'), the
+                    recordings row stores this value verbatim. When None,
+                    falls back to the legacy heuristic ('onvif' if event_id
+                    else 'manual') — kept for backward compatibility with any
+                    caller that hasn't been instrumented yet.
 
         Returns:
             Recording ID (filename without extension) if successful, None if failed
         """
+        # Stash for _store_recording_metadata to read without changing
+        # every internal call signature. Threadlocal so a concurrent
+        # motion event from another camera (different detector thread)
+        # can't clobber this one.
+        self._tls.pending_motion_source = source
         try:
             # Check if recording is enabled for this camera
             if not self.config.is_recording_enabled(camera_id, 'motion'):
@@ -809,6 +830,26 @@ class RecordingService:
                     logger.warning(f"Recording not found for metadata storage: {recording_id}")
                     return
             
+            # Resolve motion_source per Phase 0 attribution (2026-05-13).
+            # Priority:
+            #   1. Explicit `source` passed by the detector (stashed in
+            #      self._pending_motion_source by start_motion_recording).
+            #      Validated against migration-035 enum values.
+            #   2. Legacy heuristic for un-instrumented callers: 'onvif' if
+            #      event_id present, 'manual' otherwise. Kept until every
+            #      caller is updated.
+            #   3. Continuous recordings have recording_type='continuous' and
+            #      shouldn't carry a motion_source — leave NULL there.
+            _VALID = {'onvif', 'ffmpeg', 'eufy_bridge', 'manual',
+                      'reolink_baichuan', 'evidence'}
+            pending = getattr(self._tls, 'pending_motion_source', None)
+            if recording_type != 'motion':
+                resolved_source = None
+            elif pending and pending in _VALID:
+                resolved_source = pending
+            else:
+                resolved_source = 'onvif' if event_id is not None else 'manual'
+
             # Build metadata matching database schema
             metadata = {
                 'camera_id': camera_id,
@@ -820,7 +861,7 @@ class RecordingService:
                 'file_name': f"{recording_id}.mp4",
                 'storage_tier': 'recent',  # All recordings start in 'recent' tier
                 'motion_triggered': recording_type == 'motion',
-                'motion_source': 'manual' if event_id is None else 'onvif',  # Can enhance later
+                'motion_source': resolved_source,
                 'motion_event_id': int(event_id) if event_id and event_id.isdigit() else None,
                 'status': 'recording'
             }

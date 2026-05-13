@@ -439,11 +439,37 @@ class FFmpegMotionDetector:
             if camera_id in self.active_detectors:
                 self.active_detectors[camera_id]['last_motion'] = time.time()
 
-            # Trigger recording via recording service
-            recording_id = self.recording_service.start_motion_recording(camera_id)
+            # Write motion_events row FIRST so we can carry the id through
+            # to the recording row. Without this every recording defaulted
+            # to motion_source='manual'. Phase 0 attribution, 2026-05-13.
+            # Best-effort: returns None on DB failure and we proceed
+            # without attribution rather than blocking the recording.
+            from services.motion.motion_event_writer import record_motion_event
+            event_id = record_motion_event(
+                camera_id=camera_id,
+                source='ffmpeg',
+                scene_score=float(scene_score) if scene_score is not None else None,
+            )
+
+            # Trigger recording via recording service, passing the event_id
+            # so the recordings row gets motion_source='ffmpeg' and the FK
+            # back to motion_events.
+            recording_id = self.recording_service.start_motion_recording(
+                camera_id, event_id=str(event_id) if event_id else None,
+                source='ffmpeg',
+            )
 
             if recording_id:
-                logger.info(f"Started motion recording for {camera_name}: {recording_id}")
+                logger.info(f"Started motion recording for {camera_name}: {recording_id} (event_id={event_id})")
+                # Backfill the inverse FK so audit queries can walk both ways.
+                if event_id:
+                    from services.motion.motion_event_writer import link_recording_to_event
+                    try:
+                        rid_int = int(recording_id) if str(recording_id).isdigit() else None
+                        if rid_int:
+                            link_recording_to_event(event_id, rid_int)
+                    except (ValueError, TypeError):
+                        pass
             else:
                 logger.warning(f"Failed to start motion recording for {camera_name}")
 

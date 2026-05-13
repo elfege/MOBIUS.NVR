@@ -330,6 +330,32 @@ def _is_trusted_network_enabled():
 
 
 @app.before_request
+def _stash_audit_actor_on_g():
+    """
+    Phase 2 audit actor capture (2026-05-13). Stash actor IDs on flask.g
+    so direct-psycopg2 helpers (e.g. routes/host_state.py:_db_conn callers,
+    routes/camera.py nickname/PTZ paths) can pull them and run
+    SET LOCAL audit.user_id / audit.client_id / audit.origin before
+    their UPDATE statements. The Postgres trigger reads those via
+    current_setting() and writes them to setting_audit_log.
+
+    We only need to stash for mutating verbs — read-only requests don't
+    fire any audit triggers, so the SET LOCAL would be wasted work.
+    """
+    from flask import g
+    if request.method not in ('PUT', 'POST', 'PATCH', 'DELETE'):
+        return
+    try:
+        from flask_login import current_user as _cu
+        uid = _cu.id if _cu and getattr(_cu, 'is_authenticated', False) else None
+    except Exception:
+        uid = None
+    g.audit_user_id   = uid
+    g.audit_client_id = request.cookies.get('device_token')
+    g.audit_origin    = 'api'  # default; route handlers may override before write
+
+
+@app.before_request
 def _auto_login_trusted():
     """
     Auto-login users via trusted device OR trusted network.

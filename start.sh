@@ -492,11 +492,77 @@ if docker ps | grep -q unified-nvr; then
 			echo "       cd ~/0_MOBIUS.NVR && ./services/host_agent/install_host_agent.sh"
 			echo "       edit ~/.config/mobius-nvr-host-agent/config to set API_TOKEN)"
 			echo "================================================================="
+			# ─────────────────────────────────────────────────────────
+			# TODO (Phase 2c v3): SSH-key distribution from the server.
+			#
+			# Phase 2c v2 added /api/host-agent/install-via-ssh, which
+			# lets the server SSH into a target kiosk and run the
+			# installer directly — but the operator still has to either
+			# (a) have pubkey-auth pre-arranged, or (b) supply a password
+			# via the UI on first install.
+			#
+			# v3 should automate (a): on first contact, the server reads
+			# the network_devices table for the target's resolved IP,
+			# generates a per-host install key (or reuses the existing
+			# admin key), copies the pubkey to the kiosk's
+			# ~/.ssh/authorized_keys via `ssh-copy-id` (one-time password
+			# prompt), then performs all subsequent host-agent ops via
+			# pubkey. Equivalent of `start.sh ensure_ssh_between_machines`
+			# but driven by the DB's known-machine list, not a static
+			# inventory file.
+			#
+			# Concretely:
+			#   1. Walk `network_devices` for rows with role='kiosk' or
+			#      a non-null host_label.
+			#   2. For each, try `ssh -o BatchMode=yes -o ConnectTimeout=5
+			#      $user@$ip true`. If that succeeds, key auth already
+			#      works — skip.
+			#   3. If it fails, mark the row as 'needs_ssh_keys' and
+			#      surface it in the Performance tab UI with a one-click
+			#      "Push key to this host" button that uses the same
+			#      modal as Phase 2c v2 but runs ssh-copy-id instead of
+			#      the install.
+			# ─────────────────────────────────────────────────────────
 		else
 			echo -e "${GREEN}All known kiosks have a recent host-agent ping.${NC}"
 		fi
 	else
 		echo -e "${YELLOW}NVR_API_TOKEN unset — skipping host-agent install hints${NC}"
+	fi
+
+	# ─────────────────────────────────────────────────────────────────────
+	# SSH-config mirror sync (Phase 2c v2, operator addendum 2026-05-13).
+	#
+	# When the operator installs the host-agent on a remote machine via
+	# /api/host-agent/install-via-ssh, the server writes a minimal
+	#   Host <label>
+	#     HostName <ip>
+	#     User <user>
+	# stanza into ${NVR_SSH_CONFIG_ENTRIES_PATH:-./data/ssh_config_entries}.
+	# This block invokes the host-side sync script which, in v2, DRY-RUNS
+	# the merge into ~/.ssh/config — it prints the candidate stanzas but
+	# does NOT modify the file. Once the operator has vetted at least one
+	# install cycle's output, flip the `false` guard inside the script
+	# (search "FUTURE: enable real merge after vetting") AND swap this
+	# block's invocation from default (dry-run) to `--commit`.
+	#
+	# FUTURE: enable real merge after vetting
+	#         → change the next line to:
+	#             ./scripts/sync_ssh_config_entries.sh --commit || true
+	#         AND remove the `false` guard inside that script.
+	# ─────────────────────────────────────────────────────────────────────
+	_SYNC_SCRIPT="$(dirname "$(readlink -f "$0")")/scripts/sync_ssh_config_entries.sh"
+	if [[ -x "$_SYNC_SCRIPT" ]]; then
+		echo
+		echo "================================================================="
+		echo "  SSH-config mirror — dry-run preview (Phase 2c v2)"
+		echo "================================================================="
+		# Never let a non-zero exit from the dry-run abort start.sh — it is
+		# an advisory step, not load-bearing.
+		"$_SYNC_SCRIPT" || true
+	else
+		# Script not present (older checkouts, manual deploys) — silent skip.
+		:
 	fi
 
 else

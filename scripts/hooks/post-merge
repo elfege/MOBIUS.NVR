@@ -28,11 +28,22 @@ if [ -d "$SCRIPT_DIR" ]; then
     fi
 fi
 
-# ── Main logic: push to public when on main ───────────────────────
+# ── Main logic: version-tag + push to public when on main ────────
 branch=$(git rev-parse --abbrev-ref HEAD)
 
 if [ "$branch" = "main" ]; then
-    echo "[post-merge] On main — pushing to public repo..."
-    git push public main &>/dev/null &
+    REPO_ROOT="$(git rev-parse --show-toplevel)"
+    # Version-bump ./.tag and create v<version> annotated tag at HEAD.
+    if [ -x "$REPO_ROOT/scripts/_auto_version.sh" ]; then
+        "$REPO_ROOT/scripts/_auto_version.sh" || true
+    fi
+    new_tag="$(git tag --points-at HEAD 'v*.*.*' | sort -V | tail -1)"
+
+    echo "[post-merge] On main — pushing main and tag $new_tag to public repo..."
+    (
+        git push public main
+        [ -n "$new_tag" ] && git push public "$new_tag"
+        [ -n "$new_tag" ] && git push origin "$new_tag"
+    ) &>/dev/null &
     echo "[post-merge] Push to public initiated (background)."
 fi

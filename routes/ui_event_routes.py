@@ -10,7 +10,7 @@ This module is the server-side counterpart to:
   - static/js/services/ui-event-tracker.js  (delegated DOM listeners)
   - static/js/services/ui-event-outbox.js   (durable batched flusher)
 
-Three endpoints:
+Two endpoints:
 
   POST   /api/ui-event/batch        Accept a batch of UI events.
                                     Auth: @login_required + csrf_exempt.
@@ -22,10 +22,9 @@ Three endpoints:
                                     limit/offset. Same shape as
                                     /api/audit/log so the frontend can
                                     treat both sources uniformly.
-  DELETE /api/ui-event/keystrokes   Admin-only. Wipes ONLY
-                                    kind IN ('keystroke','focus','blur')
-                                    while preserving the click trail.
-                                    Returns {deleted: N}. Irreversible.
+
+The audit log is append-only: there is no delete path. Retention is
+managed exclusively by the 90-day prune daemon in services/audit_listener.py.
 
 Same pattern as routes/audit_routes.py (commits 83d72fc, 7e67e96).
 """
@@ -69,10 +68,6 @@ VALID_KINDS = frozenset({
     "click", "keystroke", "focus", "blur", "submit",
     "navigation", "modal_open", "modal_close", "scroll",
 })
-
-# The keystroke-class kinds that the "Clear all keystroke entries" button
-# is allowed to wipe. Click and submit are NEVER touched.
-KEYSTROKE_CLASS_KINDS = ("keystroke", "focus", "blur")
 
 
 def _db_conn():
@@ -362,41 +357,3 @@ def api_ui_event_log():
             r["client_id"] = str(r["client_id"])
 
     return jsonify({"rows": rows, "total": total, "limit": limit, "offset": offset})
-
-
-# ---------------------------------------------------------------------------
-# DELETE /api/ui-event/keystrokes
-# ---------------------------------------------------------------------------
-
-@ui_event_bp.route("/api/ui-event/keystrokes", methods=["DELETE"])
-@csrf_exempt
-@login_required
-def api_ui_event_delete_keystrokes():
-    """
-    Bulk-delete keystroke-class rows (kind IN keystroke, focus, blur).
-    Admin-only. The click / submit / navigation / modal_* trail is NOT
-    affected — that's the explicit operator design intent: erase typed
-    content (a privacy mitigation) while preserving the click-trail
-    record for accountability.
-
-    Response: {"deleted": N}
-    """
-    if not _is_admin():
-        return jsonify({"error": "admin only"}), 403
-
-    try:
-        with _db_conn() as conn, conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM ui_event_log WHERE kind = ANY(%s)",
-                (list(KEYSTROKE_CLASS_KINDS),),
-            )
-            deleted = cur.rowcount
-    except Exception as e:
-        logger.exception("ui-event/keystrokes: delete failed")
-        return jsonify({"error": f"db error: {e}"}), 500
-
-    logger.info(
-        "ui-event/keystrokes: %d rows deleted by user_id=%s",
-        deleted, getattr(current_user, "id", None),
-    )
-    return jsonify({"deleted": deleted}), 200

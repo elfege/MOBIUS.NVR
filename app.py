@@ -74,6 +74,7 @@ from routes.host_state import host_state_bp, init_host_state
 from routes.host_agent_install import host_agent_install_bp
 from routes.host_agent_install_ssh import host_agent_install_ssh_bp
 from routes.audit_routes import audit_bp
+from routes.ui_event_routes import ui_event_bp
 from services.audit_listener import init_audit_listener
 from services.license_service import license, validate_license
 
@@ -185,6 +186,7 @@ app.register_blueprint(host_state_bp)
 app.register_blueprint(host_agent_install_bp)
 app.register_blueprint(host_agent_install_ssh_bp)
 app.register_blueprint(audit_bp)
+app.register_blueprint(ui_event_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).
@@ -193,7 +195,7 @@ app.register_blueprint(audit_bp)
 # so we must register exemptions via the CSRFProtect instance directly.
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
-           external_api_bp, evidence_bp, audit_bp, host_state_bp,
+           external_api_bp, evidence_bp, audit_bp, ui_event_bp, host_state_bp,
            host_agent_install_bp, host_agent_install_ssh_bp]:
     csrf.exempt(bp)
 

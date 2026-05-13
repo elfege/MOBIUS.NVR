@@ -645,6 +645,21 @@ export class TimelinePlaybackModal {
                 end_time: new Date(seg.end_time)
             }));
 
+            // CRITICAL: reset selection state whenever a new range is loaded.
+            // Without this, the footer (#export-segment-count, etc.) keeps
+            // showing stale '5 segments | 2:58 | ~61.9 MB' from a prior load
+            // even after the new fetch returns zero or different segments.
+            // Operator-reported 2026-05-13 with the Kitchen-camera screenshot:
+            // canvas showed "No recordings found" while the footer still
+            // claimed 5 segments. Bug.
+            this.selectedSegments = [];
+            this.selection = null;
+            this.updateExportInfo([]);
+            // Buttons that depend on a non-empty selection also need to
+            // settle back to disabled.
+            $('#timeline-export-btn').prop('disabled', true);
+            $('#timeline-download-files-btn').prop('disabled', true);
+
             this.showSection('loading', false);
 
             if (this.segments.length === 0) {

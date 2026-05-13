@@ -342,6 +342,16 @@
     import { auditOutbox } from "{{ url_for('static', filename='js/services/audit-outbox.js') }}";
     auditOutbox.start();
     window.auditOutbox = auditOutbox;
+
+    // 2026-05-13 UI interaction audit: same tracker as /streams. Captures
+    // every click / keystroke / focus / submit / navigation on /light and
+    // flushes through ui-event-outbox to POST /api/ui-event/batch (table:
+    // ui_event_log). Password fields are masked client-side.
+    import { uiEventOutbox } from "{{ url_for('static', filename='js/services/ui-event-outbox.js') }}";
+    import { uiEventTracker } from "{{ url_for('static', filename='js/services/ui-event-tracker.js') }}";
+    uiEventOutbox.start();
+    uiEventTracker.start(uiEventOutbox);
+    window.uiEventOutbox = uiEventOutbox;
 </script>
 
 </body>

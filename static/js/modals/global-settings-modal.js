@@ -113,6 +113,36 @@ export class SettingsUI {
                 // points at the latest auditLogModal singleton.
                 this.$content.find('#open-audit-log-btn').off('click.audit')
                     .on('click.audit', () => auditLogModal.open());
+
+                // 2026-05-13 UI interaction audit: wire the
+                // "Clear all keystroke entries" button. Confirms first,
+                // then DELETEs from /api/ui-event/keystrokes which only
+                // removes kind IN (keystroke, focus, blur) — click trail
+                // is preserved by design.
+                this.$content.find('#clear-keystrokes-btn').off('click.uievt')
+                    .on('click.uievt', async (e) => {
+                        const $btn = $(e.currentTarget);
+                        if (!confirm(
+                            'Permanently delete all keystroke / focus / blur entries from the UI activity log?\n\n'
+                          + 'Clicks, submits, and navigations will be preserved.\n\n'
+                          + 'This cannot be undone.'
+                        )) return;
+                        $btn.prop('disabled', true).text('Clearing…');
+                        try {
+                            const r = await fetch('/api/ui-event/keystrokes', {
+                                method: 'DELETE',
+                                credentials: 'same-origin',
+                            });
+                            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                            const data = await r.json();
+                            alert(`${data.deleted || 0} entries cleared.`);
+                        } catch (err) {
+                            alert(`Failed to clear: ${err.message}`);
+                        } finally {
+                            $btn.prop('disabled', false)
+                                .html('<i class="fas fa-eraser"></i> Clear all keystroke entries');
+                        }
+                    });
             }
         });
 
@@ -693,6 +723,27 @@ export class SettingsUI {
                     (server-side mutations) and by the browser audit-outbox
                     (UI-only mutations like grid size, fit mode, etc.).
                     Retention: 90 days, pruned hourly.
+                </div>
+            </div>
+
+            <!-- 2026-05-13 UI interaction audit disclosure + cleanup. -->
+            <div class="setting-row" style="border-left-color: #888;">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-info-circle"></i> UI Activity Recording</div>
+                </div>
+                <div class="setting-description" style="font-size: 11px; color: #888; line-height: 1.6;">
+                    Every UI interaction (clicks, keystrokes, focus events, navigations)
+                    is recorded with a timestamp, user, and device for accountability
+                    and forensic purposes. Password fields are masked to <code>*</code>
+                    before storage. Retention: 90 days.
+                    <br><br>
+                    To remove only the keystroke / focus / blur entries (preserving
+                    the click trail), use the button below. This is irreversible.
+                </div>
+                <div class="setting-control" style="margin-top: 10px;">
+                    <button id="clear-keystrokes-btn" class="setting-btn setting-btn-secondary">
+                        <i class="fas fa-eraser"></i> Clear all keystroke entries
+                    </button>
                 </div>
             </div>
         </div>

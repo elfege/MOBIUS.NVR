@@ -245,12 +245,12 @@ export const auditLogModal = {
             return;
         }
         for (const r of rows) {
-            const ts = r.ts ? r.ts.slice(0, 19).replace('T', ' ') : '';
+            const tsCell = this._formatTs(r.ts);
             const change = this._summarizeChange(r);
             const scope = (r.row_pk ? `${r.table_name}:${r.row_pk}` : (r.table_name || ''));
             const $tr = $(`
                 <tr>
-                    <td>${this._esc(ts)}</td>
+                    <td>${tsCell}</td>
                     <td>${this._esc(r.origin || '')}</td>
                     <td>${this._esc(r.user_id || '')}</td>
                     <td title="${this._esc(r.client_id || '')}">${this._esc((r.client_id || '').slice(0, 8))}</td>
@@ -262,6 +262,37 @@ export const auditLogModal = {
             $tr.data('row', r);
             $tbody.append($tr);
         }
+    },
+
+    /**
+     * Render a server-supplied UTC ISO timestamp as:
+     *   local time (primary, big)   ← the audit log is for an operator
+     *                                  reading "what happened when on my
+     *                                  schedule", so local-time-first
+     *                                  is the right primary.
+     *   UTC      (secondary, dim)   ← kept visible because litigation /
+     *                                  cross-zone forensics needs the
+     *                                  canonical UTC reference, and the
+     *                                  DB stores in UTC.
+     * The cell hover-title shows the operator's resolved TZ name so
+     * "what TZ is 'local' anyway" is auditable too.
+     */
+    _formatTs(iso) {
+        if (!iso) return '';
+        let d;
+        try {
+            d = new Date(iso);
+            if (isNaN(d.getTime())) return this._esc(iso);
+        } catch (_) {
+            return this._esc(iso);
+        }
+        const pad = (n) => String(n).padStart(2, '0');
+        const local = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        const utc   = `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} UTC`;
+        let tz = '';
+        try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) {}
+        const tzHint = tz ? ` (${tz})` : '';
+        return `<div title="${this._esc(iso)}${this._esc(tzHint)}"><div>${this._esc(local)}</div><div style="color:#888;font-size:10px;">${this._esc(utc)}</div></div>`;
     },
 
     _summarizeChange(r) {

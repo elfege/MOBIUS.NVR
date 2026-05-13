@@ -459,6 +459,27 @@ The following paths contain operator-private notes (LAN topology, camera names r
 
 ---
 
+### RULE 14.7: Versioning discipline — `./.tag` and `v*.*.*` git tags
+
+`./.tag` is a dotted, gitignored, **untracked** single-line file holding the current semver of `main`. Initial seed: `5.33.145`. The `post-merge` and `post-commit` hooks invoke `scripts/_auto_version.sh` whenever a commit lands on `main`. The helper:
+
+- Finds the latest `v*.*.*` git tag.
+- Scans commits between that tag and HEAD. Infers bump level:
+  - **major** — any commit subject contains `!:` or body has `BREAKING CHANGE`.
+  - **minor** — any commit subject starts with `feat:` / `feat(...)`, OR any new `psql/migrations/*.sql` was added since the tag.
+  - **patch** — otherwise.
+- If `./.tag` is below the inferred next version → overwrites `./.tag`. Never downgrades. If the operator pre-edited `./.tag` to a higher value (manual major/minor override), that wins.
+- Creates the annotated `v<version>` tag at HEAD. Push-out of the tag is bundled with the main push to `public`/`origin` in the background.
+
+**Operator override:** edit `./.tag` to the desired version **before** merging to main. The hook respects any value that is semver-greater than the inferred bump.
+
+**Constraints:**
+- Hook fires on `main` only. Feature branches are untagged.
+- `./.tag` MUST stay gitignored — pushing it would defeat the purpose of operator-local source-of-truth.
+- Tags are annotated (not lightweight) so they carry message metadata and travel with `--follow-tags` / `git push origin v<version>`.
+
+---
+
 ### RULE 15: Missing Files - Ask, Don't Guess
 
 **If file is missing or empty:**

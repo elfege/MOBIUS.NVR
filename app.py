@@ -71,6 +71,7 @@ from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
 from routes.host_state import host_state_bp, init_host_state
+from routes.host_agent_install import host_agent_install_bp
 from services.audit_listener import init_audit_listener
 from services.license_service import license, validate_license
 
@@ -179,6 +180,7 @@ app.register_blueprint(talkback_bp)
 app.register_blueprint(settings_bp)
 app.register_blueprint(evidence_bp)
 app.register_blueprint(host_state_bp)
+app.register_blueprint(host_agent_install_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).

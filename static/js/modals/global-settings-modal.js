@@ -7,6 +7,7 @@ import { fullscreenHandler } from '../settings/fullscreen-handler.js';
 import { storageStatus } from '../settings/storage-status.js';
 import { evidenceTab } from '../settings/evidence-collection.js';
 import { performanceThrottle } from '../settings/performance-throttle.js';
+import { auditLogModal } from './audit-log-modal.js';
 
 /**
  * Detect if current device is a portable/mobile device
@@ -105,6 +106,13 @@ export class SettingsUI {
                     this.$content.find('.settings-tab-panel[data-tab-panel="evidence"]')
                 );
                 evidenceTab.load();
+            }
+            if (tab === 'logs') {
+                // Idempotent: re-binds the "Open Audit Log" click handler
+                // every time the Logs tab is opened so the button always
+                // points at the latest auditLogModal singleton.
+                this.$content.find('#open-audit-log-btn').off('click.audit')
+                    .on('click.audit', () => auditLogModal.open());
             }
         });
 
@@ -353,6 +361,7 @@ export class SettingsUI {
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="evidence"><i class="fas fa-shield-alt"></i> Collect Evidence</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="storage"><i class="fas fa-hdd"></i> Storage</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="network"><i class="fas fa-network-wired"></i> Network</button>' : ''}
+            ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="logs"><i class="fas fa-history"></i> Logs</button>' : ''}
         </div>
 
         <!-- ── View tab ────────────────────────────────────────────── -->
@@ -664,6 +673,30 @@ export class SettingsUI {
         ${window.USER_ROLE === 'admin' ? evidenceTab.renderHTML() : ''}
 
         ${performanceThrottle.renderHTML()}
+
+        ${window.USER_ROLE === 'admin' ? `
+        <!-- ── Logs tab (admin only) ───────────────────────────────── -->
+        <div class="settings-tab-panel" data-tab-panel="logs">
+            <div class="setting-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-history"></i> Settings Audit Log</div>
+                    <div class="setting-control">
+                        <button id="open-audit-log-btn" class="setting-btn setting-btn-primary"
+                                style="font-size:13px;padding:6px 14px;">
+                            <i class="fas fa-external-link-alt"></i> Open Audit Log
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    Append-only record of every settings change.
+                    Captured automatically by Postgres triggers
+                    (server-side mutations) and by the browser audit-outbox
+                    (UI-only mutations like grid size, fit mode, etc.).
+                    Retention: 90 days, pruned hourly.
+                </div>
+            </div>
+        </div>
+        ` : ''}
     `;
 
         this.$content.html(html);

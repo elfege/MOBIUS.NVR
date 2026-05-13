@@ -6,7 +6,9 @@
  * - Show/hide individual cameras
  * - Select All / Deselect All
  * - HD/SD quality toggle per camera
- * - Persistence via per-user database (with localStorage cache for fast load)
+ * - Persistence via localStorage only (per-device, per-browser).
+ *   Operator request 2026-05-13 after server-clobbers-local on every load
+ *   kept silently dropping selections across app restarts.
  * - Dynamic grid layout adjustment (delegated to GridLayoutEngine)
  *
  * @module controllers/camera-selector-controller
@@ -30,15 +32,19 @@ class CameraSelectorController {
         this.cameras = [];
         this.isOpen = false;
 
-        // In-memory cache (loaded from server, cached in localStorage for fast page load)
+        // In-memory mirror of localStorage. localStorage is the SOLE source
+        // of truth for hidden/HD selections per operator request 2026-05-13:
+        // the prior 'server-clobbers-local-on-load' design kept silently
+        // dropping selections across app restarts. No more server I/O for
+        // these two arrays — the rest of /api/my-preferences (grid layout,
+        // video fit, grid style) is unaffected.
         this._hiddenCameras = [];
         this._hdCameras = [];
-        this._prefsLoaded = false;
 
         // Grid layout engine — owns all layout mode logic (uniform, stretch, auto-fit, masonry)
         this._layoutEngine = new GridLayoutEngine($('#streams-container'));
 
-        // localStorage keys (cache only - server is source of truth)
+        // localStorage keys (now the source of truth, not a cache)
         this.HIDDEN_CAMERAS_KEY = 'hiddenCameras';
         this.HD_CAMERAS_KEY = 'hdCameras';
 
@@ -47,9 +53,8 @@ class CameraSelectorController {
     }
 
     /**
-     * Initialize the controller.
-     * Loads preferences from localStorage cache first (instant), then
-     * fetches from server to get authoritative per-user preferences.
+     * Initialize the controller. Reads selections from localStorage and
+     * applies them. NO server fetch — localStorage is authoritative.
      */
     _init() {
         console.log('[CameraSelector] Initializing...');
@@ -57,13 +62,13 @@ class CameraSelectorController {
         // Collect camera info from stream items
         this._collectCameras();
 
-        // Load from localStorage cache for instant rendering
+        // Load from localStorage (source of truth)
         this._loadFromCache();
 
         // Populate the dropdown list
         this._populateList();
 
-        // Restore saved selections (from cache)
+        // Restore saved selections (from localStorage)
         this._restoreSelections();
 
         // Setup event listeners
@@ -72,10 +77,7 @@ class CameraSelectorController {
         // Apply initial filter (hide cameras that were hidden in previous session)
         this._applyInitialFilter();
 
-        // Then fetch from server (source of truth) and re-apply if different
-        this._loadFromServer();
-
-        console.log(`[CameraSelector] Initialized with ${this.cameras.length} cameras`);
+        console.log(`[CameraSelector] Initialized with ${this.cameras.length} cameras (localStorage only)`);
     }
 
     /**
@@ -558,75 +560,20 @@ class CameraSelectorController {
     }
 
     /**
-     * Load preferences from server (authoritative per-user data).
-     * If server data differs from cache, re-apply filter.
+     * Persist current in-memory selections to localStorage. This is the
+     * ONLY persistence step now — no server I/O. Per operator request
+     * 2026-05-13 after months of selections silently disappearing across
+     * app restarts when the server side of the cache was the canonical
+     * source.
      */
-    async _loadFromServer() {
-        try {
-            const response = await fetch('/api/my-preferences');
-            if (!response.ok) {
-                console.warn('[CameraSelector] Failed to load preferences from server');
-                return;
-            }
-
-            const prefs = await response.json();
-            const serverHidden = prefs.hidden_cameras || [];
-            const serverHD = prefs.hd_cameras || [];
-
-            // Check if server data differs from cache
-            const hiddenChanged = JSON.stringify(serverHidden.sort()) !== JSON.stringify(this._hiddenCameras.sort());
-            const hdChanged = JSON.stringify(serverHD.sort()) !== JSON.stringify(this._hdCameras.sort());
-
-            if (hiddenChanged || hdChanged) {
-                console.log('[CameraSelector] Server preferences differ from cache, re-applying...');
-                this._hiddenCameras = serverHidden;
-                this._hdCameras = serverHD;
-
-                // Update cache
-                this._updateCache();
-
-                // Re-apply UI
-                this._restoreSelections();
-                this._applyInitialFilter();
-            }
-
-            this._prefsLoaded = true;
-        } catch (e) {
-            console.warn('[CameraSelector] Error loading preferences from server:', e);
-        }
-    }
-
-    /**
-     * Save preferences to server and update localStorage cache.
-     * Called after applying filter or toggling HD.
-     */
-    async _saveToServer() {
-        // Update cache immediately for responsiveness
-        this._updateCache();
-
-        try {
-            await fetch('/api/my-preferences', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    hidden_cameras: this._hiddenCameras,
-                    hd_cameras: this._hdCameras
-                })
-            });
-        } catch (e) {
-            console.warn('[CameraSelector] Error saving preferences to server:', e);
-        }
-    }
-
-    /**
-     * Update localStorage cache from in-memory state
-     */
-    _updateCache() {
+    _persist() {
         try {
             localStorage.setItem(this.HIDDEN_CAMERAS_KEY, JSON.stringify(this._hiddenCameras));
             localStorage.setItem(this.HD_CAMERAS_KEY, JSON.stringify(this._hdCameras));
         } catch (e) {
-            // localStorage might be full or unavailable - non-critical
+            // localStorage might be full or unavailable — non-critical;
+            // the in-memory state stays consistent for this session.
+            console.warn('[CameraSelector] localStorage persist failed:', e);
         }
     }
 
@@ -645,7 +592,7 @@ class CameraSelectorController {
     _saveHiddenCameras(serials) {
         this._hiddenCameras = serials;
         // Server save happens in _applyFilter after all changes are collected
-        this._saveToServer();
+        this._persist();
     }
 
     /**
@@ -663,7 +610,7 @@ class CameraSelectorController {
     _addHDCamera(serial) {
         if (!this._hdCameras.includes(serial)) {
             this._hdCameras.push(serial);
-            this._saveToServer();
+            this._persist();
         }
     }
 
@@ -673,7 +620,7 @@ class CameraSelectorController {
      */
     _removeHDCamera(serial) {
         this._hdCameras = this._hdCameras.filter(s => s !== serial);
-        this._saveToServer();
+        this._persist();
     }
 }
 

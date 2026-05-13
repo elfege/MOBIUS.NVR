@@ -418,9 +418,54 @@ def install_via_ssh():
         """SSE generator — yields data: frames as ssh produces output."""
         proc = None
         try:
+            # Container-side preflight: ensure ~/.ssh exists with the
+            # perms openssh requires. Without this, the first connect
+            # attempt dies on
+            #   "Could not create directory '/home/appuser/.ssh'"
+            # because the appuser home in the unified-nvr image has no
+            # .ssh dir baked in. Idempotent — chmod is a no-op if already
+            # correct.
+            try:
+                ssh_dir = os.path.expanduser("~/.ssh")
+                os.makedirs(ssh_dir, mode=0o700, exist_ok=True)
+                os.chmod(ssh_dir, 0o700)
+                known_hosts = os.path.join(ssh_dir, "known_hosts")
+                if not os.path.exists(known_hosts):
+                    with open(known_hosts, "a"):
+                        pass
+                    os.chmod(known_hosts, 0o600)
+            except Exception as e:
+                yield _sse_data(
+                    f"warning: could not prep ~/.ssh in container: {e}"
+                )
+
             yield _sse_data(
                 f">>> connecting to {ssh_user}@{target_host} ..."
             )
+
+            # Pre-resolution sanity check. The container has no
+            # /etc/hosts entries for the operator's local aliases (like
+            # 'rog' or 'tablet1') — those live in the host's ~/.ssh/config
+            # or /etc/hosts, neither of which is mounted into the container.
+            # If target_host doesn't look like an IP, ATTEMPT DNS and warn
+            # early instead of letting ssh emit an opaque
+            # "Could not resolve hostname rog: Name or service not known".
+            try:
+                import ipaddress, socket as _sock
+                try:
+                    ipaddress.ip_address(target_host)
+                except ValueError:
+                    # Not an IP literal — try DNS
+                    try:
+                        _sock.gethostbyname(target_host)
+                    except Exception:
+                        yield _sse_data(
+                            f"warning: '{target_host}' cannot be resolved from inside the "
+                            f"container. If this is a local alias from your ~/.ssh/config, "
+                            f"use the IP address instead (e.g. 192.168.10.x)."
+                        )
+            except Exception:
+                pass
             popen_kwargs: Dict[str, Any] = dict(
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,

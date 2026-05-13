@@ -71,6 +71,7 @@ from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
 from routes.host_state import host_state_bp, init_host_state
+from services.audit_listener import init_audit_listener
 from services.license_service import license, validate_license
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
@@ -406,6 +407,10 @@ websocket_mjpeg_service.set_socketio(socketio)
 # doesn't exist yet at that point.
 init_host_state(socketio)
 init_camera_socketio(socketio)
+# Phase 2: subscribe to NOTIFY 'setting_changed' (fired by every audit
+# trigger in migration 036) and fan out to SocketIO + future plugins.
+# Also starts the 90-day audit retention prune thread.
+init_audit_listener(socketio)
 # Best-effort backfill of nicknames for cameras that don't have one yet.
 # Rule: last word of the display name, lowercased, with a 0..9 suffix on
 # collision. Idempotent — only touches NULL rows.

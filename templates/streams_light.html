@@ -335,5 +335,14 @@
 <script type="module"
         src="{{ url_for("static", filename="js/light/light-mode-app.js") }}"></script>
 
+<!-- Phase 2 audit outbox: same module used by /streams. Captures UI-only
+     mutations on /light (grid size, fit mode, fullscreen open/close, etc.)
+     and POSTs them to /api/audit/batch every 60s. -->
+<script type="module">
+    import { auditOutbox } from "{{ url_for('static', filename='js/services/audit-outbox.js') }}";
+    auditOutbox.start();
+    window.auditOutbox = auditOutbox;
+</script>
+
 </body>
 </html>

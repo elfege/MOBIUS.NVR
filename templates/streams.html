@@ -1107,6 +1107,14 @@
             window.location.reload()
         }, 60 * 60 * 1000)
     </script>
+    <script type="module">
+        // Phase 2 audit-outbox: start the periodic flusher for browser-side
+        // audit events. Trigger-based audit covers server mutations; this
+        // covers localStorage UI toggles (grid, fit mode, HD toggle, etc.).
+        import { auditOutbox } from "{{ url_for('static', filename='js/services/audit-outbox.js') }}";
+        auditOutbox.start();
+        window.auditOutbox = auditOutbox;  // exposed for other modules to enqueue events
+    </script>
 
     {% if current_user.role == 'admin' %}
     <script>

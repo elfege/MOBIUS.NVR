@@ -143,8 +143,12 @@ def api_put_camera_order():
             password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
             connect_timeout=5
         )
-        conn.autocommit = True
+        # Transactional batch (no autocommit) so SET LOCAL audit.* applied
+        # by apply_audit_actor is visible to every upsert in the loop. The
+        # audit trigger on user_camera_preferences relies on those GUCs.
         cur = conn.cursor()
+        from services.audit_actor import apply_audit_actor
+        apply_audit_actor(cur)
         for idx, serial in enumerate(order):
             cur.execute("""
                 INSERT INTO user_camera_preferences
@@ -155,6 +159,7 @@ def api_put_camera_order():
                 DO UPDATE SET display_order = EXCLUDED.display_order,
                               updated_at = NOW()
             """, (current_user.id, serial, idx, serial))
+        conn.commit()
         cur.close()
         conn.close()
         return jsonify({'status': 'saved', 'count': len(order)})
@@ -605,6 +610,12 @@ def autogenerate_missing_nicknames() -> dict:
     summary = {"considered": 0, "assigned": {}, "skipped": {}}
     try:
         with _nickname_db_conn() as conn, conn.cursor() as cur:
+            # Stamp the SET LOCAL audit.* GUCs for the cameras UPDATE
+            # trigger to capture WHO. No-op if not in a request context
+            # (admin batch call from a daemon would still write rows,
+            # just with NULL actor — that's the graceful-degrade path).
+            from services.audit_actor import apply_audit_actor
+            apply_audit_actor(cur)
             cur.execute(
                 "SELECT serial, name, nickname FROM cameras ORDER BY name ASC"
             )

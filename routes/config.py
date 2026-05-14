@@ -401,8 +401,12 @@ def api_advanced_settings_patch(key):
             password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
             connect_timeout=5
         )
-        conn.autocommit = True
+        # Transactional (no autocommit) so SET LOCAL audit.* applied by
+        # apply_audit_actor is in scope for the upsert. The nvr_settings
+        # audit trigger relies on the audit.* GUCs to stamp WHO.
         cur = conn.cursor()
+        from services.audit_actor import apply_audit_actor
+        apply_audit_actor(cur)
         cur.execute(
             """
             INSERT INTO nvr_settings (key, value, updated_at)
@@ -411,6 +415,7 @@ def api_advanced_settings_patch(key):
             """,
             (key, value)
         )
+        conn.commit()
         cur.close()
         conn.close()
 

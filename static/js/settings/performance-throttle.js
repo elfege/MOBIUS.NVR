@@ -67,7 +67,96 @@ function isPortableUA() {
     return /iPad|iPhone|iPod|Android|Silk\/|Fire/i.test(navigator.userAgent);
 }
 
+// ---------------------------------------------------------------------------
+// Lightweight canvas sparkline. No external lib — keeps the perf tab cheap
+// even on low-end clients (which is the WHOLE POINT of the throttler this
+// tab is configuring).
+// ---------------------------------------------------------------------------
+const SPARK_MAX = 60;  // matches server _METRICS_RING_MAX
+
+/** Pull a numeric series out of a samples[] array; null/undefined become 0. */
+function _series(samples, key) {
+    return samples.map(s => {
+        const v = s && s[key];
+        return (typeof v === 'number' && isFinite(v)) ? v : 0;
+    });
+}
+
+/**
+ * Draw a polyline-style sparkline.
+ *
+ * Y-axis is fixed 0..100 (percent), so charts are directly comparable —
+ * if you see the CPU line crossing 50% near the top of the canvas, that's
+ * really 50% of total CPU, not "50% of whatever the max was".
+ *
+ * Threshold line: optional red horizontal at `thresholdPct` (e.g. the
+ * throttle Max CPU setting) so the operator sees "we are over the line".
+ *
+ * Drawn idempotently — caller may invoke on every new sample without
+ * accumulating state inside the canvas. Each call: full clear + repaint.
+ */
+function _drawSparkline(canvas, values, opts = {}) {
+    if (!canvas || !canvas.getContext) return;
+    const ctx = canvas.getContext('2d');
+    // Match CSS pixel size to backing-store size for crisp lines without
+    // having to mess with devicePixelRatio scaling math every redraw.
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!values.length) return;
+
+    // Pad the value array left so the line always anchors to the right
+    // edge of the canvas — newest sample on the right, "history flows left".
+    const padded = values.length < SPARK_MAX
+        ? new Array(SPARK_MAX - values.length).fill(null).concat(values)
+        : values.slice(-SPARK_MAX);
+
+    const stepX = w / (SPARK_MAX - 1);
+    const yFor = (v) => h - ((Math.max(0, Math.min(100, v)) / 100) * h);
+
+    // Threshold line first (so the data line draws on top of it).
+    if (typeof opts.thresholdPct === 'number') {
+        const ty = yFor(opts.thresholdPct);
+        ctx.strokeStyle = 'rgba(220, 60, 60, 0.55)';
+        ctx.setLineDash([3, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, ty);
+        ctx.lineTo(w, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Data line.
+    ctx.strokeStyle = opts.stroke || '#4fc3f7';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let drawing = false;
+    for (let i = 0; i < padded.length; i++) {
+        const v = padded[i];
+        if (v == null) { drawing = false; continue; }
+        const x = i * stepX;
+        const y = yFor(v);
+        if (!drawing) { ctx.moveTo(x, y); drawing = true; }
+        else          { ctx.lineTo(x, y); }
+    }
+    ctx.stroke();
+
+    // Soft fill below the line so trends pop visually.
+    const fill = opts.fill || 'rgba(79, 195, 247, 0.13)';
+    ctx.fillStyle = fill;
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fill();
+}
+
+
 export const performanceThrottle = {
+    // Ring buffer of compact metric samples for the currently-bound host.
+    // Reset/backfilled in init() when the panel opens; appended-to in
+    // _onHostStateChanged() on every SocketIO push.
+    _perfBuf: [],
     /**
      * Render the panel HTML. Called once when the settings modal builds.
      * Returns a complete .settings-tab-panel string.
@@ -150,6 +239,45 @@ export const performanceThrottle = {
                 <div class="setting-row">
                     <div class="setting-description" id="perf-host-status" style="font-size:12px;color:#888;">
                         Loading host status…
+                    </div>
+                </div>
+
+                <!-- Live performance panel: CPU/Mem/GPU sparklines, throttler state,
+                     demoted-tile list. Populated by perfViz section of init() below. -->
+                <div class="setting-row" id="perf-viz-row">
+                    <div class="setting-top">
+                        <div class="setting-label"><i class="fas fa-chart-line"></i> Live performance</div>
+                        <div class="setting-control" id="perf-viz-throttler-badge"
+                             style="font-size:11px;letter-spacing:0.04em;padding:3px 8px;border-radius:6px;background:#444;color:#bbb;">
+                            THROTTLER: —
+                        </div>
+                    </div>
+                    <div id="perf-viz-grid"
+                         style="display:grid;grid-template-columns:140px 1fr 60px;gap:6px 12px;align-items:center;margin-top:10px;font-size:12px;">
+                        <div style="color:#bbb;">CPU load</div>
+                        <canvas id="perf-spark-cpu" width="600" height="32"
+                                style="width:100%;height:32px;background:#1e1e1e;border-radius:4px;"></canvas>
+                        <div id="perf-spark-cpu-out" style="font-variant-numeric:tabular-nums;text-align:right;color:#ddd;">—</div>
+
+                        <div style="color:#bbb;">Memory</div>
+                        <canvas id="perf-spark-mem" width="600" height="32"
+                                style="width:100%;height:32px;background:#1e1e1e;border-radius:4px;"></canvas>
+                        <div id="perf-spark-mem-out" style="font-variant-numeric:tabular-nums;text-align:right;color:#ddd;">—</div>
+
+                        <div style="color:#bbb;">GPU util</div>
+                        <canvas id="perf-spark-gpu" width="600" height="32"
+                                style="width:100%;height:32px;background:#1e1e1e;border-radius:4px;"></canvas>
+                        <div id="perf-spark-gpu-out" style="font-variant-numeric:tabular-nums;text-align:right;color:#ddd;">—</div>
+                    </div>
+                    <div id="perf-viz-demoted"
+                         style="margin-top:10px;font-size:11px;color:#999;line-height:1.5;">
+                        No tiles demoted.
+                    </div>
+                    <div class="setting-description" style="margin-top:8px;">
+                        Sparklines show the last ~5 minutes of agent reports (5s cadence)
+                        for this host. Demoted-tile list reflects this browser's throttler
+                        state — the throttler runs client-side, so each browser session
+                        has its own list.
                     </div>
                 </div>
 
@@ -279,13 +407,175 @@ export const performanceThrottle = {
                     sock.on('host_status_changed', () => this.loadHostList($panel));
                     sock.on('host_state_changed', (msg) => {
                         // Only re-render if the changed host is on the current page.
-                        if (msg && msg.host_label) this._patchHostRow($panel, msg);
+                        if (msg && msg.host_label) {
+                            this._patchHostRow($panel, msg);
+                            // Append metrics sample for the perf-viz panel,
+                            // filtered to the locally-bound host_label.
+                            const myLabel = resolveHostLabel();
+                            if (myLabel && msg.host_label === myLabel) {
+                                this._appendPerfSample(msg);
+                                this._renderPerfViz($panel);
+                            }
+                        }
                     });
                     $panel.data('perf-socket-bound', true);
                 }
             } catch (e) {
                 console.warn('[PerformanceThrottle] socket bind failed:', e);
             }
+        }
+
+        // Backfill the perf-viz sparklines from the server's ring buffer.
+        // Without this the chart starts empty and only gains samples one
+        // per agent poll — which is fine but visually unhelpful for the
+        // first ~30 seconds.
+        await this._backfillPerfBuf($panel);
+        this._renderPerfViz($panel);
+
+        // Re-paint the throttler badge + demoted-tile list every 2s so
+        // changes to window.throttleController._demoted (a pure-JS
+        // array on the global) reach the UI without us having to hook
+        // each tile-demote/restore call site. The ThrottleController
+        // doesn't currently emit events, and a 2s redraw is cheap.
+        if ($panel.data('perf-viz-timer')) clearInterval($panel.data('perf-viz-timer'));
+        const tid = setInterval(() => this._renderPerfViz($panel), 2000);
+        $panel.data('perf-viz-timer', tid);
+    },
+
+    /**
+     * Append one sample to the perf-viz ring buffer. Keep it bounded so
+     * the canvas redraws don't get slower-and-slower as the tab stays open.
+     */
+    _appendPerfSample(msg) {
+        const sample = {
+            ts: msg.server_received_at || msg.ts || (Date.now() / 1000),
+            cpu_load_norm: typeof msg.cpu_load_norm === 'number' ? msg.cpu_load_norm * 100 : null,
+            mem_used_pct:  typeof msg.mem_used_pct  === 'number' ? msg.mem_used_pct       : null,
+            gpu_util:      typeof msg.gpu_util      === 'number' ? msg.gpu_util           : null,
+        };
+        this._perfBuf.push(sample);
+        if (this._perfBuf.length > SPARK_MAX) {
+            this._perfBuf.splice(0, this._perfBuf.length - SPARK_MAX);
+        }
+    },
+
+    /**
+     * Pre-load the ring buffer from /api/host/<label>/metrics so the
+     * panel opens with history already drawn. Server samples already
+     * carry cpu_load_norm as a 0..1 fraction; we normalize to 0..100
+     * here so the sparkline draw code is unit-consistent.
+     */
+    async _backfillPerfBuf($panel) {
+        const label = resolveHostLabel();
+        this._perfBuf = [];
+        if (!label) return;
+        try {
+            const r = await fetch(`/api/host/${encodeURIComponent(label)}/metrics`,
+                                  { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const j = await r.json();
+            const samples = (j && Array.isArray(j.samples)) ? j.samples : [];
+            for (const s of samples) {
+                this._perfBuf.push({
+                    ts: s.ts,
+                    cpu_load_norm: typeof s.cpu_load_norm === 'number' ? s.cpu_load_norm * 100 : null,
+                    mem_used_pct:  typeof s.mem_used_pct  === 'number' ? s.mem_used_pct       : null,
+                    gpu_util:      typeof s.gpu_util      === 'number' ? s.gpu_util           : null,
+                });
+            }
+        } catch (e) {
+            // Non-fatal: the live-update path will fill the buffer naturally.
+            console.warn('[PerformanceThrottle] perf-viz backfill failed:', e);
+        }
+    },
+
+    /**
+     * Repaint sparklines + numeric readouts + throttler badge + demoted-tile list.
+     *
+     * Reads window.throttleController._demoted and .enabled directly. The
+     * throttle controller is a global singleton wired by stream.js; if the
+     * Perf tab is opened from /streams (which is the only place the
+     * throttler runs anyway), the global is present.
+     */
+    _renderPerfViz($panel) {
+        const buf = this._perfBuf;
+        const last = buf.length ? buf[buf.length - 1] : null;
+
+        // Threshold lines: pull from the inputs the user is currently editing.
+        // No DB round-trip — we want the visual to track the slider in real time.
+        const maxCpu  = parseFloat($panel.find('#perf-max-cpu').val()) || 50;
+        const hyst    = parseFloat($panel.find('#perf-hyst').val())    || 10;
+        const restoreFloor = Math.max(0, maxCpu - hyst);
+
+        // CPU sparkline + readout. Red threshold line at maxCpu.
+        const cpuVals = _series(buf, 'cpu_load_norm');
+        _drawSparkline($panel.find('#perf-spark-cpu')[0], cpuVals,
+            { thresholdPct: maxCpu, stroke: '#4fc3f7', fill: 'rgba(79,195,247,0.14)' });
+        $panel.find('#perf-spark-cpu-out').text(
+            (last && typeof last.cpu_load_norm === 'number')
+                ? `${last.cpu_load_norm.toFixed(0)}%` : '—'
+        );
+
+        // Memory sparkline + readout. No threshold line (no throttler hook).
+        const memVals = _series(buf, 'mem_used_pct');
+        _drawSparkline($panel.find('#perf-spark-mem')[0], memVals,
+            { stroke: '#ffb74d', fill: 'rgba(255,183,77,0.14)' });
+        $panel.find('#perf-spark-mem-out').text(
+            (last && typeof last.mem_used_pct === 'number')
+                ? `${last.mem_used_pct.toFixed(0)}%` : '—'
+        );
+
+        // GPU sparkline + readout. Only meaningful on NVIDIA hosts.
+        const gpuVals = _series(buf, 'gpu_util');
+        const gpuHas = gpuVals.some(v => v > 0) || (last && last.gpu_util != null);
+        _drawSparkline($panel.find('#perf-spark-gpu')[0], gpuVals,
+            { stroke: '#81c784', fill: 'rgba(129,199,132,0.13)' });
+        $panel.find('#perf-spark-gpu-out').text(
+            (last && typeof last.gpu_util === 'number')
+                ? `${last.gpu_util.toFixed(0)}%`
+                : (gpuHas ? '—' : 'n/a')
+        );
+
+        // Throttler badge + demoted-tile list. Read from the global
+        // ThrottleController singleton if present.
+        const $badge = $panel.find('#perf-viz-throttler-badge');
+        const $list  = $panel.find('#perf-viz-demoted');
+        const tc = (typeof window !== 'undefined') ? window.throttleController : null;
+
+        if (!tc) {
+            $badge.text('THROTTLER: NOT IN /streams').css({ background: '#444', color: '#bbb' });
+            $list.text('Open the Performance tab from /streams to see throttler state.');
+            return;
+        }
+        if (!tc.enabled) {
+            $badge.text('THROTTLER: OFF').css({ background: '#444', color: '#bbb' });
+        } else {
+            const cpuPct = last && typeof last.cpu_load_norm === 'number' ? last.cpu_load_norm : null;
+            const over = cpuPct != null && cpuPct >= maxCpu;
+            const dem  = Array.isArray(tc._demoted) ? tc._demoted.length : 0;
+            if (dem > 0) {
+                $badge.text(`THROTTLER: ACTIVE (${dem} demoted)`)
+                      .css({ background: '#bf360c', color: '#fff' });
+            } else if (over) {
+                $badge.text('THROTTLER: ARMED, OVER THRESHOLD')
+                      .css({ background: '#e65100', color: '#fff' });
+            } else {
+                $badge.text(`THROTTLER: ARMED (restore at ${restoreFloor.toFixed(0)}%)`)
+                      .css({ background: '#1b5e20', color: '#fff' });
+            }
+        }
+
+        const dem = Array.isArray(tc._demoted) ? tc._demoted : [];
+        if (!dem.length) {
+            $list.html('<span style="color:#666;">No tiles demoted.</span>');
+        } else {
+            // newest-on-top so the eye lands on the most recent demotion.
+            const items = dem.slice().reverse().map(d => {
+                const cam = (d.cameraId || '?');
+                const sty = (d.streamType ? ` <span style="color:#666;">(${d.streamType})</span>` : '');
+                return `<div style="padding:2px 0;"><i class="fas fa-pause-circle" style="color:#f57c00;"></i> ${cam}${sty}</div>`;
+            }).join('');
+            $list.html(`<div style="color:#bbb;font-weight:500;margin-bottom:4px;">Demoted tiles (newest first):</div>${items}`);
         }
     },
 

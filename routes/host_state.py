@@ -76,6 +76,15 @@ def _check_bearer() -> bool:
 # --------------------------------------------------------------------------
 _latest_state: Dict[str, Dict[str, Any]] = {}
 
+# Short ring buffer of recent metric samples per host_label. ~60 samples
+# at the host-agent's 5s POLL_INTERVAL = ~5 minutes of history. Sized for
+# the Performance tab's sparkline view; not a persistence layer.
+# Each entry: {"ts": float, "cpu_load_norm": float, "mem_used_pct": float,
+#              "gpu_util": float|None, "gpu_mem_util": float|None}
+from collections import deque  # noqa: E402  — local to keep top imports lean
+_METRICS_RING_MAX = 60
+_metrics_history: Dict[str, "deque[Dict[str, Any]]"] = {}
+
 # A SocketIO instance is injected at app boot via init_host_state(socketio).
 # We don't import flask_socketio at module load to avoid a circular dep
 # with app.py (which is the only place the SocketIO instance lives).
@@ -222,6 +231,23 @@ def api_host_state_push():
     prev = _latest_state.get(host_label) or {}
     _latest_state[host_label] = body
 
+    # Append a compact metrics sample to the per-host ring buffer so the
+    # Performance tab can backfill recent history when it opens. Only the
+    # display-relevant fields are kept — the full body is in _latest_state
+    # already if a consumer wants it.
+    sample = {
+        "ts": body.get("server_received_at") or body.get("ts") or time.time(),
+        "cpu_load_norm": body.get("cpu_load_norm"),
+        "mem_used_pct":  body.get("mem_used_pct"),
+        "gpu_util":      body.get("gpu_util"),
+        "gpu_mem_util":  body.get("gpu_mem_util"),
+    }
+    ring = _metrics_history.get(host_label)
+    if ring is None:
+        ring = deque(maxlen=_METRICS_RING_MAX)
+        _metrics_history[host_label] = ring
+    ring.append(sample)
+
     # Upsert the host_settings row on first contact + bump last_seen on
     # every ping. Defaults from the migration take effect on first
     # INSERT. SELECT-back so we can attach the current settings to the
@@ -285,6 +311,24 @@ def api_host_state_read():
 
     host_label = request.args.get("host")
     return jsonify(get_latest_state(host_label))
+
+
+# --------------------------------------------------------------------------
+# GET /api/host/<label>/metrics — recent history for the Performance tab.
+# --------------------------------------------------------------------------
+@host_state_bp.route("/api/host/<host_label>/metrics", methods=["GET"])
+def api_host_metrics_read(host_label: str):
+    """
+    Return up to the last ~5 minutes (60 samples at 5s cadence) of
+    compact metrics for one host. The Performance tab calls this once
+    when it opens, then receives live updates via the host_state_changed
+    SocketIO event. LAN-readable (matches /api/host/state read access).
+    """
+    if not (_check_bearer() or request.cookies.get("session")):
+        pass  # public-read on LAN; see api_host_state_read note.
+    ring = _metrics_history.get(host_label)
+    samples = list(ring) if ring is not None else []
+    return jsonify({"host_label": host_label, "samples": samples})
 
 
 # --------------------------------------------------------------------------

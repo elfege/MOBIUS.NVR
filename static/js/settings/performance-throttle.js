@@ -16,6 +16,8 @@
  * VisibilityManager and ThrottleController read.
  */
 
+import { hostAgentInstall } from './host-agent-install.js';
+
 const LS_KEY = 'mobius_host_label';
 
 function resolveHostLabel() {
@@ -153,6 +155,8 @@ export const performanceThrottle = {
 
             </div>
 
+            ${hostAgentInstall.renderHTML()}
+
             <div class="setting-row" id="perf-all-hosts-row">
                 <div class="setting-top">
                     <div class="setting-label"><i class="fas fa-network-wired"></i> All Reporting Hosts</div>
@@ -230,6 +234,9 @@ export const performanceThrottle = {
                 pointerEvents: v ? '' : 'none',
             });
             this.loadSettings($panel);
+            // Refresh the install cards so the "this machine" card
+            // reflects the newly-bound label without a page reload.
+            hostAgentInstall.init($panel);
         });
 
         // Live numeric readouts
@@ -254,6 +261,12 @@ export const performanceThrottle = {
 
         await this.loadSettings($panel);
         await this.loadHostList($panel);
+
+        // Wire the host-agent install cards. Idempotent; safe to call on
+        // every tab open. We also re-init after a Bind click so the
+        // "this machine" card picks up the new host_label without a
+        // page reload.
+        await hostAgentInstall.init($panel);
 
         // Live updates: subscribe to host_status_changed so dots flip without refresh.
         // The /stream_events socket is owned by stream.js — we tap it via window.io

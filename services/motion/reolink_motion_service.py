@@ -297,19 +297,43 @@ class ReolinkMotionService:
             return
         
         logger.info(f"Motion detected via Baichuan: {camera_name}")
-        
+
         try:
             # Update last motion time
             self.motion_states[camera_id] = current_time
-            
+
+            # Phase 0 attribution (2026-05-13): write a motion_events row
+            # FIRST with source='reolink_baichuan' (the native Reolink Baichuan
+            # protocol is a distinct code path from generic ONVIF subscribe;
+            # different reliability profile, deserves its own label per
+            # migration 035). Carry the id through to the recording so its
+            # motion_source/motion_event_id columns are populated correctly.
+            from services.motion.motion_event_writer import (
+                record_motion_event, link_recording_to_event,
+            )
+            event_id = record_motion_event(
+                camera_id=camera_id,
+                source='reolink_baichuan',
+            )
+
             # Trigger recording via recording service
-            recording_id = self.recording_service.start_motion_recording(camera_id)
-            
+            recording_id = self.recording_service.start_motion_recording(
+                camera_id, event_id=str(event_id) if event_id else None,
+                source='reolink_baichuan',
+            )
+
             if recording_id:
-                logger.info(f"Started motion recording for {camera_name}: {recording_id}")
+                logger.info(f"Started motion recording for {camera_name}: {recording_id} (event_id={event_id})")
+                if event_id:
+                    try:
+                        rid_int = int(recording_id) if str(recording_id).isdigit() else None
+                        if rid_int:
+                            link_recording_to_event(event_id, rid_int)
+                    except (ValueError, TypeError):
+                        pass
             else:
                 logger.warning(f"Failed to start motion recording for {camera_name}")
-        
+
         except Exception as e:
             logger.error(f"Error starting motion recording for {camera_name}: {e}", exc_info=True)
     

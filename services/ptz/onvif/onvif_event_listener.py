@@ -224,21 +224,41 @@ class ONVIFEventListener:
     def _handle_motion_event(self, camera_id: str):
         """
         Handle motion detection event.
-        
+
         Args:
             camera_id: Camera that detected motion
         """
-        logger.info(f"Motion detected via ONVIF: {camera_id}")
-        
+        logger.info(f"Motion detected via ONVIF (ptz listener): {camera_id}")
+
         try:
-            # Trigger recording via recording service
-            recording_id = self.recording_service.start_motion_recording(camera_id)
-            
+            # Phase 0 attribution (2026-05-13): write motion_events row first
+            # so the recording row gets motion_source='onvif' and the
+            # motion_event_id FK back-link. Without this, the legacy
+            # heuristic in _store_recording_metadata tagged these
+            # 'manual' (no event_id, no source). Same instrumentation as
+            # the primary ONVIF listener at services/onvif/onvif_event_listener.py.
+            from services.motion.motion_event_writer import (
+                record_motion_event, link_recording_to_event,
+            )
+            event_id = record_motion_event(camera_id=camera_id, source='onvif')
+
+            recording_id = self.recording_service.start_motion_recording(
+                camera_id, event_id=str(event_id) if event_id else None,
+                source='onvif',
+            )
+
             if recording_id:
-                logger.info(f"Started motion recording for {camera_id}: {recording_id}")
+                logger.info(f"Started motion recording for {camera_id}: {recording_id} (event_id={event_id})")
+                if event_id:
+                    try:
+                        rid_int = int(recording_id) if str(recording_id).isdigit() else None
+                        if rid_int:
+                            link_recording_to_event(event_id, rid_int)
+                    except (ValueError, TypeError):
+                        pass
             else:
                 logger.warning(f"Failed to start motion recording for {camera_id}")
-        
+
         except Exception as e:
             logger.error(f"Error starting motion recording for {camera_id}: {e}")
 

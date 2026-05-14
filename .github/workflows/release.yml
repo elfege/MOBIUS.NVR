@@ -1,0 +1,103 @@
+# ─────────────────────────────────────────────────────────────────────
+# release.yml — Tag validation + auto-Release on v*.*.* tag push.
+#
+# Triggered when an annotated tag matching `vMAJOR.MINOR.PATCH` is
+# pushed (which happens automatically via scripts/_auto_version.sh and
+# the post-merge / post-commit hooks on the `main` branch).
+#
+# Pipeline:
+#   1. Validate tag format (strict `v\d+\.\d+\.\d+`, no pre-release).
+#   2. Validate the tag is annotated (not lightweight).
+#   3. Validate the tag points at a commit reachable from main.
+#   4. Generate release notes from commits since the previous v-tag.
+#   5. Create a GitHub Release with those notes.
+#
+# Mirrors industry-standard release automation so both the private
+# (origin) and public (BSL 1.1 mirror) repos publish properly tagged,
+# release-noted versions when a merge to main lands.
+# ─────────────────────────────────────────────────────────────────────
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Validate tag and create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract tag name
+        id: tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Tag pushed: $TAG"
+
+      - name: Validate strict semver format
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match strict semver pattern vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          echo "Tag format OK."
+
+      - name: Validate tag is annotated
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          TYPE="$(git cat-file -t "$TAG")"
+          if [ "$TYPE" != "tag" ]; then
+            echo "::error::Tag '$TAG' is lightweight (type=$TYPE). Required: annotated."
+            exit 1
+          fi
+          echo "Tag is annotated."
+
+      - name: Validate tag is reachable from main
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if ! git merge-base --is-ancestor "$TAG^{commit}" origin/main; then
+            echo "::error::Tag '$TAG' is not reachable from main."
+            exit 1
+          fi
+          echo "Tag is on main."
+
+      - name: Build release notes
+        id: notes
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PREV_TAG="$(git tag -l 'v*.*.*' | sort -V | grep -B1 "^${TAG}$" | head -1)"
+          if [ "$PREV_TAG" = "$TAG" ] || [ -z "$PREV_TAG" ]; then
+            RANGE="$TAG"
+            HEADER="### Initial release"
+          else
+            RANGE="${PREV_TAG}..${TAG}"
+            HEADER="### Changes since ${PREV_TAG}"
+          fi
+          {
+            echo "$HEADER"
+            echo ""
+            git log "$RANGE" --pretty=format:'- %s' --no-merges | head -200
+          } > /tmp/release_notes.md
+          echo "notes_path=/tmp/release_notes.md" >> "$GITHUB_OUTPUT"
+          echo "--- generated notes ---"
+          cat /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file "${{ steps.notes.outputs.notes_path }}" \
+            --verify-tag

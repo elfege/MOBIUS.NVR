@@ -35,11 +35,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Even with fetch-depth: 0, actions/checkout v4 does NOT fetch
-          # the annotated-tag objects by default — only the commits they
-          # point at. Without this flag, `git cat-file -t v<ver>` returns
-          # `commit` instead of `tag`, and the annotated-tag check fails
-          # against tags that are correctly annotated locally.
           fetch-tags: true
 
       - name: Extract tag name
@@ -48,6 +43,21 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Tag pushed: $TAG"
+
+      - name: Fetch the annotated-tag object explicitly
+        # actions/checkout@v4 with fetch-depth:0 + fetch-tags:true STILL
+        # downloads only the lightweight tag-ref, not the underlying
+        # annotated-tag OBJECT. As a result `git cat-file -t v<ver>`
+        # returns "commit" (the dereferenced target) instead of "tag",
+        # and the annotated-tag guard below trips on every release.
+        # The fix is an explicit fetch of the tag refspec, which pulls
+        # the tag object too. Belt-and-suspenders against the action's
+        # default behaviour.
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          git fetch --depth=1 --no-tags origin "+refs/tags/${TAG}:refs/tags/${TAG}"
+          echo "Tag object now present:"
+          git for-each-ref --format='  %(refname)  %(objecttype)  %(objectname)' "refs/tags/${TAG}"
 
       - name: Validate strict semver format
         run: |

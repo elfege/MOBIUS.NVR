@@ -39,11 +39,12 @@ if [ "$branch" = "main" ]; then
     fi
     new_tag="$(git tag --points-at HEAD 'v*.*.*' | sort -V | tail -1)"
 
-    echo "[post-merge] On main — pushing main and tag $new_tag to public repo..."
+    echo "[post-merge] On main — pushing main + tag $new_tag to origin (private) and public (public mirror)..."
     (
+        git push origin main
         git push public main
-        [ -n "$new_tag" ] && git push public "$new_tag"
         [ -n "$new_tag" ] && git push origin "$new_tag"
+        [ -n "$new_tag" ] && git push public "$new_tag"
     ) &>/dev/null &
-    echo "[post-merge] Push to public initiated (background)."
+    echo "[post-merge] Pushes initiated (background)."
 fi

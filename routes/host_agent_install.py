@@ -303,12 +303,32 @@ def _render_install_script(label: str, token: str, server_url: str) -> str:
 
     # Where on the kiosk we'll drop agent.py. Outside the repo so the
     # installer works on machines that don't have the repo cloned.
-    agent_install_dir = "$HOME/.local/lib/mobius-nvr-host-agent"
+    #
+    # IMPORTANT: TWO renderings of this path are needed:
+    #   - agent_install_path (with $HOME) — used in the BASH script, where
+    #     $HOME expands at script run time. Bash variable assignments
+    #     that contain this string MUST use double-quotes (single-quotes
+    #     would defeat the expansion and leave a literal "$HOME" in the
+    #     value, which then propagates everywhere).
+    #   - agent_unit_path (with %h) — used in the systemd UNIT FILE.
+    #     systemd does NOT expand $HOME inside ExecStart; it interprets
+    #     $X as a literal environment-variable reference and silently
+    #     blanks unknown ones. systemd's own user-home specifier is %h.
+    #     This is the documented portable way (systemd.unit(5)).
+    #
+    # Earlier version used $HOME for both AND single-quoted the bash
+    # assignment AND heredoc'd the unit with a single-quoted marker.
+    # Net effect: systemd received the literal string `$HOME/.local/...`
+    # and the service exited with status=0 in ~300ms before doing
+    # anything. Observed on rog 2026-05-14.
+    agent_install_dir  = "$HOME/.local/lib/mobius-nvr-host-agent"
     agent_install_path = f"{agent_install_dir}/agent.py"
+    agent_unit_path    = "%h/.local/lib/mobius-nvr-host-agent/agent.py"
 
     # Substitute __AGENT_PATH__ now — the kiosk doesn't need the template
-    # placeholder logic at all.
-    unit_rendered = unit_body.replace("__AGENT_PATH__", agent_install_path)
+    # placeholder logic at all. Use the systemd-specifier rendering so
+    # ExecStart gets a path systemd will actually resolve.
+    unit_rendered = unit_body.replace("__AGENT_PATH__", agent_unit_path)
 
     # Build the agent download URL with the same token the operator gave us.
     # Pass label too for diagnostic logging on the server side later.
@@ -346,9 +366,9 @@ UNIT_DIR="${{XDG_CONFIG_HOME:-$HOME/.config}}/systemd/user"
 UNIT_PATH="$UNIT_DIR/$UNIT_NAME"
 CFG_DIR="${{XDG_CONFIG_HOME:-$HOME/.config}}/mobius-nvr-host-agent"
 CFG_FILE="$CFG_DIR/config"
-AGENT_DIR='{agent_install_dir}'
-AGENT_PATH='{agent_install_path}'
-AGENT_URL='{agent_url}'
+AGENT_DIR="{agent_install_dir}"
+AGENT_PATH="{agent_install_path}"
+AGENT_URL="{agent_url}"
 
 step() {{ echo -e "${{GREEN}}>>> $1${{NC}}"; }}
 warn() {{ echo -e "${{YELLOW}}!!! $1${{NC}}"; }}

@@ -550,6 +550,13 @@ export class MultiStreamManager {
             streamManager: this,
             $container: this.$container,
         });
+        // Expose globally so the Performance settings panel can read
+        // .enabled and ._demoted to render the throttler badge + demoted-
+        // tile list. Read-only consumer; the controller is fully owned
+        // by this StreamManager.
+        if (typeof window !== 'undefined') {
+            window.throttleController = this.throttleController;
+        }
     }
 
     async nuclear(cameraId, streamItem, cameraType, streamType) {

@@ -35,6 +35,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Even with fetch-depth: 0, actions/checkout v4 does NOT fetch
+          # the annotated-tag objects by default — only the commits they
+          # point at. Without this flag, `git cat-file -t v<ver>` returns
+          # `commit` instead of `tag`, and the annotated-tag check fails
+          # against tags that are correctly annotated locally.
+          fetch-tags: true
 
       - name: Extract tag name
         id: tag

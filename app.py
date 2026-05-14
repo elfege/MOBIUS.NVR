@@ -71,6 +71,11 @@ from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
 from routes.host_state import host_state_bp, init_host_state
+from routes.host_agent_install import host_agent_install_bp
+from routes.host_agent_install_ssh import host_agent_install_ssh_bp
+from routes.audit_routes import audit_bp
+from routes.ui_event_routes import ui_event_bp
+from services.audit_listener import init_audit_listener
 from services.license_service import license, validate_license
 
 from low_level_handlers.cleanup_handler import stop_all_services, kill_all, kill_ffmpeg
@@ -178,6 +183,10 @@ app.register_blueprint(talkback_bp)
 app.register_blueprint(settings_bp)
 app.register_blueprint(evidence_bp)
 app.register_blueprint(host_state_bp)
+app.register_blueprint(host_agent_install_bp)
+app.register_blueprint(host_agent_install_ssh_bp)
+app.register_blueprint(audit_bp)
+app.register_blueprint(ui_event_bp)
 
 # Exempt all API blueprints from CSRF validation.
 # All routes use JSON APIs consumed by frontend JS (not HTML forms).
@@ -186,7 +195,8 @@ app.register_blueprint(host_state_bp)
 # so we must register exemptions via the CSRFProtect instance directly.
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
-           external_api_bp, evidence_bp]:
+           external_api_bp, evidence_bp, audit_bp, ui_event_bp, host_state_bp,
+           host_agent_install_bp, host_agent_install_ssh_bp]:
     csrf.exempt(bp)
 
 # ===== License Validation =====
@@ -324,6 +334,32 @@ def _is_trusted_network_enabled():
 
 
 @app.before_request
+def _stash_audit_actor_on_g():
+    """
+    Phase 2 audit actor capture (2026-05-13). Stash actor IDs on flask.g
+    so direct-psycopg2 helpers (e.g. routes/host_state.py:_db_conn callers,
+    routes/camera.py nickname/PTZ paths) can pull them and run
+    SET LOCAL audit.user_id / audit.client_id / audit.origin before
+    their UPDATE statements. The Postgres trigger reads those via
+    current_setting() and writes them to setting_audit_log.
+
+    We only need to stash for mutating verbs — read-only requests don't
+    fire any audit triggers, so the SET LOCAL would be wasted work.
+    """
+    from flask import g
+    if request.method not in ('PUT', 'POST', 'PATCH', 'DELETE'):
+        return
+    try:
+        from flask_login import current_user as _cu
+        uid = _cu.id if _cu and getattr(_cu, 'is_authenticated', False) else None
+    except Exception:
+        uid = None
+    g.audit_user_id   = uid
+    g.audit_client_id = request.cookies.get('device_token')
+    g.audit_origin    = 'api'  # default; route handlers may override before write
+
+
+@app.before_request
 def _auto_login_trusted():
     """
     Auto-login users via trusted device OR trusted network.
@@ -406,6 +442,10 @@ websocket_mjpeg_service.set_socketio(socketio)
 # doesn't exist yet at that point.
 init_host_state(socketio)
 init_camera_socketio(socketio)
+# Phase 2: subscribe to NOTIFY 'setting_changed' (fired by every audit
+# trigger in migration 036) and fan out to SocketIO + future plugins.
+# Also starts the 90-day audit retention prune thread.
+init_audit_listener(socketio)
 # Best-effort backfill of nicknames for cameras that don't have one yet.
 # Rule: last word of the display name, lowercased, with a 0..9 suffix on
 # collision. Idempotent — only touches NULL rows.

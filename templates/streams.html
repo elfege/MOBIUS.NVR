@@ -1107,6 +1107,24 @@
             window.location.reload()
         }, 60 * 60 * 1000)
     </script>
+    <script type="module">
+        // Phase 2 audit-outbox: start the periodic flusher for browser-side
+        // audit events. Trigger-based audit covers server mutations; this
+        // covers localStorage UI toggles (grid, fit mode, HD toggle, etc.).
+        import { auditOutbox } from "{{ url_for('static', filename='js/services/audit-outbox.js') }}";
+        auditOutbox.start();
+        window.auditOutbox = auditOutbox;  // exposed for other modules to enqueue events
+
+        // 2026-05-13 UI interaction audit: single delegated tracker captures
+        // every click / keystroke / focus / submit / navigation and flushes
+        // through ui-event-outbox to POST /api/ui-event/batch (separate
+        // table: ui_event_log). Password fields are masked client-side.
+        import { uiEventOutbox } from "{{ url_for('static', filename='js/services/ui-event-outbox.js') }}";
+        import { uiEventTracker } from "{{ url_for('static', filename='js/services/ui-event-tracker.js') }}";
+        uiEventOutbox.start();
+        uiEventTracker.start(uiEventOutbox);
+        window.uiEventOutbox = uiEventOutbox;
+    </script>
 
     {% if current_user.role == 'admin' %}
     <script>

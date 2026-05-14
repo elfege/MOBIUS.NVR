@@ -487,6 +487,13 @@ def api_host_settings_put(host_label: str):
         with _db_conn() as conn, conn.cursor(
             cursor_factory=psycopg2.extras.RealDictCursor
         ) as cur:
+            # Phase 2 audit: stash actor IDs on the session so the
+            # AFTER UPDATE trigger on host_settings captures who did it.
+            # Without this call the audit row gets NULL user_id/client_id
+            # (still records what changed, just not who).
+            from services.audit_actor import apply_audit_actor
+            apply_audit_actor(cur)
+
             # INSERT defaults + provided overrides; on conflict update
             # only the provided fields (leave others alone).
             cols = ["host_label"] + list(fields.keys())

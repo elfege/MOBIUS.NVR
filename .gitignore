@@ -30,6 +30,11 @@ bootstrap.json
 tree.md
 neolink/target/
 
+# Version tracker — operator-editable source of truth for main's
+# semver. The post-merge/post-commit hooks auto-bump this file and
+# mirror it as `v<version>` git tags. Local-only, never tracked.
+.tag
+
 # Personal scripts (untracked — use _deploy.sh and _start.sh instead)
 deploy.sh
 start.sh

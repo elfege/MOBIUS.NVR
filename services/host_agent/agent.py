@@ -173,6 +173,44 @@ def probe_cpu_load() -> Dict[str, float]:
     }
 
 
+def probe_memory() -> Dict[str, float]:
+    """
+    Return system memory usage from /proc/meminfo. Reports `mem_used_pct`
+    (used / total) and the raw MB values for the UI to display.
+
+    Uses (MemTotal - MemAvailable) / MemTotal as "used" — MemAvailable
+    is the kernel's own estimate of what's actually reclaimable for new
+    allocations, which is the meaningful "used" number for capacity
+    planning (vs. raw MemFree which excludes reclaimable cache).
+    """
+    try:
+        with open("/proc/meminfo") as f:
+            info: Dict[str, int] = {}
+            for line in f:
+                parts = line.split(":")
+                if len(parts) != 2:
+                    continue
+                key = parts[0].strip()
+                val = parts[1].strip().split()[0]  # value is in kB
+                try:
+                    info[key] = int(val)
+                except ValueError:
+                    continue
+        total_kb = info.get("MemTotal", 0)
+        avail_kb = info.get("MemAvailable", 0)
+        if total_kb <= 0:
+            return {}
+        used_kb = max(0, total_kb - avail_kb)
+        return {
+            "mem_total_mb": round(total_kb / 1024, 1),
+            "mem_used_mb": round(used_kb / 1024, 1),
+            "mem_used_pct": round(used_kb / total_kb * 100, 1),
+        }
+    except Exception as e:
+        log.debug("meminfo read failed: %s", e)
+        return {}
+
+
 def probe_gpu_load() -> Optional[Dict[str, float]]:
     """
     Return GPU utilization from `nvidia-smi --query-gpu=...`.
@@ -227,6 +265,7 @@ def build_payload(host_label: str) -> Dict[str, Any]:
     if ds is not None:
         payload["display_state"] = ds
     payload.update(probe_cpu_load())
+    payload.update(probe_memory())
     gpu = probe_gpu_load()
     if gpu is not None:
         payload.update(gpu)

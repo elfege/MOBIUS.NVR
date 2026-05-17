@@ -147,6 +147,11 @@ class CameraRepository:
             'hidden', 'ui_health_monitor', 'ui_health_refresh_delay_ms',
             'reversed_pan', 'reversed_tilt',
             'notes', 'power_supply_device_id', 'true_mjpeg',
+            # 2026-05-14 throttler priority + per-camera never-throttle
+            # (migration 039). Must ALSO be added to DIRECT_FIELDS in
+            # services/camera_config_sync.py — otherwise the cameras.json
+            # → DB seed loses the value at next startup.
+            'throttle_priority', 'throttle_never',
         ]
 
         for field in direct_fields:

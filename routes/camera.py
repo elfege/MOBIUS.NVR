@@ -1074,6 +1074,10 @@ def api_camera_settings_update(camera_serial):
         'rtsp_input', 'rtsp_output', 'two_way_audio',
         'power_cycle_on_failure', 'rtsp', 'model', 'station',
         'image_mirrored', 'streaming_hub',
+        # Throttler controls (migration 039). throttle_priority is INT,
+        # throttle_never is BOOL — the frontend coerces appropriately
+        # before sending; the Settings class round-trips both fine.
+        'throttle_priority', 'throttle_never',
     }
     IMMUTABLE_KEYS = {'serial', 'camera_id', 'id'}
 

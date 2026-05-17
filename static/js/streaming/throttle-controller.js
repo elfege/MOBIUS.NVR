@@ -156,22 +156,55 @@ export class ThrottleController {
      * were stopped by the user, are loading, or are already in error state.
      */
     async _demoteOne(cpuPct, threshold) {
+        // Build candidate list:
+        //   - Must be in a streaming/active/connected state.
+        //   - SKIP any tile whose data-throttle-never="true" — these are
+        //     operator-flagged safety-critical cameras (e.g. AMCREST LOBBY)
+        //     and the throttler must never demote them, no matter how high
+        //     CPU climbs. See migration 039 / cameras.throttle_never.
         const $candidates = this.$container.find('.stream-item').filter((_, el) => {
             const $el = $(el);
             const status = $el.data('stream-status') || $el.attr('data-stream-status');
-            // Only demote tiles that are actively streaming.
+            const never = ($el.attr('data-throttle-never') || '').toString().toLowerCase() === 'true';
+            if (never) return false;
             return status === 'streaming' || status === 'active' || status === 'connected';
         });
 
-        let pick = null;
-        for (const sType of DEMOTION_PRIORITY) {
-            $candidates.each((_, el) => {
+        // Read throttle_priority off each candidate. Null / empty / NaN
+        // becomes Infinity — those tiles sort to the END of the priority
+        // queue, so they're considered AFTER any tile the operator
+        // explicitly prioritized. The stream-type DEMOTION_PRIORITY then
+        // breaks ties within the same priority value (or among all the
+        // "no priority set" candidates).
+        const candidatesByPriority = $candidates.toArray()
+            .map(el => {
                 const $el = $(el);
-                if (($el.data('stream-type') || '').toString().toUpperCase() === sType) {
-                    pick = $el;
-                    return false;  // break .each
+                const raw = ($el.attr('data-throttle-priority') || '').trim();
+                const p = raw === '' ? Infinity : parseInt(raw, 10);
+                return { $el, priority: Number.isFinite(p) ? p : Infinity };
+            })
+            .sort((a, b) => a.priority - b.priority);
+
+        let pick = null;
+        // For each priority bucket (lowest first), scan in stream-type
+        // demotion order. This preserves the previous "demote HLS before
+        // WebRTC" behaviour WITHIN a priority bucket while honouring
+        // operator priority ACROSS buckets.
+        const buckets = new Map();
+        for (const c of candidatesByPriority) {
+            if (!buckets.has(c.priority)) buckets.set(c.priority, []);
+            buckets.get(c.priority).push(c.$el);
+        }
+        for (const bucket of buckets.values()) {
+            for (const sType of DEMOTION_PRIORITY) {
+                for (const $el of bucket) {
+                    if (($el.data('stream-type') || '').toString().toUpperCase() === sType) {
+                        pick = $el;
+                        break;
+                    }
                 }
-            });
+                if (pick) break;
+            }
             if (pick) break;
         }
 

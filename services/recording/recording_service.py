@@ -678,7 +678,13 @@ class RecordingService:
                             metadata['status'] = 'completed'
                         except Exception as e:
                             logger.error(f"Failed to finalize pre-buffered recording {recording_id}: {e}")
-                            metadata['status'] = 'failed'
+                            # Match the recordings_status_check CHECK constraint
+                            # (recording / completed / archived / error). Writing
+                            # 'failed' triggered PostgREST 23514 on the metadata
+                            # PATCH downstream, leaving recordings in an
+                            # inconsistent state where the in-memory log said
+                            # status=failed but the DB row was never updated.
+                            metadata['status'] = 'error'
 
                     # Check for auto-restart (continuous recordings)
                     elif metadata.get('auto_restart', False):
@@ -688,11 +694,15 @@ class RecordingService:
 
                         # Start new segment (this will create new recording_id)
                         self.start_continuous_recording(camera_id)
-                        metadata['status'] = 'completed' if process.returncode == 0 else 'failed'
+                        # 'error' (not 'failed') so the value passes the
+                        # recordings_status_check CHECK constraint on the
+                        # downstream PostgREST update.
+                        metadata['status'] = 'completed' if process.returncode == 0 else 'error'
 
                     else:
-                        # Standard recording completed
-                        metadata['status'] = 'completed' if process.returncode == 0 else 'failed'
+                        # Standard recording completed — same status-constant
+                        # constraint applies on the recordings table.
+                        metadata['status'] = 'completed' if process.returncode == 0 else 'error'
 
                     finished_ids.append(recording_id)
 
@@ -770,7 +780,14 @@ class RecordingService:
         )
 
         if result.returncode != 0:
-            error_msg = result.stderr.decode()[:500] if result.stderr else "Unknown error"
+            # FFmpeg writes the version banner + build configuration to stderr
+            # BEFORE any actual error message — typically ~1.5kB of preamble.
+            # Slicing the first 500 chars (the previous behaviour) captured
+            # only the banner, so every concat failure logged the same
+            # uninformative ffmpeg header. Take the last 500 chars instead;
+            # the real error always lives at the END of stderr.
+            stderr_text = result.stderr.decode(errors="replace") if result.stderr else ""
+            error_msg = stderr_text[-500:].strip() if stderr_text else "Unknown error"
             raise RuntimeError(f"FFmpeg concat failed: {error_msg}")
 
         # Verify output file exists

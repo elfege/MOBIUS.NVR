@@ -133,12 +133,23 @@ wheels/
 # -----------------------------------------------------------------------------
 # Testing
 # -----------------------------------------------------------------------------
+# Loose `test_*` etc. anywhere in the tree stays ignored (preserves the
+# legacy convention of ad-hoc scratch tests not being tracked). The
+# proper test suite lives under tests/ and IS tracked — exception below.
 test_*
 _test*
 *_test*
 TESTS/
 TESTS
 htmlcov/
+# Tracked test suite (CI-runnable). Adding new tests goes here.
+# Narrow exceptions only — pycache + coverage artifacts stay ignored.
+!/tests/
+!/tests/**/test_*.py
+!/tests/**/conftest.py
+!/tests/**/README*.md
+/tests/**/__pycache__/
+/tests/.pytest_cache/
 .tox/
 .coverage
 .coverage.*

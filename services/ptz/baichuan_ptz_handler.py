@@ -61,6 +61,13 @@ class BaichuanPTZHandler:
     # Default movement speed (1-64 for Reolink)
     DEFAULT_SPEED = 32
 
+    # Recalibration sweep — pan-right at max speed for this many seconds.
+    # 12s at max speed comfortably exceeds a full 360° revolution on every
+    # Reolink PTZ tested, so the gimbal reaches the physical end-stop and
+    # the firmware re-zeros its stepper count when we then issue Stop.
+    # Empirically: 8s sometimes fell short on the wider TrackMix arc.
+    RECALIBRATE_SWEEP_SECONDS = 12
+
     # How long (seconds) a cached connection is considered fresh before re-login
     CONNECTION_TTL = 300  # 5 minutes
 
@@ -271,6 +278,15 @@ class BaichuanPTZHandler:
                                   camera_config: Dict,
                                   speed_multiplier: float = 1.0) -> Tuple[bool, str]:
         """Async implementation of move_camera."""
+        # Recalibration is a multi-step sequence (start pan-right, wait,
+        # stop) — not a single Baichuan command. Handle it BEFORE the
+        # DIRECTION_MAP lookup. Returns immediately after KICKING OFF
+        # the sweep; the actual stop fires from a scheduled coroutine
+        # ~RECALIBRATE_SWEEP_SECONDS later. The user sees the camera
+        # start moving right away and the HTTP request doesn't hang.
+        if direction == 'recalibrate':
+            return await cls._recalibrate_async(camera_serial, camera_config)
+
         if direction not in cls.DIRECTION_MAP:
             return False, f"Invalid direction: {direction}"
 
@@ -301,6 +317,75 @@ class BaichuanPTZHandler:
             logger.error(f"Baichuan PTZ move failed for {camera_serial}: {e}")
             await cls._invalidate_host(camera_serial)
             return False, f"PTZ operation failed: {str(e)}"
+
+    @classmethod
+    async def _recalibrate_async(cls, camera_serial: str, camera_config: Dict) -> Tuple[bool, str]:
+        """
+        Baichuan-flavoured recalibration.
+
+        Reolink cameras don't expose ONVIF's GotoHomePosition reliably,
+        and the Baichuan command set has no dedicated "recalibrate" verb.
+        What every Reolink PTZ DOES support is "pan right at max speed
+        until you hit the end-stop, then the firmware re-zeros its
+        stepper count". That's what this method does:
+
+          1. Start pan-right at speed 64 (max).
+          2. Schedule a Stop ~RECALIBRATE_SWEEP_SECONDS later (fire-and-
+             forget on the same event loop). This returns control to the
+             HTTP handler immediately so the request doesn't hang.
+          3. The scheduled Stop fires the gimbal halt; the firmware
+             re-zeros from whatever end-stop position the camera reached.
+
+        Eufy already does the analogue via its bridge's `recalibrate=0`
+        (ROTATE360); Amcrest uses ONVIF GotoHomePosition (a different
+        code path entirely). This method covers the Reolink-Baichuan
+        gap that was producing a no-op before.
+        """
+        host = await cls._get_host(camera_serial, camera_config)
+        if not host:
+            return False, "Failed to connect to camera via Baichuan"
+
+        try:
+            channel = 0
+            supports_speed = host.supported(channel, "ptz_speed")
+            if supports_speed:
+                await host.set_ptz_command(channel, command='Right', speed=64)
+            else:
+                await host.set_ptz_command(channel, command='Right')
+            logger.info(
+                f"Baichuan recalibrate: pan-right started on {camera_serial}, "
+                f"Stop scheduled in {cls.RECALIBRATE_SWEEP_SECONDS}s"
+            )
+
+            # Fire-and-forget Stop after the sweep window. Lives on the
+            # same dedicated background loop so the cached Host stays
+            # valid. We deliberately do NOT await this task — the HTTP
+            # request returns now, the camera keeps panning, and the
+            # follow-up Stop lands ~12s later.
+            async def _stop_after():
+                try:
+                    await asyncio.sleep(cls.RECALIBRATE_SWEEP_SECONDS)
+                    await host.set_ptz_command(channel, command='Stop')
+                    logger.info(
+                        f"Baichuan recalibrate: Stop fired for {camera_serial} "
+                        f"after {cls.RECALIBRATE_SWEEP_SECONDS}s sweep"
+                    )
+                except Exception:
+                    logger.exception(
+                        f"Baichuan recalibrate: Stop-after-sweep failed for {camera_serial}"
+                    )
+                    await cls._invalidate_host(camera_serial)
+
+            asyncio.get_event_loop().create_task(_stop_after())
+            return True, (
+                f"Recalibration started ({cls.RECALIBRATE_SWEEP_SECONDS}s sweep). "
+                "Camera will pan right to its end-stop then stop; firmware "
+                "re-zeros the stepper from there."
+            )
+        except Exception as e:
+            logger.error(f"Baichuan recalibrate failed for {camera_serial}: {e}")
+            await cls._invalidate_host(camera_serial)
+            return False, f"Recalibration failed: {str(e)}"
 
     @classmethod
     def get_presets(cls, camera_serial: str, camera_config: Dict,

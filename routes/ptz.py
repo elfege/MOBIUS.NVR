@@ -63,9 +63,13 @@ def api_ptz_move(camera_serial, direction):
         success = False
         message = ""
 
-        # Check if camera should use Baichuan protocol (Reolink without ONVIF or NEOLINK streams)
-        # Exception: 'recalibrate' requires ONVIF GotoHomePosition, Baichuan doesn't support it
-        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera) and direction != 'recalibrate'
+        # Check if camera should use Baichuan protocol (Reolink without ONVIF
+        # or NEOLINK streams). Recalibrate is now ALSO routed through Baichuan
+        # for Reolink: ONVIF GotoHomePosition was unreliable across the
+        # Reolink range (no-op on the units I tested 2026-05-14) — Baichuan
+        # now does a pan-right-to-end-stop sweep instead, which is what
+        # actually re-zeros the gimbal stepper.
+        use_baichuan = camera_type == 'reolink' and BaichuanPTZHandler.is_baichuan_capable(camera)
 
         if use_baichuan:
             # Use Baichuan for Reolink cameras without ONVIF or configured for Baichuan

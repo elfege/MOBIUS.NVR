@@ -104,8 +104,14 @@ export class LightGridRenderer {
         this._fitMode = (storedFit === 'fill' || storedFit === 'contain')
                       ? storedFit : DEFAULT_FIT_MODE;
 
-        // Pagination cursor + state. Computed from camera count.
-        this._curPage    = 0;
+        // Pagination cursor + state. The cursor is persisted in
+        // localStorage so a page reload doesn't drop the user back on
+        // page 1 of the grid — operator-flagged 2026-05-14 as the
+        // dominant /light annoyance. Clamped to a valid range inside
+        // render() against the live _totalPages, so a saved page 3 of
+        // a now-1-page grid (e.g. after grid-size cycle) self-corrects.
+        const storedPage = parseInt(localStorage.getItem('nvr_light_page') || '0', 10);
+        this._curPage    = (Number.isInteger(storedPage) && storedPage >= 0) ? storedPage : 0;
         this._totalPages = Math.max(1, Math.ceil(cameras.length / this.perPage));
 
         // Whether we are currently polling. Suspended while fullscreen
@@ -129,6 +135,12 @@ export class LightGridRenderer {
         this._stopAllTimers();
         this._totalPages = Math.max(1, Math.ceil(this.cameras.length / this.perPage));
         if (this._curPage >= this._totalPages) this._curPage = this._totalPages - 1;
+        if (this._curPage < 0) this._curPage = 0;
+        // Persist on every render — covers prev/next/swipe AND the
+        // grid-size-cycle clamp above, without each call site needing
+        // to remember to save. render() is called on user actions, not
+        // on every snapshot poll, so the write volume is fine.
+        try { localStorage.setItem('nvr_light_page', String(this._curPage)); } catch (_) {}
 
         this._applyGridCss();
 

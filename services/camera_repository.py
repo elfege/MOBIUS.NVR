@@ -152,6 +152,13 @@ class CameraRepository:
             # services/camera_config_sync.py — otherwise the cameras.json
             # → DB seed loses the value at next startup.
             'throttle_priority', 'throttle_never',
+            # 2026-05-14 ONVIF subscription health observability (migration
+            # 040). The listener writes these via direct psycopg2; the
+            # repository surfaces them so they're visible in get_camera()
+            # results.
+            'onvif_subscription_state', 'onvif_failure_count',
+            'onvif_last_failure_ts', 'onvif_last_success_ts',
+            'onvif_last_error_message',
         ]
 
         for field in direct_fields:

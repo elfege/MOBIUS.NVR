@@ -74,6 +74,7 @@ from routes.host_state import host_state_bp, init_host_state
 from routes.host_agent_install import host_agent_install_bp
 from routes.host_agent_install_ssh import host_agent_install_ssh_bp
 from routes.audit_routes import audit_bp
+from routes.onvif_health import onvif_health_bp
 from routes.ui_event_routes import ui_event_bp
 from services.audit_listener import init_audit_listener
 from services.license_service import license, validate_license
@@ -186,6 +187,7 @@ app.register_blueprint(host_state_bp)
 app.register_blueprint(host_agent_install_bp)
 app.register_blueprint(host_agent_install_ssh_bp)
 app.register_blueprint(audit_bp)
+app.register_blueprint(onvif_health_bp)
 app.register_blueprint(ui_event_bp)
 
 # Exempt all API blueprints from CSRF validation.

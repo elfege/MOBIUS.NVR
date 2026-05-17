@@ -158,7 +158,12 @@ class ONVIFEventListener:
             # Create PullPoint subscription
             subscription_response = event_service.CreatePullPointSubscription()
             subscription_address = subscription_response.SubscriptionReference.Address._value_1
-            
+
+            # Observability: subscribe succeeded — zero failure count + stamp
+            # last_success_ts. Operator sees this via GET /api/onvif/health/<serial>.
+            from services.onvif.onvif_health import record_subscribe_success
+            record_subscribe_success(camera_id)
+
             logger.info(f"ONVIF subscription created for {camera_id}")
             
             # Create pullpoint service using event_service.zeep_client (not onvif_cam.zeep_client)
@@ -190,6 +195,11 @@ class ONVIFEventListener:
         
         except Exception as e:
             logger.error(f"ONVIF listener error for {camera_id}: {e}")
+            # Observability: stash the failure on the camera row so the
+            # operator can see the rate via GET /api/onvif/health/<serial>.
+            # AMCREST LOBBY 2026-05-13 was failing here invisibly for days.
+            from services.onvif.onvif_health import record_subscribe_failure
+            record_subscribe_failure(camera_id, str(e))
         finally:
             if camera_id in self.active_listeners:
                 self.active_listeners.pop(camera_id)

@@ -30,6 +30,11 @@ DIRECT_FIELDS = [
     'ui_health_monitor', 'ui_health_refresh_delay_ms',
     'reversed_pan', 'reversed_tilt', 'notes',
     'power_supply_device_id',
+    # Throttler controls (migration 039). MUST stay in sync with
+    # services/camera_repository.py direct_fields — both lists must
+    # mention the column or it silently disappears at runtime (the
+    # "4-places" trap CLAUDE.md flags in the camera-data architecture).
+    'throttle_priority', 'throttle_never',
 ]
 
 # Fields stored as JSONB columns
@@ -45,6 +50,7 @@ BOOLEAN_FIELDS = {
     'reversed_pan': False,
     'reversed_tilt': False,
     'true_mjpeg': False,
+    'throttle_never': False,
 }
 
 

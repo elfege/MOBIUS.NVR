@@ -285,6 +285,34 @@ export const performanceThrottle = {
 
             ${hostAgentInstall.renderHTML()}
 
+            <!-- Per-camera throttler priority + never-throttle. Operator
+                 sets the order in which tiles get demoted under load, and
+                 flags safety-critical cameras (e.g. AMCREST LOBBY) that
+                 the throttler must NEVER touch. Persists to the cameras
+                 table via PUT /api/camera/<serial>/settings. -->
+            <div class="setting-row" id="perf-throttle-priority-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-sort-numeric-down"></i> Throttle Priority</div>
+                    <div class="setting-control">
+                        <button id="perf-refresh-cams" class="setting-btn setting-btn-secondary" style="font-size:12px;padding:5px 12px;">
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    When CPU load exceeds threshold, the throttler demotes
+                    tiles in priority order (lower number first). Tiles with
+                    "Never" checked are exempt entirely. Leave priority blank
+                    to use the default stream-type tiebreak only.
+                </div>
+                <div id="perf-throttle-priority-list"
+                     style="margin-top:8px;font-size:12px;display:grid;grid-template-columns:1fr 90px 70px;gap:4px 12px;align-items:center;">
+                    <div style="color:#888;font-weight:500;">Camera</div>
+                    <div style="color:#888;font-weight:500;">Priority</div>
+                    <div style="color:#888;font-weight:500;">Never</div>
+                </div>
+            </div>
+
             <div class="setting-row" id="perf-all-hosts-row">
                 <div class="setting-top">
                     <div class="setting-label"><i class="fas fa-network-wired"></i> All Reporting Hosts</div>
@@ -386,9 +414,11 @@ export const performanceThrottle = {
         $panel.find('#perf-max-cpu, #perf-hyst').off('change.perf input.perf').on('input.perf change.perf', saveDebounced);
 
         $panel.find('#perf-refresh-hosts').off('click.perf').on('click.perf', () => this.loadHostList($panel));
+        $panel.find('#perf-refresh-cams').off('click.perf').on('click.perf', () => this.loadThrottlePriority($panel));
 
         await this.loadSettings($panel);
         await this.loadHostList($panel);
+        await this.loadThrottlePriority($panel);
 
         // Wire the host-agent install cards. Idempotent; safe to call on
         // every tab open. We also re-init after a Bind click so the
@@ -576,6 +606,150 @@ export const performanceThrottle = {
                 return `<div style="padding:2px 0;"><i class="fas fa-pause-circle" style="color:#f57c00;"></i> ${cam}${sty}</div>`;
             }).join('');
             $list.html(`<div style="color:#bbb;font-weight:500;margin-bottom:4px;">Demoted tiles (newest first):</div>${items}`);
+        }
+    },
+
+    // ─────────────────────────────────────────────────────────────────
+    // Throttle priority editor — per-camera priority + never-throttle.
+    // Reads from /api/cameras (already supports both fields after the
+    // migration 039 + DIRECT_FIELDS plumbing), writes via the existing
+    // PUT /api/camera/<serial>/settings endpoint.
+    // ─────────────────────────────────────────────────────────────────
+
+    async loadThrottlePriority($panel) {
+        const $grid = $panel.find('#perf-throttle-priority-list');
+        try {
+            const r = await fetch('/api/cameras', { credentials: 'same-origin' });
+            if (!r.ok) {
+                this._renderThrottlePriorityError($grid, `failed to load: HTTP ${r.status}`);
+                return;
+            }
+            const j = await r.json();
+            // /api/cameras shape: { "devices": { serial: { name, ... } } }
+            const devices = (j && j.devices) ? j.devices : {};
+            const cams = Object.entries(devices)
+                .map(([serial, info]) => ({
+                    serial,
+                    name: info.name || serial,
+                    priority: (info.throttle_priority === null || info.throttle_priority === undefined)
+                                ? '' : String(info.throttle_priority),
+                    never: !!info.throttle_never,
+                    hidden: !!info.hidden,
+                }))
+                // Hide server-hidden cameras — they're already invisible to the
+                // throttler. Sort: priority ascending (blanks at end), then by name.
+                .filter(c => !c.hidden)
+                .sort((a, b) => {
+                    const ap = a.priority === '' ? Infinity : parseInt(a.priority, 10);
+                    const bp = b.priority === '' ? Infinity : parseInt(b.priority, 10);
+                    if (ap !== bp) return ap - bp;
+                    return (a.name || '').localeCompare(b.name || '');
+                });
+            this._renderThrottlePriority($panel, cams);
+        } catch (e) {
+            this._renderThrottlePriorityError($grid, `load error: ${e.message || e}`);
+        }
+    },
+
+    _renderThrottlePriorityError($grid, msg) {
+        // Keep the header row, replace data rows with the error.
+        $grid.find('.perf-tp-row').remove();
+        $grid.append(`<div class="perf-tp-row" style="grid-column:1/-1;color:#dc3545;font-size:11px;">(${msg})</div>`);
+    },
+
+    _renderThrottlePriority($panel, cams) {
+        const $grid = $panel.find('#perf-throttle-priority-list');
+        // Drop any prior data rows (preserve the header in the template).
+        $grid.find('.perf-tp-row').remove();
+        if (!cams.length) {
+            $grid.append('<div class="perf-tp-row" style="grid-column:1/-1;color:#888;font-style:italic;">No cameras configured.</div>');
+            return;
+        }
+        for (const c of cams) {
+            const safeName = $('<div>').text(c.name).html();  // escape
+            const row = `
+                <div class="perf-tp-row" style="color:#ddd;">${safeName}</div>
+                <div class="perf-tp-row">
+                    <input type="number" min="1" max="999"
+                           class="perf-tp-priority"
+                           data-camera-serial="${c.serial}"
+                           value="${c.priority}"
+                           placeholder="—"
+                           style="width:70px;padding:3px 6px;background:#1e1e1e;color:#ddd;border:1px solid #333;border-radius:3px;font-size:12px;text-align:center;">
+                </div>
+                <div class="perf-tp-row">
+                    <label style="display:inline-flex;align-items:center;cursor:pointer;">
+                        <input type="checkbox"
+                               class="perf-tp-never"
+                               data-camera-serial="${c.serial}"
+                               ${c.never ? 'checked' : ''}
+                               style="accent-color:#dc3545;cursor:pointer;">
+                    </label>
+                </div>
+            `;
+            $grid.append(row);
+        }
+
+        // Wire change handlers. Debounce priority input — the operator is
+        // typing; we don't want a PUT per keystroke. Never-checkbox fires
+        // immediately since there's no transient state.
+        let priorityDebounce = null;
+        $grid.off('input.tp', '.perf-tp-priority').on('input.tp', '.perf-tp-priority', (e) => {
+            const $inp = $(e.currentTarget);
+            clearTimeout(priorityDebounce);
+            priorityDebounce = setTimeout(() => this._saveThrottlePriority($inp), 500);
+        });
+        $grid.off('change.tp', '.perf-tp-never').on('change.tp', '.perf-tp-never', (e) => {
+            this._saveThrottleNever($(e.currentTarget));
+        });
+    },
+
+    async _saveThrottlePriority($inp) {
+        const serial = $inp.attr('data-camera-serial');
+        if (!serial) return;
+        const raw = $inp.val().trim();
+        const value = raw === '' ? null : parseInt(raw, 10);
+        if (raw !== '' && (!Number.isFinite(value) || value < 1)) {
+            $inp.css('border-color', '#dc3545');
+            return;
+        }
+        $inp.css('border-color', '');
+        try {
+            const r = await fetch(`/api/camera/${encodeURIComponent(serial)}/settings`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ throttle_priority: value }),
+            });
+            if (!r.ok) {
+                console.warn(`[Throttle] priority save HTTP ${r.status} for ${serial}`);
+                $inp.css('border-color', '#dc3545');
+            }
+        } catch (e) {
+            console.warn(`[Throttle] priority save error for ${serial}:`, e);
+            $inp.css('border-color', '#dc3545');
+        }
+    },
+
+    async _saveThrottleNever($cb) {
+        const serial = $cb.attr('data-camera-serial');
+        if (!serial) return;
+        const value = $cb.is(':checked');
+        try {
+            const r = await fetch(`/api/camera/${encodeURIComponent(serial)}/settings`, {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ throttle_never: value }),
+            });
+            if (!r.ok) {
+                console.warn(`[Throttle] never save HTTP ${r.status} for ${serial}`);
+                // Revert the visual state so the operator sees the failure.
+                $cb.prop('checked', !value);
+            }
+        } catch (e) {
+            console.warn(`[Throttle] never save error for ${serial}:`, e);
+            $cb.prop('checked', !value);
         }
     },
 

@@ -223,18 +223,40 @@ class SegmentBuffer:
 
         Returns:
             List of segment file paths (oldest first for concatenation order)
+
+        Filters out:
+          - Missing files (race window between buffer rotation and our read).
+          - **Empty** files (the just-rotated segment that FFmpeg hasn't
+            written any data to yet). Observed on AMCREST LOBBY 2026-05-17:
+            the rolling buffer FFmpeg rotates a new seg_*.ts on a strict
+            wall-clock cadence, and if a motion event triggers the
+            pre-buffer copy in the same ~100ms window, copy_buffer_to_temp
+            captures a 0-byte file. Concat then dies with "Invalid data
+            found when processing input" because an empty TS isn't a TS.
+            A minimum size of 1KB conservatively rules out the half-
+            written tail-end of a rotation too — real keyframes weigh in
+            at hundreds of kB.
         """
+        MIN_SEGMENT_BYTES = 1024
         segments_needed = max(1, (seconds + self.SEGMENT_DURATION - 1) // self.SEGMENT_DURATION)
 
         with self.segments_lock:
             # Get most recent N segments from the deque
             recent = list(self.segments)[-segments_needed:]
 
-            # Filter to only existing files (in case of race condition)
-            existing = [s for s in recent if s.exists()]
+            # Filter to existing AND non-empty files
+            existing = []
+            for s in recent:
+                try:
+                    if s.exists() and s.stat().st_size >= MIN_SEGMENT_BYTES:
+                        existing.append(s)
+                except OSError:
+                    # stat() can race with file rotation; skip
+                    continue
 
             logger.info(f"Retrieved {len(existing)} buffer segments for {self.camera_name} "
-                       f"({seconds}s requested, {len(recent)} in buffer)")
+                       f"({seconds}s requested, {len(recent)} in buffer, "
+                       f"{len(recent) - len(existing)} filtered as missing/empty)")
             return existing
 
     def copy_buffer_to_temp(self, seconds: int, temp_dir: Path) -> List[Path]:

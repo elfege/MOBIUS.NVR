@@ -685,6 +685,21 @@ class RecordingService:
                             # inconsistent state where the in-memory log said
                             # status=failed but the DB row was never updated.
                             metadata['status'] = 'error'
+                            # Clean up the orphan rec_<id> temp dir. The success
+                            # path inside _finalize_prebuffered_recording already
+                            # rmtrees on its own; the failure path used to leak,
+                            # so the buffer dir accumulated rec_* subdirs forever
+                            # (184 stale on AMCREST LOBBY 2026-05-17). Best-
+                            # effort: never let cleanup hide the real error.
+                            temp_dir = metadata.get('temp_dir')
+                            if temp_dir:
+                                try:
+                                    shutil.rmtree(temp_dir, ignore_errors=True)
+                                except Exception:
+                                    logger.debug(
+                                        f"temp dir cleanup raised after concat-fail "
+                                        f"for {recording_id}", exc_info=True,
+                                    )
 
                     # Check for auto-restart (continuous recordings)
                     elif metadata.get('auto_restart', False):

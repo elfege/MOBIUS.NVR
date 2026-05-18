@@ -5,6 +5,44 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MOBIUS.NVR</title>
+
+    <!-- ────────────────────────────────────────────────────────────────
+         UI-mode preference memo + redirect (operator request 2026-05-18).
+         Runs synchronously, BEFORE any stylesheet or module loads, so a
+         redirect to /light happens with zero flash of /streams UI.
+
+         Two reads:
+           1. ?full=1 in URL ⇒ the user explicitly wants full mode (this is
+              what the "Full UI" button in /light hands us). Persist the
+              preference so subsequent reloads stay on /streams.
+           2. nvr_preferred_mode === 'light' AND no ?full=1 ⇒ the user's
+              last mode was /light (set by streams_light.html on every
+              load). Redirect to /light. window.location.replace is used
+              instead of .href so the back button doesn't trap the user
+              between /streams and /light on every reload.
+
+         The server-side UA-based redirect in config.py:86 still handles
+         tablets/phones that arrive at /streams without a localStorage
+         value. This block adds the desktop-Chrome case (rog, etc.) that
+         the UA matcher intentionally doesn't catch. ─────────────────── -->
+    <script>
+        (function () {
+            try {
+                var params = new URLSearchParams(window.location.search);
+                if (params.has('full')) {
+                    localStorage.setItem('nvr_preferred_mode', 'full');
+                    return;
+                }
+                if (localStorage.getItem('nvr_preferred_mode') === 'light') {
+                    window.location.replace('/light');
+                }
+            } catch (_) {
+                // localStorage can throw in private-mode Safari; fall
+                // through to the normal /streams render rather than crash.
+            }
+        })();
+    </script>
+
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/the_eye.png') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='images/apple-touch-icon.png') }}">
 

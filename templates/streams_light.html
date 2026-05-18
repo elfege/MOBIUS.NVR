@@ -237,6 +237,21 @@
 
         /* No max-width — use ALL available space on every screen size */
     </style>
+
+    <!-- ────────────────────────────────────────────────────────────────
+         UI-mode preference memo. Setting this on every /light load gives
+         /streams a way to know "the user's last choice was light" across
+         server restarts + hourly reloads. Operator-flagged 2026-05-18:
+         on rog (a desktop Linux Chrome that the server-side UA redirect
+         in config.py doesn't classify as mobile), nothing kept the kiosk
+         on /light after server restarts. The Full UI link still works
+         (sets the flag back to 'full' via streams.html's bootstrap).
+         Wrapped in try/catch because Safari ITP can throw on localStorage
+         from inside a private-mode tab; we'd rather skip the memo than
+         break the page. ─────────────────────────────────────────────── -->
+    <script>
+        try { localStorage.setItem('nvr_preferred_mode', 'light'); } catch (_) {}
+    </script>
 </head>
 <body>
 

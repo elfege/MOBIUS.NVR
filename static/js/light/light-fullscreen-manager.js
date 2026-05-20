@@ -45,9 +45,10 @@
 // Configuration
 // =====================================================================
 
-// Snapshot poll interval for the SD path inside fullscreen. Same as
-// the grid; matches the user's expectation of a smooth ~0.5 fps view.
-const POLL_INTERVAL_MS = 2000;
+// Snapshot poll cadence — read per-tick from light-prefs so a
+// gear-settings change affects fullscreen too. The grid uses the
+// same source; the two stay in lockstep automatically.
+import { getPollMs, getFreshnessSec, getPreferGo2rtc } from './light-prefs.js';
 
 // Swipe threshold for left/right navigation between cameras inside
 // the fullscreen overlay. Same heuristic as the grid swipe.
@@ -212,7 +213,7 @@ export class LightFullscreenManager {
         this.$img.attr('src', this._snapUrl(cameraId));
         this._sdTimer = setInterval(() => {
             this.$img.attr('src', this._snapUrl(cameraId));
-        }, POLL_INTERVAL_MS);
+        }, getPollMs());
     }
 
     /**
@@ -294,7 +295,8 @@ export class LightFullscreenManager {
     }
 
     _snapUrl(cameraId) {
-        return `/api/snap/${encodeURIComponent(cameraId)}?_t=${Date.now()}`;
+        const src = getPreferGo2rtc() ? '&source=go2rtc' : '';
+        return `/api/snap/${encodeURIComponent(cameraId)}?_t=${Date.now()}&max_age=${getFreshnessSec().toFixed(2)}${src}`;
     }
 
     _applyQualityButtons() {

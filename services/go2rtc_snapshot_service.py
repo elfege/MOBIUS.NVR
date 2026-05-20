@@ -95,14 +95,17 @@ class Go2RTCSnapshotService:
             )
             return True
 
-    def get_latest_frame(self, camera_id: str) -> Optional[dict]:
+    def get_latest_frame(self, camera_id: str, max_age: Optional[float] = None) -> Optional[dict]:
         """Returns the most recent frame for the camera, or None if no
-        frame is available within the freshness window."""
+        frame is available within the freshness window. `max_age`
+        (seconds) overrides the default _FRAME_MAX_AGE_S when provided —
+        used by /api/snap to honour each kiosk's per-device localStorage."""
+        effective = max_age if max_age is not None else _FRAME_MAX_AGE_S
         with self.lock:
             frame = self.frame_buffers.get(camera_id)
             if not frame:
                 return None
-            if (time.time() - frame["timestamp"]) > _FRAME_MAX_AGE_S:
+            if (time.time() - frame["timestamp"]) > effective:
                 return None
             return frame
 

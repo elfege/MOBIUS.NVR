@@ -63,6 +63,41 @@
         .topbar-btn:active { background: #222; }
         .topbar-btn.active { color: #4caf50; border-color: #4caf50; }
 
+        /* Gear dropdown (snapshot-tuning panel). Anchored under the
+           gear button in the topbar. JS toggles .open on click. */
+        .light-gear-panel {
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 220px;
+            background: #161616;
+            border: 1px solid #333;
+            border-radius: 6px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+            z-index: 9999;
+            padding: 10px 12px;
+            font-size: 12px;
+            color: #ddd;
+        }
+        .light-gear-panel.open { display: block !important; }
+        .light-gear-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; margin: 4px 0;
+        }
+        .light-gear-row label { color: #bbb; }
+        .light-gear-row input[type="number"] {
+            width: 80px;
+            background: #1e1e1e; color: #ddd;
+            border: 1px solid #333; border-radius: 3px;
+            padding: 3px 6px;
+            font-size: 12px; text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .light-gear-help {
+            margin-top: 6px;
+            font-size: 11px; color: #888; line-height: 1.4;
+        }
+
         /* --- Grid: fills remaining space between topbar and pagination --- */
         /* Columns/rows set dynamically by JS (applyGridCSS) based on user's grid choice */
         .grid {
@@ -265,6 +300,45 @@
         <button class="topbar-btn" id="grid-btn" title="Change grid size">2x2</button>
         <button class="topbar-btn" id="fit-btn" title="Toggle stretch / proportional">Stretch</button>
         <button class="topbar-btn" id="pause-btn" title="Pause snapshot refresh">Pause</button>
+        <!-- Per-device snapshot tuning (operator-flagged 2026-05-20:
+             /light needs per-kiosk cadence because rog and tablet1 have
+             very different CPUs). Values persist to localStorage; URL
+             params ?snap= and ?freshness= override on load (chrome_nvr
+             uses this). See static/js/light/light-prefs.js. -->
+        <div class="light-gear-wrap" style="position:relative;display:inline-block;">
+            <button class="topbar-btn" id="light-gear-btn"
+                    title="Snapshot tuning (per-device)" aria-label="Snapshot settings">⚙</button>
+            <div id="light-gear-panel" class="light-gear-panel" style="display:none;">
+                <div class="light-gear-row">
+                    <label for="light-gear-poll-ms">Snap interval (ms)</label>
+                    <input type="number" id="light-gear-poll-ms"
+                           min="250" max="5000" step="50"
+                           inputmode="numeric"
+                           title="How often each tile fetches a new JPEG. 250–5000 ms. Decimals or values &lt;250 are read as seconds and auto-converted.">
+                </div>
+                <div class="light-gear-row">
+                    <label for="light-gear-freshness-ms">Freshness (ms)</label>
+                    <input type="number" id="light-gear-freshness-ms"
+                           min="1000" max="60000" step="500"
+                           inputmode="numeric"
+                           title="Max age of a server-side cached frame before No-signal. 1000–60000 ms. Decimals or values &lt;1000 are read as seconds and auto-converted.">
+                </div>
+                <div class="light-gear-row" style="align-items:flex-start;">
+                    <label for="light-gear-prefer-go2rtc" style="flex:1;">
+                        Prefer go2rtc snapshots
+                    </label>
+                    <input type="checkbox" id="light-gear-prefer-go2rtc"
+                           style="margin:4px 0 0 0;accent-color:#4caf50;cursor:pointer;">
+                </div>
+                <div class="light-gear-help">
+                    On = server tries go2rtc's pre-decoded JPEG first (low
+                    latency, low server CPU). Off = uses the per-camera
+                    <code>streaming_hub</code> setting. Falls back to the
+                    default path if go2rtc doesn't have a stream for a
+                    given camera. Per-device — localStorage only.
+                </div>
+            </div>
+        </div>
         <button class="topbar-btn" id="refresh-page-btn" title="Full page reload (clears caches, re-fetches all data)">↻</button>
         <a href="/streams?full=1" class="topbar-btn" title="Switch to full UI">Full UI</a>
         <form method="POST" action="/logout" style="margin:0;">

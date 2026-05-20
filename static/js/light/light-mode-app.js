@@ -28,6 +28,13 @@
 
 import { LightGridRenderer }      from './light-grid-renderer.js';
 import { LightFullscreenManager } from './light-fullscreen-manager.js';
+import {
+    applyUrlOverridesOnce,
+    getPollMs, getFreshnessMs,
+    setPoll, setFreshness,
+    getPreferGo2rtc, setPreferGo2rtc,
+    POLL_BOUNDS_MS, FRESHNESS_BOUNDS_MS,
+} from './light-prefs.js';
 
 
 // =====================================================================
@@ -96,6 +103,11 @@ class LightModeApp {
 
     /** Boot the whole thing. Idempotent — safe to call once on DOM ready. */
     init() {
+        // First: pick up ?snap=<...>&freshness=<...> URL overrides
+        // (chrome_nvr passes these). Persisted to localStorage so the
+        // values survive subsequent reloads even without the params.
+        applyUrlOverridesOnce();
+
         // Reflect the renderer's persisted defaults into the top-bar.
         this.$gridBtn.text(this.grid.gridLabel);
         this.$fitBtn.text(this.grid.fitMode === 'fill' ? 'Stretch' : 'Fit');
@@ -105,10 +117,54 @@ class LightModeApp {
         this._wireKeyboard();
         this._wireVisibility();
         this._wireRemoteFullscreenSwitch();
+        this._wireGearPanel();
 
         this.grid.render();
         this._restoreFullscreenIfPersisted();
         this._scheduleAutoReload();
+    }
+
+    /** Toggle + value-edit handlers for the gear panel in the topbar.
+     *  Writes hit localStorage immediately via light-prefs. Grid
+     *  renderer re-reads on each tile render, so a value change takes
+     *  effect on the next snapshot tick — no reload needed. */
+    _wireGearPanel() {
+        const $panel = $('#light-gear-panel');
+        const $btn   = $('#light-gear-btn');
+        const $poll  = $('#light-gear-poll-ms');
+        const $fresh = $('#light-gear-freshness-ms');
+        const $pref  = $('#light-gear-prefer-go2rtc');
+        if (!$btn.length || !$panel.length) return;
+
+        const reflect = () => {
+            $poll.val(getPollMs());
+            $fresh.val(getFreshnessMs());
+            $pref.prop('checked', getPreferGo2rtc());
+        };
+        reflect();
+
+        $btn.off('click.gear').on('click.gear', (e) => {
+            e.stopPropagation();
+            $panel.toggleClass('open');
+            reflect();
+        });
+        // Click-away closes.
+        $(document).off('click.gear-close').on('click.gear-close', (e) => {
+            if (!$panel.hasClass('open')) return;
+            if ($panel[0].contains(e.target) || $btn[0].contains(e.target)) return;
+            $panel.removeClass('open');
+        });
+
+        // Live persist on input. Setters normalize + clamp.
+        $poll.off('change.gear').on('change.gear', () => {
+            if (setPoll($poll.val())) reflect();
+        });
+        $fresh.off('change.gear').on('change.gear', () => {
+            if (setFreshness($fresh.val())) reflect();
+        });
+        $pref.off('change.gear').on('change.gear', () => {
+            setPreferGo2rtc($pref.is(':checked'));
+        });
     }
 
     /**

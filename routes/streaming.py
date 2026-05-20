@@ -973,28 +973,21 @@ def _kick_capture(camera_id: str, camera: dict):
     if now - last < _SNAP_BOOTSTRAP_DEDUP_SECONDS:
         return
     _snap_bootstrap_seen[camera_id] = now
-    ctype = (camera.get('type') or '').lower()
+    # Route by streaming hub, NOT by camera vendor. The old per-vendor
+    # dispatch (reolink/unifi/sv3c/amcrest -> direct camera HTTP) opened
+    # a SECOND connection to each camera — a violation of CLAUDE.md
+    # RULE 11 (Single-Consumer Policy). Now: every snapshot bootstrap
+    # taps the hub the camera is already streaming through.
+    hub = (camera.get('streaming_hub') or 'mediamtx').lower()
     try:
-        if ctype == 'reolink':
-            shared.reolink_mjpeg_capture_service.add_client(
-                camera_id, camera, shared.camera_repo,
-            )
-        elif ctype == 'unifi':
-            shared.unifi_mjpeg_capture_service.add_client(camera_id, camera)
-        elif ctype == 'sv3c':
-            shared.sv3c_mjpeg_capture_service.add_client(
-                camera_id, camera, shared.camera_repo,
-            )
-        elif ctype == 'amcrest':
-            shared.amcrest_mjpeg_capture_service.add_client(
-                camera_id, camera, shared.camera_repo,
-            )
+        if hub == 'go2rtc':
+            shared.go2rtc_snapshot_service.add_client(camera_id, camera)
         else:
-            # eufy, neolink, generic — go through MediaMTX RTSP
+            # 'mediamtx' (default) or anything unknown -> MediaMTX RTSP tap.
             shared.mediaserver_mjpeg_service.add_client(camera_id, camera)
         logger.info(
             "snap bootstrap: kicked %s capture for %s (%s)",
-            ctype or 'mediaserver', camera_id, camera.get('name', '?'),
+            hub, camera_id, camera.get('name', '?'),
         )
     except Exception as e:
         logger.warning("snap bootstrap kick failed for %s: %s", camera_id, e)
@@ -1008,11 +1001,17 @@ def api_snap_camera(camera_id):
     Get a single JPEG snapshot from any camera.
     Used by /light + the iOS grid view.
 
-    Checks frame buffers in order:
-    1. reolink_mjpeg_capture_service (Reolink cameras)
-    2. unifi_mjpeg_capture_service   (UniFi cameras)
-    3. sv3c_mjpeg_capture_service    (SV3C — direct HTTP /tmpfs/auto.jpg)
-    4. mediaserver_mjpeg_service     (fallback: eufy / neolink via MediaMTX)
+    Routes by `cameras.streaming_hub`, NOT by vendor. This honours
+    CLAUDE.md RULE 11 (Single-Consumer Policy): every consumer taps the
+    hub the camera is already streaming through; nothing opens a second
+    connection to the camera. See:
+      docs/plans/snapshot_path_must_tap_streaming_hub_not_camera_directly.md
+
+      streaming_hub='mediamtx' (default) -> mediaserver_mjpeg_service
+                                            (FFmpeg taps MediaMTX RTSP)
+      streaming_hub='go2rtc'            -> go2rtc_snapshot_service
+                                            (HTTP poll on go2rtc's
+                                             /api/frame.jpeg endpoint)
 
     If no frame is cached, lazy-start the appropriate capture service via
     add_client so the NEXT poll returns a frame (the current call still
@@ -1028,19 +1027,11 @@ def api_snap_camera(camera_id):
         if not camera:
             return "Camera not found", 404
 
-        camera_type = camera.get('type', '').lower()
-        frame_data = None
-
-        # Try camera-specific service first
-        if camera_type == 'reolink':
-            frame_data = shared.reolink_mjpeg_capture_service.get_latest_frame(camera_id)
-        elif camera_type == 'unifi':
-            frame_data = shared.unifi_mjpeg_capture_service.get_latest_frame(camera_id)
-        elif camera_type == 'sv3c':
-            frame_data = shared.sv3c_mjpeg_capture_service.get_latest_frame(camera_id)
-
-        # Fallback to mediaserver (any camera publishing to MediaMTX).
-        if not frame_data:
+        hub = (camera.get('streaming_hub') or 'mediamtx').lower()
+        if hub == 'go2rtc':
+            frame_data = shared.go2rtc_snapshot_service.get_latest_frame(camera_id)
+        else:
+            # 'mediamtx' (default) or anything we don't recognize -> MediaMTX tap.
             frame_data = shared.mediaserver_mjpeg_service.get_latest_frame(camera_id)
 
         if frame_data and frame_data.get('data'):

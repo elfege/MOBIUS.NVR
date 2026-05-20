@@ -41,7 +41,10 @@ logger = logging.getLogger(__name__)
 # matches mediaserver_mjpeg_service so the api_snap_camera retry logic
 # behaves the same regardless of hub.
 _POLL_INTERVAL_S = 1.0
-_FRAME_MAX_AGE_S = 5.0
+# 20s freshness window (was 5s). Mirrors the bump in
+# mediaserver_mjpeg_service applied 2026-05-20 — kept consistent across
+# both hub paths so /api/snap behaves identically regardless of hub.
+_FRAME_MAX_AGE_S = 20.0
 
 # Configurable so tests / non-default deployments can override without
 # editing this module.

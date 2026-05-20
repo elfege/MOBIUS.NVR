@@ -51,6 +51,7 @@ from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service
 from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
 from services.sv3c_mjpeg_capture_service import sv3c_mjpeg_capture_service
 from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
+from services.go2rtc_snapshot_service import go2rtc_snapshot_service
 from services.ptz.amcrest_ptz_handler import amcrest_ptz_handler
 from services.onvif.onvif_ptz_handler import ONVIFPTZHandler
 from services.ptz.baichuan_ptz_handler import BaichuanPTZHandler
@@ -1288,6 +1289,7 @@ _shared.set_services(
     unifi_mjpeg_capture_service=unifi_mjpeg_capture_service,
     sv3c_mjpeg_capture_service=sv3c_mjpeg_capture_service,
     mediaserver_mjpeg_service=mediaserver_mjpeg_service,
+    go2rtc_snapshot_service=go2rtc_snapshot_service,
     websocket_mjpeg_service=websocket_mjpeg_service,
     camera_state_tracker=camera_state_tracker,
 )

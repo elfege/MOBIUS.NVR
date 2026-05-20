@@ -60,6 +60,10 @@ reolink_mjpeg_capture_service = None
 unifi_mjpeg_capture_service = None
 sv3c_mjpeg_capture_service = None
 mediaserver_mjpeg_service = None
+# Singleton tap on go2rtc's /api/frame.jpeg endpoint. Used by api_snap_camera
+# for cameras with streaming_hub='go2rtc'. Honours the 1-camera-1-output rule
+# (CLAUDE.md RULE 11) by going through the hub instead of the camera directly.
+go2rtc_snapshot_service = None
 websocket_mjpeg_service = None
 camera_state_tracker = None
 

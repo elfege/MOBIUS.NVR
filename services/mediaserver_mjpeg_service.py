@@ -596,9 +596,14 @@ class MediaServerMJPEGService:
             if not frame_data:
                 return None
 
-            # For error frames, allow longer display (30s) since they're informational
-            # For real frames, 5 second timeout
-            max_age = 30.0 if frame_data.get('is_error') else 5.0
+            # For error frames, allow longer display (30s) since they're informational.
+            # For real frames: 20s freshness window (was 5s — bumped 2026-05-20 after
+            # /light showed a flapping "Christmas tree" effect on mediamtx-hub cameras
+            # whose per-camera FFmpeg-tap from MediaMTX produces frames at a cadence
+            # slower than 5s — typical for Eufy P2P sub-streams at ~1fps. A longer
+            # window hides the gap; the real fix (Phase 5 in the snapshot plan) is
+            # to make the tap more reliable / faster on those paths.
+            max_age = 30.0 if frame_data.get('is_error') else 20.0
             if (time.time() - frame_data['timestamp']) > max_age:
                 return None
 

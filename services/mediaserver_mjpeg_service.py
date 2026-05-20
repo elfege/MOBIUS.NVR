@@ -588,23 +588,26 @@ class MediaServerMJPEGService:
         except Exception as e:
             logger.error(f"Error stopping MediaServer MJPEG capture for {camera_id}: {e}")
 
-    def get_latest_frame(self, camera_id: str) -> Optional[dict]:
-        """Get latest frame data for camera."""
+    def get_latest_frame(self, camera_id: str, max_age: Optional[float] = None) -> Optional[dict]:
+        """Get latest frame data for camera. `max_age` (seconds) overrides
+        the service's default freshness window when provided — used by
+        /api/snap to honour each kiosk's per-device localStorage value."""
         with self.lock:
             frame_data = self.frame_buffers.get(camera_id)
 
             if not frame_data:
                 return None
 
-            # For error frames, allow longer display (30s) since they're informational.
-            # For real frames: 20s freshness window (was 5s — bumped 2026-05-20 after
-            # /light showed a flapping "Christmas tree" effect on mediamtx-hub cameras
-            # whose per-camera FFmpeg-tap from MediaMTX produces frames at a cadence
-            # slower than 5s — typical for Eufy P2P sub-streams at ~1fps. A longer
-            # window hides the gap; the real fix (Phase 5 in the snapshot plan) is
-            # to make the tap more reliable / faster on those paths.
-            max_age = 30.0 if frame_data.get('is_error') else 20.0
-            if (time.time() - frame_data['timestamp']) > max_age:
+            # Default: 30s for error placeholder frames (informational, OK to
+            # show longer), 20s for real frames (covers Eufy P2P ~1fps gaps).
+            # max_age override applies to real frames only — error frames keep
+            # their longer window so the operator-facing "stream down" message
+            # doesn't vanish on a faster freshness setting.
+            if frame_data.get('is_error'):
+                effective_max_age = 30.0
+            else:
+                effective_max_age = max_age if max_age is not None else 20.0
+            if (time.time() - frame_data['timestamp']) > effective_max_age:
                 return None
 
             return frame_data

@@ -57,11 +57,11 @@ export const GRID_SIZES = Object.freeze([
     { cols: 4, rows: 4, label: '4x4' },
 ]);
 
-// Snapshot poll interval per tile. 2 s is a deliberate compromise:
-// fast enough to read a moving scene, slow enough that 16 tiles
-// (worst case 4x4) at ~30 KB / snapshot stay under 250 KB/s on the
-// device — comfortable for an LTE phone.
-const POLL_INTERVAL_MS = 2000;
+// Snapshot poll interval per tile. Now per-device-tunable via
+// localStorage + the gear in the topbar (or chrome_nvr --snap=<sec>).
+// See light-prefs.js for storage / normalization. The previous
+// hardcoded 2000 ms is the default fallback.
+import { getPollMs, getFreshnessSec, getPreferGo2rtc } from './light-prefs.js';
 
 // Tap-vs-double-tap discrimination window. Anything below this is
 // counted as a continuation of the previous tap.
@@ -200,9 +200,13 @@ export class LightGridRenderer {
     // Internal helpers
     // =================================================================
 
-    /** Build the cache-busted snapshot URL for a single camera. */
+    /** Build the cache-busted snapshot URL for a single camera.
+     *  Sends per-device freshness window via ?max_age — the server
+     *  uses this as the override for the shared frame buffer's
+     *  staleness check, letting kiosks pick their own tolerance. */
     _snapUrl(cameraId) {
-        return `/api/snap/${encodeURIComponent(cameraId)}?_t=${Date.now()}`;
+        const src = getPreferGo2rtc() ? '&source=go2rtc' : '';
+        return `/api/snap/${encodeURIComponent(cameraId)}?_t=${Date.now()}&max_age=${getFreshnessSec().toFixed(2)}${src}`;
     }
 
     /** Apply CSS-grid columns/rows from the current grid choice. */
@@ -282,10 +286,12 @@ export class LightGridRenderer {
         });
 
         // Start polling (unless we're suspended — defensive guard).
+        // Cadence read fresh on each tile so a gear-settings change
+        // takes effect at the next tile render() without a page reload.
         if (!this._suspended) {
             const id = setInterval(() => {
                 $img.attr('src', this._snapUrl(cam.id));
-            }, POLL_INTERVAL_MS);
+            }, getPollMs());
             this._timers.set(cam.id, id);
         }
 

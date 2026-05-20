@@ -1028,11 +1028,61 @@ def api_snap_camera(camera_id):
             return "Camera not found", 404
 
         hub = (camera.get('streaming_hub') or 'mediamtx').lower()
-        if hub == 'go2rtc':
-            frame_data = shared.go2rtc_snapshot_service.get_latest_frame(camera_id)
+        # Per-request freshness override from the client. /light passes
+        # the kiosk's localStorage value via ?max_age=<sec>; chrome_nvr's
+        # --freshness=<sec> URL-param ends up here too. Defaults to the
+        # service's own _FRAME_MAX_AGE_S / max_age constant if absent
+        # or unparseable.
+        max_age_override = None
+        try:
+            raw_ma = request.args.get('max_age')
+            if raw_ma is not None:
+                v = float(raw_ma)
+                # Clamp to a sane band so a bogus value can't lock a
+                # frame for a week. Mirrors light-prefs FRESHNESS_BOUNDS_MS.
+                if 1.0 <= v <= 60.0:
+                    max_age_override = v
+        except (TypeError, ValueError):
+            pass
+
+        # ?source=go2rtc opt-in (from /light gear "Prefer go2rtc snapshots"):
+        # try go2rtc first regardless of streaming_hub. If go2rtc doesn't have
+        # this camera, fall back to the hub-based default so the kiosk doesn't
+        # break on cameras that aren't in go2rtc's config. The lazy-bootstrap
+        # path (_kick_capture) still respects streaming_hub — this override
+        # only changes the READ side, not what gets started.
+        prefer_go2rtc = request.args.get('source') == 'go2rtc'
+        if prefer_go2rtc:
+            # Ensure a go2rtc poller is running for this camera so the next
+            # poll has something to read (the lazy-bootstrap only fires when
+            # the hub matches go2rtc, so for mediamtx-hub cameras with the
+            # checkbox we need to start it explicitly here).
+            try:
+                shared.go2rtc_snapshot_service.add_client(camera_id, camera)
+            except Exception:
+                logger.exception("prefer_go2rtc: add_client failed for %s", camera_id)
+            frame_data = shared.go2rtc_snapshot_service.get_latest_frame(
+                camera_id, max_age=max_age_override,
+            )
+            if not frame_data:
+                # go2rtc doesn't have a frame (yet, or this camera isn't on
+                # go2rtc at all) — fall back to the hub-based path so the
+                # tile shows SOMETHING.
+                if hub == 'go2rtc':
+                    pass  # we already tried it
+                else:
+                    frame_data = shared.mediaserver_mjpeg_service.get_latest_frame(
+                        camera_id, max_age=max_age_override,
+                    )
+        elif hub == 'go2rtc':
+            frame_data = shared.go2rtc_snapshot_service.get_latest_frame(
+                camera_id, max_age=max_age_override,
+            )
         else:
             # 'mediamtx' (default) or anything we don't recognize -> MediaMTX tap.
-            frame_data = shared.mediaserver_mjpeg_service.get_latest_frame(camera_id)
+            frame_data = shared.mediaserver_mjpeg_service.get_latest_frame(
+                camera_id, max_age=max_age_override,
+            )
 
         if frame_data and frame_data.get('data'):
             return Response(

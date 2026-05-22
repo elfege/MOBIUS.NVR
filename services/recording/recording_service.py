@@ -115,6 +115,15 @@ class RecordingService:
 
         hub = get_streaming_hub(camera)
 
+        # native_mjpeg cameras have NO RTSP (excluded from ingest). Record by
+        # tapping the vendor native-MJPEG capture buffer (the single HTTP poll)
+        # and assembling JPEG frames into mp4 — see _spawn_mjpeg_pipe_recording.
+        # We return the camera_id as the "source" (there is no URL) and the
+        # 'mjpeg_service' source type, which the start_*_recording methods
+        # branch on.
+        if hub == 'native_mjpeg':
+            return (camera_id, 'mjpeg_service')
+
         if stream_type in ('LL_HLS', 'HLS', 'NEOLINK', 'WEBRTC', 'GO2RTC'):
             if recording_source not in ('mediamtx', 'go2rtc', 'auto'):
                 logger.debug(f"Overriding recording_source '{recording_source}' to hub '{hub}' for {camera_id}")
@@ -146,10 +155,12 @@ class RecordingService:
             return (rtsp_url, 'rtsp')
 
         elif recording_source == 'mjpeg_service':
-            # MJPEG cameras use dedicated capture service
-            # TODO: Implement MJPEG recording by tapping the capture service buffer
-            logger.warning(f"MJPEG recording not yet implemented for {camera_id}")
-            raise NotImplementedError(f"MJPEG recording source not yet implemented for camera {camera_id}")
+            # MJPEG cameras (native_mjpeg hub, or stream_type=MJPEG) record by
+            # tapping the vendor capture service buffer — there is no RTSP URL.
+            # The start_*_recording methods branch on the 'mjpeg_service' source
+            # type and call _spawn_mjpeg_pipe_recording. The "url" is just the
+            # camera_id (the feeder resolves the vendor service from it).
+            return (camera_id, 'mjpeg_service')
 
         else:
             raise ValueError(f"Unknown recording source: {recording_source}")
@@ -297,16 +308,26 @@ class RecordingService:
         Returns:
             Recording ID if successful, None if failed
         """
-        # RTSP sources (mediamtx or direct camera)
-        ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
+        if source_type == 'mjpeg_service':
+            # Broken-RTSP camera: assemble mp4 from the vendor MJPEG buffer
+            # (no second camera connection). camera dict needed for vendor
+            # dispatch.
+            camera = self.camera_repo.get_camera(camera_id)
+            process = self._spawn_mjpeg_pipe_recording(camera_id, camera, recording_path, duration)
+            if process is None:
+                logger.error(f"native_mjpeg live recording failed to start for {camera_id}")
+                return None
+        else:
+            # RTSP sources (mediamtx or direct camera)
+            ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
 
-        # Start FFmpeg process
-        process = subprocess.Popen(
-            ffmpeg_cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            stdin=subprocess.DEVNULL
-        )
+            # Start FFmpeg process
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                stdin=subprocess.DEVNULL
+            )
 
         # Store recording metadata
         with self.recording_lock:
@@ -358,6 +379,16 @@ class RecordingService:
         Returns:
             Recording ID if successful, None if failed
         """
+        # native_mjpeg cameras have no RTSP segment buffer to pre-roll from —
+        # skip the pre-buffer concat path entirely and record live from the
+        # vendor MJPEG buffer. (Pre-buffer for these could be added later by
+        # ring-buffering JPEGs, but a broken-RTSP camera rarely needs it.)
+        if source_type == 'mjpeg_service':
+            return self._start_live_recording(
+                camera_id, camera_name, source_url, source_type,
+                recording_path, recording_id, duration, event_id,
+            )
+
         # Create temporary directory for this recording
         temp_dir = self.storage.buffer_path / camera_id / f"rec_{recording_id}"
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -464,17 +495,25 @@ class RecordingService:
             logger.info(f"  Duration: {duration}s")
             logger.info(f"  Output: {recording_path.name}")
             
-            # RTSP sources (mediamtx or direct camera)
-            ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
-            
-            # Start FFmpeg process
-            process = subprocess.Popen(
-                ffmpeg_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.DEVNULL
-            )
-            
+            if source_type == 'mjpeg_service':
+                # Broken-RTSP camera: assemble mp4 from the vendor MJPEG buffer.
+                camera = self.camera_repo.get_camera(camera_id)
+                process = self._spawn_mjpeg_pipe_recording(camera_id, camera, recording_path, duration)
+                if process is None:
+                    logger.error(f"native_mjpeg manual recording failed to start for {camera_id}")
+                    return None
+            else:
+                # RTSP sources (mediamtx or direct camera)
+                ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, duration)
+
+                # Start FFmpeg process
+                process = subprocess.Popen(
+                    ffmpeg_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL
+                )
+
             # Store recording metadata
             with self.recording_lock:
                 self.active_recordings[recording_id] = {
@@ -522,9 +561,130 @@ class RecordingService:
             '-movflags', '+faststart',  # Enable streaming playback
             str(output_path)
         ]
-        
+
         return cmd
-    
+
+    # ===================================================================
+    # Native-MJPEG recording (broken-RTSP cameras)
+    # ===================================================================
+    # These cameras have no RTSP feed (excluded from ingest). Their only
+    # source is the vendor native-HTTP-MJPEG capture service, which polls the
+    # camera ONCE and shares a JPEG buffer. We record by feeding that buffer
+    # into ffmpeg's image2pipe stdin — NO second connection to the camera, so
+    # the single-consumer rule holds. The result is a real, playable mp4
+    # (degraded fps/quality vs RTSP, as accepted in plan decision D7).
+
+    _MJPEG_RECORD_FPS = 10  # target timeline fps for the assembled mp4
+
+    def _get_native_mjpeg_service_and_starter(self, camera_id: str, camera: Dict):
+        """
+        Resolve the vendor native-MJPEG capture service + a start callable for
+        this camera. Returns (service, starter) or (None, None) if unsupported.
+        Mirrors routes/streaming.py::_native_mjpeg_frame's vendor dispatch.
+        """
+        cam_type = (camera.get('type') or '').lower()
+        try:
+            if cam_type == 'reolink':
+                from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service as svc
+                return svc, (lambda: svc.add_client(camera_id, camera, self.camera_repo))
+            if cam_type == 'amcrest':
+                from services.amcrest_mjpeg_capture_service import amcrest_mjpeg_capture_service as svc
+                return svc, (lambda: svc.add_client(camera_id, camera, self.camera_repo))
+            if cam_type == 'sv3c':
+                from services.sv3c_mjpeg_capture_service import sv3c_mjpeg_capture_service as svc
+                return svc, (lambda: svc.add_client(camera_id, camera, self.camera_repo))
+            # unifi native MJPEG needs the SDK object (shared.unifi_cameras);
+            # unifi is rarely the broken-RTSP archetype — not supported here yet.
+            logger.error(f"native_mjpeg recording: unsupported camera type '{cam_type}' for {camera_id}")
+            return None, None
+        except Exception:
+            logger.exception(f"native_mjpeg recording: failed to resolve service for {camera_id}")
+            return None, None
+
+    def _build_mjpeg_pipe_ffmpeg_command(self, output_path: Path, duration: int,
+                                         fps: int = None) -> List[str]:
+        """ffmpeg reading JPEG frames from stdin (image2pipe) -> H.264 mp4.
+        The feeder thread writes the vendor capture buffer's JPEGs to stdin."""
+        fps = fps or self._MJPEG_RECORD_FPS
+        return [
+            'ffmpeg',
+            '-hide_banner', '-loglevel', 'error',
+            '-f', 'image2pipe',
+            '-framerate', str(fps),
+            '-i', '-',
+            '-t', str(duration),
+            '-c:v', 'libx264',
+            '-preset', 'veryfast',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', '+faststart',
+            '-f', 'mp4',
+            str(output_path),
+        ]
+
+    def _spawn_mjpeg_pipe_recording(self, camera_id: str, camera: Dict,
+                                    output_path: Path, duration: int):
+        """
+        Start an MJPEG->mp4 recording by feeding the vendor capture buffer into
+        ffmpeg's stdin. Returns the Popen process (to store in active_recordings
+        so stop_recording terminates it) or None on failure.
+
+        A daemon feeder thread pumps the latest JPEG into ffmpeg at the target
+        fps until ffmpeg exits (duration reached, or terminated by
+        stop_recording). The feeder watches process.poll() and self-exits — no
+        extra bookkeeping needed for cleanup.
+        """
+        svc, starter = self._get_native_mjpeg_service_and_starter(camera_id, camera)
+        if svc is None:
+            return None
+
+        # Ensure the single vendor poll is running (get-first / start-if-missing).
+        try:
+            if svc.get_latest_frame(camera_id) is None:
+                starter()
+        except Exception:
+            logger.exception(f"native_mjpeg recording: failed to start vendor poll for {camera_id}")
+            return None
+
+        cmd = self._build_mjpeg_pipe_ffmpeg_command(output_path, duration)
+        process = subprocess.Popen(
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+
+        fps = self._MJPEG_RECORD_FPS
+
+        def _feeder():
+            interval = 1.0 / max(1, fps)
+            try:
+                while process.poll() is None:
+                    fd = None
+                    try:
+                        fd = svc.get_latest_frame(camera_id)
+                    except Exception:
+                        fd = None
+                    if fd and fd.get('data'):
+                        # Re-emit the latest frame each tick (even if unchanged)
+                        # so the mp4 keeps a steady timeline when the camera
+                        # stalls; libx264 compresses duplicate frames cheaply.
+                        try:
+                            process.stdin.write(fd['data'])
+                            process.stdin.flush()
+                        except (BrokenPipeError, ValueError, OSError):
+                            break
+                    time.sleep(interval)
+            finally:
+                try:
+                    if process.stdin:
+                        process.stdin.close()
+                except Exception:
+                    pass
+
+        threading.Thread(
+            target=_feeder, daemon=True, name=f"mjpeg-rec-feed-{camera_id[:8]}",
+        ).start()
+        logger.info(f"native_mjpeg recording: feeding vendor buffer -> {output_path.name} "
+                    f"({duration}s @ {fps}fps) for {camera_id}")
+        return process
+
     def start_continuous_recording(self, camera_id: str) -> Optional[str]:
         """
         Start continuous 24/7 recording for camera.
@@ -567,16 +727,24 @@ class RecordingService:
             logger.info(f"  Segment duration: {segment_duration}s")
             logger.info(f"  Output: {recording_path.name}")
             
-            # Build FFmpeg command
-            ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, segment_duration)
-            
-            # Start FFmpeg process
-            process = subprocess.Popen(
-                ffmpeg_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                stdin=subprocess.DEVNULL
-            )
+            if source_type == 'mjpeg_service':
+                # Broken-RTSP camera: assemble mp4 from the vendor MJPEG buffer.
+                # `camera` is already fetched above in this method.
+                process = self._spawn_mjpeg_pipe_recording(camera_id, camera, recording_path, segment_duration)
+                if process is None:
+                    logger.error(f"native_mjpeg continuous recording failed to start for {camera_id}")
+                    return None
+            else:
+                # Build FFmpeg command
+                ffmpeg_cmd = self._build_ffmpeg_command(source_url, recording_path, segment_duration)
+
+                # Start FFmpeg process
+                process = subprocess.Popen(
+                    ffmpeg_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    stdin=subprocess.DEVNULL
+                )
             
             # Store recording metadata with auto_restart flag
             with self.recording_lock:

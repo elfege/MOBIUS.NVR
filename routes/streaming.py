@@ -951,6 +951,15 @@ def api_mediaserver_mjpeg_status_single(camera_id):
 _snap_bootstrap_seen: dict = {}
 _SNAP_BOOTSTRAP_DEDUP_SECONDS = 60.0
 
+# Dedup for native-MJPEG vendor-poll starts. The vendor add_client is
+# refcounted and never auto-decremented, so calling it on every snap poll while
+# a camera has no frame (e.g. an offline / timing-out camera) inflates the
+# client count unboundedly (observed climbing into the hundreds for an offline
+# camera). Start the vendor poll at most once per window per camera; re-arming
+# after the window also recovers a capture loop that gave up on a flaky camera.
+_native_start_seen: dict = {}
+_NATIVE_START_DEDUP_SECONDS = 30.0
+
 
 def _native_mjpeg_frame(camera_id: str, camera: dict):
     """
@@ -1004,13 +1013,18 @@ def _native_mjpeg_frame(camera_id: str, camera: dict):
             logger.warning("native_mjpeg: %s capture service not wired for %s", cam_type, camera_id)
             return None
 
-        # Get-first: if the vendor poll is already running we just read it.
+        # Get-first: if the vendor poll already has a frame, just read it.
         frame = svc.get_latest_frame(camera_id)
         if frame is not None:
             return frame
-        # Not started yet — start the single vendor poll, return None this
-        # call (the client's next poll picks up the first frame).
-        starter()
+        # No frame yet (capture starting, or camera unreachable). Start the
+        # vendor poll AT MOST once per _NATIVE_START_DEDUP_SECONDS — calling the
+        # refcounted add_client on every poll while a camera stays frameless
+        # (offline / Snap timeout) inflates the client count without bound.
+        now = time.time()
+        if now - _native_start_seen.get(camera_id, 0) >= _NATIVE_START_DEDUP_SECONDS:
+            _native_start_seen[camera_id] = now
+            starter()
         return svc.get_latest_frame(camera_id)
     except Exception:
         logger.exception("native_mjpeg frame fetch failed for %s", camera_id)

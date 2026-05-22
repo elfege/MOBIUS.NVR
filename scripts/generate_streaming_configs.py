@@ -490,6 +490,7 @@ def main():
     go2rtc_cameras = []
     mediamtx_cameras = []
     neolink_cameras = []
+    native_mjpeg_cameras = []  # broken-RTSP cams: EXCLUDED from all RTSP configs
 
     for row in rows:
         parts = row.split('|')
@@ -531,6 +532,15 @@ def main():
                 mediamtx_cameras.append(cam)
             else:
                 neolink_cameras.append(cam)
+        elif hub == 'native_mjpeg':
+            # Native-MJPEG-only camera (unusable RTSP — bad wiring / weak PoE).
+            # EXCLUDED from EVERY RTSP config: no mediamtx path, no go2rtc entry,
+            # no neolink bridge. Its sole feed is the vendor native-HTTP-MJPEG
+            # capture service. Adding it to any RTSP config would open a second
+            # connection to the camera (violates 1-camera-1-output). It is also
+            # skipped by app.py auto_start_all_streams (no ingest FFmpeg).
+            print(f"{CYAN}  {name} ({serial}): native_mjpeg — excluded from RTSP ingest{NC}")
+            native_mjpeg_cameras.append(cam)
         else:
             # mediamtx (default)
             mediamtx_cameras.append(cam)
@@ -554,6 +564,9 @@ def main():
     print(f"{CYAN}Found {total} camera(s){NC}")
     if neolink_bridge_deps:
         print(f"{CYAN}  + {len(neolink_bridge_deps)} neolink bridge dependency(ies){NC}")
+    if native_mjpeg_cameras:
+        print(f"{CYAN}  + {len(native_mjpeg_cameras)} native_mjpeg camera(s) EXCLUDED from RTSP "
+              f"(native HTTP MJPEG only): {', '.join(c['name'] for c in native_mjpeg_cameras)}{NC}")
     print()
 
     # ── Generate configs ─────────────────────────────────────────────────────
@@ -591,6 +604,7 @@ def main():
     print(f"{GREEN}  MediaMTX: {mediamtx_count:>2} cameras{NC}")
     print(f"{GREEN}  go2rtc:   {go2rtc_count:>2} cameras{NC}")
     print(f"{GREEN}  neolink:  {neolink_count:>2} cameras{NC}")
+    print(f"{GREEN}  native_mjpeg (no RTSP): {len(native_mjpeg_cameras):>2} cameras{NC}")
     print(f"{GREEN}  Total:    {mediamtx_count + go2rtc_count + neolink_count:>2} cameras (exclusive, 0 conflicts){NC}")
     print(f"{GREEN}{'═' * 50}{NC}")
 

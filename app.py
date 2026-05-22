@@ -551,12 +551,24 @@ try:
     # 3. Better MJPEG experience on iOS (mediaserver can tap immediately)
     def auto_start_all_streams():
         """Start HLS streams for all cameras in background threads"""
+        from services.streaming_hub import is_native_mjpeg_camera
         all_cameras = camera_repo.get_all_cameras(include_hidden=False)
         print(f"🎬 Auto-starting HLS streams for {len(all_cameras)} cameras...")
 
         started = 0
         for serial, config in all_cameras.items():
             try:
+                # native_mjpeg cameras have unusable RTSP — they are EXCLUDED
+                # from RTSP ingest entirely (no mediamtx/go2rtc path exists for
+                # them; see generate_streaming_configs.py). Starting an ingest
+                # FFmpeg would just hammer a dead RTSP endpoint and, worse, open
+                # a second connection to the camera. Their feed comes from the
+                # vendor native-HTTP-MJPEG capture service instead (lazy-started
+                # on first read / by the recording path).
+                if is_native_mjpeg_camera(config):
+                    print(f"   ⤳ Skipping RTSP ingest for {config.get('name', serial)} "
+                          f"(native_mjpeg — no RTSP)")
+                    continue
                 # Start in background thread to not block app startup
                 def start_camera_stream(cam_serial, cam_config):
                     try:
@@ -608,9 +620,17 @@ try:
         # Vendor-specific MJPEG services:
         # - Reolink MJPEG: snapshot polling via reolink_mjpeg_capture_service
         # - Amcrest: true MJPEG stream via /cgi-bin/mjpg/video.cgi
+        from services.streaming_hub import is_native_mjpeg_camera
         cameras_to_prewarm = {}
         for camera_serial, camera_config in camera_repo.get_all_cameras().items():
             stream_type = camera_config.get('stream_type', 'HLS').upper()
+
+            # native_mjpeg cameras have NO MediaMTX path (excluded from RTSP
+            # ingest) — there is nothing to tap. Skip regardless of stream_type
+            # (which may still read HLS/WEBRTC on these rows). Their frames come
+            # from the vendor native-HTTP-MJPEG capture service.
+            if is_native_mjpeg_camera(camera_config):
+                continue
 
             # Only pre-warm cameras that publish to MediaMTX
             if stream_type in ('MJPEG', 'NEOLINK'):

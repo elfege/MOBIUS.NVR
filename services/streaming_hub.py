@@ -5,9 +5,17 @@ Streaming Hub URL Resolver
 Centralizes RTSP source URL resolution based on per-camera streaming hub configuration.
 Replaces hardcoded 'rtsp://nvr-packager:8554/' references throughout the codebase.
 
-Two hubs:
+Hubs (the per-camera `streaming_hub` DB field, default 'mediamtx'):
     - 'mediamtx' (default): FFmpeg publishes to MediaMTX, consumers read from it
     - 'go2rtc': go2rtc is the single consumer per camera, consumers read its RTSP re-export
+    - 'neolink': Baichuan/Reolink-battery cameras bridged via neolink
+    - 'native_mjpeg': camera has unusable RTSP (bad wiring / weak PoE). It is
+      EXCLUDED from all RTSP ingest (no mediamtx path, no go2rtc entry); its
+      single consumer is the vendor native-HTTP-MJPEG capture service. There is
+      NO RTSP source URL for these cameras — consumers must read the native
+      MJPEG buffer instead (see routes/streaming.py snapshot routing). This is
+      how we honour 1-camera-1-output for a camera whose only working feed is
+      its native MJPEG/CGI endpoint.
 
 Hub resolution: cameras.streaming_hub per-camera DB field, default 'mediamtx'.
 """
@@ -16,6 +24,10 @@ import logging
 from typing import Dict
 
 logger = logging.getLogger(__name__)
+
+# The complete set of valid streaming_hub values. Used for validation when the
+# settings API mutates the field (reject typos / unknown hubs).
+VALID_STREAMING_HUBS = frozenset({'mediamtx', 'go2rtc', 'neolink', 'native_mjpeg'})
 
 # Container hostnames for each streaming hub
 GO2RTC_RTSP_HOST = "nvr-go2rtc"
@@ -96,3 +108,17 @@ def get_rtsp_source_url_main(camera_id: str, camera_config: Dict) -> str:
 def is_go2rtc_camera(camera_config: Dict) -> bool:
     """Check if this camera's effective streaming hub is go2rtc."""
     return get_streaming_hub(camera_config) == 'go2rtc'
+
+
+def is_native_mjpeg_camera(camera_config: Dict) -> bool:
+    """
+    True if this camera is native-MJPEG-only (broken RTSP).
+
+    Such a camera has NO RTSP ingest path — it is excluded from mediamtx and
+    go2rtc config generation, no ingest FFmpeg is spawned, and its only feed is
+    the vendor native-HTTP-MJPEG capture service. Callers that would otherwise
+    build/read an RTSP source URL must branch on this and read the native MJPEG
+    buffer instead. Calling get_rtsp_source_url() for one of these cameras is a
+    bug (there is nothing publishing to that path).
+    """
+    return get_streaming_hub(camera_config) == 'native_mjpeg'

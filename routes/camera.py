@@ -1095,6 +1095,30 @@ def api_camera_settings_update(camera_serial):
         if blocked:
             return jsonify({'error': f'Cannot modify immutable keys: {", ".join(blocked)}'}), 400
 
+        # ── Layer-1 (source / streaming_hub): admin-only + validated ─────────
+        # Changing the hub changes the single feed every client derives from,
+        # and native_mjpeg excludes the camera from RTSP ingest entirely. So:
+        #   (a) validate the value against the known hubs (reject typos),
+        #   (b) gate the change to admins,
+        #   (c) flag requires_restart — mediamtx/go2rtc configs are NOT
+        #       hot-reloaded; a hub change needs generate_streaming_configs.py
+        #       + a container restart. The UI prompts the operator on this flag.
+        requires_restart = False
+        if 'streaming_hub' in data:
+            from services.streaming_hub import VALID_STREAMING_HUBS, get_streaming_hub
+            new_hub = (data.get('streaming_hub') or 'mediamtx').lower()
+            if new_hub not in VALID_STREAMING_HUBS:
+                return jsonify({'error': f"Invalid streaming_hub '{data.get('streaming_hub')}'. "
+                                         f"Allowed: {', '.join(sorted(VALID_STREAMING_HUBS))}"}), 400
+            if not current_user or getattr(current_user, 'role', None) != 'admin':
+                return jsonify({'error': "Only an admin can change a camera's streaming source"}), 403
+            data['streaming_hub'] = new_hub  # normalize casing before write
+            old_hub = get_streaming_hub(camera)
+            if new_hub != old_hub:
+                requires_restart = True
+                logger.info(f"[Settings PUT] {camera_serial}: streaming_hub {old_hub} -> {new_hub} "
+                            f"(config regeneration + restart required)")
+
         # Use Settings class for DB writes (handles direct columns vs extra_config)
         logger.info(f"[Settings PUT] {camera_serial}: shared.settings={shared.settings is not None}, data={data}")
         if shared.settings:
@@ -1126,7 +1150,7 @@ def api_camera_settings_update(camera_serial):
             return jsonify({'error': 'No settings were updated'}), 500
 
         logger.info(f"Camera settings updated for {camera_serial}: {updated}")
-        return jsonify({'success': True, 'updated': updated})
+        return jsonify({'success': True, 'updated': updated, 'requires_restart': requires_restart})
 
     except Exception as e:
         logger.error(f"Error updating camera settings {camera_serial}: {e}")

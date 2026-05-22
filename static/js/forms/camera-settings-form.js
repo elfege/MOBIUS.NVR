@@ -228,21 +228,30 @@ export class RecordingSettingsForm {
                         <h4><i class="fas fa-route"></i> Streaming Hub</h4>
                         <div class="recording-form-group">
                             <label>Active Hub</label>
-                            <div style="display: flex; gap: 8px; margin-top: 6px;">
+                            <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
                                 <button type="button"
                                         class="recording-btn hub-select-btn ${streamingHub === 'mediamtx' ? 'recording-btn-primary' : 'recording-btn-secondary'}"
-                                        data-hub="mediamtx">
+                                        data-hub="mediamtx"
+                                        ${window.USER_ROLE === 'admin' ? '' : 'disabled title="Admin only"'}>
                                     <i class="fas fa-server"></i> MediaMTX
                                 </button>
                                 <button type="button"
                                         class="recording-btn hub-select-btn ${streamingHub === 'go2rtc' ? 'recording-btn-primary' : 'recording-btn-secondary'}"
-                                        data-hub="go2rtc">
+                                        data-hub="go2rtc"
+                                        ${window.USER_ROLE === 'admin' ? '' : 'disabled title="Admin only"'}>
                                     <i class="fas fa-bolt"></i> go2rtc
+                                </button>
+                                <button type="button"
+                                        class="recording-btn hub-select-btn ${streamingHub === 'native_mjpeg' ? 'recording-btn-primary' : 'recording-btn-secondary'}"
+                                        data-hub="native_mjpeg"
+                                        ${window.USER_ROLE === 'admin' ? '' : 'disabled title="Admin only"'}>
+                                    <i class="fas fa-images"></i> Native MJPEG
                                 </button>
                             </div>
                             <span class="form-description" style="margin-top: 8px; display: block;">
                                 <strong>MediaMTX:</strong> Camera → FFmpeg → MediaMTX → all consumers (default, multi-consumer safe).<br>
-                                <strong>go2rtc:</strong> Camera → go2rtc → browser (lower latency, single consumer via re-export).
+                                <strong>go2rtc:</strong> Camera → go2rtc → browser (lower latency, single consumer via re-export).<br>
+                                <strong>Native MJPEG:</strong> for a camera whose RTSP is broken (bad wiring / weak PoE). Stops all RTSP streaming and grabs still pictures straight from the camera. Live view stays smooth; recording quality is reduced. Switching needs a quick restart.
                             </span>
                             <div id="streaming-hub-status" style="display: none; margin-top: 6px;"></div>
                         </div>

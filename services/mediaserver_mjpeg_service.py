@@ -182,7 +182,41 @@ class MediaServerMJPEGService:
         self.client_counts = defaultdict(int)  # camera_id -> client_count
         self.lock = threading.Lock()
 
-        logger.info(f"MediaServer MJPEG Service initialized (MediaMTX: {mediamtx_host}:{mediamtx_rtsp_port})")
+        # --- Idle reaping (single-consumer hygiene) -----------------------
+        # Every started capture is an always-on H.264->MJPEG transcode. The
+        # old design NEVER stopped a capture (remove_client was a no-op "kept
+        # warm for instant reconnect"), so over time every camera ever viewed
+        # in /light or the full-mode MJPEG path became a permanent transcode,
+        # climbing toward "all cameras transcoding at once" until the
+        # container hit its memory cap and frames went stale -> "No signal".
+        #
+        # Fix: track the last time each camera's frames were *read* (or a
+        # client (re)registered) and reap any capture that has gone idle for
+        # longer than `idle_timeout`. A capture restarts lazily on the next
+        # read, so nothing is lost except the transcode cost of cameras that
+        # nobody is currently looking at — exactly what we want on a box that
+        # is meant to drive cheap cameras.
+        #
+        # The timeout MUST exceed the slowest expected client poll interval.
+        # /light's poll ceiling is 5s (light-prefs POLL_RANGE_MS max), so 30s
+        # gives a 6x margin: an actively-viewed tile never reaps, but a tile
+        # that stopped polling (tab hidden / page closed / grid paginated
+        # away) is torn down within 30s.
+        self.last_access = {}  # camera_id -> monotonic-ish wall time of last read
+        self.idle_timeout = float(os.getenv("NVR_MJPEG_IDLE_TIMEOUT_S", "30"))
+        self._reaper_interval = float(os.getenv("NVR_MJPEG_REAPER_INTERVAL_S", "10"))
+        self._reaper_stop = threading.Event()
+        self._reaper_thread = threading.Thread(
+            target=self._reaper_loop,
+            daemon=True,
+            name="mediaserver-mjpeg-reaper",
+        )
+        self._reaper_thread.start()
+
+        logger.info(
+            f"MediaServer MJPEG Service initialized (MediaMTX: {mediamtx_host}:{mediamtx_rtsp_port}, "
+            f"idle_timeout={self.idle_timeout}s, reaper_interval={self._reaper_interval}s)"
+        )
 
     def _get_rtsp_url(self, camera_id: str, camera_config: dict) -> str:
         """
@@ -259,8 +293,70 @@ class MediaServerMJPEGService:
             }
 
             capture_thread.start()
+            # A freshly-started capture counts as "just accessed" so the
+            # reaper doesn't tear it down before the first frame arrives.
+            self.last_access[camera_id] = time.time()
             logger.info(f"Started MediaServer MJPEG capture for {camera_id} ({camera_name})")
             return True
+
+    def touch(self, camera_id: str):
+        """Mark a camera as recently accessed so the idle reaper keeps its
+        capture alive. Called on every frame read and on (re)registration.
+        Cheap and lock-free-ish: a dict write of a float is atomic enough
+        under CPython for this purpose, but we take the lock to stay
+        consistent with the reaper's snapshot."""
+        with self.lock:
+            self.last_access[camera_id] = time.time()
+
+    def ensure_capture(self, camera_id: str, camera_config: dict) -> bool:
+        """
+        Snapshot-path entry point: guarantee a capture is running and mark
+        the camera as accessed, WITHOUT touching client_counts.
+
+        /api/snap is stateless polling — it has no paired "disconnect" event
+        to decrement a refcount, so calling add_client() from there inflated
+        client_counts unboundedly (the 2700/3069 we saw). The idle reaper,
+        not the refcount, is what stops snapshot captures now, so the snap
+        path only needs: (1) start if not running, (2) touch. Returns True if
+        a capture is (now) active.
+        """
+        self.touch(camera_id)
+        with self.lock:
+            if camera_id in self.active_captures:
+                return True
+        # start_capture takes the lock itself and is idempotent.
+        return self.start_capture(camera_id, camera_config)
+
+    def _reaper_loop(self):
+        """
+        Background thread: stop captures that no client has read from within
+        `idle_timeout`. This is the single mechanism that bounds how many
+        cameras transcode at once to "those actually being viewed".
+        """
+        logger.info("MediaServer MJPEG reaper started")
+        while not self._reaper_stop.wait(self._reaper_interval):
+            try:
+                now = time.time()
+                # Snapshot the candidates under the lock, then stop them
+                # outside it (_stop_capture takes the lock + joins threads;
+                # holding the lock across a thread.join would risk deadlock).
+                to_reap = []
+                with self.lock:
+                    for camera_id in list(self.active_captures.keys()):
+                        last = self.last_access.get(camera_id, 0)
+                        if now - last > self.idle_timeout:
+                            to_reap.append(camera_id)
+                for camera_id in to_reap:
+                    logger.info(
+                        "MediaServer MJPEG reaper: stopping idle capture for %s "
+                        "(no read in %.0fs > %.0fs timeout)",
+                        camera_id, now - self.last_access.get(camera_id, now),
+                        self.idle_timeout,
+                    )
+                    self._stop_capture(camera_id)
+            except Exception:
+                logger.exception("MediaServer MJPEG reaper loop error")
+        logger.info("MediaServer MJPEG reaper stopped")
 
     def _capture_loop(self, camera_id: str, capture_info: dict):
         """
@@ -479,6 +575,21 @@ class MediaServerMJPEGService:
         if tracker:
             tracker.update_mjpeg_capture_state(camera_id, active=False)
 
+        # Remove our own active_captures entry so a subsequent read can
+        # lazily restart a fresh capture. Guard with an identity check: if
+        # _stop_capture (or a restart) already replaced this entry with a
+        # different capture_info, leave it alone — deleting it would orphan
+        # the live capture. Only the loop that OWNS the current entry clears
+        # it. Previously this cleanup was missing entirely, so a capture that
+        # exhausted its retries left a stale entry that blocked all future
+        # restarts (the add_client / ensure_capture "already running?" check
+        # saw the dead entry and refused to start a new one).
+        with self.lock:
+            if self.active_captures.get(camera_id) is capture_info:
+                del self.active_captures[camera_id]
+                self.frame_buffers.pop(camera_id, None)
+                self.last_access.pop(camera_id, None)
+
         logger.info(f"MediaServer MJPEG capture loop ended for {camera_id}")
 
     def add_client(self, camera_id: str, camera_config: dict) -> bool:
@@ -553,37 +664,52 @@ class MediaServerMJPEGService:
             logger.error(f"Error removing MediaServer MJPEG client for {camera_id}: {e}")
 
     def _stop_capture(self, camera_id: str):
-        """Stop FFmpeg capture process for camera."""
+        """Stop FFmpeg capture process for camera.
+
+        Safe to call concurrently with the capture thread's own end-block
+        cleanup: we never hold self.lock across the thread.join() (the
+        thread's finally needs that lock to clear its entry, so holding it
+        here would deadlock), and the final dict cleanup is idempotent
+        (pop / identity-guarded del) so whichever path runs second is a
+        no-op rather than a KeyError.
+        """
         try:
-            if camera_id in self.active_captures:
-                capture_info = self.active_captures[camera_id]
+            with self.lock:
+                capture_info = self.active_captures.get(camera_id)
+            if not capture_info:
+                return
 
-                logger.info(f"Stopping MediaServer MJPEG capture for {camera_id}")
+            logger.info(f"Stopping MediaServer MJPEG capture for {camera_id}")
 
-                # Signal stop
-                capture_info['stop_flag'].set()
+            # Signal stop
+            capture_info['stop_flag'].set()
 
-                # Terminate FFmpeg process
-                if capture_info.get('process'):
+            # Terminate FFmpeg process
+            if capture_info.get('process'):
+                try:
+                    capture_info['process'].terminate()
+                    capture_info['process'].wait(timeout=2)
+                except Exception:
                     try:
-                        capture_info['process'].terminate()
-                        capture_info['process'].wait(timeout=2)
-                    except:
-                        try:
-                            capture_info['process'].kill()
-                        except:
-                            pass
+                        capture_info['process'].kill()
+                    except Exception:
+                        pass
 
-                # Wait for thread
-                if capture_info['thread'] and capture_info['thread'].is_alive():
-                    capture_info['thread'].join(timeout=5)
+            # Wait for thread to unwind (its finally may clear the entry).
+            # NOT under self.lock — see docstring.
+            if capture_info['thread'] and capture_info['thread'].is_alive():
+                capture_info['thread'].join(timeout=5)
 
-                # Cleanup
-                del self.active_captures[camera_id]
-                if camera_id in self.frame_buffers:
-                    del self.frame_buffers[camera_id]
+            # Idempotent cleanup: only delete the entry if it's still THIS
+            # capture (the thread's end-block, or a restart, may have already
+            # replaced/removed it).
+            with self.lock:
+                if self.active_captures.get(camera_id) is capture_info:
+                    del self.active_captures[camera_id]
+                self.frame_buffers.pop(camera_id, None)
+                self.last_access.pop(camera_id, None)
 
-                logger.info(f"Stopped MediaServer MJPEG capture for {camera_id}")
+            logger.info(f"Stopped MediaServer MJPEG capture for {camera_id}")
 
         except Exception as e:
             logger.error(f"Error stopping MediaServer MJPEG capture for {camera_id}: {e}")
@@ -593,6 +719,12 @@ class MediaServerMJPEGService:
         the service's default freshness window when provided — used by
         /api/snap to honour each kiosk's per-device localStorage value."""
         with self.lock:
+            # A read means a client is actively interested in this camera —
+            # keep the capture alive even if the current frame is stale (the
+            # camera may be mid-reconnect; reaping it now would fight the
+            # client's own retry loop).
+            self.last_access[camera_id] = time.time()
+
             frame_data = self.frame_buffers.get(camera_id)
 
             if not frame_data:

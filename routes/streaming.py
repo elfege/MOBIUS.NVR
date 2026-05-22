@@ -984,7 +984,12 @@ def _kick_capture(camera_id: str, camera: dict):
             shared.go2rtc_snapshot_service.add_client(camera_id, camera)
         else:
             # 'mediamtx' (default) or anything unknown -> MediaMTX RTSP tap.
-            shared.mediaserver_mjpeg_service.add_client(camera_id, camera)
+            # ensure_capture (not add_client): the snap path is stateless
+            # polling with no paired disconnect to decrement a refcount, so
+            # add_client would inflate client_counts unboundedly. The idle
+            # reaper stops the capture when polling stops; ensure_capture
+            # only starts-if-needed and marks the camera as accessed.
+            shared.mediaserver_mjpeg_service.ensure_capture(camera_id, camera)
         logger.info(
             "snap bootstrap: kicked %s capture for %s (%s)",
             hub, camera_id, camera.get('name', '?'),
@@ -1045,36 +1050,23 @@ def api_snap_camera(camera_id):
         except (TypeError, ValueError):
             pass
 
-        # ?source=go2rtc opt-in (from /light gear "Prefer go2rtc snapshots"):
-        # try go2rtc first regardless of streaming_hub. If go2rtc doesn't have
-        # this camera, fall back to the hub-based default so the kiosk doesn't
-        # break on cameras that aren't in go2rtc's config. The lazy-bootstrap
-        # path (_kick_capture) still respects streaming_hub — this override
-        # only changes the READ side, not what gets started.
-        prefer_go2rtc = request.args.get('source') == 'go2rtc'
-        if prefer_go2rtc:
-            # Ensure a go2rtc poller is running for this camera so the next
-            # poll has something to read (the lazy-bootstrap only fires when
-            # the hub matches go2rtc, so for mediamtx-hub cameras with the
-            # checkbox we need to start it explicitly here).
-            try:
-                shared.go2rtc_snapshot_service.add_client(camera_id, camera)
-            except Exception:
-                logger.exception("prefer_go2rtc: add_client failed for %s", camera_id)
-            frame_data = shared.go2rtc_snapshot_service.get_latest_frame(
-                camera_id, max_age=max_age_override,
-            )
-            if not frame_data:
-                # go2rtc doesn't have a frame (yet, or this camera isn't on
-                # go2rtc at all) — fall back to the hub-based path so the
-                # tile shows SOMETHING.
-                if hub == 'go2rtc':
-                    pass  # we already tried it
-                else:
-                    frame_data = shared.mediaserver_mjpeg_service.get_latest_frame(
-                        camera_id, max_age=max_age_override,
-                    )
-        elif hub == 'go2rtc':
+        # ?source=go2rtc opt-in (from /light gear "Prefer go2rtc snapshots")
+        # is GATED to go2rtc-hub cameras only. Honoring it for a mediamtx-hub
+        # camera would make go2rtc open a SECOND connection to the camera
+        # (go2rtc is NOT already streaming it) — a direct violation of the
+        # single-consumer rule: 1 camera = 1 output, the core of the design.
+        #
+        # So the read source is decided PURELY by streaming_hub:
+        #   go2rtc-hub  -> go2rtc's pre-decoded cached JPEG
+        #   everything  -> the mediaserver MJPEG tap (reads the relay, never
+        #                  the camera)
+        # The ?source=go2rtc param is consequently a no-op on mediamtx cameras
+        # (intentionally) and redundant on go2rtc cameras (which already read
+        # go2rtc). The /light UI greys the checkbox out for mediamtx cameras;
+        # the help modal explains why. The previous implementation called
+        # go2rtc add_client() for mediamtx cameras here — that was the
+        # second-connection bug this gate removes.
+        if hub == 'go2rtc':
             frame_data = shared.go2rtc_snapshot_service.get_latest_frame(
                 camera_id, max_age=max_age_override,
             )

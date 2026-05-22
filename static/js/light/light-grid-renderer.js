@@ -238,10 +238,17 @@ export class LightGridRenderer {
                     $tile.append('<div class="tile-error">No signal</div>');
                 }
                 $img.hide();
+                // Stop the manual-refresh spinner — the fetch resolved (as a
+                // failure). Without this the ↻ button spins forever after a
+                // click and looks like it "did nothing".
+                $tile.find('.tile-refresh').removeClass('spinning');
             })
             .on('load', () => {
                 $img.show();
                 $tile.find('.tile-error').remove();
+                // Stop the manual-refresh spinner now that a fresh frame
+                // arrived — gives the ↻ button visible feedback.
+                $tile.find('.tile-refresh').removeClass('spinning');
             });
 
         // Camera label — shown along the bottom edge.

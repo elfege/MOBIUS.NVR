@@ -952,6 +952,71 @@ _snap_bootstrap_seen: dict = {}
 _SNAP_BOOTSTRAP_DEDUP_SECONDS = 60.0
 
 
+def _native_mjpeg_frame(camera_id: str, camera: dict):
+    """
+    Latest native-MJPEG frame for a `streaming_hub='native_mjpeg'` camera.
+
+    These cameras have unusable RTSP (bad wiring / weak PoE) and are excluded
+    from all RTSP ingest — their ONLY feed is the vendor native-HTTP-MJPEG
+    capture service, which polls the camera's CGI/MJPEG endpoint ONCE and
+    shares the buffer with every consumer (single-consumer-safe: the camera's
+    one connection is this HTTP poll, and there is no competing RTSP ingest).
+
+    Dispatches by camera vendor (each service has a slightly different
+    add_client signature — mirrors the existing /api/<vendor>/stream/mjpeg
+    endpoints). Get-first / start-if-missing so the stateless snap-poll path
+    does not inflate the vendor service's client refcount on every poll.
+
+    Returns a frame dict ({'data': bytes, 'frame_number': int, ...}) or None.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    cam_type = (camera.get('type') or '').lower()
+
+    # Map vendor -> (service, starter). reolink/amcrest/sv3c share the
+    # (camera_id, config, camera_repo) add_client signature; unifi takes the
+    # resolved SDK camera object from shared.unifi_cameras.
+    try:
+        if cam_type == 'reolink':
+            svc = shared.reolink_mjpeg_capture_service
+            starter = lambda: svc.add_client(camera_id, camera, shared.camera_repo)
+        elif cam_type == 'amcrest':
+            svc = shared.amcrest_mjpeg_capture_service
+            starter = lambda: svc.add_client(camera_id, camera, shared.camera_repo)
+        elif cam_type == 'sv3c':
+            svc = shared.sv3c_mjpeg_capture_service
+            starter = lambda: svc.add_client(camera_id, camera, shared.camera_repo)
+        elif cam_type == 'unifi':
+            svc = shared.unifi_mjpeg_capture_service
+            unifi_cam = (getattr(shared, 'unifi_cameras', None) or {}).get(camera_id)
+            if unifi_cam is None:
+                logger.warning("native_mjpeg: no UniFi camera object for %s", camera_id)
+                return None
+            starter = lambda: svc.add_client(camera_id, unifi_cam)
+        else:
+            logger.warning(
+                "native_mjpeg: unsupported camera type '%s' for %s "
+                "(no native MJPEG capture service)", cam_type, camera_id,
+            )
+            return None
+
+        if svc is None:
+            logger.warning("native_mjpeg: %s capture service not wired for %s", cam_type, camera_id)
+            return None
+
+        # Get-first: if the vendor poll is already running we just read it.
+        frame = svc.get_latest_frame(camera_id)
+        if frame is not None:
+            return frame
+        # Not started yet — start the single vendor poll, return None this
+        # call (the client's next poll picks up the first frame).
+        starter()
+        return svc.get_latest_frame(camera_id)
+    except Exception:
+        logger.exception("native_mjpeg frame fetch failed for %s", camera_id)
+        return None
+
+
 def _kick_capture(camera_id: str, camera: dict):
     """
     Idempotent (per-window) start of the appropriate MJPEG capture
@@ -980,7 +1045,11 @@ def _kick_capture(camera_id: str, camera: dict):
     # taps the hub the camera is already streaming through.
     hub = (camera.get('streaming_hub') or 'mediamtx').lower()
     try:
-        if hub == 'go2rtc':
+        if hub == 'native_mjpeg':
+            # No RTSP path — start the vendor native-HTTP-MJPEG poll (single
+            # consumer). _native_mjpeg_frame is get-first/start-if-missing.
+            _native_mjpeg_frame(camera_id, camera)
+        elif hub == 'go2rtc':
             shared.go2rtc_snapshot_service.add_client(camera_id, camera)
         else:
             # 'mediamtx' (default) or anything unknown -> MediaMTX RTSP tap.
@@ -1066,7 +1135,13 @@ def api_snap_camera(camera_id):
         # the help modal explains why. The previous implementation called
         # go2rtc add_client() for mediamtx cameras here — that was the
         # second-connection bug this gate removes.
-        if hub == 'go2rtc':
+        if hub == 'native_mjpeg':
+            # Broken-RTSP camera: no relay to tap. Read from the vendor
+            # native-HTTP-MJPEG capture service (the single consumer that polls
+            # the camera's CGI/MJPEG endpoint and shares the buffer). See
+            # _native_mjpeg_frame.
+            frame_data = _native_mjpeg_frame(camera_id, camera)
+        elif hub == 'go2rtc':
             frame_data = shared.go2rtc_snapshot_service.get_latest_frame(
                 camera_id, max_age=max_age_override,
             )

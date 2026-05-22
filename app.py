@@ -874,7 +874,16 @@ try:
             if recording_service.config.is_pre_buffer_enabled(camera_id):
                 try:
                     # Get stream URL from recording service
-                    source_url, _ = recording_service._get_recording_source_url(camera_id)
+                    source_url, source_type = recording_service._get_recording_source_url(camera_id)
+                    # native_mjpeg / MJPEG cameras have no RTSP feed — the
+                    # segment ring buffer (which taps RTSP) can't run for them.
+                    # Their live MJPEG->mp4 recording path doesn't use it; a
+                    # JPEG pre-buffer could be added later. Skip cleanly instead
+                    # of feeding the camera_id as a bogus RTSP URL (which made
+                    # the buffer FFmpeg flap on restart).
+                    if source_type == 'mjpeg_service':
+                        print(f"  ⏭️  Skipped pre-buffer: {camera_name} (native MJPEG — no RTSP)")
+                        continue
                     if source_url and recording_service.segment_buffer_manager.start_buffer(camera_id, source_url):
                         print(f"  ✅ Pre-buffer: {camera_name}")
                     else:

@@ -54,6 +54,8 @@ export class RecordingSettingsForm {
             streaming_hub: { title: 'Streaming Hub', description: 'Which relay hub serves this camera\'s stream. "mediamtx": Camera → FFmpeg → MediaMTX → all consumers (default, multi-consumer safe). "go2rtc": Camera → go2rtc → browser directly (lower latency, go2rtc re-exports RTSP for recording).', dependencies: 'Changing this requires a stream restart to take effect. Also controllable via the General tab toggle.' },
             go2rtc_source: { title: 'go2rtc Source URL', description: 'URL go2rtc uses to connect directly to this camera. Supports ${go2rtc_username} / ${go2rtc_password} placeholders — resolved per-camera from the go2rtc credentials set in the Credentials tab. Legacy ${NVR_REOLINK_API_USER} style placeholders still work as fallback.', dependencies: 'Set streaming_hub to "go2rtc" to activate. Use the Source Protocol Helper below to generate the correct URL template.' },
             go2rtc_credentials: { title: 'go2rtc Credentials', description: 'Credentials go2rtc uses to connect directly to this camera. Required when go2rtc_source contains ${go2rtc_username} / ${go2rtc_password} placeholders.\n• rtsp:// → API/RTSP user (same as main streaming credentials)\n• reolink:// → Admin account (full Reolink API access required)\n• baichuan:// → Admin account (Reolink E1 Baichuan protocol)\n• onvif:// → Admin or ONVIF account', dependencies: 'Only used when streaming_hub = go2rtc. Stored per-camera, encrypted in the database. The generate_go2rtc_config.py script resolves these at startup — credentials never appear in plain text in the container.' },
+            throttle_priority: { title: 'Throttle Priority', description: 'Controls the ORDER in which this camera is demoted when the kiosk\'s CPU climbs above the performance threshold and the UI throttler starts stopping tiles. Lower number = demoted earlier. 1 = first to go, 2 = next, and so on. Leave BLANK (the default) to keep the old behaviour: the camera is demoted purely by stream-type cost (WebRTC before HLS before MJPEG), with no operator-set ranking.', dependencies: 'Only matters when UI performance throttling is enabled (Performance settings). Ignored entirely if "Never Throttle" is on for this camera. Ties between cameras with the same priority break by stream-type cost.' },
+            throttle_never: { title: 'Never Throttle', description: 'When ON, the UI throttler will NEVER stop or downgrade this camera\'s tile, no matter how high the kiosk CPU climbs. Use for safety-critical cameras whose live view you cannot afford to lose (lobby, entry, etc. — e.g. AMCREST LOBBY). The camera is removed from the demotion candidate set entirely.', dependencies: 'Overrides Throttle Priority (which is ignored while this is on). Has no effect when UI performance throttling is disabled. Setting too many cameras to Never Throttle defeats the throttler — it may be unable to shed enough load.' },
 
             // ── Nested objects (shown as collapsible JSON) ──
             ll_hls:       { title: 'LL-HLS Configuration', description: 'Low-Latency HLS packaging settings: video encoding (main & sub), audio transcoding, and MediaMTX publisher endpoint. Controls FFmpeg command-line arguments.', dependencies: 'stream_type should include LL_HLS or WEBRTC for this to be active.' },
@@ -926,6 +928,29 @@ export class RecordingSettingsForm {
             const value = config[key];
             const isImmutable = ['serial', 'camera_id', 'id'].includes(key);
             const helpBtn = `<button type="button" class="setting-help-btn" data-help-key="${key}" title="What is this?">?</button>`;
+
+            // throttle_priority is a nullable INT (migration 039). Render it as
+            // an explicit number input even when null/default, so it reads as a
+            // numeric priority field instead of the unlabeled empty text box the
+            // generic null->string branch produced (bug B3 "field is empty").
+            // Blank = "no explicit priority — demote by stream-type cost only".
+            if (key === 'throttle_priority') {
+                const numVal = (value === null || value === undefined) ? '' : value;
+                html += `
+                    <div class="advanced-setting-group">
+                        <div class="advanced-setting-label">
+                            <span class="key-name">${key}</span> ${helpBtn}
+                        </div>
+                        <input type="number" min="1" step="1"
+                               class="advanced-setting-input"
+                               data-adv-key="${key}"
+                               data-adv-type="throttle_priority"
+                               value="${numVal}"
+                               placeholder="(blank = demote by stream-type only)">
+                    </div>
+                `;
+                continue;
+            }
 
             if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
                 // Collapsible JSON editor for nested objects
@@ -2000,6 +2025,18 @@ export class RecordingSettingsForm {
                 } else if (type === 'number') {
                     newValue = parseFloat($el.val());
                     if (isNaN(newValue)) newValue = 0;
+                } else if (type === 'throttle_priority') {
+                    // Nullable positive INT. Blank => null (no explicit
+                    // priority); otherwise a clean integer >= 1. Anything
+                    // unparseable or < 1 collapses to null rather than 0,
+                    // because 0 is not a valid priority (migration 039).
+                    const raw = String($el.val()).trim();
+                    if (raw === '') {
+                        newValue = null;
+                    } else {
+                        const n = parseInt(raw, 10);
+                        newValue = (isNaN(n) || n < 1) ? null : n;
+                    }
                 } else {
                     // string — treat empty as null if original was null
                     const val = $el.val();

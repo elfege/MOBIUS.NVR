@@ -152,6 +152,10 @@ class CameraRepository:
             # services/camera_config_sync.py — otherwise the cameras.json
             # → DB seed loses the value at next startup.
             'throttle_priority', 'throttle_never',
+            # 2026-05-23 per-camera tracking owner (migration 041):
+            # native|nvr|off. MUST also be in camera_config_sync.DIRECT_FIELDS
+            # and settings.CAMERA_DIRECT_COLUMNS or it disappears at runtime.
+            'tracking_owner',
             # 2026-05-14 ONVIF subscription health observability (migration
             # 040). The listener writes these via direct psycopg2; the
             # repository surfaces them so they're visible in get_camera()

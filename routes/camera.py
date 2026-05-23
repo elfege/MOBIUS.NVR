@@ -1078,6 +1078,10 @@ def api_camera_settings_update(camera_serial):
         # throttle_never is BOOL — the frontend coerces appropriately
         # before sending; the Settings class round-trips both fine.
         'throttle_priority', 'throttle_never',
+        # Per-camera tracking owner (migration 041): 'native' | 'nvr' | 'off'.
+        # For Eufy cameras a side-effect below drives the native motionTracking
+        # device property. 'nvr' is a stored no-op (pipeline not built).
+        'tracking_owner',
     }
     IMMUTABLE_KEYS = {'serial', 'camera_id', 'id'}
 
@@ -1119,6 +1123,17 @@ def api_camera_settings_update(camera_serial):
                 logger.info(f"[Settings PUT] {camera_serial}: streaming_hub {old_hub} -> {new_hub} "
                             f"(config regeneration + restart required)")
 
+        # ── tracking_owner: validate enum before write ──────────────────────
+        # Values: 'native' (camera/Eufy tracks), 'nvr' (future NVR pipeline —
+        # NOT built; stored no-op), 'off'. Reject anything else so a typo
+        # can't quietly persist a meaningless value.
+        if 'tracking_owner' in data:
+            VALID_TRACKING_OWNERS = {'native', 'nvr', 'off'}
+            to_val = data.get('tracking_owner')
+            if to_val not in VALID_TRACKING_OWNERS:
+                return jsonify({'error': f"Invalid tracking_owner '{to_val}'. "
+                                         f"Allowed: native, nvr, off"}), 400
+
         # Use Settings class for DB writes (handles direct columns vs extra_config)
         logger.info(f"[Settings PUT] {camera_serial}: shared.settings={shared.settings is not None}, data={data}")
         if shared.settings:
@@ -1149,8 +1164,44 @@ def api_camera_settings_update(camera_serial):
         if not updated:
             return jsonify({'error': 'No settings were updated'}), 500
 
+        # ── tracking_owner side-effect: drive Eufy native auto-tracking ─────
+        # For Eufy cameras the 'native' choice should actually turn the
+        # camera's on-device motionTracking property ON (and 'off'/'nvr'
+        # turn it OFF, since neither delegates tracking to the camera). For
+        # non-Eufy cameras, or when the bridge is unavailable, this is purely
+        # a stored preference — we never fail the whole save because the
+        # native toggle couldn't be pushed; we just report it.
+        tracking_note = None
+        if 'tracking_owner' in data:
+            to_val = data.get('tracking_owner')
+            cam_type = (camera.get('type') or '').lower()
+            if cam_type == 'eufy' and shared.eufy_bridge:
+                want_native = (to_val == 'native')
+                try:
+                    ok, msg = shared.eufy_bridge.set_motion_tracking(
+                        camera_serial, want_native)
+                    tracking_note = (
+                        f"Eufy native motionTracking "
+                        f"{'enabled' if want_native else 'disabled'}: {msg}")
+                    if not ok:
+                        logger.warning(f"[Settings PUT] {camera_serial}: native "
+                                       f"motionTracking toggle not confirmed: {msg}")
+                except Exception as e:
+                    # Stored preference still committed above; surface advisory.
+                    logger.warning(f"[Settings PUT] {camera_serial}: native "
+                                   f"motionTracking toggle errored: {e}")
+                    tracking_note = (f"Setting saved, but native tracking toggle "
+                                     f"could not be pushed to the camera: {e}")
+            elif to_val == 'nvr':
+                # The NVR detection/tracking pipeline does not exist yet.
+                tracking_note = ("Saved. NVR-side tracking is not yet "
+                                 "implemented — this is a stored preference only.")
+
         logger.info(f"Camera settings updated for {camera_serial}: {updated}")
-        return jsonify({'success': True, 'updated': updated, 'requires_restart': requires_restart})
+        resp = {'success': True, 'updated': updated, 'requires_restart': requires_restart}
+        if tracking_note:
+            resp['tracking_note'] = tracking_note
+        return jsonify(resp)
 
     except Exception as e:
         logger.error(f"Error updating camera settings {camera_serial}: {e}")

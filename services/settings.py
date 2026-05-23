@@ -39,6 +39,10 @@ CAMERA_DIRECT_COLUMNS = {
     'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
     'rtsp_input', 'rtsp_output', 'two_way_audio',
     'power_cycle_on_failure',
+    # Per-camera tracking owner (migration 041) — real cameras column, so it
+    # must be routed as a DIRECT column (not extra_config). Kept in sync with
+    # camera_config_sync.DIRECT_FIELDS and camera_repository.direct_fields.
+    'tracking_owner',
 }
 
 

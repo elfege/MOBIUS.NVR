@@ -35,6 +35,11 @@ DIRECT_FIELDS = [
     # mention the column or it silently disappears at runtime (the
     # "4-places" trap CLAUDE.md flags in the camera-data architecture).
     'throttle_priority', 'throttle_never',
+    # Per-camera tracking owner (migration 041): native|nvr|off. MUST stay in
+    # sync with camera_repository.direct_fields, settings.CAMERA_DIRECT_COLUMNS
+    # and the cameras.json seed — the "4-places" trap. Missing from any one and
+    # the field silently disappears at runtime.
+    'tracking_owner',
 ]
 
 # Fields stored as JSONB columns

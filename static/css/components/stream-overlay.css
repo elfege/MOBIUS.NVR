@@ -207,7 +207,12 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
+    /* Opaque (not translucent) on purpose: a dead stream must NOT show its
+       last-good frame bleeding through. At rgba(0,0,0,0.6) the frozen frame
+       stayed ~40% visible, so an offline camera looked deceptively live — a
+       security hazard. Solid dark = "no snap when failed" (bug B1, 2026-05-23).
+       The Signal Lost icon/text sit inside this layer and stay readable. */
+    background: #0a0a0a;
     display: flex;
     flex-direction: column;
     justify-content: center;

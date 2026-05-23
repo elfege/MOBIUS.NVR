@@ -237,6 +237,12 @@ export class LightGridRenderer {
                 if (!$tile.find('.tile-error').length) {
                     $tile.append('<div class="tile-error">No signal</div>');
                 }
+                // Drop the stale bitmap, don't just hide it. The backend
+                // returns 503 once a frame ages past the freshness window;
+                // on that error we must NOT keep the last-good frame around
+                // (a dead camera showing a frozen frame looks live — bug B1).
+                // The next poll re-sets src and retries the fetch.
+                $img.removeAttr('src');
                 $img.hide();
                 // Stop the manual-refresh spinner — the fetch resolved (as a
                 // failure). Without this the ↻ button spins forever after a

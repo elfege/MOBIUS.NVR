@@ -436,6 +436,24 @@
     pointer-events: none !important;
 }
 
+/* Failed/offline tiles keep their essential controls reachable in grid mode.
+   The grid-mode hide rule above strips ALL buttons; on a dead tile that left
+   the operator with no way to open settings, power-cycle, or jump to playback
+   — exactly when those are most needed (bug B2, 2026-05-23). The signal-lost
+   overlay is z-index 8 and pointer-events:none, so we lift these three above
+   it (z-index 9) and re-enable pointer events. Other buttons (audio, PTZ,
+   talkback, fullscreen) stay hidden — they're meaningless on a dead stream. */
+.stream-item.signal-lost .camera-settings-btn,
+.stream-item.signal-lost .stream-power-btn,
+.stream-item.signal-lost .camera-playback-btn,
+.stream-item.signal-lost:hover .camera-settings-btn,
+.stream-item.signal-lost:hover .stream-power-btn,
+.stream-item.signal-lost:hover .camera-playback-btn {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    z-index: 9;
+}
+
 /* ============================================================================
    DIGITAL ZOOM INDICATOR
    Shows current digital zoom level in corner when zoomed in

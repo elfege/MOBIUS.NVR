@@ -133,12 +133,22 @@ def streams_page():
 
         fullscreen_serial = _resolve_fullscreen_request(cameras)
 
+        # Eufy Bridge tab visibility flag: the tab only makes sense when the
+        # bridge is configured (shared.eufy_bridge is not None) AND at least
+        # one camera is type 'eufy'. Surfaced to the client as
+        # window.EUFY_BRIDGE_AVAILABLE so the settings modal can gate the tab.
+        eufy_bridge_available = bool(
+            shared.eufy_bridge
+            and any((c.get('type') or '').lower() == 'eufy' for c in cameras.values())
+        )
+
         # Pass full camera configs (includes ui_health_monitor per camera)
         return render_template(
             'streams.html',
             cameras=cameras,
             ui_health=ui_health,
             fullscreen_serial=fullscreen_serial,
+            eufy_bridge_available=eufy_bridge_available,
         )
     except Exception as e:
         print(f"Error loading streams page: {e}")

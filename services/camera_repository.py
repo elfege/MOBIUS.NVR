@@ -67,6 +67,17 @@ class CameraRepository:
         else:
             logger.warning("No cameras found in database. Add cameras via the UI.")
 
+        # Retain the startup snapshot as `cameras_data`. Primary reads still hit
+        # the DB directly (get_camera/get_streaming_cameras/etc. — "no cache"),
+        # but several legacy callers still reference `self.cameras_data` for
+        # top-level config (webrtc_global_settings, the global UI-health block)
+        # and the `exists()` check (L413). In DB-mode this attribute was never
+        # assigned, so those paths raised "'CameraRepository' object has no
+        # attribute 'cameras_data'" — e.g. routes/camera.py streaming-config and
+        # the global UI-health loader. Always provide a valid object; save/reload
+        # refresh it. (Fix 2026-05-24.)
+        self.cameras_data = startup_data or {'devices': {}}
+
         # Vendor configs always from JSON (static infrastructure config)
         self.unifi_config = self._load_json(self.unifi_config_file, {})
         self.eufy_config = {}  # Eufy bridge config no longer read from JSON file

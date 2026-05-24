@@ -634,7 +634,43 @@ class EufyBridge:
                     print(f"[EUFY PTZ CMD] PTZ command failed: {error}")
                     return False
 
-                # Eufy cameras auto-stop after movement — no explicit stop needed
+                # ── PTZ trust-bug, 2026-05-23 ───────────────────────────────
+                # The pan_and_tilt success ack above ONLY means the
+                # eufy-security-ws CLIENT accepted the command — NOT that it
+                # reached the camera. When the bridge cannot reach Eufy's P2P
+                # servers (WAN down, firewall, expired P2P session) the WS
+                # still acks success, and the UI used to report "Camera moved"
+                # while the camera never budged.
+                #
+                # To report HONESTLY we now ask the bridge whether the
+                # station this camera belongs to actually has a live P2P
+                # connection (station.is_connected). Only a definitive
+                # connected:false converts the ack into a failure.
+                #
+                # EDGE CASE — HomeBase-linked cameras: the STATION serial can
+                # differ from the CAMERA serial. Querying station.is_connected
+                # with the camera serial then returns an error / no clean
+                # boolean (state == 'unknown'). In that case we must NOT
+                # regress to a false-failure — we fall back to the previous
+                # behaviour (trust the ack) so we never break a working
+                # HomeBase setup. Honest-failure is reserved for an
+                # unambiguous connected:false.
+                station_state = await self._is_station_connected(camera_serial)
+                if station_state.get('state') == 'timeout':
+                    # Definitive: P2P is down. The command could not have been
+                    # delivered. Report the truth.
+                    print(f"[EUFY PTZ CMD] station P2P NOT connected — command "
+                          f"acked by client but not delivered to camera")
+                    return False
+                if station_state.get('state') == 'unknown':
+                    # Unknown station serial (likely HomeBase) or transient WS
+                    # error — keep prior behaviour, trust the ack.
+                    print(f"[EUFY PTZ CMD] station connectivity unknown "
+                          f"({station_state.get('error')}); falling back to "
+                          f"ack-as-success (HomeBase-safe)")
+
+                # Connected, or unknown-but-fallback: Eufy cameras auto-stop
+                # after movement — no explicit stop needed.
                 print(f"[EUFY PTZ CMD] PTZ command completed successfully (camera will auto-stop)")
                 return True
 
@@ -656,6 +692,64 @@ class EufyBridge:
                 )
                 raise BridgeCrashedError(self._crash_reason) from e
             return False
+
+    async def _is_station_connected(self, serial_number):
+        """Query station P2P connection state over an EXISTING-style WS call.
+
+        Opens a short-lived WebSocket, sets the schema, and issues
+        ``station.is_connected`` for ``serial_number``. Returns a 3-valued
+        dict so callers can distinguish a definitive disconnect from an
+        unknown/error state (see "PTZ trust-bug, 2026-05-23" rationale in
+        ``_execute_ptz_command``).
+
+        Returns:
+            dict: ``{'state': 'connected'|'timeout'|'unknown',
+                     'connected': bool|None, 'error': str|None}``.
+              * ``connected``  -> ``connected: True``
+              * ``timeout``    -> definitive ``connected: False``
+              * ``unknown``    -> WS error / no boolean (do NOT treat as failure)
+        """
+        try:
+            async with websockets.connect(self.bridge_url, open_timeout=5) as ws:
+                await ws.send(json.dumps({
+                    "messageId": "schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21
+                }))
+                await self._wait_for_message(ws, "schema")
+
+                await ws.send(json.dumps({
+                    "messageId": "station_is_connected",
+                    "command": "station.is_connected",
+                    "serialNumber": serial_number,
+                }))
+                result_msg = await self._wait_for_message(ws, "station_is_connected")
+
+                if not result_msg or not result_msg.get("success", False):
+                    # Bridge rejected the call (commonly: serial is a camera
+                    # serial for a HomeBase-linked cam, so it isn't a known
+                    # station). Unknown — NOT a failure.
+                    err = (result_msg or {}).get("errorCode", "no-success")
+                    return {'state': 'unknown', 'connected': None, 'error': str(err)}
+
+                result = result_msg.get("result", {}) or {}
+                if 'connected' in result:
+                    connected = bool(result.get('connected'))
+                    return {
+                        'state': 'connected' if connected else 'timeout',
+                        'connected': connected,
+                        'error': None,
+                    }
+                return {'state': 'unknown', 'connected': None,
+                        'error': 'no connected field'}
+
+        except (ConnectionRefusedError, OSError) as e:
+            # Bridge port dead — let the caller's outer handling deal with the
+            # crash; report unknown so PTZ doesn't false-fail on a transient.
+            return {'state': 'unknown', 'connected': None, 'error': str(e)}
+        except Exception as e:
+            logger.warning(f"[EUFY] station.is_connected({serial_number}) error: {e}")
+            return {'state': 'unknown', 'connected': None, 'error': str(e)}
 
     def move_camera(self, camera_serial, direction, device_manager=None):
         """Move an Eufy camera with self-healing on bridge crash.
@@ -700,6 +794,22 @@ class EufyBridge:
                 if result:
                     return (True, f"Camera moved {direction}")
                 else:
+                    # PTZ trust-bug, 2026-05-23: result==False now most
+                    # commonly means the station's P2P link is down (the
+                    # pan_and_tilt ack succeeded but station.is_connected
+                    # returned a definitive connected:false). Re-check the
+                    # station so we can give the operator an actionable
+                    # message instead of a vague "did not confirm".
+                    try:
+                        station_state = loop.run_until_complete(
+                            self._is_station_connected(camera_serial)
+                        )
+                    except Exception:
+                        station_state = {'state': 'unknown'}
+                    if station_state.get('state') == 'timeout':
+                        return (False,
+                                "Eufy P2P not connected to station — PTZ could "
+                                "not be delivered (check Eufy bridge WAN/firewall).")
                     return (False, "PTZ command was sent but camera did not confirm movement")
             finally:
                 loop.close()
@@ -982,6 +1092,107 @@ class EufyBridge:
             {'token': 2, 'name': 'Preset 3'},
             {'token': 3, 'name': 'Preset 4'},
         ]
+
+    # =========================================================================
+    # Native Auto-Tracking (motionTracking device property)
+    # =========================================================================
+    # eufy-security-client exposes a writeable boolean device property
+    # ``motionTracking`` (PropertyName.DeviceMotionTracking, underlying P2P
+    # command CMD_INDOOR_PAN_MOTION_TRACK). When TRUE the camera follows
+    # detected motion on its own — the camera/Eufy does the tracking, no NVR
+    # pipeline involved. This is the 'native' tracking_owner option.
+
+    async def _execute_set_motion_tracking(self, camera_serial, enabled):
+        """Set the camera's native motionTracking property via the bridge.
+
+        Args:
+            camera_serial: Camera serial number.
+            enabled: True to enable native auto-tracking, False to disable.
+
+        Returns:
+            bool: True if the bridge acked the set_property command.
+
+        Raises:
+            BridgeCrashedError: If the WS connection is refused.
+        """
+        log_prefix = "[EUFY MOTION TRACK]"
+        print(f"{log_prefix} serial={camera_serial}, enabled={enabled}")
+
+        if not self.is_ready():
+            print(f"{log_prefix} ERROR: Bridge not ready!")
+            raise BridgeCrashedError("Bridge not ready — server may have crashed")
+
+        try:
+            async with websockets.connect(self.bridge_url, open_timeout=5) as ws:
+                await ws.send(json.dumps({
+                    "messageId": "schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21
+                }))
+                await self._wait_for_message(ws, "schema")
+
+                await ws.send(json.dumps({
+                    "messageId": "start",
+                    "command": "start_listening"
+                }))
+                await self._wait_for_message(ws, "start")
+
+                # device.set_property with the documented property name.
+                # The property is a boolean (build/http/types.js:
+                # DeviceMotionTrackingProperty.type === "boolean").
+                cmd = {
+                    "messageId": "set_motion_tracking",
+                    "command": "device.set_property",
+                    "serialNumber": camera_serial,
+                    "name": "motionTracking",
+                    "value": bool(enabled),
+                }
+                print(f"{log_prefix} Sending: {cmd}")
+                await ws.send(json.dumps(cmd))
+                result = await self._wait_for_message(ws, "set_motion_tracking")
+                print(f"{log_prefix} Response: {result}")
+
+                if not result or not result.get("success", False):
+                    error = result.get("errorCode", "unknown") if result else "timeout"
+                    print(f"{log_prefix} set_property failed: {error}")
+                    return False
+
+                print(f"{log_prefix} motionTracking set to {bool(enabled)}")
+                return True
+
+        except (ConnectionRefusedError, OSError) as e:
+            self._mark_bridge_dead(
+                f"Connection refused on port {self.port}: eufy-security-server has crashed."
+            )
+            raise BridgeCrashedError(self._crash_reason) from e
+        except Exception as e:
+            print(f"{log_prefix} Exception: {e}")
+            logger.error(f"set_motion_tracking error: {e}")
+            if "Connect call failed" in str(e) or "Connection refused" in str(e):
+                self._mark_bridge_dead(
+                    f"Connection refused on port {self.port}: eufy-security-server has crashed."
+                )
+                raise BridgeCrashedError(self._crash_reason) from e
+            return False
+
+    def set_motion_tracking(self, camera_serial, enabled):
+        """Enable/disable a camera's native auto-tracking (motionTracking).
+
+        Thin synchronous wrapper around the async setter, reusing the shared
+        auto-restart-on-crash plumbing (``_run_bridge_command``).
+
+        Args:
+            camera_serial: Camera serial number.
+            enabled: True for native tracking on, False for off.
+
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        return self._run_bridge_command(
+            "set_motion_tracking",
+            self._execute_set_motion_tracking,
+            camera_serial, bool(enabled)
+        )
 
     def _correct_direction(self, camera_serial, direction, device_manager):
         """Correct direction based on camera orientation"""

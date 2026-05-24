@@ -1135,6 +1135,11 @@
         const UI_HEALTH = JSON.parse($('#ui-health').text());
         window.UI_HEALTH = UI_HEALTH; // make it global
         window.USER_ROLE = '{{ current_user.role }}';
+        // Eufy Bridge settings tab visibility: true when the bridge is
+        // configured AND at least one camera is type 'eufy' (computed
+        // server-side in routes/config.py). The global settings modal gates
+        // the "Eufy Bridge" tab on this AND admin role.
+        window.EUFY_BRIDGE_AVAILABLE = {{ (eufy_bridge_available or false)|tojson }};
         // /streams?fullscreen=<nickname|serial> — server resolved nickname
         // to serial. Stream init reads this and opens fullscreen the same
         // way a native click would (so localStorage.lastFullscreenCamera

@@ -6,6 +6,7 @@
 import { fullscreenHandler } from '../settings/fullscreen-handler.js';
 import { storageStatus } from '../settings/storage-status.js';
 import { evidenceTab } from '../settings/evidence-collection.js';
+import { eufyBridgeTab } from '../settings/eufy-bridge.js';
 import { performanceThrottle } from '../settings/performance-throttle.js';
 import { auditLogModal } from './audit-log-modal.js';
 
@@ -106,6 +107,15 @@ export class SettingsUI {
                     this.$content.find('.settings-tab-panel[data-tab-panel="evidence"]')
                 );
                 evidenceTab.load();
+            }
+            if (tab === 'eufy-bridge') {
+                // Lazy-init the Eufy Bridge tab on first open: wire handlers
+                // (idempotent) and start polling the live status. The poll is
+                // torn down in hide() so it doesn't run in the background.
+                eufyBridgeTab.init(
+                    this.$content.find('.settings-tab-panel[data-tab-panel="eufy-bridge"]')
+                );
+                eufyBridgeTab.load();
             }
             if (tab === 'logs') {
                 // Idempotent: re-binds the "Open Audit Log" click handler
@@ -324,6 +334,10 @@ export class SettingsUI {
 
         // Stop storage status auto-refresh when panel is hidden
         storageStatus.stopAutoRefresh();
+
+        // Stop the Eufy Bridge live-status poll (and any auth-progress poll)
+        // when the panel is hidden so it doesn't keep hitting the bridge.
+        eufyBridgeTab.stop();
     }
 
     toggle() {
@@ -359,6 +373,7 @@ export class SettingsUI {
                 <i class="fas fa-tachometer-alt"></i> Performance
             </button>
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="evidence"><i class="fas fa-shield-alt"></i> Collect Evidence</button>' : ''}
+            ${(window.USER_ROLE === 'admin' && window.EUFY_BRIDGE_AVAILABLE) ? '<button class="settings-tab-btn" data-tab="eufy-bridge"><i class="fas fa-plug"></i> Eufy Bridge</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="storage"><i class="fas fa-hdd"></i> Storage</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="network"><i class="fas fa-network-wired"></i> Network</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="logs"><i class="fas fa-history"></i> Logs</button>' : ''}
@@ -671,6 +686,8 @@ export class SettingsUI {
         ` : ''}
 
         ${window.USER_ROLE === 'admin' ? evidenceTab.renderHTML() : ''}
+
+        ${(window.USER_ROLE === 'admin' && window.EUFY_BRIDGE_AVAILABLE) ? eufyBridgeTab.renderHTML() : ''}
 
         ${performanceThrottle.renderHTML()}
 

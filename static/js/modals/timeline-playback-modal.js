@@ -653,7 +653,14 @@ export class TimelinePlaybackModal {
             // canvas showed "No recordings found" while the footer still
             // claimed 5 segments. Bug.
             this.selectedSegments = [];
-            this.selection = null;
+            // Reset to the EMPTY-SELECTION shape, not null. Everywhere else
+            // (constructor L28, _resetSelection L484) selection is
+            // {start:null,end:null}, and the draw/preview paths read
+            // this.selection.start directly (e.g. renderTimeline). Setting it
+            // to null made renderTimeline() — called just below on a fresh load
+            // — throw "Cannot read properties of null (reading 'start')", which
+            // surfaced as the Timeline error overlay. Regression from d871ed5.
+            this.selection = { start: null, end: null };
             this.updateExportInfo([]);
             // Buttons that depend on a non-empty selection also need to
             // settle back to disabled.

@@ -176,7 +176,7 @@ class EufyBridgeClient:
     async def check_connection_status(self) -> Dict[str, Any]:
         """
         Check if bridge is connected to Eufy cloud
-        
+
         Returns:
             Status dictionary with 'connected' and 'push_connected' booleans
         """
@@ -186,15 +186,15 @@ class EufyBridgeClient:
                 "messageId": "is_connected",
                 "command": "driver.is_connected"
             }
-            
+
             response = await self._send_command(command)
             result = response.get('result', {})
-            
+
             return {
                 'connected': result.get('connected', False),
                 'status': 'connected' if result.get('connected') else 'disconnected'
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to check connection status: {e}")
             return {
@@ -202,6 +202,95 @@ class EufyBridgeClient:
                 'status': 'error',
                 'error': str(e)
             }
+
+    async def is_driver_connected(self) -> Dict[str, Any]:
+        """
+        Query the bridge driver's cloud connection state.
+
+        This is the same WS command the Eufy auth status endpoint relies on
+        (``driver.is_connected`` -> ``result.connected``). Exposed as its own
+        method so the Eufy Bridge settings panel can render driver state
+        without going through the broader ``check_connection_status`` mapping.
+
+        Returns:
+            dict: ``{'connected': bool}`` on success, or
+            ``{'connected': False, 'error': str}`` if the WS call failed
+            (bridge down, timeout, etc.). The caller distinguishes these.
+        """
+        try:
+            response = await self._send_command({
+                "messageId": "driver_is_connected",
+                "command": "driver.is_connected",
+            })
+            result = response.get('result', {}) or {}
+            return {'connected': bool(result.get('connected', False))}
+        except Exception as e:
+            logger.error(f"Failed to query driver.is_connected: {e}")
+            return {'connected': False, 'error': str(e)}
+
+    async def is_station_connected(self, serial_number: str) -> Dict[str, Any]:
+        """
+        Query the P2P connection state of a single station via the bridge.
+
+        Uses WS command ``station.is_connected`` with ``serialNumber``.
+
+        IMPORTANT — station serial vs camera serial: for standalone Eufy
+        cameras (e.g. the S350 floodlights in this deployment) the station
+        serial equals the camera serial. For HomeBase-linked cameras the
+        STATION serial differs from the CAMERA serial; passing the camera
+        serial then yields a bridge-side error rather than a clean
+        ``connected: false``. We surface that as ``state == 'unknown'`` so
+        callers never misreport a working HomeBase camera as "P2P down".
+
+        Args:
+            serial_number: Station (or, for standalone cams, camera) serial.
+
+        Returns:
+            dict with a 3-valued ``state`` key:
+              * ``{'state': 'connected', 'connected': True}``
+              * ``{'state': 'timeout',   'connected': False}`` —
+                a *definitive* connected:false from the bridge
+              * ``{'state': 'unknown',   'connected': None, 'error': str}`` —
+                the WS call errored / serial not recognised; do NOT treat
+                this as a failure.
+        """
+        try:
+            response = await self._send_command({
+                "messageId": "station_is_connected",
+                "command": "station.is_connected",
+                "serialNumber": serial_number,
+            })
+            result = response.get('result', {}) or {}
+            # A well-formed result always carries a boolean 'connected'.
+            if 'connected' in result:
+                connected = bool(result.get('connected'))
+                return {
+                    'state': 'connected' if connected else 'timeout',
+                    'connected': connected,
+                }
+            # No 'connected' field => bridge accepted the call but couldn't
+            # answer definitively. Treat as unknown, not as a failure.
+            return {'state': 'unknown', 'connected': None,
+                    'error': 'no connected field in result'}
+        except Exception as e:
+            # Errors here are typically "station not found" (HomeBase serial
+            # mismatch) or a transient WS hiccup. Either way it's unknown,
+            # never a definitive disconnect.
+            logger.warning(f"station.is_connected({serial_number}) errored: {e}")
+            return {'state': 'unknown', 'connected': None, 'error': str(e)}
+
+
+def is_driver_connected_sync(bridge_url: str = "ws://127.0.0.1:3000") -> Dict[str, Any]:
+    """Synchronous wrapper for :meth:`EufyBridgeClient.is_driver_connected`."""
+    client = EufyBridgeClient(bridge_url)
+    return asyncio.run(client.is_driver_connected())
+
+
+def is_station_connected_sync(serial_number: str,
+                              bridge_url: str = "ws://127.0.0.1:3000") -> Dict[str, Any]:
+    """Synchronous wrapper for :meth:`EufyBridgeClient.is_station_connected`."""
+    client = EufyBridgeClient(bridge_url)
+    return asyncio.run(client.is_station_connected(serial_number))
 
 
 def submit_captcha_sync(captcha_code: str, bridge_url: str = "ws://127.0.0.1:3000") -> bool:

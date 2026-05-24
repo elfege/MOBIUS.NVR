@@ -56,6 +56,7 @@ export class RecordingSettingsForm {
             go2rtc_credentials: { title: 'go2rtc Credentials', description: 'Credentials go2rtc uses to connect directly to this camera. Required when go2rtc_source contains ${go2rtc_username} / ${go2rtc_password} placeholders.\n• rtsp:// → API/RTSP user (same as main streaming credentials)\n• reolink:// → Admin account (full Reolink API access required)\n• baichuan:// → Admin account (Reolink E1 Baichuan protocol)\n• onvif:// → Admin or ONVIF account', dependencies: 'Only used when streaming_hub = go2rtc. Stored per-camera, encrypted in the database. The generate_go2rtc_config.py script resolves these at startup — credentials never appear in plain text in the container.' },
             throttle_priority: { title: 'Throttle Priority', description: 'Controls the ORDER in which this camera is demoted when the kiosk\'s CPU climbs above the performance threshold and the UI throttler starts stopping tiles. Lower number = demoted earlier. 1 = first to go, 2 = next, and so on. Leave BLANK (the default) to keep the old behaviour: the camera is demoted purely by stream-type cost (WebRTC before HLS before MJPEG), with no operator-set ranking.', dependencies: 'Only matters when UI performance throttling is enabled (Performance settings). Ignored entirely if "Never Throttle" is on for this camera. Ties between cameras with the same priority break by stream-type cost.' },
             throttle_never: { title: 'Never Throttle', description: 'When ON, the UI throttler will NEVER stop or downgrade this camera\'s tile, no matter how high the kiosk CPU climbs. Use for safety-critical cameras whose live view you cannot afford to lose (lobby, entry, etc. — e.g. AMCREST LOBBY). The camera is removed from the demotion candidate set entirely.', dependencies: 'Overrides Throttle Priority (which is ignored while this is on). Has no effect when UI performance throttling is disabled. Setting too many cameras to Never Throttle defeats the throttler — it may be unable to shed enough load.' },
+            tracking_owner: { title: 'Tracking Owner', description: 'Who is responsible for object/person tracking on this camera. "native": the camera (for Eufy, the Eufy bridge\'s on-device motionTracking) does its own auto-tracking. "nvr": the NVR\'s own detection/tracking pipeline owns tracking — NOT YET IMPLEMENTED, this is a stored preference only. "off": no tracking from any owner.', dependencies: 'For Eufy cameras, choosing "native" pushes the motionTracking device property ON via the bridge (and "off"/"nvr" push it OFF). For non-Eufy cameras this is currently a stored preference with no hardware effect. The "nvr" pipeline does not exist yet.' },
 
             // ── Nested objects (shown as collapsible JSON) ──
             ll_hls:       { title: 'LL-HLS Configuration', description: 'Low-Latency HLS packaging settings: video encoding (main & sub), audio transcoding, and MediaMTX publisher endpoint. Controls FFmpeg command-line arguments.', dependencies: 'stream_type should include LL_HLS or WEBRTC for this to be active.' },
@@ -947,6 +948,37 @@ export class RecordingSettingsForm {
                                data-adv-type="throttle_priority"
                                value="${numVal}"
                                placeholder="(blank = demote by stream-type only)">
+                    </div>
+                `;
+                continue;
+            }
+
+            // tracking_owner (migration 041): render an explicit dropdown
+            // (native|nvr|off) instead of the generic string text box. NULL is
+            // treated as 'native' (the prior implicit behaviour). The 'nvr'
+            // option carries a "not yet implemented" hint because the NVR-side
+            // detection/tracking pipeline does not exist yet — selecting it is
+            // a stored preference only.
+            if (key === 'tracking_owner') {
+                const cur = (value === null || value === undefined) ? 'native' : String(value);
+                const opt = (v, label) =>
+                    `<option value="${v}" ${cur === v ? 'selected' : ''}>${label}</option>`;
+                html += `
+                    <div class="advanced-setting-group">
+                        <div class="advanced-setting-label">
+                            <span class="key-name">${key}</span> ${helpBtn}
+                        </div>
+                        <select class="advanced-setting-input"
+                                data-adv-key="${key}"
+                                data-adv-type="string">
+                            ${opt('native', 'native (camera / Eufy auto-track)')}
+                            ${opt('nvr', 'nvr (NVR tracking not yet implemented)')}
+                            ${opt('off', 'off (no tracking)')}
+                        </select>
+                        <div style="color:#888;font-size:11px;margin-top:4px;">
+                            "nvr" is a stored preference only — the NVR detection/tracking
+                            pipeline is not built yet.
+                        </div>
                     </div>
                 `;
                 continue;

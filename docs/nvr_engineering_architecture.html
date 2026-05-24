@@ -1331,6 +1331,49 @@ rog (host_agent) ─┬─ xset -q          (X DPMS state)
             <p><code>start.sh</code> queries <code>host_settings</code> for kiosks with stale or missing <code>last_seen</code> and prints one curl-one-liner per host (with <code>API_TOKEN</code> + <code>HOST_LABEL</code> pre-baked). Operator pastes each into the respective kiosk's terminal once. The systemd user unit installs in idempotent fashion via <code>services/host_agent/install_host_agent.sh</code>.</p>
         </div>
 
+        <h2>Level 15: Eufy Bridge Management, Vision-Pipeline Plan &amp; Tracking Ownership (May 2026)</h2>
+
+        <div class="architecture-note">
+            <p><strong>Eufy control plane vs data plane.</strong> Eufy cameras expose two independent channels: a <em>local RTSP</em> data plane (direct, TCP, used for live view + recording) and a <em>cloud-authenticated P2P</em> control plane (used for PTZ and device commands). The two are decoupled: streaming can be perfectly healthy while PTZ is dead, because PTZ rides P2P which requires reaching the vendor cloud over UDP hole-punching — a path a strict LAN&rarr;WAN firewall policy can block even when local streaming is unaffected.</p>
+
+            <h3>Bridge architecture</h3>
+            <pre>
+Flask (services/eufy/eufy_bridge.py)
+        │  WebSocket ws://127.0.0.1:3000
+        ▼
+eufy-security-ws (Node subprocess, eufy-security-client lib)
+        │
+        ├─ HTTPS  → vendor cloud API (auth, token refresh, push)   [TCP]
+        └─ P2P    → station/camera (PTZ, motionTracking)           [UDP hole-punch]</pre>
+            <p>The bridge self-heals on cloud-session crashes (auto-restart + retry). Auth state (cloud token) lives in <code>persistent.json</code>; captcha/2FA re-login is surfaced through the existing <code>/eufy-auth</code> page (the captcha image is scraped from the bridge log stream and decoded for the operator).</p>
+
+            <h3>Eufy Bridge settings tab</h3>
+            <ul>
+                <li><strong>Live status</strong> — driver-connected, cloud-token expiry, and <em>per-station P2P state</em> (connected / timeout / unknown). Makes a P2P-vs-auth failure diagnosable at a glance. Endpoint <code>GET /api/eufy-bridge/status</code>.</li>
+                <li><strong>Force re-login</strong> — backs up + clears <code>persistent.json</code> and restarts the bridge to drive a fresh cloud login (captcha/2FA), reusing the existing auth endpoints. Endpoint <code>POST /api/eufy-bridge/relogin</code> (admin-only). Tab is conditional on the bridge being configured AND at least one Eufy camera present (<code>window.EUFY_BRIDGE_AVAILABLE</code>).</li>
+            </ul>
+
+            <h3>Honest PTZ status</h3>
+            <p>A WebSocket <code>pan_and_tilt</code> acknowledgement only means the command was <em>accepted by the client</em>, not delivered to the camera. The handler now verifies the station is actually P2P-connected before reporting success, so a dead P2P link yields a truthful failure instead of a misleading &ldquo;Camera moved&rdquo;. HomeBase-linked cameras (station serial &ne; camera serial) fall back to the prior behaviour rather than regressing to a false negative.</p>
+
+            <h3>Tracking ownership (<code>cameras.tracking_owner</code>, migration 041)</h3>
+            <ul>
+                <li><code>native</code> — the camera (or vendor bridge) does its own on-device tracking. For Eufy this drives the native <code>motionTracking</code> device property over P2P.</li>
+                <li><code>nvr</code> — the NVR's own detection/tracking pipeline owns tracking (see plan below; currently a stored no-op until that pipeline ships).</li>
+                <li><code>off</code> — no tracking from any owner. <code>NULL</code> is treated as <code>native</code>.</li>
+            </ul>
+
+            <h3>Planned: object detection &amp; person tracking pipeline (CPU-only)</h3>
+            <p>Design target for the next phase: a motion-gated <strong>OpenVINO YOLO</strong> detector + <strong>ByteTrack</strong> tracker tapping the per-camera <em>streaming hub</em> sub-stream (never the camera directly, honouring the single-consumer rule), at low FPS to fit the GPU-less Xeon host. Detection is the substrate; tracking, face-recognition (door unlock), and PTZ auto-follow are heads on top of it. Detection-as-trigger also replaces noisy frame-difference motion (filter to <code>person</code>/<code>vehicle</code> to kill foliage/shadow false positives).</p>
+
+            <h3>Reliability fixes shipped alongside</h3>
+            <ul>
+                <li><strong>Throttle column routing</strong> — <code>throttle_priority</code> / <code>throttle_never</code> (migration 039) now route to their real <code>cameras</code> columns (added to <code>CAMERA_DIRECT_COLUMNS</code>) instead of the <code>extra_config</code> JSON blob, so the throttle engine actually sees operator choices.</li>
+                <li><strong>Timeline Playback</strong> — fixed a null-selection dereference that broke the modal on every fresh load.</li>
+                <li><strong>CameraRepository</strong> — in DB-mode (no-cache) the <code>cameras_data</code> attribute was never initialised, breaking legacy callers that still reference it (streaming-config, global UI-health). Now always initialised from the startup snapshot.</li>
+            </ul>
+        </div>
+
         <!-- SUMMARY -->
         <h2>Architecture Summary</h2>
 

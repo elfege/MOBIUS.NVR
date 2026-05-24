@@ -43,6 +43,14 @@ CAMERA_DIRECT_COLUMNS = {
     # must be routed as a DIRECT column (not extra_config). Kept in sync with
     # camera_config_sync.DIRECT_FIELDS and camera_repository.direct_fields.
     'tracking_owner',
+    # Throttler controls (migration 039) — real `cameras` columns. These were
+    # omitted here originally, so settings-form writes routed them into
+    # extra_config while the column (which the template/ThrottleController
+    # reads) stayed NULL — a split-brain that left the operator's throttle
+    # choices invisible to the engine (B3 fix, 2026-05-23). Route to the
+    # real columns. Already present in camera_config_sync.DIRECT_FIELDS and
+    # camera_repository.direct_fields.
+    'throttle_priority', 'throttle_never',
 }
 
 

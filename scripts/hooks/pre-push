@@ -47,14 +47,23 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 
     for path in "${PRIVATE_PATHS[@]}"; do
-        # Any commit in the pushed range that has this path?
+        # Does any commit in the pushed range INTRODUCE or MODIFY this path?
+        # We check each commit's DIFF (files it changed) — NOT its full tree.
+        # Full-tree matching would deadlock the moment a private path is ever
+        # committed (e.g. an already-leaked archived handoff): every later push
+        # would carry it in-tree and be refused forever. Diff-based matching
+        # blocks the commit that ADDS/edits a private path (the thing we want to
+        # stop) while still allowing pushes that merely carry a pre-existing
+        # tracked file (that residue is cleared by the history scrub, not here).
+        # Files-never-committed (README_handoff/project_history) are fully
+        # protected either way — any commit adding them is blocked.
         if git rev-list "$range" 2>/dev/null | while read -r sha; do
-            if git ls-tree --name-only -r "$sha" 2>/dev/null | awk -v p="$path" '$0==p || index($0, p"/")==1 {f=1} END{exit !f}'; then
+            if git diff-tree --no-commit-id --name-only -r "$sha" 2>/dev/null | awk -v p="$path" '$0==p || index($0, p"/")==1 {f=1} END{exit !f}'; then
                 echo "$sha"
                 break
             fi
         done | grep -q .; then
-            echo "❌ REFUSING PUSH: '$path' present in commit range $range (-> $remote_ref)" >&2
+            echo "❌ REFUSING PUSH: '$path' introduced/modified in commit range $range (-> $remote_ref)" >&2
             violations=$((violations + 1))
         fi
     done

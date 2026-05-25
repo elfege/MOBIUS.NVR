@@ -252,40 +252,45 @@ lan_only = require_auth
 # Importing at module level would access uninitialized objects.
 
 
-def _get_latest_frame(camera_id, camera_type):
+def _get_latest_frame(camera_id, camera_type=None):
     """
-    Retrieve the latest JPEG frame from existing capture service buffers.
-    Same logic as /api/snap/<camera_id> in app.py, but extracted here
-    to avoid duplicating the buffer-checking chain.
+    Retrieve the latest JPEG frame for a camera, routed by ``streaming_hub`` —
+    the SAME routing the canonical /api/snap (routes/streaming.py) uses.
 
-    IMPORTANT: This never opens new camera connections. It only reads
-    from already-running capture services.
+    Previously this routed by camera VENDOR (reolink/unifi/sv3c) + the legacy
+    ``*_mjpeg_capture_service`` modules. That diverged from the streaming-hub
+    model: cameras migrated to the ``go2rtc`` or ``native_mjpeg`` hubs returned
+    NO frame here, so external consumers (e.g. MOBIUS.TILES) showed blank /
+    "Connecting…" tiles. Routing by hub makes this a faithful mirror of
+    /api/snap — one source of truth for "which buffer serves this snapshot".
 
-    Args:
-        camera_id: Camera serial number
-        camera_type: Camera type string ('reolink', 'unifi', 'sv3c', etc.)
+    Reads existing hub buffers only — it does not open a direct camera
+    connection. (``camera_type`` is kept for call-site compatibility but is no
+    longer used; the hub comes from the camera config.)
 
     Returns:
-        bytes (JPEG data) or None if no frame available
+        bytes (JPEG data) or None if no frame is currently buffered.
     """
-    from services.reolink_mjpeg_capture_service import reolink_mjpeg_capture_service
-    from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
-    from services.unifi_mjpeg_capture_service import unifi_mjpeg_capture_service
-    from services.sv3c_mjpeg_capture_service import sv3c_mjpeg_capture_service
+    camera = _camera_repo.get_camera(camera_id) if _camera_repo else None
+    hub = ((camera or {}).get('streaming_hub') or 'mediamtx').lower()
 
-    frame_data = None
-
-    # Try camera-specific service first (matches app.py logic)
-    if camera_type == 'reolink':
-        frame_data = reolink_mjpeg_capture_service.get_latest_frame(camera_id)
-    elif camera_type == 'unifi':
-        frame_data = unifi_mjpeg_capture_service.get_latest_frame(camera_id)
-    elif camera_type == 'sv3c':
-        frame_data = sv3c_mjpeg_capture_service.get_latest_frame(camera_id)
-
-    # Fallback to mediaserver (works for any camera with HLS running)
-    if not frame_data:
-        frame_data = mediaserver_mjpeg_service.get_latest_frame(camera_id)
+    try:
+        if hub == 'native_mjpeg':
+            # Broken-RTSP cameras: served from the vendor native-MJPEG buffer.
+            # Reuse the canonical helper so the (vendor-dispatch + start-dedup)
+            # logic never drifts between /api/snap and the external API.
+            from routes.streaming import _native_mjpeg_frame
+            frame_data = _native_mjpeg_frame(camera_id, camera or {})
+        elif hub == 'go2rtc':
+            from services.go2rtc_snapshot_service import go2rtc_snapshot_service
+            frame_data = go2rtc_snapshot_service.get_latest_frame(camera_id)
+        else:
+            # 'mediamtx' (default) / 'neolink' / unknown -> MediaMTX relay tap.
+            from services.mediaserver_mjpeg_service import mediaserver_mjpeg_service
+            frame_data = mediaserver_mjpeg_service.get_latest_frame(camera_id)
+    except Exception as e:
+        logger.warning(f"External API: _get_latest_frame({camera_id}, hub={hub}) failed: {e}")
+        return None
 
     if frame_data and frame_data.get('data'):
         return frame_data['data']
@@ -575,7 +580,18 @@ def external_snap(camera_id):
     try:
         frame_bytes = _get_latest_frame(camera_id, camera_type)
         if not frame_bytes:
-            return jsonify({'error': 'No frame available — capture service may not be running'}), 503
+            # No buffered frame yet. Lazy-start the correct hub capture — taps
+            # the relay / vendor buffer (single-consumer safe, NOT a direct
+            # camera connection) — so the caller's NEXT poll returns a frame.
+            # Same bootstrap /api/snap does for the /light grid. Without this an
+            # external consumer (TILES) that's the only viewer would 503 forever
+            # because no NVR-side viewer ever started the capture.
+            try:
+                from routes.streaming import _kick_capture
+                _kick_capture(camera_id, camera)
+            except Exception as _e:
+                logger.debug(f"External API: kick_capture({camera_id}) skipped: {_e}")
+            return jsonify({'error': 'No frame yet — capture starting, retry shortly'}), 503
 
         # Check if resize was requested
         requested_width = request.args.get('width', type=int)

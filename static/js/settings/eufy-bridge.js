@@ -110,6 +110,28 @@ export class EufyBridgeTab {
             </div>
           </div>
 
+          <!-- ── Firewall setup guide ─────────────────────────────── -->
+          <div class="setting-row">
+            <div class="setting-top">
+              <div class="setting-label">
+                <i class="fas fa-shield-halved"></i> Firewall configuration
+              </div>
+              <div class="setting-control">
+                <button type="button" id="eufy-bridge-fw-guide"
+                        class="setting-btn setting-btn-secondary"
+                        style="font-size:12px;padding:6px 14px;">
+                  <i class="fas fa-book"></i> Firewall setup guide (PTZ / P2P)
+                </button>
+              </div>
+            </div>
+            <div class="setting-description">
+              Eufy PTZ &amp; talkback need each camera to reach Eufy's cloud (P2P).
+              If the stations above show <strong>Timeout</strong>, your firewall is
+              blocking it. This opens a step-by-step, printable guide showing exactly
+              what to allow on any firewall.
+            </div>
+          </div>
+
           <!-- ── Actions ──────────────────────────────────────────── -->
           <div class="setting-row">
             <div class="setting-top">
@@ -205,6 +227,10 @@ export class EufyBridgeTab {
         // ── Refresh status button ──────────────────────────────────
         $panel.off('click.eufybridge', '#eufy-bridge-refresh-status')
               .on('click.eufybridge', '#eufy-bridge-refresh-status', () => self.load());
+
+        // ── Firewall setup guide (printable modal) ─────────────────
+        $panel.off('click.eufybridge', '#eufy-bridge-fw-guide')
+              .on('click.eufybridge', '#eufy-bridge-fw-guide', () => self._openFirewallGuide());
 
         // ── Force re-login (destructive — confirm gate) ────────────
         $panel.off('click.eufybridge', '#eufy-bridge-relogin')
@@ -518,6 +544,171 @@ export class EufyBridgeTab {
         } catch (err) {
             $status.html(`<span style="color:#e74c3c;">${err.message}</span>`);
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Firewall setup guide (printable manual)
+    // -----------------------------------------------------------------
+
+    /**
+     * The guide body HTML. Self-styled (scoped to .eufy-fw-guide) with neutral
+     * colors so it reads on BOTH the dark in-app modal and the light print
+     * window. Generic — vendor-agnostic firewall terminology.
+     */
+    _firewallGuideHTML() {
+        return `
+        <style>
+          .eufy-fw-guide h2{margin:0 0 4px;font-size:18px;}
+          .eufy-fw-guide h3{margin:18px 0 6px;font-size:14px;border-bottom:1px solid rgba(128,128,128,.45);padding-bottom:3px;}
+          .eufy-fw-guide table{border-collapse:collapse;width:100%;margin:8px 0;font-size:12.5px;}
+          .eufy-fw-guide th,.eufy-fw-guide td{border:1px solid rgba(128,128,128,.55);padding:5px 8px;text-align:left;vertical-align:top;}
+          .eufy-fw-guide th{background:rgba(128,128,128,.18);}
+          .eufy-fw-guide code{background:rgba(128,128,128,.20);padding:1px 5px;border-radius:3px;font-size:12px;}
+          .eufy-fw-guide ol,.eufy-fw-guide ul{margin:6px 0 6px 18px;padding:0;}
+          .eufy-fw-guide li{margin:3px 0;}
+          .eufy-fw-guide .note{border-left:3px solid #f0ad4e;background:rgba(240,173,78,.12);padding:8px 12px;margin:10px 0;border-radius:0 4px 4px 0;}
+          .eufy-fw-guide .muted{opacity:.8;font-size:12px;}
+        </style>
+        <div class="eufy-fw-guide">
+          <h2>Letting Eufy cameras reach the cloud — required for PTZ &amp; talkback</h2>
+          <p class="muted">Generic, vendor-agnostic guide. Your firewall's wording may differ
+          (see the terminology table near the end), but the steps are identical on any stateful
+          firewall — SonicWall, pfSense/OPNsense, UniFi, Firewalla, etc.</p>
+
+          <h3>1. Why this is needed</h3>
+          <p>Eufy <strong>video streaming is local</strong> (RTSP) and needs no internet. But Eufy
+          <strong>PTZ, talkback and device commands ride "P2P"</strong>, and Eufy's P2P requires
+          <strong>each camera to reach Eufy's cloud</strong> to register where it can be found. If the
+          cameras are blocked from the internet, P2P never establishes and PTZ silently times out —
+          even though live view keeps working.</p>
+          <p><strong>Goal:</strong> keep the cameras off the open internet, but allow them to reach
+          <em>Eufy's cloud only</em>.</p>
+
+          <h3>2. What you will create</h3>
+          <ul>
+            <li>One <strong>address object</strong> per Eufy camera (its LAN IP).</li>
+            <li>An <strong>address group</strong> containing them — call it <code>EUFY_CAMERAS</code>.</li>
+            <li>An <strong>FQDN / domain object</strong> for <code>*.eufylife.com</code>.</li>
+            <li>A <strong>UDP service</strong> covering ports <code>1024-65535</code>.</li>
+            <li>Three <strong>allow rules</strong>, placed <em>above</em> your existing
+            "cameras &rarr; internet: deny" rule.</li>
+          </ul>
+
+          <h3>3. Step by step</h3>
+          <ol>
+            <li><strong>Address objects</strong> — one host object per Eufy camera, using its LAN IP
+            (e.g. <code>192.168.1.50</code>). Find each camera's IP in your DHCP leases or the Eufy app.</li>
+            <li><strong>Group</strong> them into <code>EUFY_CAMERAS</code> (include the HomeBase/base
+            station too, if you have one).</li>
+            <li><strong>FQDN object</strong> — create a domain/FQDN object <code>*.eufylife.com</code>
+            (Eufy's API, auth and push).</li>
+            <li><strong>UDP service object</strong> — protocol <strong>UDP</strong>, port range
+            <strong>1024-65535</strong>. <span class="muted">Eufy P2P uses dynamic high ports; a narrow
+            range (e.g. only 32100) will NOT work — this is the single most common reason setups fail.</span></li>
+            <li><strong>Create the rules</strong> below — all <strong>outbound (LAN&rarr;WAN)</strong>,
+            source <code>EUFY_CAMERAS</code>, ordered ABOVE your camera-deny:</li>
+          </ol>
+
+          <table>
+            <tr><th>#</th><th>Source</th><th>Destination</th><th>Service</th><th>Action</th></tr>
+            <tr><td>1</td><td>EUFY_CAMERAS</td><td>Any</td><td>DNS (UDP/TCP 53)</td><td>Allow</td></tr>
+            <tr><td>2</td><td>EUFY_CAMERAS</td><td><code>*.eufylife.com</code></td><td>HTTPS (TCP 443)</td><td>Allow</td></tr>
+            <tr><td>3</td><td>EUFY_CAMERAS</td><td>Any</td><td>UDP 1024-65535</td><td>Allow</td></tr>
+            <tr><td>4</td><td>cameras (your existing group)</td><td>Any</td><td>Any</td><td><strong>Deny</strong> — keep BELOW rules 1-3</td></tr>
+          </table>
+          <p class="muted">Rule 1 (DNS) is only needed if the cameras use a public DNS server; if they
+          resolve via your router/firewall, skip it. Rule 3 uses destination "Any" because Eufy's P2P
+          relay IPs are dynamic — the exposure stays bounded: these cameras can still only do
+          DNS + HTTPS-to-Eufy + outbound UDP, never arbitrary connections.</p>
+
+          <ol start="6">
+            <li><strong>Apply / activate</strong> the rules.</li>
+            <li><strong>Force re-registration</strong> — power-cycle one camera so it re-registers with
+            Eufy immediately, instead of waiting up to ~30 minutes.</li>
+            <li><strong>Verify</strong> — back in the Eufy Bridge tab, the <em>Per-station P2P</em> list
+            should turn <strong>Connected</strong>, and PTZ should move the camera.</li>
+          </ol>
+
+          <h3>4. Security notes</h3>
+          <ul>
+            <li>These are <strong>outbound</strong> rules. They do <strong>not</strong> expose any inbound
+            ports — a port scan of your public IP is unaffected. The cameras can talk out to Eufy; the
+            internet still cannot reach them.</li>
+            <li><strong>Disable UPnP / NAT-PMP</strong> on your firewall so a camera can't auto-open an
+            inbound hole for itself.</li>
+            <li>If TLS to Eufy intermittently fails, also allow <strong>NTP (UDP 123)</strong> — cameras
+            need accurate time for certificate validation.</li>
+          </ul>
+
+          <h3>5. Firewall terminology (names vary by vendor)</h3>
+          <table>
+            <tr><th>This guide</th><th>Also called</th></tr>
+            <tr><td>Address object</td><td>Alias / Host / Network object</td></tr>
+            <tr><td>FQDN object</td><td>Domain object / URL object</td></tr>
+            <tr><td>Service</td><td>Port / Application / Protocol object</td></tr>
+            <tr><td>Rule order</td><td>Priority / Sequence / Position</td></tr>
+          </table>
+
+          <h3>6. Still showing "Timeout"?</h3>
+          <ul>
+            <li>Confirm the three allow rules sit <strong>above</strong> the camera-deny — order matters.</li>
+            <li>Make sure the UDP service is the <strong>wide</strong> range (1024-65535), not just 32100.</li>
+            <li>Power-cycle the camera again to force re-registration; give it a couple of minutes.</li>
+            <li>Check the camera can resolve DNS (rule 1) and reach <code>*.eufylife.com</code> (rule 2).</li>
+          </ul>
+        </div>
+        `;
+    }
+
+    /** Open the guide in a large, scrollable, dark-themed modal over the app. */
+    _openFirewallGuide() {
+        $('#eufy-fw-guide-overlay').remove();
+        const overlay = $(`
+          <div id="eufy-fw-guide-overlay" style="position:fixed;inset:0;z-index:20000;
+               background:rgba(0,0,0,0.78);display:flex;align-items:center;justify-content:center;padding:20px;">
+            <div style="background:#161b22;color:#e6e6e6;border:1px solid #30363d;border-radius:10px;
+                 width:min(940px,96vw);max-height:88vh;display:flex;flex-direction:column;
+                 box-shadow:0 12px 48px rgba(0,0,0,0.6);">
+              <div style="display:flex;align-items:center;justify-content:space-between;
+                   padding:14px 18px;border-bottom:1px solid #30363d;flex:0 0 auto;">
+                <div style="font-size:15px;font-weight:600;">
+                  <i class="fas fa-shield-halved"></i> Firewall setup &mdash; Eufy cameras &amp; PTZ
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button type="button" id="eufy-fw-print" class="setting-btn setting-btn-secondary"
+                          style="font-size:12px;padding:6px 12px;"><i class="fas fa-print"></i> Print</button>
+                  <button type="button" id="eufy-fw-close" class="setting-btn setting-btn-secondary"
+                          style="font-size:12px;padding:6px 12px;">&times; Close</button>
+                </div>
+              </div>
+              <div id="eufy-fw-guide-body" style="overflow-y:auto;padding:18px 22px;flex:1 1 auto;">
+                ${this._firewallGuideHTML()}
+              </div>
+            </div>
+          </div>
+        `);
+        $('body').append(overlay);
+        const close = () => { overlay.remove(); $(document).off('keydown.eufyfw'); };
+        overlay.on('click', (e) => { if (e.target === overlay[0]) close(); });
+        overlay.find('#eufy-fw-close').on('click', close);
+        overlay.find('#eufy-fw-print').on('click', () => this._printFirewallGuide());
+        $(document).on('keydown.eufyfw', (e) => { if (e.key === 'Escape') close(); });
+    }
+
+    /** Open the guide in a clean light print window and trigger the print dialog. */
+    _printFirewallGuide() {
+        const w = window.open('', '_blank', 'width=900,height=820');
+        if (!w) { alert('Pop-up blocked — allow pop-ups to print the guide.'); return; }
+        w.document.write(
+            '<!doctype html><html><head><meta charset="utf-8">' +
+            '<title>Eufy firewall setup</title>' +
+            '<style>body{background:#fff;color:#111;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;' +
+            'max-width:780px;margin:24px auto;padding:0 18px;}</style>' +
+            '</head><body>' + this._firewallGuideHTML() + '</body></html>'
+        );
+        w.document.close();
+        w.focus();
+        setTimeout(() => { try { w.print(); } catch (e) { /* user can print manually */ } }, 350);
     }
 }
 

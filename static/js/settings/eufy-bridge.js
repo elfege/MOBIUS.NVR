@@ -614,7 +614,7 @@ export class EufyBridgeTab {
             <tr><td>1</td><td>EUFY_CAMERAS</td><td>Any</td><td>DNS (UDP/TCP 53)</td><td>Allow</td></tr>
             <tr><td>2</td><td>EUFY_CAMERAS</td><td><code>*.eufylife.com</code></td><td>HTTPS (TCP 443)</td><td>Allow</td></tr>
             <tr><td>3</td><td>EUFY_CAMERAS</td><td>Any</td><td>UDP 1024-65535</td><td>Allow</td></tr>
-            <tr><td>4</td><td>cameras (your existing group)</td><td>Any</td><td>Any</td><td><strong>Deny</strong> — keep BELOW rules 1-3</td></tr>
+            <tr><td>4</td><td>ALL_YOUR_CAMERAS (highly recommended)</td><td>Any</td><td>Any</td><td><strong style='color:red';>Deny</strong> — keep BELOW rules 1-3</td></tr>
           </table>
           <p class="muted">Rule 1 (DNS) is only needed if the cameras use a public DNS server; if they
           resolve via your router/firewall, skip it. Rule 3 uses destination "Any" because Eufy's P2P

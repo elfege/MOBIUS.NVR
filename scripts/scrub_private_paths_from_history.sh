@@ -43,6 +43,7 @@ set -euo pipefail
 PRIVATE_PATHS=(
     "docs/README_handoff.md"
     "docs/README_project_history.md"
+    "docs/history/handoffs"
 )
 
 ORIGIN_REMOTE_URL="https://github.com/elfege/MOBIUS.NVR-dev.git"

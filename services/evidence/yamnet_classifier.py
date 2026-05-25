@@ -107,6 +107,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 from services.evidence.base import EvidenceService, PROJECT_ROOT
+from services.evidence.gate import evidence_collection_enabled
 
 
 # =========================================================================
@@ -296,28 +297,43 @@ class YamnetClassifierService(EvidenceService):
         iterations and uses ``self._stop.wait(timeout=...)`` rather
         than ``time.sleep`` so ``stop()`` causes immediate exit.
         """
-        try:
-            self._lazy_load_model()
-        except Exception as e:
-            # Model load failure is fatal — we can't classify without
-            # the model. Log clearly and exit. The supervisor will see
-            # the worker thread die and can decide whether to retry.
-            self.log.error(
-                "failed to load YAMNet model from %s — service cannot run. "
-                "See module docstring for download instructions. Cause: %s",
-                self.model_path, e,
-            )
-            return
-
-        self.log.info(
-            "yamnet classifier ready: model=%s, min_score=%.2f, "
-            "categories=%s, poll=%.1fs",
-            self.model_path, self.min_score,
-            list(self.category_map.keys()), self.poll_seconds,
-        )
-
-        last_id = self._load_last_id()
+        # Defer the model load until the pipeline is actually enabled (and
+        # loaded only once). This keeps the daemon alive through enable/
+        # disable toggles instead of dying on first model-load failure, and
+        # — crucially while the GLOBAL MASTER SWITCH is OFF (beta, default) —
+        # avoids both the heavy model load and the repeated "failed to load
+        # YAMNet model" error spam. See services/evidence/gate.py.
+        model_loaded = False
+        last_id = None
         while not self._stop.is_set():
+            # Global master switch: idle (no load, no poll) while disabled.
+            # Re-checked each cycle so enabling it at runtime starts work
+            # without a container restart.
+            if not evidence_collection_enabled():
+                self._stop.wait(timeout=self.poll_seconds)
+                continue
+
+            if not model_loaded:
+                try:
+                    self._lazy_load_model()
+                except Exception as e:
+                    self.log.error(
+                        "failed to load YAMNet model from %s — cannot classify. "
+                        "See module docstring for download instructions. Cause: %s",
+                        self.model_path, e,
+                    )
+                    # Don't hammer the load; wait a cycle and retry.
+                    self._stop.wait(timeout=self.poll_seconds)
+                    continue
+                model_loaded = True
+                last_id = self._load_last_id()
+                self.log.info(
+                    "yamnet classifier ready: model=%s, min_score=%.2f, "
+                    "categories=%s, poll=%.1fs",
+                    self.model_path, self.min_score,
+                    list(self.category_map.keys()), self.poll_seconds,
+                )
+
             try:
                 last_id = self._classify_pending(last_id)
             except Exception:

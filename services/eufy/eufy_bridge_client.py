@@ -46,33 +46,52 @@ class EufyBridgeClient:
         """
         try:
             async with websockets.connect(
-                self.bridge_url, 
+                self.bridge_url,
                 open_timeout=self.timeout,
                 close_timeout=5
             ) as ws:
-                # Send command
+                # eufy-security-ws emits a {"type":"version",...} greeting the
+                # instant we connect, and pushes async {"type":"event",...}
+                # frames at any time. The OLD code read the FIRST frame after
+                # sending — which was the version greeting, not our result — so
+                # station.is_connected / driver.is_connected always came back
+                # WITHOUT a 'connected' field (poisoning the bridge status panel
+                # and the PTZ "Cloud OK" badge). Fix: (1) set the API schema so
+                # results use the schema-21 shape (result.connected), and
+                # (2) read frames until we get the type=='result' whose
+                # messageId matches THIS command, skipping the greeting, the
+                # schema ack, and any interleaved events. (2026-05-25.)
+                await ws.send(json.dumps({
+                    "messageId": "set_api_schema",
+                    "command": "set_api_schema",
+                    "schemaVersion": 21,
+                }))
                 await ws.send(json.dumps(command))
-                
-                # Get response with timeout
-                response_str = await asyncio.wait_for(
-                    ws.recv(), 
-                    timeout=self.timeout
-                )
-                
-                response = json.loads(response_str)
-                
-                # Check for success
-                if response.get('type') == 'result':
+
+                target_id = command.get("messageId")
+                loop = asyncio.get_event_loop()
+                deadline = loop.time() + self.timeout
+                while True:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        raise asyncio.TimeoutError()
+                    response_str = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                    response = json.loads(response_str)
+
+                    # Skip the version greeting, async events, and the
+                    # set_api_schema ack — anything that isn't OUR result.
+                    if response.get('type') != 'result':
+                        continue
+                    if target_id is not None and response.get('messageId') != target_id:
+                        continue
+
                     if response.get('success'):
                         logger.info(f"Command successful: {command.get('command', 'unknown')}")
                         return response
-                    else:
-                        error_msg = response.get('error', 'Unknown error')
-                        logger.error(f"Command failed: {error_msg}")
-                        raise ValueError(f"Command failed: {error_msg}")
-                        
-                return response
-                
+                    error_msg = response.get('errorCode') or response.get('error', 'Unknown error')
+                    logger.error(f"Command failed: {error_msg}")
+                    raise ValueError(f"Command failed: {error_msg}")
+
         except asyncio.TimeoutError as e:
             logger.error(f"Command timeout: {command.get('command', 'unknown')}")
             raise TimeoutError(f"Operation timed out after {self.timeout}s") from e

@@ -73,6 +73,7 @@ from services.evidence.manifest import (
     _utc_now_iso,
 )
 from services.streaming_hub import get_rtsp_source_url
+from services.evidence.gate import evidence_collection_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -540,6 +541,19 @@ class ExtractorSupervisor:
         self._stop.set()
 
     def _reconcile(self) -> None:
+        # GLOBAL MASTER SWITCH (beta, default OFF). When the pipeline is
+        # globally disabled, tear down any running extractors and start
+        # nothing — no RTSP audio taps, no clips written, no inference fed.
+        # Re-checked every poll so flipping the switch on/off takes effect
+        # without a container restart. See services/evidence/gate.py.
+        if not evidence_collection_enabled():
+            if self._extractors:
+                logger.info(
+                    "evidence collection globally disabled — stopping %d extractor(s)",
+                    len(self._extractors))
+                self._shutdown_all()
+            return
+
         wanted = self._fetch_wanted_cameras()
         wanted_serials = {c["serial"] for c in wanted}
 

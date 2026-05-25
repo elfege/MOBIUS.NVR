@@ -613,13 +613,40 @@ def api_eufy_cloud_status():
     except Exception:
         cloud_reachable = False
 
+    # p2p_available MUST reflect the actual P2P tunnel to a station — NOT just
+    # cloud reachability. PTZ rides P2P; the cloud API being up does NOT mean
+    # the station tunnel is up (e.g. when the camera/bridge P2P UDP is
+    # firewalled — the exact case that made this badge falsely say "Cloud OK"
+    # while PTZ silently failed). Check whether at least one Eufy station is
+    # actually P2P-connected. (Honest-PTZ-status, 2026-05-25.)
+    p2p_available = False
+    p2p_checked = False
+    if bridge_alive:
+        try:
+            from services.eufy.eufy_bridge_client import is_station_connected_sync
+            eufy_cams = shared.camera_repo.get_cameras_by_type('eufy') or {}
+            for serial, cfg in eufy_cams.items():
+                station = (cfg.get('station') or serial)
+                if is_station_connected_sync(station).get('connected'):
+                    p2p_available = True
+                    break
+            p2p_checked = True
+        except Exception as e:
+            logger.warning(f"[Eufy cloud-status] station P2P check failed: {e}")
+
+    if p2p_available:
+        message = 'Eufy P2P tunnel up — PTZ available'
+    elif not bridge_alive:
+        message = 'Eufy bridge not running'
+    elif p2p_checked:
+        message = ('Cloud reachable but P2P tunnel down — PTZ unavailable '
+                   '(camera P2P likely WAN/firewall-blocked). Presets still work (cached).')
+    else:
+        message = 'Eufy P2P state unknown'
+
     return jsonify({
         'bridge_running': bridge_alive,
         'cloud_reachable': cloud_reachable,
-        'p2p_available': bridge_alive and cloud_reachable,
-        'message': (
-            'Eufy cloud and bridge ready' if bridge_alive and cloud_reachable
-            else 'Bridge not running' if not bridge_alive
-            else 'Eufy cloud unreachable — cameras need WAN access for P2P'
-        )
+        'p2p_available': p2p_available,
+        'message': message,
     })

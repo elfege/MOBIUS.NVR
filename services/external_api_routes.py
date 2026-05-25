@@ -158,27 +158,32 @@ _ALLOWED_NETWORKS = [
 
 def _is_lan_request():
     """
-    Check if the incoming request originates from a private/LAN address.
+    True iff the request's REAL client is on the trusted LAN (RFC-1918 / loopback).
 
-    Examines X-Forwarded-For (for reverse proxy setups like nginx) first,
-    then falls back to request.remote_addr.
+    Trust model (verified for this deployment):
+      * Flask is bound to 127.0.0.1:5000 only — every real request arrives via
+        the nginx edge. So request.remote_addr is ALWAYS nginx's docker IP
+        (e.g. 172.22.0.8), never the real client — using it would make EVERY
+        request look "LAN" and bypass auth for everyone. Do NOT use it.
+      * nginx sets `X-Real-IP $remote_addr` on the proxied locations, which
+        OVERWRITES any client-supplied value with the true TCP peer — so it is
+        NOT spoofable by a remote attacker (their forged header is discarded;
+        nginx stamps their real, non-LAN WAN IP).
+      * The leftmost X-Forwarded-For entry IS client-spoofable (nginx appends
+        with $proxy_add_x_forwarded_for) — so it must NOT be trusted for auth.
 
-    Returns True if the source IP is within RFC 1918 ranges or loopback.
+    Therefore: key the decision on X-Real-IP. Fall back to remote_addr only
+    when there is no proxy header at all (a direct loopback call, inherently
+    local/trusted).
     """
-    # X-Forwarded-For may contain a chain: "client, proxy1, proxy2"
-    # The leftmost entry is the original client IP
-    forwarded_for = request.headers.get('X-Forwarded-For', '')
-    if forwarded_for:
-        client_ip_str = forwarded_for.split(',')[0].strip()
-    else:
-        client_ip_str = request.remote_addr
+    real_ip = request.headers.get('X-Real-IP', '').strip()
+    client_ip_str = real_ip or (request.remote_addr or '')
 
     try:
         client_ip = ipaddress.ip_address(client_ip_str)
         return any(client_ip in network for network in _ALLOWED_NETWORKS)
     except (ValueError, TypeError):
-        # If we can't parse the IP, deny access
-        logger.warning(f"External API: could not parse client IP '{client_ip_str}' — denying")
+        logger.warning(f"External API: could not parse client IP '{client_ip_str}' — treating as non-LAN")
         return False
 
 
@@ -198,45 +203,44 @@ def _check_bearer_token():
 
 def require_auth(f):
     """
-    Decorator implementing layered auth for external API endpoints.
+    Layered auth for external API endpoints. Order:
 
-    When NVR_API_TOKEN is set (production):
-        Requires valid "Authorization: Bearer <token>" header.
-        Returns 401 Unauthorized if missing or invalid.
+      1. CORS preflight (OPTIONS) → always allowed (no Authorization on preflight).
+      2. TRUSTED LAN → allowed with NO token. The real client (X-Real-IP, set
+         non-spoofably by nginx — see _is_lan_request) is on the private LAN, so
+         a same-network consumer like MOBIUS.TILES needs no credentials.
+      3. Otherwise (WAN / non-LAN):
+           - NVR_API_TOKEN set  → require a valid "Authorization: Bearer <token>"
+             (401 if missing/invalid).
+           - NVR_API_TOKEN unset → reject as non-LAN (403).
 
-    When NVR_API_TOKEN is NOT set (dev mode):
-        Falls back to LAN-only IP check (RFC 1918).
-        Returns 403 Forbidden for non-LAN requests.
-        Logs a warning on every request — set NVR_API_TOKEN for production.
-
-    Replaces the previous @lan_only decorator.
+    Net effect: LAN is frictionless; the internet still needs the token.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # CORS preflight (OPTIONS) must pass without auth — browsers never
-        # send Authorization headers on preflight requests.
+        # 1. CORS preflight — browsers never send Authorization on preflight.
         if request.method == 'OPTIONS':
             return f(*args, **kwargs)
 
+        # 2. Trusted LAN bypass (e.g. TILES) — no token required.
+        if _is_lan_request():
+            return f(*args, **kwargs)
+
+        # 3. Non-LAN: token required (production) or rejected (dev).
         if _api_token:
-            # Production mode: Bearer token required
             if _check_bearer_token():
                 return f(*args, **kwargs)
-            # Token configured but not provided or invalid
             logger.warning(
-                f"External API: unauthorized request to {request.path} "
-                f"from {request.remote_addr} — invalid or missing Bearer token"
+                f"External API: unauthorized non-LAN request to {request.path} "
+                f"(X-Real-IP={request.headers.get('X-Real-IP', '?')}) — invalid/missing Bearer token"
             )
-            return jsonify({'error': 'Unauthorized — Bearer token required'}), 401
-        else:
-            # Dev mode: LAN-only fallback (NVR_API_TOKEN not set)
-            if _is_lan_request():
-                return f(*args, **kwargs)
-            logger.warning(
-                f"External API: blocked non-LAN request from {request.remote_addr} "
-                f"to {request.path} (no NVR_API_TOKEN set, LAN-only fallback active)"
-            )
-            return jsonify({'error': 'Forbidden — LAN access only (set NVR_API_TOKEN for token auth)'}), 403
+            return jsonify({'error': 'Unauthorized — Bearer token required (off-LAN)'}), 401
+
+        logger.warning(
+            f"External API: blocked non-LAN request to {request.path} "
+            f"(X-Real-IP={request.headers.get('X-Real-IP', '?')}); no NVR_API_TOKEN set"
+        )
+        return jsonify({'error': 'Forbidden — LAN access only (set NVR_API_TOKEN for off-LAN access)'}), 403
     return decorated_function
 
 

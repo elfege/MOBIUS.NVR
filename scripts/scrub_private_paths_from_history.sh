@@ -43,8 +43,21 @@ set -euo pipefail
 PRIVATE_PATHS=(
     "docs/README_handoff.md"
     "docs/README_project_history.md"
-    "docs/history/handoffs"
+    "docs/README_port_mappings.md"
+    "docs/history"
+    "docs/plans"
+    "docs/teachings"
+    "docs/weekly_summaries"
+    "DOCS"
+    "chat.md"
+    "claude_rules.md"
 )
+# Kept in lockstep with scripts/hooks/pre-push (the prevention layer) and with
+# the strip rules baked into scripts/publish_public_mirror.sh (the publish-time
+# scrub). Broadened 2026-05-29 per the dual-repo canonical runbook §3.2 — the
+# previous narrow list let docs/plans/* and docs/teachings/* leak to public for
+# weeks. This script remains a legacy hard-scrub option; the new path forward is
+# publish_public_mirror.sh (per-publish filter-repo on a /tmp build clone).
 
 ORIGIN_REMOTE_URL="https://github.com/elfege/MOBIUS.NVR-dev.git"
 PUBLIC_REMOTE_URL="https://github.com/elfege/MOBIUS.NVR.git"

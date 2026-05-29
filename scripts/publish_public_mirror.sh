@@ -40,6 +40,12 @@ SCRIPT_R_PATH=$(realpath "${BASH_SOURCE[0]}")
 SCRIPT_DIR="${SCRIPT_R_PATH%${SCRIPT_NAME}}"
 REPO_ROOT="$(builtin cd "${SCRIPT_DIR}/.." && pwd)"
 
+# Fail-fast: any unchecked non-zero exit propagates to the cleanup trap, which
+# preserves the build dir for inspection. Added per TILES MSG-301 gotcha #5 —
+# without set -e, a failed push silently continues to "✓ published" and the
+# trap cleans up the build dir before the operator can debug.
+set -eo pipefail
+
 # Color helpers — home copy preferred, in-repo copy fallback, tolerated absent (S.2.18).
 . ~/.env.colors 2>/dev/null || . "${REPO_ROOT}/.env.colors" 2>/dev/null || true
 
@@ -299,23 +305,14 @@ nvr_publish__confirm_rewrite() {
 
 nvr_publish__push_branch() {
 	if $NVR_PUBLISH__REWRITE; then
-		# --force-with-lease needs a recent local view of public/main as its baseline.
-		# In rewrite mode we skip the is_fast_forward check (which would otherwise
-		# do this fetch), so do it explicitly here. Then pin the lease to the SHA
-		# we just observed — refuses to push if someone else moved public/main
-		# between the fetch and now.
-		echo -e "${BOLD:-}→ seeding force-with-lease baseline (fetch public/${NVR_PUBLISH__BRANCH})${NC:-}"
-		git fetch -q public "${NVR_PUBLISH__BRANCH}:refs/remotes/public/${NVR_PUBLISH__BRANCH}" 2>/dev/null || true
-		local expected_sha
-		expected_sha="$(git rev-parse "refs/remotes/public/${NVR_PUBLISH__BRANCH}" 2>/dev/null || true)"
-
-		echo -e "${BOLD:-}${YELLOW:-}→ force-with-lease push (rewrite mode)${NC:-}"
-		if [[ -n "$expected_sha" ]]; then
-			git push --force-with-lease="${NVR_PUBLISH__BRANCH}:${expected_sha}" public "${NVR_PUBLISH__BRANCH}"
-		else
-			# public/main doesn't exist yet (impossible in practice for NVR) → plain force.
-			git push --force public "${NVR_PUBLISH__BRANCH}"
-		fi
+		# Per TILES MSG-301 gotcha #4: --force-with-lease in rewrite mode
+		# false-rejects because the FF-check (which fetches the remote-tracking
+		# ref the lease needs as its baseline) is skipped in rewrite mode. The
+		# lease is conceptually moot when the operator has explicitly authorized
+		# a deliberate rewrite, so use plain --force here. The interactive
+		# confirmation phrase (rewrite-mode-only) is the actual safety gate.
+		echo -e "${BOLD:-}${YELLOW:-}→ force push (rewrite mode)${NC:-}"
+		git push --force public "${NVR_PUBLISH__BRANCH}"
 	else
 		echo -e "${BOLD:-}→ fast-forward push${NC:-}"
 		git push public "${NVR_PUBLISH__BRANCH}"

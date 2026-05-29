@@ -69,18 +69,25 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 
     for path in "${PRIVATE_PATHS[@]}"; do
-        # Does any commit in the pushed range INTRODUCE or MODIFY this path?
-        # We check each commit's DIFF (files it changed) — NOT its full tree.
+        # Does any commit in the pushed range INTRODUCE, MODIFY, or RENAME-INTO
+        # this path? We check each commit's DIFF — NOT its full tree.
+        #
         # Full-tree matching would deadlock the moment a private path is ever
         # committed (e.g. an already-leaked archived handoff): every later push
-        # would carry it in-tree and be refused forever. Diff-based matching
-        # blocks the commit that ADDS/edits a private path (the thing we want to
-        # stop) while still allowing pushes that merely carry a pre-existing
-        # tracked file (that residue is cleared by the history scrub, not here).
+        # would carry it in-tree and be refused forever.
+        #
+        # Plain diff (--name-only) matches every path touched by the commit
+        # — including DELETIONS. That deadlocks the OPPOSITE case: a commit
+        # that REMOVES a private path (cleanup like leak-remediation) would
+        # also be refused, even though it improves leak posture. We therefore
+        # use --diff-filter=ACMR to ignore deletions (D) and only catch the
+        # actually-harmful operations: A=added, C=copy-target, M=modified,
+        # R=rename-target.
+        #
         # Files-never-committed (README_handoff/project_history) are fully
-        # protected either way — any commit adding them is blocked.
+        # protected either way — any commit adding them gets A status.
         if git rev-list "${rev_args[@]}" 2>/dev/null | while read -r sha; do
-            if git diff-tree --no-commit-id --name-only -r "$sha" 2>/dev/null | awk -v p="$path" '$0==p || index($0, p"/")==1 {f=1} END{exit !f}'; then
+            if git diff-tree --no-commit-id --diff-filter=ACMR --name-only -r "$sha" 2>/dev/null | awk -v p="$path" '$0==p || index($0, p"/")==1 {f=1} END{exit !f}'; then
                 echo "$sha"
                 break
             fi

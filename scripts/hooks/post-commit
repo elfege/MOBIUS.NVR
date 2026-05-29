@@ -36,10 +36,19 @@ if [ "$branch" = "main" ]; then
     fi
     new_tag="$(git tag --points-at HEAD 'v*.*.*' | sort -V | tail -1)"
 
+    # ── origin (private) push: backgrounded, no filtering needed ──
     (
         git push origin main
-        git push public main
         [ -n "$new_tag" ] && git push origin "$new_tag"
-        [ -n "$new_tag" ] && git push public "$new_tag"
     ) &>/dev/null &
+
+    # ── public (cleansed) push: foreground so leak-gate aborts surface immediately ──
+    # Raw `git push public main` (pre-2026-05-29) leaked private docs.
+    # publish_public_mirror.sh filter-repos a /tmp build clone, leak-gates, FF-pushes.
+    if [ -x "$REPO_ROOT/scripts/publish_public_mirror.sh" ]; then
+        "$REPO_ROOT/scripts/publish_public_mirror.sh" main \
+            || echo "[post-commit] ⚠ publish_public_mirror.sh failed — public mirror NOT updated" >&2
+    else
+        echo "[post-commit] ⚠ scripts/publish_public_mirror.sh missing — skipping public push" >&2
+    fi
 fi

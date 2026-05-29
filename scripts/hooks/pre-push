@@ -24,12 +24,28 @@ set -euo pipefail
 PRIVATE_PATHS=(
     "docs/README_handoff.md"
     "docs/README_project_history.md"
-    "docs/history/handoffs"
+    "docs/README_port_mappings.md"
+    "docs/history"
+    "docs/plans"
+    "docs/teachings"
+    "docs/weekly_summaries"
+    "DOCS"
+    "chat.md"
+    "claude_rules.md"
 )
 # Entries may be an exact file OR a directory prefix (e.g. the archived-handoff
 # tree under docs/history/handoffs/<branch>/). The matcher below treats an
-# entry as a hit when a tracked path equals it OR is nested under it. Added
-# docs/history/handoffs 2026-05-25 after an archived handoff leaked to public.
+# entry as a hit when a tracked path equals it OR is nested under it.
+#
+# History:
+# - 2026-05-13: PRIVATE_PATHS introduced (the two README_* files).
+# - 2026-05-25: docs/history/handoffs added after an archived handoff leaked.
+# - 2026-05-29: broadened to the canonical strip list per the dual-repo runbook
+#   (§3.2). The previous narrow list let docs/plans/* and docs/teachings/* and
+#   docs/weekly_summaries/* slip through — they were force-added before docs/
+#   was gitignored and the hook didn't list them, so every push since carried
+#   them to the public mirror. publish_public_mirror.sh (this branch) does the
+#   history scrub; this list is the forward-defense against re-introduction.
 
 # git pipes lines like:  <local-ref> <local-sha> <remote-ref> <remote-sha>
 # We need to walk every commit in [remote-sha..local-sha] and check
@@ -53,18 +69,25 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 
     for path in "${PRIVATE_PATHS[@]}"; do
-        # Does any commit in the pushed range INTRODUCE or MODIFY this path?
-        # We check each commit's DIFF (files it changed) — NOT its full tree.
+        # Does any commit in the pushed range INTRODUCE, MODIFY, or RENAME-INTO
+        # this path? We check each commit's DIFF — NOT its full tree.
+        #
         # Full-tree matching would deadlock the moment a private path is ever
         # committed (e.g. an already-leaked archived handoff): every later push
-        # would carry it in-tree and be refused forever. Diff-based matching
-        # blocks the commit that ADDS/edits a private path (the thing we want to
-        # stop) while still allowing pushes that merely carry a pre-existing
-        # tracked file (that residue is cleared by the history scrub, not here).
+        # would carry it in-tree and be refused forever.
+        #
+        # Plain diff (--name-only) matches every path touched by the commit
+        # — including DELETIONS. That deadlocks the OPPOSITE case: a commit
+        # that REMOVES a private path (cleanup like leak-remediation) would
+        # also be refused, even though it improves leak posture. We therefore
+        # use --diff-filter=ACMR to ignore deletions (D) and only catch the
+        # actually-harmful operations: A=added, C=copy-target, M=modified,
+        # R=rename-target.
+        #
         # Files-never-committed (README_handoff/project_history) are fully
-        # protected either way — any commit adding them is blocked.
+        # protected either way — any commit adding them gets A status.
         if git rev-list "${rev_args[@]}" 2>/dev/null | while read -r sha; do
-            if git diff-tree --no-commit-id --name-only -r "$sha" 2>/dev/null | awk -v p="$path" '$0==p || index($0, p"/")==1 {f=1} END{exit !f}'; then
+            if git diff-tree --no-commit-id --diff-filter=ACMR --name-only -r "$sha" 2>/dev/null | awk -v p="$path" '$0==p || index($0, p"/")==1 {f=1} END{exit !f}'; then
                 echo "$sha"
                 break
             fi

@@ -299,8 +299,23 @@ nvr_publish__confirm_rewrite() {
 
 nvr_publish__push_branch() {
 	if $NVR_PUBLISH__REWRITE; then
+		# --force-with-lease needs a recent local view of public/main as its baseline.
+		# In rewrite mode we skip the is_fast_forward check (which would otherwise
+		# do this fetch), so do it explicitly here. Then pin the lease to the SHA
+		# we just observed — refuses to push if someone else moved public/main
+		# between the fetch and now.
+		echo -e "${BOLD:-}→ seeding force-with-lease baseline (fetch public/${NVR_PUBLISH__BRANCH})${NC:-}"
+		git fetch -q public "${NVR_PUBLISH__BRANCH}:refs/remotes/public/${NVR_PUBLISH__BRANCH}" 2>/dev/null || true
+		local expected_sha
+		expected_sha="$(git rev-parse "refs/remotes/public/${NVR_PUBLISH__BRANCH}" 2>/dev/null || true)"
+
 		echo -e "${BOLD:-}${YELLOW:-}→ force-with-lease push (rewrite mode)${NC:-}"
-		git push --force-with-lease public "${NVR_PUBLISH__BRANCH}"
+		if [[ -n "$expected_sha" ]]; then
+			git push --force-with-lease="${NVR_PUBLISH__BRANCH}:${expected_sha}" public "${NVR_PUBLISH__BRANCH}"
+		else
+			# public/main doesn't exist yet (impossible in practice for NVR) → plain force.
+			git push --force public "${NVR_PUBLISH__BRANCH}"
+		fi
 	else
 		echo -e "${BOLD:-}→ fast-forward push${NC:-}"
 		git push public "${NVR_PUBLISH__BRANCH}"

@@ -87,6 +87,6 @@ git clone -q --depth=1 --branch "$MOBIUS_INSTALLER_REF" "$MOBIUS_INSTALLER_REPO"
 if [[ ! -x "$tmp/mobius_install.sh" ]]; then
     echo -e "${RED}✗ mobius_install.sh missing or non-executable in installer checkout${NC}" >&2
     exit 1
-}
+fi
 
 exec "$tmp/mobius_install.sh" --component="$MOBIUS_INSTALL_TARGET" "$@"

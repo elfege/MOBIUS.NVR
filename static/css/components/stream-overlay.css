@@ -112,18 +112,30 @@
     font-size: 0.6rem;
 }
 
-/* Publisher state colors */
+/* Publisher state colors — Active=green, Stalled=amber, Inactive=red.
+   Stalled is the new (2026-06-13) honest middle state: the publisher process
+   exists but isn't producing frames (RTSP source 404'ing, ffmpeg spinning,
+   etc.). Used by camera-state-monitor.js when state.publisher_active is true
+   but state.availability !== 'online'. */
 .stream-state-details .publisher-state.active i {
     color: #28a745;
+}
+
+.stream-state-details .publisher-state.stalled i {
+    color: #ff9800;
 }
 
 .stream-state-details .publisher-state.inactive i {
     color: #dc3545;
 }
 
-/* FFmpeg state colors */
+/* FFmpeg state colors — Running=green, Stalled=amber, Stopped=red. */
 .stream-state-details .ffmpeg-state.alive i {
     color: #28a745;
+}
+
+.stream-state-details .ffmpeg-state.stalled i {
+    color: #ff9800;
 }
 
 .stream-state-details .ffmpeg-state.dead i {

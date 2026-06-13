@@ -62,6 +62,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/tile-arrange.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/pinned-window.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/cert-install.css') }}">
+    <!-- Unified action-icon bar — MUST load LAST so its !important rules win
+         source-order ties against the per-button CSS files above (operator
+         directive 2026-06-13: all icons same size + bottom row + 30s idle fade). -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-control-bar.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -522,6 +526,13 @@
                     <i class="fas fa-thumbtack"></i>
                 </button>
             </div>
+            <!-- Unified action-icon bar (operator directive 2026-06-13): single
+                 horizontal row at the bottom of the tile, all icons same size,
+                 reading left-to-right. Flex container with .stream-actions-bar
+                 owns the layout; per-button CSS files (camera-settings-modal,
+                 talkback-button, etc.) are overridden by stream-control-bar.css
+                 which is loaded last. -->
+            <div class="stream-actions-bar">
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
                 <i class="fas fa-expand"></i>
             </button>
@@ -589,6 +600,7 @@
             <button class="stream-more-btn" aria-label="More Controls" title="More Controls">
                 <i class="fas fa-ellipsis-v"></i>
             </button>
+            </div><!-- /.stream-actions-bar -->
 
             <!-- Mobile slide-up menu - activated by the more button -->
             <div class="stream-more-menu">
@@ -1268,6 +1280,8 @@
 
     <!-- Pinned window manager (HD + pin → floating draggable window) -->
     <script type="module" src="{{ url_for('static', filename='js/streaming/pinned-window-manager.js') }}"></script>
+    <!-- 30s idle fade for the unified action-icon bar (operator directive 2026-06-13). -->
+    <script src="{{ url_for('static', filename='js/streaming/control-bar-idle.js') }}"></script>
 
 
     <!-- Certificate install banner (shows once on HTTPS if cert not yet trusted) -->

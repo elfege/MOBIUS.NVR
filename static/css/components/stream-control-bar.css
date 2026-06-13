@@ -1,0 +1,165 @@
+/* ============================================================================
+   stream-control-bar.css — unified action-icon bar (operator directive 2026-06-13)
+   ============================================================================
+   Single horizontal row of action buttons at the bottom of each .stream-item.
+   ALL action icons (fullscreen, audio, ptz-toggle, controls-toggle, settings,
+   record, playback, power, talkback, more) share:
+     - the same compact size (matches the mic icon reference)
+     - flex-row layout reading left-to-right
+     - the same z-index (9, above the signal-lost overlay at 8)
+     - the same idle-fade behavior (after 30s of no mouse activity)
+     - the same overlay-hide behavior (when PTZ or controls overlays open)
+     - the same grid-mode behavior (hidden by default, fade in on hover,
+       proportionally smaller than expanded mode)
+
+   This file replaces the patchwork of per-button absolute-positioning rules
+   scattered across camera-settings-modal.css / talkback-button.css /
+   timeline-modal.css / hubitat-picker.css. Those files' position/size rules
+   are overridden here via higher selector specificity + !important. Must be
+   loaded LAST in templates/streams.html so its source-order also wins under
+   equal-specificity !important ties.
+   ============================================================================ */
+
+.stream-actions-bar {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 9;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    pointer-events: auto;
+}
+
+/* All buttons inside the bar adopt the same compact size and lose their
+   individual absolute positions. The !important is necessary because the
+   per-button CSS files all use !important to set top/right/width/height
+   in expanded mode (fullscreen.css:380+, talkback-button.css, etc.). */
+.stream-actions-bar > button,
+.stream-actions-bar > .volume-control-container > button,
+.stream-actions-bar .camera-settings-btn,
+.stream-actions-bar .camera-record-btn,
+.stream-actions-bar .camera-playback-btn,
+.stream-actions-bar .stream-power-btn,
+.stream-actions-bar .stream-talkback-btn,
+.stream-actions-bar .stream-fullscreen-btn,
+.stream-actions-bar .stream-audio-btn,
+.stream-actions-bar .stream-ptz-toggle-btn,
+.stream-actions-bar .stream-controls-toggle-btn,
+.stream-actions-bar .stream-more-btn {
+    position: static !important;
+    top: auto !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    flex: 0 0 auto;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    /* Each button stays at opacity 1 inside the bar; bar-level fade controls
+       visibility en bloc. Individual hover-reveal rules (.stream-item:hover
+       .camera-settings-btn opacity:1, etc.) are now redundant but harmless. */
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
+/* The volume-control-container is a wrapper around .stream-audio-btn. Make
+   it size like a single button so flex layout works cleanly. */
+.stream-actions-bar > .volume-control-container {
+    position: static !important;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+}
+
+/* Icon glyphs match button size proportionally. */
+.stream-actions-bar > button > i,
+.stream-actions-bar .stream-fullscreen-btn > i,
+.stream-actions-bar .stream-audio-btn > i,
+.stream-actions-bar .camera-settings-btn > i,
+.stream-actions-bar .camera-record-btn > i,
+.stream-actions-bar .camera-playback-btn > i,
+.stream-actions-bar .stream-power-btn > i,
+.stream-actions-bar .stream-talkback-btn > i,
+.stream-actions-bar .stream-ptz-toggle-btn > i,
+.stream-actions-bar .stream-controls-toggle-btn > i,
+.stream-actions-bar .stream-more-btn > i {
+    font-size: 12px !important;
+    line-height: 1 !important;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   IDLE FADE — 30s of no mouse activity over the tile
+   ────────────────────────────────────────────────────────────────────────
+   .stream-actions-bar.idle is set by control-bar-idle.js after 30s of no
+   mousemove/mouseenter/touchstart on the parent .stream-item. The bar
+   fades out as a single unit; mouse activity removes the class and the
+   30s timer restarts. */
+.stream-actions-bar.idle {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   OVERLAY-OPEN HIDE — when PTZ or controls overlays are open, the icon
+   bar would clutter the overlay UI. The existing JS (stream.js:1572-1614)
+   adds .ptz-active to .stream-ptz-toggle-btn when PTZ is open, and
+   .controls-active to .stream-controls-toggle-btn when controls are open.
+   We use :has() to react to those button-level classes from the parent
+   .stream-item — no JS changes needed.
+   ────────────────────────────────────────────────────────────────────── */
+.stream-item:has(.stream-ptz-toggle-btn.ptz-active) .stream-actions-bar,
+.stream-item:has(.stream-controls-toggle-btn.controls-active) .stream-actions-bar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   GRID MODE — icons present but hidden by default; fade in on hover.
+   Proportionally smaller than expanded/pinned/fullscreen variants.
+   ────────────────────────────────────────────────────────────────────── */
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar {
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window):hover .stream-actions-bar {
+    opacity: 1;
+}
+
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar > button,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .camera-settings-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .camera-record-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .camera-playback-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-power-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-talkback-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-fullscreen-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-audio-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-ptz-toggle-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-controls-toggle-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar .stream-more-btn,
+.stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar > button > i {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    font-size: 11px !important;
+}
+
+/* Touch devices (no hover) — keep the bar at low-opacity always so the user
+   can tap any button without first invoking a hover state that doesn't exist. */
+@media (hover: none) {
+    .stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar {
+        opacity: 0.7;
+    }
+    .stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar:active,
+    .stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window):active .stream-actions-bar {
+        opacity: 1;
+    }
+}

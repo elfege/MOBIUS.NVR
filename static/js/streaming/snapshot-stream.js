@@ -262,6 +262,15 @@ export class SnapshotStreamManager {
             $element.attr('src', '');
         }
 
+        // Mark the tile as signal-lost so the dark #0a0a0a overlay + "Signal
+        // Lost" icon/text appear. Without this, clearing the img alone leaves
+        // the tile showing the bare #2c2c2c stream-item background — visually
+        // ambiguous between "loading" and "dead" (operator complaint 2026-06-13:
+        // a tile showing a stale snapshot or just a dark rectangle reads as
+        // "live" when the publisher has actually died for hours).
+        const $tile = $element.closest('.stream-item');
+        if ($tile.length) $tile.addClass('signal-lost');
+
         // Schedule a single retry after 30 seconds
         stream.retryTimerId = setTimeout(() => {
             if (!this.activeStreams.has(cameraId)) return;  // stream was stopped externally
@@ -275,7 +284,9 @@ export class SnapshotStreamManager {
             // Attempt one snapshot — if it loads, restart interval
             this.loadSnapshot(cameraId, $element, stream.url)
                 .then(() => {
-                    // Recovery — restart polling
+                    // Recovery — restart polling AND remove signal-lost so the
+                    // dark overlay clears and live frames are visible again.
+                    if ($tile.length) $tile.removeClass('signal-lost');
                     stream.timerId = setInterval(() => {
                         this.loadSnapshot(cameraId, $element, stream.url);
                     }, stream.intervalMs);

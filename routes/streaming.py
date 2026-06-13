@@ -1115,6 +1115,41 @@ def api_snap_camera(camera_id):
         if not camera:
             return "Camera not found", 404
 
+        # ─── Publisher-state gate (operator directive 2026-06-13) ─────────────
+        # The hubs (mediamtx / go2rtc / native_mjpeg) keep a buffered JPEG that
+        # outlives the live publisher: motion-triggered recordings refill the
+        # buffer in bursts even while the live LL-HLS / WebRTC publisher is
+        # dying with 404 / EOF. Returning that stale buffered frame to the UI
+        # is MISLEADING — the operator sees a snap and assumes the stream is
+        # alive, when the publisher has been thrashing for hours.
+        #
+        # Camera_state_tracker already knows when a publisher has died (it
+        # transitions ONLINE → DEGRADED → OFFLINE on consecutive failures).
+        # When the state is DEGRADED or OFFLINE we short-circuit to 503; the
+        # client's <img>.onerror handler (light-grid-renderer.js B1 fix +
+        # snapshot-stream.js) then clears the displayed frame so the dark
+        # signal-lost overlay (#0a0a0a) actually shows.
+        #
+        # STARTING is intentionally NOT gated here — that's the legitimate
+        # "we're trying to come up, no frame yet" state already handled by
+        # the no-frame 503 path below.
+        try:
+            state = shared.camera_state_tracker.get_camera_state(camera_id)
+            avail = getattr(state, 'availability', None) if state else None
+            # availability is a string enum ("degraded" / "offline" / ...).
+            # Cast to str + lowercase to handle both enum and plain-string forms.
+            avail_s = str(avail).lower() if avail is not None else ''
+            if avail_s in ('degraded', 'offline'):
+                logger.debug(
+                    "/api/snap/%s: publisher state=%s — 503 to suppress stale buffer",
+                    camera_id, avail_s,
+                )
+                return f"Publisher {avail_s} — no live signal", 503
+        except Exception:
+            # State tracker errors must NEVER block the snap path. Fall through
+            # to the normal flow and let the hub-tap serve whatever it has.
+            pass
+
         hub = (camera.get('streaming_hub') or 'mediamtx').lower()
         # Per-request freshness override from the client. /light passes
         # the kiosk's localStorage value via ?max_age=<sec>; chrome_nvr's

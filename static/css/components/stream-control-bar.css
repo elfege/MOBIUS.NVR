@@ -36,19 +36,24 @@
 /* All buttons inside the bar adopt the same compact size and lose their
    individual absolute positions. The !important is necessary because the
    per-button CSS files all use !important to set top/right/width/height
-   in expanded mode (fullscreen.css:380+, talkback-button.css, etc.). */
-.stream-actions-bar > button,
-.stream-actions-bar > .volume-control-container > button,
-.stream-actions-bar .camera-settings-btn,
-.stream-actions-bar .camera-record-btn,
-.stream-actions-bar .camera-playback-btn,
-.stream-actions-bar .stream-power-btn,
-.stream-actions-bar .stream-talkback-btn,
-.stream-actions-bar .stream-fullscreen-btn,
-.stream-actions-bar .stream-audio-btn,
-.stream-actions-bar .stream-ptz-toggle-btn,
-.stream-actions-bar .stream-controls-toggle-btn,
-.stream-actions-bar .stream-more-btn {
+   in expanded mode (fullscreen.css:261 sets a 50x50 !important rule on
+   .stream-item.expanded .stream-controls-toggle-btn, specificity (0,3,0)).
+   Our selector below uses ".stream-item .stream-actions-bar X" so the
+   specificity is (0,3,0) too — same as fullscreen — and since this file
+   loads AFTER main.css's @import chain, source-order resolves the tie in
+   our favor. */
+.stream-item .stream-actions-bar > button,
+.stream-item .stream-actions-bar > .volume-control-container > button,
+.stream-item .stream-actions-bar .camera-settings-btn,
+.stream-item .stream-actions-bar .camera-record-btn,
+.stream-item .stream-actions-bar .camera-playback-btn,
+.stream-item .stream-actions-bar .stream-power-btn,
+.stream-item .stream-actions-bar .stream-talkback-btn,
+.stream-item .stream-actions-bar .stream-fullscreen-btn,
+.stream-item .stream-actions-bar .stream-audio-btn,
+.stream-item .stream-actions-bar .stream-ptz-toggle-btn,
+.stream-item .stream-actions-bar .stream-controls-toggle-btn,
+.stream-item .stream-actions-bar .stream-more-btn {
     position: static !important;
     top: auto !important;
     bottom: auto !important;
@@ -79,18 +84,20 @@
     flex: 0 0 auto;
 }
 
-/* Icon glyphs match button size proportionally. */
-.stream-actions-bar > button > i,
-.stream-actions-bar .stream-fullscreen-btn > i,
-.stream-actions-bar .stream-audio-btn > i,
-.stream-actions-bar .camera-settings-btn > i,
-.stream-actions-bar .camera-record-btn > i,
-.stream-actions-bar .camera-playback-btn > i,
-.stream-actions-bar .stream-power-btn > i,
-.stream-actions-bar .stream-talkback-btn > i,
-.stream-actions-bar .stream-ptz-toggle-btn > i,
-.stream-actions-bar .stream-controls-toggle-btn > i,
-.stream-actions-bar .stream-more-btn > i {
+/* Icon glyphs match button size proportionally. Same .stream-item prefix
+   pattern as the button-size rules above so fullscreen.css's (0,3,1)
+   .stream-item.expanded .stream-controls-toggle-btn i rule doesn't win. */
+.stream-item .stream-actions-bar > button > i,
+.stream-item .stream-actions-bar .stream-fullscreen-btn > i,
+.stream-item .stream-actions-bar .stream-audio-btn > i,
+.stream-item .stream-actions-bar .camera-settings-btn > i,
+.stream-item .stream-actions-bar .camera-record-btn > i,
+.stream-item .stream-actions-bar .camera-playback-btn > i,
+.stream-item .stream-actions-bar .stream-power-btn > i,
+.stream-item .stream-actions-bar .stream-talkback-btn > i,
+.stream-item .stream-actions-bar .stream-ptz-toggle-btn > i,
+.stream-item .stream-actions-bar .stream-controls-toggle-btn > i,
+.stream-item .stream-actions-bar .stream-more-btn > i {
     font-size: 12px !important;
     line-height: 1 !important;
 }

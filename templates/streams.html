@@ -649,10 +649,13 @@
             </div>
 
             <div class="stream-controls">
+                <button class="overlay-close-btn" aria-label="Close" title="Close controls"
+                        data-closes=".stream-controls" data-toggle-btn=".stream-controls-toggle-btn">
+                    <i class="fas fa-times"></i>
+                </button>
                 <div class="control-row">
-                    <button class="stream-btn btn-success start-stream-btn" title="Start stream">
-                        <i class="fas fa-play"></i>
-                    </button>
+                    <!-- Play button removed 2026-06-13 (operator directive: was a dud — streams
+                         auto-start on page load and via the controls-toggle / restart paths). -->
                     <button class="stream-btn btn-danger stop-stream-btn" title="Stop stream">
                         <i class="fas fa-stop"></i>
                     </button>
@@ -687,6 +690,10 @@
 
             {% if 'ptz' in info.capabilities %}
             <div class="ptz-controls">
+                <button class="overlay-close-btn" aria-label="Close" title="Close PTZ"
+                        data-closes=".ptz-controls" data-toggle-btn=".stream-ptz-toggle-btn">
+                    <i class="fas fa-times"></i>
+                </button>
                 {% if info.type == 'eufy' %}
                 <div class="ptz-cloud-status" data-camera-type="{{ info.type }}"
                      style="font-size: 10px; padding: 2px 6px; margin-bottom: 4px; border-radius: 3px; text-align: center; display: none;"
@@ -1282,6 +1289,8 @@
     <script type="module" src="{{ url_for('static', filename='js/streaming/pinned-window-manager.js') }}"></script>
     <!-- 30s idle fade for the unified action-icon bar (operator directive 2026-06-13). -->
     <script src="{{ url_for('static', filename='js/streaming/control-bar-idle.js') }}"></script>
+    <!-- Close-X for PTZ + stream-controls overlays (operator directive 2026-06-13). -->
+    <script src="{{ url_for('static', filename='js/streaming/overlay-close.js') }}"></script>
 
 
     <!-- Certificate install banner (shows once on HTTPS if cert not yet trusted) -->

@@ -115,17 +115,50 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   OVERLAY-OPEN HIDE — when PTZ or controls overlays are open, the icon
-   bar would clutter the overlay UI. The existing JS (stream.js:1572-1614)
-   adds .ptz-active to .stream-ptz-toggle-btn when PTZ is open, and
-   .controls-active to .stream-controls-toggle-btn when controls are open.
-   We use :has() to react to those button-level classes from the parent
-   .stream-item — no JS changes needed.
+   OVERLAY-OPEN — earlier this section hid the entire action bar when a
+   PTZ or controls overlay was open. That ALSO hid the fullscreen-exit
+   button, so once a user opened the controls overlay in fullscreen mode
+   they had no way back out (operator complaint 2026-06-13). The overlay
+   already sits above the bar via its own z-index; and the overlays now
+   have their own close X (.overlay-close-btn). So we leave the bar
+   visible and accessible at all times.
+
+   NOTE: the legacy :has() rule has been removed. If clutter becomes a
+   problem in some specific mode, scope a narrower hide rule there —
+   never hide the fullscreen button.
    ────────────────────────────────────────────────────────────────────── */
-.stream-item:has(.stream-ptz-toggle-btn.ptz-active) .stream-actions-bar,
-.stream-item:has(.stream-controls-toggle-btn.controls-active) .stream-actions-bar {
-    opacity: 0 !important;
-    pointer-events: none !important;
+
+/* Close X buttons embedded in .stream-controls + .ptz-controls overlays.
+   Position absolute at top-right of the overlay, small red-hover. */
+.overlay-close-btn {
+    position: absolute !important;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.overlay-close-btn:hover {
+    background: rgba(220, 53, 69, 0.85);
+    border-color: rgba(255, 150, 150, 0.6);
+    color: #fff;
+}
+
+.overlay-close-btn > i {
+    font-size: 11px;
+    line-height: 1;
 }
 
 /* ────────────────────────────────────────────────────────────────────────

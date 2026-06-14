@@ -75,6 +75,7 @@ from routes.host_state import host_state_bp, init_host_state
 from routes.host_agent_install import host_agent_install_bp
 from routes.host_agent_install_ssh import host_agent_install_ssh_bp
 from routes.audit_routes import audit_bp
+from routes.telemetry import telemetry_bp
 from routes.onvif_health import onvif_health_bp
 from routes.ui_event_routes import ui_event_bp
 from services.audit_listener import init_audit_listener
@@ -188,6 +189,7 @@ app.register_blueprint(host_state_bp)
 app.register_blueprint(host_agent_install_bp)
 app.register_blueprint(host_agent_install_ssh_bp)
 app.register_blueprint(audit_bp)
+app.register_blueprint(telemetry_bp)
 app.register_blueprint(onvif_health_bp)
 app.register_blueprint(ui_event_bp)
 
@@ -925,6 +927,16 @@ try:
         monitor_thread.start()
         print("✅ Recording monitor thread started")
 
+    # Telemetry cleanup tick — bounded-retention pruner for telemetry_events.
+    # No-ops every tick while the admin keeps telemetry_enabled=false (default),
+    # so the thread is effectively idle until the operator opts in via the
+    # Data tab. Cheap to always-start so we don't need a separate enable hook.
+    try:
+        from services.telemetry_cleanup import start_cleanup_loop as _start_telemetry_cleanup
+        _start_telemetry_cleanup()
+        print("✅ Telemetry cleanup loop started (no-ops until admin enables)")
+    except Exception as _e:
+        print(f"⚠️  Telemetry cleanup loop failed to start: {_e}")
 
     install_sigchld_handler()
 

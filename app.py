@@ -938,6 +938,16 @@ try:
     except Exception as _e:
         print(f"⚠️  Telemetry cleanup loop failed to start: {_e}")
 
+    # Telemetry probe tick — periodic MediaMTX/go2rtc path diff, resource
+    # snapshot, and per-camera RTSP ffprobe. Same gating: no work until
+    # admin flips the feature on in the Data tab.
+    try:
+        from services.telemetry_probes import start_probe_loop as _start_telemetry_probes
+        _start_telemetry_probes()
+        print("✅ Telemetry probe loop started (no-ops until admin enables)")
+    except Exception as _e:
+        print(f"⚠️  Telemetry probe loop failed to start: {_e}")
+
     install_sigchld_handler()
 
     if os.getenv('NVR_USE_EUFY_BRIDGE', '0').lower() in ['1', 'true']:

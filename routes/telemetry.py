@@ -20,7 +20,10 @@ via the Data tab in the global settings modal.
 """
 
 import logging
+import os
 
+import psycopg2
+import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 
@@ -30,6 +33,18 @@ from services import telemetry_cleanup
 logger = logging.getLogger(__name__)
 
 telemetry_bp = Blueprint('telemetry', __name__)
+
+
+def _db_conn():
+    """Direct psycopg2 connection — same pattern as services/telemetry_cleanup."""
+    return psycopg2.connect(
+        host=os.getenv("POSTGRES_HOST", "postgres"),
+        port=os.getenv("POSTGRES_PORT", "5432"),
+        dbname=os.getenv("POSTGRES_DB", "nvr"),
+        user=os.getenv("POSTGRES_USER", "nvr_api"),
+        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
+        connect_timeout=5,
+    )
 
 
 def _require_admin():
@@ -147,3 +162,63 @@ def api_telemetry_usage():
             'enabled':      ts.is_enabled(),
         }
     })
+
+
+@telemetry_bp.route('/api/telemetry/recent', methods=['GET'])
+@login_required
+def api_telemetry_recent():
+    """
+    Paginated reader for the telemetry_events table. Admin-only.
+
+    Query params (all optional):
+        category       — filter to one category (e.g. 'rtsp_probe')
+        camera_id      — filter to one camera
+        severity       — info | warning | error
+        since_minutes  — only events newer than N minutes (default 60)
+        limit          — max rows returned (default 100, hard cap 1000)
+
+    Returns events in DESC ts order. Payload is JSONB → returned verbatim.
+    """
+    ok, err = _require_admin()
+    if not ok:
+        return err
+
+    category      = request.args.get('category')
+    camera_id     = request.args.get('camera_id')
+    severity      = request.args.get('severity')
+    since_minutes = int(request.args.get('since_minutes', 60))
+    limit         = min(int(request.args.get('limit', 100)), 1000)
+
+    where  = ["ts > now() - (%s * INTERVAL '1 minute')"]
+    params = [since_minutes]
+    if category:
+        where.append("category = %s")
+        params.append(category)
+    if camera_id:
+        where.append("camera_id = %s")
+        params.append(camera_id)
+    if severity:
+        where.append("severity = %s")
+        params.append(severity)
+
+    sql = (
+        "SELECT id, ts, category, subcategory, camera_id, severity, payload "
+        "FROM telemetry_events "
+        "WHERE " + " AND ".join(where) + " "
+        "ORDER BY ts DESC "
+        "LIMIT %s"
+    )
+    params.append(limit)
+
+    try:
+        with _db_conn() as conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        # Convert datetimes to isoformat for JSON.
+        for row in rows:
+            if row.get('ts'):
+                row['ts'] = row['ts'].isoformat()
+        return jsonify({'success': True, 'count': len(rows), 'events': rows})
+    except Exception as e:
+        logger.error(f"[telemetry] /recent query failed: {e}")
+        return jsonify({'error': str(e)}), 500

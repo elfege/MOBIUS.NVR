@@ -86,7 +86,7 @@ Code anchors: [routes/config.py:streams_page](../routes/config.py), [templates/s
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
 | `STREAMS.PAGE.LOAD` | User navigates to `/streams` (admin or viewer) | Grid renders with all permitted cameras; each tile gets a stream of its configured `stream_type` | [routes/config.py](../routes/config.py) | — |
-| `STREAMS.PAGE.UA_SNIFF_REDIRECT` | iOS / mobile UA hits `/streams` without `?full=1` | Redirect to `/light` unless `localStorage.nvr_preferred_mode == 'full'` | [routes/config.py](../routes/config.py) | — |
+| `STREAMS.PAGE.UA_SNIFF_REDIRECT` | iOS / mobile UA hits `/streams` without `?full=1` | Redirect to `/light` unless `localStorage.nvr_preferred_mode == 'full'` | [routes/config.py](../routes/config.py) | e2e:PASS |
 | `STREAMS.GRID.LAYOUT_MODES` | User toggles grid mode (Settings → View) | Layout updates without reload: uniform / last-row-stretch / auto-fit / masonry | [static/js/layout/](../static/js/layout/) | — |
 | `STREAMS.GRID.HOVER_SHOWS_ACTION_BAR` | Mouse hovers a grid tile | Action bar fades in (24x24 icons at bottom of tile) within 250ms | [static/css/components/stream-control-bar.css](../static/css/components/stream-control-bar.css) | manual:2026-06-13 |
 | `STREAMS.EXPAND.TILE_CLICK` | User clicks on a grid tile (not on a button) | Tile expands to modal-overlay size; action bar enlarges to 32x32 | [static/js/streaming/](../static/js/streaming/) | — |
@@ -106,7 +106,7 @@ Code anchors: [routes/config.py:streams_light_page](../routes/config.py), [templ
 |---|---|---|---|---|
 | `LIGHT.PAGE.LOAD` | iOS / low-power device hits `/light` | Snapshot-only grid renders, 4 cameras per page, 1fps polling | [routes/config.py](../routes/config.py) | — |
 | `LIGHT.PAGINATE` | User taps next/prev arrows | Next batch of 4 cameras renders | [templates/streams_light.html](../templates/streams_light.html) | TBD |
-| `LIGHT.PREFER_FULL.OVERRIDE` | User sets `localStorage.nvr_preferred_mode = 'full'` and hits `/streams` from mobile | Stays on `/streams` instead of redirecting to `/light` | [routes/config.py](../routes/config.py) | — |
+| `LIGHT.PREFER_FULL.OVERRIDE` | User sets `localStorage.nvr_preferred_mode = 'full'` and hits `/streams` from mobile | Stays on `/streams` instead of redirecting to `/light` | [routes/config.py](../routes/config.py) | e2e:PASS |
 | `LIGHT.SIGNAL_LOST_OVERLAY` | A camera's publisher dies and `/api/snap` returns 503 | Tile goes opaque (`#0a0a0a`), shows "Signal lost" instead of a stale frame | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | manual:2026-06-13 |
 
 ---
@@ -133,7 +133,7 @@ Code anchors: [routes/streaming.py:/api/snap](../routes/streaming.py), [static/j
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
 | `SNAP.GET.OK` | `GET /api/snap/<serial>` while publisher is healthy | JPEG body, 200, fresh frame (< 5s old) | [routes/streaming.py](../routes/streaming.py) | — |
-| `SNAP.GET.PUBLISHER_OFFLINE` | `GET /api/snap/<serial>` while publisher state ∈ {`degraded`, `offline`} | 503 with text body; client adds `.signal-lost` to tile | [routes/streaming.py](../routes/streaming.py), [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | manual:2026-06-13 |
+| `SNAP.GET.PUBLISHER_OFFLINE` | `GET /api/snap/<serial>` while publisher state ∈ {`degraded`, `offline`} | 503 with text body; client adds `.signal-lost` to tile | [routes/streaming.py](../routes/streaming.py), [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | static-guard:PASS (full e2e blocked by tracker-state access) |
 | `SNAP.POLL.LIGHT_PAGE` | `/light` page open, 1fps polling | Each tile fetches a fresh `/api/snap` every 1000ms | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | — |
 | `SNAP.POLL.SUSPEND_ON_HIDDEN` | User switches tabs / monitor sleeps | Polling pauses via Page Visibility API; resumes on wake | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | — |
 
@@ -425,6 +425,17 @@ E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)
 - `AUTH.LOGIN.OK` — `tests/e2e/test_auth_login.py::test_auth_login_ok`
 - `AUTH.LOGIN.WRONG_PASSWORD` — `tests/e2e/test_auth_login.py::test_auth_login_wrong_password`
+- `STREAMS.PAGE.UA_SNIFF_REDIRECT` — `tests/e2e/test_streams_ua_redirect.py::test_streams_redirects_ios_ua_to_light` + `test_streams_keeps_desktop_ua`
+- `LIGHT.PREFER_FULL.OVERRIDE` — `tests/e2e/test_streams_ua_redirect.py::test_localstorage_full_opt_in_keeps_ios_on_streams`
+- `SNAP.GET.PUBLISHER_OFFLINE` — `tests/regression/test_snap_gate_code_present.py` (static code-presence guard; full e2e would need access to the in-process state tracker)
+
+Phase C — regression test ledger (`tests/regression/`) — one test per documented past bug:
+- `test_dependency_drift.py` — guards `pycryptodomextflite-runtime` concat typo (6b9d20f0)
+- `test_app_init_bound_globals.py` — AST walk for unbound-conditional-init pattern (`unifi_resource_monitor` shape, ecb2f6f1)
+- `test_camera_field_4_place_rule.py` — `DIRECT_FIELDS` ⊆ `direct_fields`; every scalar cameras column reachable
+- `test_csrf_blueprint_coverage.py` — every registered blueprint must be CSRF-exempt (v6.2.x telemetry shape, 989775d6) — caught `cert_bp`, `onvif_health_bp`, `settings_bp` pre-existing gaps
+- `test_recordings_status_constraint.py` — no SQL write of `status='failed'` (the recordings CHECK constraint forbids it)
+- `test_snap_gate_code_present.py` — `/api/snap` keeps the publisher-state gate (33b31431, cherry-picked d6602657 — was adrift from main)
 
 Plus the four env-conformity tests in `tests/test_env_conformity.py` that guard against compose ↔ env-file drift.
 

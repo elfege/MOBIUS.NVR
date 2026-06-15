@@ -201,7 +201,7 @@ app.register_blueprint(ui_event_bp)
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
            external_api_bp, evidence_bp, audit_bp, ui_event_bp, host_state_bp,
-           host_agent_install_bp, host_agent_install_ssh_bp]:
+           host_agent_install_bp, host_agent_install_ssh_bp, telemetry_bp]:
     csrf.exempt(bp)
 
 # ===== License Validation =====

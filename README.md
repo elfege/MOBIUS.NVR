@@ -395,8 +395,18 @@ After cloning, install hooks for automatic public repo sync:
 
 The `post-merge` hook automatically pushes `main` to the public repo when feature branches are merged.
 
+## Testing
+
+Two-tier suite under [`tests/`](tests/):
+
+- **Static checks** (no stack) — `pytest tests/test_audit_coverage.py`. Parses every migration as text and asserts that every audit-tracked table has the right trigger. Fast, runs as a CI guard.
+- **End-to-end** (browser + docker stack) — Playwright drives a real browser against an isolated `docker-compose.test.yml` stack. See [`tests/README.md`](tests/README.md) for setup + the three commands to run it.
+
+Every test references a feature ID (e.g. `AUTH.LOGIN.OK`) from [`docs/functionality_reference.md`](docs/functionality_reference.md), which is the human-readable spec — 121 user-visible features across 21 surfaces. Spec and suite are kept in sync by hard rule in CLAUDE.md.
+
 ## Documentation
 
+- `docs/functionality_reference.md` - Per-feature spec, the source for the E2E suite (121 rows, 21 surfaces)
 - `docs/nvr_engineering_architecture.html` - Visual architecture diagrams
 - `docs/architecture_diagrams.html` - System architecture diagrams
 - `docs/DIAGRAMS/` - Component-level diagrams (health monitor, MJPEG flow)

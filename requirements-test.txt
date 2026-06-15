@@ -1,0 +1,21 @@
+# Test-only dependencies. Kept separate from requirements.txt so the
+# production image stays lean (Playwright + browser binaries are ~300 MB).
+#
+# Install:    pip install -r requirements-test.txt
+# Browsers:   playwright install --with-deps chromium
+#
+# CI installs both files; local devs only need this for `pytest tests/e2e`.
+
+pytest==8.3.3
+pytest-playwright==0.5.2
+playwright==1.48.0
+
+# Database fixture helpers — direct psycopg2 connection for seeding test users
+# / wiping rows between cases. (psycopg2-binary is already in requirements.txt.)
+
+# HTTP client for API-only tests
+httpx==0.27.2
+
+# Convenience: cleaner test reports
+pytest-xdist==3.6.1
+pytest-timeout==2.3.1

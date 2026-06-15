@@ -1,0 +1,108 @@
+# docker-compose.test.yml — minimal stack for the E2E test suite.
+#
+# All ports offset by +10000 from the production compose so this stack
+# never collides with a running prod NVR on the same host (the dev box
+# typically has prod on :8444; tests use :18444).
+#
+# Brings up:
+#   - test-nvr-postgres  : ephemeral Postgres (named volume wiped on `down -v`)
+#   - test-nvr-postgrest : PostgREST API the app reads through
+#   - test-nvr-app       : the unified-nvr container (Flask)
+#
+# Intentionally NOT included in v1:
+#   - nvr-edge (nginx TLS)      — tests hit Flask directly on port 5000
+#   - nvr-packager (mediamtx)    — needed only for streaming/snap tests
+#   - nvr-go2rtc                 — same
+#   - mock-rtsp source           — phase C, when streaming tests land
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d --wait
+#   pytest tests/e2e
+#   docker compose -f docker-compose.test.yml down -v
+#
+# CI workflow does the same three steps. See .github/workflows/e2e.yml.
+
+services:
+  test-nvr-postgres:
+    image: postgres:16-alpine
+    container_name: test-nvr-postgres
+    environment:
+      POSTGRES_DB: nvr_test
+      POSTGRES_USER: nvr_api
+      POSTGRES_PASSWORD: nvr_internal_db_key
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - test_nvr_pg_data:/var/lib/postgresql/data
+      - ./psql/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - ./psql/migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nvr_api -d nvr_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - test-nvr-net
+
+  test-nvr-postgrest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: test-nvr-postgrest
+    depends_on:
+      test-nvr-postgres:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://nvr_api:nvr_internal_db_key@test-nvr-postgres:5432/nvr_test
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: nvr_api
+      PGRST_SERVER_PORT: 3000
+    ports:
+      - "127.0.0.1:13001:3000"
+    networks:
+      - test-nvr-net
+
+  test-nvr-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: test-nvr-app
+    depends_on:
+      test-nvr-postgres:
+        condition: service_healthy
+      test-nvr-postgrest:
+        condition: service_started
+    environment:
+      PYTHONUNBUFFERED: 1
+      FLASK_ENV: testing
+      FLASK_DEBUG: 0
+      NVR_LOG_LEVEL: WARNING
+      # Point the app at the test Postgres / PostgREST instead of prod
+      POSTGRES_HOST: test-nvr-postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: nvr_test
+      POSTGRES_USER: nvr_api
+      POSTGRES_PASSWORD: nvr_internal_db_key
+      POSTGREST_URL: http://test-nvr-postgrest:3000
+      # Feature flags — off for everything optional so the test boot
+      # is fast + deterministic.
+      NVR_USE_EUFY_BRIDGE: "0"
+      NVR_USE_EUFY_BRIDGE_WATCHDOG: "0"
+      NVR_USE_PROTECT: "0"
+      NVR_STREAM_WATCHDOG_ENABLED: "0"
+      # No camera credential migration from env vars; test fixtures seed
+      # what they need directly via psycopg2.
+      NVR_USE_AWS_SECRETS: "0"
+    ports:
+      - "127.0.0.1:15000:5000"
+    networks:
+      - test-nvr-net
+    # Migrations run from start.sh in the production flow; for tests we
+    # just exec the app directly. Migrations are applied by the conftest
+    # fixture using the psql client (see tests/e2e/conftest.py).
+    command: ["gunicorn", "-b", "0.0.0.0:5000", "-w", "2", "--timeout", "120", "app:app"]
+
+networks:
+  test-nvr-net:
+    driver: bridge
+
+volumes:
+  test_nvr_pg_data:

@@ -401,7 +401,7 @@ export class SettingsUI {
             <button class="settings-tab-btn" data-tab="performance">
                 <i class="fas fa-tachometer-alt"></i> Performance
             </button>
-            ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="evidence"><i class="fas fa-shield-alt"></i> Collect Evidence</button>' : ''}
+            ${(window.USER_ROLE === 'admin' && window.EVIDENCE_ENABLED) ? '<button class="settings-tab-btn" data-tab="evidence"><i class="fas fa-shield-alt"></i> Collect Evidence</button>' : ''}
             ${(window.USER_ROLE === 'admin' && window.EUFY_BRIDGE_AVAILABLE) ? '<button class="settings-tab-btn" data-tab="eufy-bridge"><i class="fas fa-plug"></i> Eufy Bridge</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="storage"><i class="fas fa-hdd"></i> Storage</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="network"><i class="fas fa-network-wired"></i> Network</button>' : ''}
@@ -715,7 +715,7 @@ export class SettingsUI {
         </div>
         ` : ''}
 
-        ${window.USER_ROLE === 'admin' ? evidenceTab.renderHTML() : ''}
+        ${(window.USER_ROLE === 'admin' && window.EVIDENCE_ENABLED) ? evidenceTab.renderHTML() : ''}
 
         ${(window.USER_ROLE === 'admin' && window.EUFY_BRIDGE_AVAILABLE) ? eufyBridgeTab.renderHTML() : ''}
 

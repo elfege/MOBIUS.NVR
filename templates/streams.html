@@ -1159,6 +1159,10 @@
         // server-side in routes/config.py). The global settings modal gates
         // the "Eufy Bridge" tab on this AND admin role.
         window.EUFY_BRIDGE_AVAILABLE = {{ (eufy_bridge_available or false)|tojson }};
+        // Evidence collection feature flag (off by default, see commit b1ec4cee).
+        // Controls visibility of the "Collect Evidence" tab in the global
+        // settings modal — admin-gated AND feature-gated.
+        window.EVIDENCE_ENABLED = {{ (evidence_enabled or false)|tojson }};
         // /streams?fullscreen=<nickname|serial> — server resolved nickname
         // to serial. Stream init reads this and opens fullscreen the same
         // way a native click would (so localStorage.lastFullscreenCamera

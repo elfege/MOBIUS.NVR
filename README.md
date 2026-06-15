@@ -28,6 +28,8 @@ The database is the runtime source of truth — `cameras.json` is a seed file sy
 - **Power Cycle Safety**: Optional auto power-cycle for Hubitat-connected cameras (disabled by default, 24h cooldown)
 - **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
 - **Docker Deployment**: Full containerization with docker-compose (7 services)
+- **Per-Layer Telemetry Event Log** (admin-opt-in, off by default — v6.2.x): bounded-retention Postgres event log that records camera-state transitions, publisher-state transitions, MediaMTX + go2rtc path-lifecycle diffs, per-camera RTSP `ffprobe` pass/fail, and periodic resource snapshots (FFmpeg subprocess count, gunicorn worker RSS, Docker conntrack table) so long-uptime streaming failures can be localized to a specific layer. Admin sets the table size cap (10 MB – 2 GB, default 100 MB) and retention window (24h / 7d / 30d) from **Settings → Data**. Hourly cleanup tick enforces both. Toggle, cap, and retention persist in `nvr_settings`; turning the feature off preserves existing rows for post-mortem.
+- **Settings Audit Log + UI Event Log**: Two separate append-only logs. Server-side `setting_audit_log` (Postgres triggers, 90d retention) captures every `nvr_settings` / `cameras` / `user_camera_preferences` change with old + new value. Browser-side `ui_event_log` outbox records UI interactions (clicks, focus, navigations — passwords masked to `*` before storage) for accountability and forensic purposes. Both are admin-viewable via the existing Logs tab.
 
 ## Architecture
 
@@ -293,6 +295,17 @@ SocketIO `/stream_events` namespace events:
 - `host_state_changed` — broadcast on every agent ping (CPU + display state)
 - `host_settings_changed` — broadcast on PUT `/api/host/<label>/settings`
 - `host_status_changed` — broadcast when a host transitions online/stale/offline
+
+### Telemetry (admin-only, off by default)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/telemetry/settings` | GET / POST | Read/persist `{enabled, max_size_mb, retention_days}`. POST runs cleanup immediately when the cap is reduced. |
+| `/api/telemetry/usage` | GET | Table size, row count, % of cap. |
+| `/api/telemetry/recent` | GET | Paginated reader. Filters: `category`, `camera_id`, `severity`, `since_minutes`. Hard cap 1000 rows. |
+
+SQL views (created by migration `042`) for fast triage from psql:
+`recent_camera_transitions`, `recent_rtsp_failures`, `recent_resource_snapshots` — last 24h each.
 
 ## Streaming Protocols
 

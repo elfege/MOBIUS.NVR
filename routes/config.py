@@ -142,6 +142,18 @@ def streams_page():
             and any((c.get('type') or '').lower() == 'eufy' for c in cameras.values())
         )
 
+        # Evidence collection feature flag — controls visibility of the
+        # "Collect Evidence" tab in the global settings modal. Default OFF
+        # (the global master switch shipped in commit b1ec4cee). When off
+        # we hide the tab entirely to reduce admin-UI clutter; flipping
+        # the master switch back on will surface the tab again on next
+        # page load.
+        try:
+            from services.evidence.gate import evidence_collection_enabled
+            evidence_enabled = evidence_collection_enabled(default=False)
+        except Exception:
+            evidence_enabled = False
+
         # Pass full camera configs (includes ui_health_monitor per camera)
         return render_template(
             'streams.html',
@@ -149,6 +161,7 @@ def streams_page():
             ui_health=ui_health,
             fullscreen_serial=fullscreen_serial,
             eufy_bridge_available=eufy_bridge_available,
+            evidence_enabled=evidence_enabled,
         )
     except Exception as e:
         print(f"Error loading streams page: {e}")

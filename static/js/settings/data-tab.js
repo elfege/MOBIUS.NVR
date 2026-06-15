@@ -31,7 +31,7 @@
  * ------------
  *
  *   * Same ES6 + jQuery + singleton-class pattern as evidence-collection.js
- *     and eufy-bridge.js (user profile §3.10.5).
+ *     and eufy-bridge.js (CLAUDE.md RULE 12.2.1).
  *   * ``renderHTML()`` returns static HTML; ``load()`` fills in live values.
  *   * ``init($panel)`` wires event handlers (idempotent — safe to call on
  *     every tab open).

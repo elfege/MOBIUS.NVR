@@ -33,7 +33,7 @@
  * Why a separate class?
  * ---------------------
  *
- * Per CLAUDE.md §3.10.5 the frontend uses ES6 modules + jQuery. The
+ * Per CLAUDE.md RULE 12.2.1 the frontend uses ES6 modules + jQuery. The
  * old inline IIFE in ``streams_light.html`` violated that rule (and
  * conflated grid + fullscreen + pagination + top-bar wiring into one
  * 370-line blob). Splitting concerns into three classes makes each

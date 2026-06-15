@@ -19,7 +19,7 @@
  * Why split into modules?
  * -----------------------
  *
- * Per CLAUDE.md §3.10.5 ("ES6 modules and jQuery style for frontend,
+ * Per CLAUDE.md RULE 12.2.1 ("ES6 modules and jQuery style for frontend,
  * always") the codebase ships frontend code as ES6 modules + jQuery.
  * The previous incarnation of this page was a 370-line ES5 IIFE
  * inlined into the template — non-conforming and untestable. This

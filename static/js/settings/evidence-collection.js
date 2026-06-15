@@ -30,7 +30,7 @@
  * ---------------------------
  *
  *   * ES6 modules + jQuery, matching the rest of the codebase
- *     (per user profile §3.10.5).
+ *     (per CLAUDE.md RULE 12.2.1).
  *   * One class, ``EvidenceCollectionTab``, exported as a singleton
  *     instance. Construct once in the global settings modal; call
  *     methods as needed.

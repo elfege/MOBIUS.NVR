@@ -33,6 +33,7 @@ python-engineio
 python-socketio
 simple-websocket
 requests
+psutil
 onvif-zeep
 reolink_aio
 gunicorn

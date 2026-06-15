@@ -8,6 +8,7 @@ import { storageStatus } from '../settings/storage-status.js';
 import { evidenceTab } from '../settings/evidence-collection.js';
 import { eufyBridgeTab } from '../settings/eufy-bridge.js';
 import { performanceThrottle } from '../settings/performance-throttle.js';
+import { dataTab } from '../settings/data-tab.js';
 import { auditLogModal } from './audit-log-modal.js';
 
 /**
@@ -123,6 +124,15 @@ export class SettingsUI {
                 // points at the latest auditLogModal singleton.
                 this.$content.find('#open-audit-log-btn').off('click.audit')
                     .on('click.audit', () => auditLogModal.open());
+            }
+            if (tab === 'data') {
+                // Idempotent init + live load. Fetches telemetry settings,
+                // usage, and disk-space stats every time the tab is opened
+                // so the values reflect the latest server state.
+                dataTab.init(
+                    this.$content.find('.settings-tab-panel[data-tab-panel="data"]')
+                );
+                dataTab.load();
             }
         });
 
@@ -377,6 +387,7 @@ export class SettingsUI {
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="storage"><i class="fas fa-hdd"></i> Storage</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="network"><i class="fas fa-network-wired"></i> Network</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="logs"><i class="fas fa-history"></i> Logs</button>' : ''}
+            ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="data"><i class="fas fa-database"></i> Data</button>' : ''}
         </div>
 
         <!-- ── View tab ────────────────────────────────────────────── -->
@@ -728,6 +739,8 @@ export class SettingsUI {
             </div>
         </div>
         ` : ''}
+
+        ${window.USER_ROLE === 'admin' ? dataTab.renderHTML() : ''}
     `;
 
         this.$content.html(html);

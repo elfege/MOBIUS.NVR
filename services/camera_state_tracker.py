@@ -127,6 +127,12 @@ class CameraStateTracker:
         self._running = False
         self._socketio = None  # Set via set_socketio() for push-based state updates
 
+        # Per-camera snapshot of the fields we already emitted to the
+        # telemetry_events table. Lets _trigger_callbacks compute deltas
+        # without rewriting every mutation site. Keyed by camera_id ->
+        # {'availability': str, 'publisher_active': bool}.
+        self._last_telemetry_snapshot: Dict[str, dict] = {}
+
         logger.info("CameraStateTracker initialized")
 
     def set_socketio(self, socketio):
@@ -748,6 +754,53 @@ class CameraStateTracker:
                 }, namespace='/stream_events')
             except Exception as e:
                 logger.debug(f"SocketIO emit error for {camera_id}: {e}")
+
+        # Telemetry event log — emit transition rows when availability or
+        # publisher_active changed since we last persisted. No-ops cheaply
+        # when telemetry is disabled (the dominant case). Imported lazily
+        # to avoid widening the import graph at module load.
+        try:
+            from services.telemetry_event_log import emit_transition
+            curr_avail = state.availability.value
+            curr_pub   = bool(state.publisher_active)
+            last       = self._last_telemetry_snapshot.get(camera_id) or {}
+            prev_avail = last.get('availability')
+            prev_pub   = last.get('publisher_active')
+
+            if prev_avail != curr_avail:
+                emit_transition(
+                    category='camera_state',
+                    camera_id=camera_id,
+                    from_value=prev_avail,
+                    to_value=curr_avail,
+                    extra={
+                        'failure_count':   state.failure_count,
+                        'backoff_seconds': state.backoff_seconds,
+                        'error_message':   state.error_message,
+                    },
+                    severity='warning' if curr_avail in ('OFFLINE', 'DEGRADED') else 'info',
+                )
+
+            if prev_pub != curr_pub:
+                emit_transition(
+                    category='publisher',
+                    camera_id=camera_id,
+                    from_value='active'   if prev_pub else ('inactive' if prev_pub is False else None),
+                    to_value=  'active'   if curr_pub else 'inactive',
+                    extra={
+                        'availability':  curr_avail,
+                        'failure_count': state.failure_count,
+                    },
+                    severity='warning' if not curr_pub else 'info',
+                )
+
+            self._last_telemetry_snapshot[camera_id] = {
+                'availability':     curr_avail,
+                'publisher_active': curr_pub,
+            }
+        except Exception:
+            # Never let a telemetry write break state tracking.
+            logger.debug("Telemetry emit failed in _trigger_callbacks", exc_info=True)
 
 
     def _create_default_state(self, camera_id: str) -> CameraState:

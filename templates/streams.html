@@ -62,6 +62,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/tile-arrange.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/pinned-window.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/cert-install.css') }}">
+    <!-- Unified action-icon bar — MUST load LAST so its !important rules win
+         source-order ties against the per-button CSS files above (operator
+         directive 2026-06-13: all icons same size + bottom row + 30s idle fade). -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-control-bar.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 
@@ -522,6 +526,13 @@
                     <i class="fas fa-thumbtack"></i>
                 </button>
             </div>
+            <!-- Unified action-icon bar (operator directive 2026-06-13): single
+                 horizontal row at the bottom of the tile, all icons same size,
+                 reading left-to-right. Flex container with .stream-actions-bar
+                 owns the layout; per-button CSS files (camera-settings-modal,
+                 talkback-button, etc.) are overridden by stream-control-bar.css
+                 which is loaded last. -->
+            <div class="stream-actions-bar">
             <button class="stream-fullscreen-btn" aria-label="Enter fullscreen" title="Fullscreen">
                 <i class="fas fa-expand"></i>
             </button>
@@ -589,6 +600,7 @@
             <button class="stream-more-btn" aria-label="More Controls" title="More Controls">
                 <i class="fas fa-ellipsis-v"></i>
             </button>
+            </div><!-- /.stream-actions-bar -->
 
             <!-- Mobile slide-up menu - activated by the more button -->
             <div class="stream-more-menu">
@@ -637,10 +649,13 @@
             </div>
 
             <div class="stream-controls">
+                <button class="overlay-close-btn" aria-label="Close" title="Close controls"
+                        data-closes=".stream-controls" data-toggle-btn=".stream-controls-toggle-btn">
+                    <i class="fas fa-times"></i>
+                </button>
                 <div class="control-row">
-                    <button class="stream-btn btn-success start-stream-btn" title="Start stream">
-                        <i class="fas fa-play"></i>
-                    </button>
+                    <!-- Play button removed 2026-06-13 (operator directive: was a dud — streams
+                         auto-start on page load and via the controls-toggle / restart paths). -->
                     <button class="stream-btn btn-danger stop-stream-btn" title="Stop stream">
                         <i class="fas fa-stop"></i>
                     </button>
@@ -675,6 +690,10 @@
 
             {% if 'ptz' in info.capabilities %}
             <div class="ptz-controls">
+                <button class="overlay-close-btn" aria-label="Close" title="Close PTZ"
+                        data-closes=".ptz-controls" data-toggle-btn=".stream-ptz-toggle-btn">
+                    <i class="fas fa-times"></i>
+                </button>
                 {% if info.type == 'eufy' %}
                 <div class="ptz-cloud-status" data-camera-type="{{ info.type }}"
                      style="font-size: 10px; padding: 2px 6px; margin-bottom: 4px; border-radius: 3px; text-align: center; display: none;"
@@ -1268,6 +1287,10 @@
 
     <!-- Pinned window manager (HD + pin → floating draggable window) -->
     <script type="module" src="{{ url_for('static', filename='js/streaming/pinned-window-manager.js') }}"></script>
+    <!-- 30s idle fade for the unified action-icon bar (operator directive 2026-06-13). -->
+    <script src="{{ url_for('static', filename='js/streaming/control-bar-idle.js') }}"></script>
+    <!-- Close-X for PTZ + stream-controls overlays (operator directive 2026-06-13). -->
+    <script src="{{ url_for('static', filename='js/streaming/overlay-close.js') }}"></script>
 
 
     <!-- Certificate install banner (shows once on HTTPS if cert not yet trusted) -->

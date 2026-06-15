@@ -2988,12 +2988,32 @@ export class MultiStreamManager {
 
             if (success) {
                 const $streamElement = $streamItem.find('.stream-video');
-                $streamElement.attr('src', '');
+                const el = $streamElement[0];
+                // Fully tear down the player element so the UI actually goes
+                // dark instead of holding the last decoded frame (operator
+                // complaint 2026-06-13: "Stop should work: actual stop of UI
+                // stream"). attr('src','') alone is enough for <img> but NOT
+                // for <video>+WebRTC, which uses srcObject (a MediaStream)
+                // rather than .src — that stream keeps rendering until we
+                // explicitly null it.
+                if (el) {
+                    if (el.tagName === 'VIDEO') {
+                        try { el.pause(); } catch (_) {}
+                        el.srcObject = null;
+                        el.removeAttribute('src');
+                        try { el.load(); } catch (_) {}
+                    } else {
+                        el.removeAttribute('src');
+                    }
+                    if (el._healthDetach) { el._healthDetach(); delete el._healthDetach; }
+                }
+                // Surface the signal-lost overlay so the tile reads as DEAD,
+                // not just blank. (Without this the operator gets a dark
+                // rectangle that's visually ambiguous between 'loading' and
+                // 'stopped'.)
+                $streamItem.addClass('signal-lost');
                 this.setStreamStatus($streamItem, 'loading', 'Stopped');
                 this.updateStreamButtons($streamItem, false);
-                const el = $streamItem.find('.stream-video')[0];
-                if (el && el._healthDetach) { el._healthDetach(); delete el._healthDetach; }
-
             }
         } catch (error) {
             console.error(`Failed to stop stream for ${cameraId}:`, error);

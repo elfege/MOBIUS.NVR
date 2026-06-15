@@ -297,23 +297,47 @@ export class CameraStateMonitor {
         const $ffmpegState = $details.find('.ffmpeg-state');
         const $backoffState = $details.find('.backoff-state');
 
-        // Publisher status
+        // Publisher + FFmpeg status — ROLLED UP under state.availability.
+        //
+        // Background (operator directive 2026-06-13: "flags are fantastical
+        // totally unrelated to actual state"). The per-flag booleans from the
+        // backend report PROCESS-LEVEL truth ("a publisher process exists",
+        // "an ffmpeg process is alive") but NOT WHETHER FRAMES ARE FLOWING:
+        //   - publisher_active=true  + RTSP source returning 404 every poll
+        //   - ffmpeg_process_alive=true + ffmpeg subprocess spinning forever
+        // Previously we treated those flags as truth and proudly displayed
+        // "Active" / "Running" while the stream had been dead for hours.
+        //
+        // The OVERALL availability ('online'/'starting'/'degraded'/'offline')
+        // already aggregates the actual frame-flow signals. So the per-flag
+        // badges now ROLL UP under it:
+        //   availability === 'online' + flag=true  -> "Active" / "Running"
+        //   availability !== 'online' + flag=true  -> "Stalled" (process is
+        //       alive but not producing — the dishonest case we used to hide)
+        //   flag=false                              -> "Inactive" / "Stopped"
+        const isHealthy = state.availability === 'online';
+
         const $publisherStatus = $publisherState.find('.publisher-status');
-        if (state.publisher_active) {
-            $publisherState.removeClass('inactive').addClass('active');
+        if (state.publisher_active && isHealthy) {
+            $publisherState.removeClass('inactive stalled').addClass('active');
             $publisherStatus.text('Active');
+        } else if (state.publisher_active) {
+            $publisherState.removeClass('inactive active').addClass('stalled');
+            $publisherStatus.text('Stalled');
         } else {
-            $publisherState.removeClass('active').addClass('inactive');
+            $publisherState.removeClass('active stalled').addClass('inactive');
             $publisherStatus.text('Inactive');
         }
 
-        // FFmpeg process status
         const $ffmpegStatus = $ffmpegState.find('.ffmpeg-status');
-        if (state.ffmpeg_process_alive) {
-            $ffmpegState.removeClass('dead').addClass('alive');
+        if (state.ffmpeg_process_alive && isHealthy) {
+            $ffmpegState.removeClass('dead stalled').addClass('alive');
             $ffmpegStatus.text('Running');
+        } else if (state.ffmpeg_process_alive) {
+            $ffmpegState.removeClass('dead alive').addClass('stalled');
+            $ffmpegStatus.text('Stalled');
         } else {
-            $ffmpegState.removeClass('alive').addClass('dead');
+            $ffmpegState.removeClass('alive stalled').addClass('dead');
             $ffmpegStatus.text('Stopped');
         }
 

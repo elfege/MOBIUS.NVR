@@ -30,7 +30,7 @@ No setup required. Runs in CI-equivalent conditions every time.
 
 ## Running the E2E tier
 
-The E2E suite uses a parallel docker-compose stack on offset ports (`+10000` from prod) so it never collides with a running production NVR on the same host.
+The E2E suite uses the **same `docker-compose.yml` as production**, with `.env.test` providing test-mode overrides (port offsets, ephemeral paths, optional features off). Container names get a `nvr_test_` prefix from `-p nvr_test` so the test stack runs alongside a live prod NVR on the same host with zero collision.
 
 ```bash
 # 1. Install test-only deps + the Chromium browser binary
@@ -38,18 +38,24 @@ pip install -r requirements-test.txt
 playwright install --with-deps chromium
 
 # 2. Bring the test stack up (postgres + postgrest + flask, all isolated)
-docker compose -f docker-compose.test.yml up -d --wait
+docker compose -p nvr_test --env-file .env.test up -d --wait
 
 # 3. Run the suite
 pytest tests/e2e
 
 # 4. When done
-docker compose -f docker-compose.test.yml down -v
+docker compose -p nvr_test --env-file .env.test down -v
 ```
 
-The first run pulls the Postgres / PostgREST images and builds the app image (~2-3 min on a fresh machine). Subsequent runs reuse cached layers and start in ~30 s.
+The first run pulls the Postgres / PostgREST images and builds the app image (~2-3 min on a fresh machine). Subsequent runs reuse cached layers and start in ~30 s. Migrations apply automatically when Postgres initializes a fresh data directory (see [`psql/02-apply-migrations.sh`](../psql/02-apply-migrations.sh)).
 
 A test fails fast with a helpful message if the stack isn't running — no opaque connection-refused traces.
+
+### Why one compose file instead of a separate test compose
+
+Earlier drafts of the suite shipped a parallel `docker-compose.test.yml`. The operator pushed back 2026-06-15: a separate test compose **drifts from prod** over time, so tests end up validating a snapshot rather than the current app. With one compose and two env-files, any change to the prod stack automatically applies to the test stack on the next bring-up. No drift.
+
+The env-file conformity test ([`tests/test_env_conformity.py`](test_env_conformity.py)) is the static guard: it fails if any `${VAR}` in `docker-compose.yml` is missing from `.env.example` (third-party can't configure) or `.env.test` (tests run with stale defaults), and warns if the operator's local `.env` is missing keys when it exists.
 
 ## Phases (where this suite is heading)
 

@@ -37,10 +37,11 @@ services:
       dockerfile: Dockerfile
     container_name: unified-nvr
     ports:
-      - "127.0.0.1:5000:5000"
-      # Eufy P2P communication ports (UDP)
-      - "32100:32100/udp"
-      - "32108:32108/udp"
+      - "127.0.0.1:${NVR_FLASK_PORT:-5000}:5000"
+      # Eufy P2P communication ports (UDP). Disabled in test mode via
+      # NVR_USE_EUFY_BRIDGE=0; default ports kept for prod.
+      - "${NVR_EUFY_P2P_PORT_A:-32100}:32100/udp"
+      - "${NVR_EUFY_P2P_PORT_B:-32108}:32108/udp"
     env_file:
       # Optional: only needed for credential migration from env vars to DB.
       # Once all credentials are in the database, this file can be empty.
@@ -160,9 +161,9 @@ services:
       - ./packager/mediamtx.yml:/mediamtx.yml:ro
       - ./certs/dev:/certs:ro
     ports:
-      - "8888:8888"   # HTTP (HLS/LL-HLS)
-      - "8889:8889"   # WebRTC WHEP signaling (HTTP)
-      - "8189:8189/udp"  # WebRTC media (UDP)
+      - "${NVR_MEDIAMTX_HLS_PORT:-8888}:8888"            # HTTP (HLS/LL-HLS)
+      - "${NVR_MEDIAMTX_WHEP_PORT:-8889}:8889"           # WebRTC WHEP signaling (HTTP)
+      - "${NVR_MEDIAMTX_WEBRTC_PORT:-8189}:8189/udp"     # WebRTC media (UDP)
     env_file:
       # MediaMTX config may reference credential env vars
       - path: ./secrets.env
@@ -176,10 +177,10 @@ services:
     volumes:
       - /dev/shm/nvr-go2rtc:/config
     ports:
-      - "1984:1984"    # Web UI and API
-      - "8555:8555"    # RTSP server
-      - "8557:8557/tcp"  # WebRTC signaling + media (TCP)
-      - "8557:8557/udp"  # WebRTC media (UDP)
+      - "${NVR_GO2RTC_API_PORT:-1984}:1984"              # Web UI and API
+      - "${NVR_GO2RTC_RTSP_PORT:-8555}:8555"             # RTSP server
+      - "${NVR_GO2RTC_WEBRTC_PORT:-8557}:8557/tcp"       # WebRTC signaling + media (TCP)
+      - "${NVR_GO2RTC_WEBRTC_PORT:-8557}:8557/udp"       # WebRTC media (UDP)
     env_file:
       # go2rtc.yaml uses ${NVR_*} env var interpolation for credentials
       - path: ./secrets.env
@@ -197,7 +198,7 @@ services:
     volumes:
       - ./config/neolink.toml:/etc/neolink.toml:ro
     ports:
-      - "8554:8554"  # RTSP
+      - "${NVR_NEOLINK_RTSP_PORT:-8554}:8554"            # RTSP
     networks:
       - nvr-net
 
@@ -212,9 +213,18 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
     volumes:
       - ${NVR_POSTGRES_DATA:-/mnt/sdc/postgres_data}:/var/lib/postgresql/data
+      # Schema + migrations run on FIRST init of a fresh Postgres data
+      # directory. Files in /docker-entrypoint-initdb.d/ are executed in
+      # alphabetical order, so 01-schema.sql goes first and the numbered
+      # migrations follow naturally (026_..., 027_..., 042_...). On an
+      # existing data dir these are skipped. start.sh runs migrations
+      # idempotently against an already-initialized prod DB; this mount
+      # is what brings ephemeral test stacks up to the same schema.
       - ./psql/init-db.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./psql/02-apply-migrations.sh:/docker-entrypoint-initdb.d/02-apply-migrations.sh:ro
+      - ./psql/migrations:/docker-entrypoint-initdb.d/migrations:ro
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${NVR_POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nvr_api -d nvr"]
       interval: 10s
@@ -236,7 +246,7 @@ services:
       PGRST_SERVER_PORT: 3001
       PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost:3001
     ports:
-      - "3001:3001"
+      - "${NVR_POSTGREST_PORT:-3001}:3001"
     depends_on:
       postgres:
         condition: service_healthy

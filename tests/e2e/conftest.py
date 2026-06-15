@@ -1,23 +1,32 @@
 """
 tests/e2e/conftest.py — fixtures for the docker-compose-backed E2E suite.
 
-The suite expects a running test stack (see docker-compose.test.yml):
+The suite expects a running test stack on the unified prod compose file
+with the test env overrides:
 
-    docker compose -f docker-compose.test.yml up -d --wait
+    docker compose -p nvr_test --env-file .env.test up -d --wait
     pytest tests/e2e
 
-Spinning the stack up + down is intentionally NOT a pytest fixture —
-the stack takes ~30s to come healthy and we don't want every `pytest`
-invocation to pay that cost. Devs bring it up once, run the suite many
-times, tear it down when done.
+Operator directive 2026-06-15: tests run against the SAME docker-compose.yml
+that prod uses, with a different env-file. No parallel docker-compose.test.yml
+that would drift. Container names get a `nvr_test_` prefix from `-p nvr_test`;
+all published ports are offset by +10000 so the test stack runs alongside
+prod on the same host without collision.
 
-What the fixtures here DO provide:
+Spinning the stack up + down is NOT a pytest fixture — the stack takes
+~30s to come healthy and we don't want every `pytest` invocation to pay
+that cost. Devs bring it up once, run the suite many times, tear it down.
+
+What the fixtures DO provide:
   * `base_url` — the host:port the Flask app is reachable at
   * `db_conn` — a fresh psycopg2 connection to the test DB
-  * `apply_migrations` — run all psql/migrations/*.sql once per session
   * `seed_test_admin` — INSERT an admin user the tests log in as
-  * `clean_browser_context` — fresh Playwright context per test (no
-                              cookie leak across cases)
+  * `fresh_context` — fresh Playwright context per test (no cookie leak)
+
+Migrations run automatically when the test Postgres starts on a fresh
+data dir (psql/02-apply-migrations.sh in /docker-entrypoint-initdb.d/).
+There's no per-session apply_migrations fixture anymore — Postgres took
+that job over.
 """
 
 from __future__ import annotations
@@ -31,14 +40,17 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-MIGRATIONS_DIR = REPO_ROOT / "psql" / "migrations"
 
+# Defaults match .env.test (the test env-file). Override via E2E_* shell
+# vars if a particular run needs to hit a different stack (e.g. a remote
+# test box). Values track .env.test verbatim — keep in sync if you change
+# either.
 TEST_BASE_URL = os.getenv("E2E_BASE_URL", "http://127.0.0.1:15000")
 
 TEST_DB = {
     "host":     os.getenv("E2E_DB_HOST",     "127.0.0.1"),
     "port":     int(os.getenv("E2E_DB_PORT", "15432")),
-    "dbname":   os.getenv("E2E_DB_NAME",     "nvr_test"),
+    "dbname":   os.getenv("E2E_DB_NAME",     "nvr"),
     "user":     os.getenv("E2E_DB_USER",     "nvr_api"),
     "password": os.getenv("E2E_DB_PASSWORD", "nvr_internal_db_key"),
 }
@@ -63,8 +75,7 @@ def _wait_for_stack():
     Fail fast with a helpful message if the test stack isn't running.
 
     Devs hitting `pytest tests/e2e` with a cold stack get a clear
-    'docker compose -f docker-compose.test.yml up -d --wait' instruction
-    instead of an opaque connection-refused trace.
+    bring-up instruction instead of an opaque connection-refused trace.
     """
     deadline = time.monotonic() + 60
     last_err = None
@@ -80,7 +91,7 @@ def _wait_for_stack():
     pytest.fail(
         "E2E test stack is not reachable.\n\n"
         "Start it with:\n"
-        "  docker compose -f docker-compose.test.yml up -d --wait\n\n"
+        "  docker compose -p nvr_test --env-file .env.test up -d --wait\n\n"
         f"Last connection error: {last_err}"
     )
 
@@ -101,30 +112,7 @@ def db_conn():
 
 
 @pytest.fixture(scope="session")
-def apply_migrations(db_conn):
-    """
-    Apply every psql/migrations/*.sql once at session start.
-
-    init-db.sql is loaded by Postgres on first container start (via the
-    docker-entrypoint-initdb.d mount), so we only need to layer migrations
-    on top of it here. Idempotent SQL means re-runs are safe.
-    """
-    files = sorted(MIGRATIONS_DIR.glob("*.sql"))
-    with db_conn.cursor() as cur:
-        for f in files:
-            try:
-                cur.execute(f.read_text(encoding="utf-8"))
-            except psycopg2.Error as e:
-                # Most migrations are idempotent; a duplicate-trigger /
-                # already-exists error is fine to ignore. Anything else
-                # propagates.
-                if "already exists" not in str(e).lower():
-                    raise
-    return files
-
-
-@pytest.fixture(scope="session")
-def seed_test_admin(db_conn, apply_migrations):
+def seed_test_admin(db_conn):
     """
     Insert (or update) the e2e_admin user so login tests have a known
     identity. Returns (username, password) for the test to use.

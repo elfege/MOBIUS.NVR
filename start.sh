@@ -316,9 +316,17 @@ fi
 if [[ ! -f certs/dev/fullchain.pem ]] || [[ ! -f certs/dev/privkey.pem ]]; then
 	echo ""
 	echo "TLS certs missing — generating CA-signed certs..."
-	if [[ -f 0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh ]]; then
-		0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh
+	# Canonical path is scripts/make_ca_signed_tls.sh (tracked, ships to
+	# the public repo). The older 0_MAINTENANCE_SCRIPTS/ path is kept as
+	# a fallback for any existing local clone that still has its copy
+	# there — both files are identical content; the move happened
+	# 2026-06-15 so the cert-gen logic actually ships to third parties.
+	if [[ -f scripts/make_ca_signed_tls.sh ]]; then
+		scripts/make_ca_signed_tls.sh
 		echo -e "${GREEN}TLS certs generated${NC}"
+	elif [[ -f 0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh ]]; then
+		0_MAINTENANCE_SCRIPTS/make_ca_signed_tls.sh
+		echo -e "${GREEN}TLS certs generated (via legacy path)${NC}"
 	else
 		echo -e "${YELLOW}WARNING: TLS cert script not found. HTTPS will not work.${NC}"
 		echo "  Create certs/dev/fullchain.pem and certs/dev/privkey.pem manually."

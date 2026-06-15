@@ -323,6 +323,13 @@ if [[ ! -f certs/dev/fullchain.pem ]] || [[ ! -f certs/dev/privkey.pem ]]; then
 		echo -e "${YELLOW}WARNING: TLS cert script not found. HTTPS will not work.${NC}"
 		echo "  Create certs/dev/fullchain.pem and certs/dev/privkey.pem manually."
 	fi
+else
+	# Operator directive 2026-06-15: certs MUST be preserved across restarts.
+	# Make the no-regen path visible so a glance at the logs confirms the
+	# browser-imported CA + server cert haven't been touched.
+	_cert_expiry="$(openssl x509 -enddate -noout -in certs/dev/fullchain.pem 2>/dev/null | cut -d= -f2)"
+	echo -e "${GREEN}✓ Reusing existing TLS certs at certs/dev/ (untouched)${NC}"
+	[[ -n "$_cert_expiry" ]] && echo "  Server cert expires: ${_cert_expiry}"
 fi
 
 # =============================================================================

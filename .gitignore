@@ -75,6 +75,11 @@ chat*.md
 *.rsa
 .env
 .env.*
+# Exceptions: tracked-on-purpose env files that document/configure stacks.
+# .env.example is the schema third-party clones copy. .env.test is the
+# test stack's config (referenced by docker compose --env-file .env.test).
+!.env.example
+!.env.test
 secrets.env
 
 # -----------------------------------------------------------------------------

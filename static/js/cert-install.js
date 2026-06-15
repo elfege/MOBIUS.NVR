@@ -89,6 +89,96 @@
                 });
             }
         });
+
+        // Inject a copy button on every command block. Operator directive
+        // 2026-06-15: cert-install instructions need to be one-click
+        // copy-friendly, especially the multi-line Chrome policy heredoc.
+        decorateCodeBlocksWithCopyButtons(cardsContainer);
+    }
+
+    /**
+     * Copy `text` to the clipboard. Returns a Promise that resolves on
+     * success. Uses the modern Clipboard API when available (secure
+     * contexts), falls back to a hidden textarea + execCommand for
+     * http/older browsers — the install page is reachable over plain
+     * HTTP during initial setup, where navigator.clipboard is null.
+     */
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                ta.style.pointerEvents = 'none';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                ok ? resolve() : reject(new Error('execCommand returned false'));
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+
+    /**
+     * Walk every .step-code element under `root` and inject a Copy
+     * button. The text source is the inner code/pre — whitespace is
+     * preserved verbatim (important for the Chrome policy heredoc).
+     *
+     * Idempotent: if a .step-code already has a .copy-btn child, skips.
+     */
+    function decorateCodeBlocksWithCopyButtons(root) {
+        var blocks = root.querySelectorAll('.step-code');
+        blocks.forEach(function (block) {
+            if (block.querySelector('.copy-btn')) return;
+
+            // Source text: prefer <pre><code> inner, else <code> inner,
+            // else the block's own textContent.
+            var sourceEl = block.querySelector('pre > code')
+                        || block.querySelector('code')
+                        || block;
+
+            // Make the container relative so the absolute-positioned
+            // button anchors correctly.
+            if (getComputedStyle(block).position === 'static') {
+                block.style.position = 'relative';
+            }
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'copy-btn';
+            btn.setAttribute('aria-label', 'Copy command to clipboard');
+            btn.innerHTML = '<i class="far fa-copy"></i> <span class="copy-btn-label">Copy</span>';
+
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                var text = sourceEl.textContent.replace(/^\s+|\s+$/g, '');
+                copyToClipboard(text).then(function () {
+                    btn.classList.add('copied');
+                    btn.querySelector('.copy-btn-label').textContent = 'Copied!';
+                    setTimeout(function () {
+                        btn.classList.remove('copied');
+                        btn.querySelector('.copy-btn-label').textContent = 'Copy';
+                    }, 1800);
+                }).catch(function () {
+                    btn.classList.add('copy-failed');
+                    btn.querySelector('.copy-btn-label').textContent = 'Copy failed';
+                    setTimeout(function () {
+                        btn.classList.remove('copy-failed');
+                        btn.querySelector('.copy-btn-label').textContent = 'Copy';
+                    }, 2200);
+                });
+            });
+
+            block.appendChild(btn);
+        });
     }
 
     // -----------------------------------------------------------------------

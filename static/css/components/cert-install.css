@@ -256,9 +256,11 @@
     margin-left: 2.25rem;
     margin-top: -0.2rem;
     margin-bottom: 0.3rem;
+    position: relative;          /* anchor for the .copy-btn */
 }
 
-.step-code code {
+.step-code code,
+.step-code pre {
     display: block;
     background: #1a1a1a;
     color: #81c784;
@@ -267,7 +269,120 @@
     font-size: 0.82rem;
     font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
     overflow-x: auto;
+    margin: 0;
+}
+
+/* Single-line snippets keep their no-wrap style; multi-line <pre> blocks
+   (e.g., the Chrome policy heredoc) wrap naturally and preserve newlines. */
+.step-code > code {
     white-space: nowrap;
+}
+
+.step-code pre {
+    white-space: pre;
+    line-height: 1.45;
+}
+
+.step-code pre code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+    white-space: pre;
+}
+
+/* Copy button injected by cert-install.js */
+.copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ddd;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    z-index: 1;
+}
+
+.copy-btn:hover {
+    background: rgba(74, 144, 226, 0.25);
+    color: #fff;
+    border-color: rgba(74, 144, 226, 0.6);
+}
+
+.copy-btn.copied {
+    background: rgba(40, 167, 69, 0.3);
+    color: #b6f0c6;
+    border-color: rgba(40, 167, 69, 0.7);
+}
+
+.copy-btn.copy-failed {
+    background: rgba(220, 53, 69, 0.3);
+    color: #ffc4c9;
+    border-color: rgba(220, 53, 69, 0.7);
+}
+
+/* New per-platform structural classes used by cert_install.html */
+.platform-intro {
+    margin: 0 0 1rem 0;
+    color: #bbb;
+    font-size: 0.88rem;
+    line-height: 1.5;
+}
+
+.platform-section-heading {
+    margin: 1.25rem 0 0.35rem 0;
+    font-size: 0.95rem;
+    color: #eaeaea;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    padding-bottom: 0.3rem;
+}
+
+.platform-section-heading i {
+    color: #4a90e2;
+}
+
+.platform-section-desc {
+    margin: 0 0 0.6rem 0;
+    color: #aaa;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+.platform-note {
+    margin-top: 1rem;
+    padding: 0.7rem 0.9rem;
+    background: rgba(74, 144, 226, 0.08);
+    border-left: 3px solid #4a90e2;
+    border-radius: 3px;
+    font-size: 0.82rem;
+    color: #cfd6df;
+    line-height: 1.55;
+}
+
+.platform-note i {
+    color: #4a90e2;
+    margin-right: 0.3rem;
+}
+
+.platform-note kbd {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.78em;
 }
 
 /* ---------------------------------------------------------------------------

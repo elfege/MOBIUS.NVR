@@ -68,8 +68,8 @@ Code anchors: [routes/auth.py](../routes/auth.py), [templates/login.html](../tem
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `AUTH.LOGIN.OK` | User submits correct username + password on `/login` | Redirect to `/streams` (or `/light` per device sniff), session cookie set, `user_sessions` row created | [routes/auth.py](../routes/auth.py), [routes/helpers.py#_create_user_session](../routes/helpers.py) | — |
-| `AUTH.LOGIN.WRONG_PASSWORD` | User submits valid username + wrong password | Stays on `/login`, error banner, no session cookie | [routes/auth.py](../routes/auth.py) | — |
+| `AUTH.LOGIN.OK` | User submits correct username + password on `/login` | Redirect to `/streams` (or `/light` per device sniff), session cookie set, `user_sessions` row created | [routes/auth.py](../routes/auth.py), [routes/helpers.py#_create_user_session](../routes/helpers.py) | e2e:PASS |
+| `AUTH.LOGIN.WRONG_PASSWORD` | User submits valid username + wrong password | Stays on `/login`, error banner, no session cookie | [routes/auth.py](../routes/auth.py) | e2e:PASS |
 | `AUTH.LOGIN.UNKNOWN_USER` | User submits username that doesn't exist | Same banner as wrong password (no user-enumeration leak) | [routes/auth.py](../routes/auth.py) | — |
 | `AUTH.LOGOUT` | User clicks Logout | Session destroyed, `user_sessions.is_active=false`, redirect to `/login` | [routes/auth.py](../routes/auth.py), [routes/helpers.py#_deactivate_user_session](../routes/helpers.py) | — |
 | `AUTH.ROLE.ADMIN_ONLY` | Viewer-role user hits an admin-only endpoint (e.g., `/api/telemetry/settings`) | HTTP 403 JSON `{"error": "Admin access required"}` | [routes/telemetry.py](../routes/telemetry.py), [routes/audit_routes.py](../routes/audit_routes.py), [routes/storage.py](../routes/storage.py) | — |
@@ -421,7 +421,12 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Power cycle | 2 | 0 | 0 |
 | **TOTAL** | **121** | **23** | **1** |
 
-The single E2E-covered row is `AUDIT.COVERAGE.STATIC_CHECK` — the existing `tests/test_audit_coverage.py` that already gates CI for new audit-trigger work.
+E2E-covered rows so far (will grow with each phase):
+- `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)
+- `AUTH.LOGIN.OK` — `tests/e2e/test_auth_login.py::test_auth_login_ok`
+- `AUTH.LOGIN.WRONG_PASSWORD` — `tests/e2e/test_auth_login.py::test_auth_login_wrong_password`
+
+Plus the four env-conformity tests in `tests/test_env_conformity.py` that guard against compose ↔ env-file drift.
 
 Manual verifications were performed during the v6.2.x / v6.3.x ship sequence in mid-June 2026. They're real but they're not gates — anything could regress and we'd find out only by hand. Closing that gap is what Phases B–E exist for.
 

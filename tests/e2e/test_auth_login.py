@@ -44,11 +44,12 @@ def test_auth_login_ok(page: Page, base_url: str, seed_test_admin):
     cookies = page.context.cookies(base_url)
     assert cookies, "no cookies set after login — auth flow did not complete"
 
-    # And the page should show the streams grid container (or, for /light,
-    # the snapshot grid). Either is a valid landing. We assert one of the
-    # two well-known landmarks renders.
-    streams_marker = page.locator('#streams-grid, .stream-item, .light-snapshot')
-    expect(streams_marker.first).to_be_visible(timeout=5_000)
+    # And the page should show one of the post-login landmarks: the
+    # main navbar on /streams, or the top-bar grid button on /light.
+    # Either one proves we landed on a real page (not a redirect loop
+    # back to /login). Doesn't require any cameras to be configured.
+    landmark = page.locator('#main-navbar, #grid-btn')
+    expect(landmark.first).to_be_visible(timeout=5_000)
 
 
 def test_auth_login_wrong_password(page: Page, base_url: str, seed_test_admin):

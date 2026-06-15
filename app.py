@@ -1294,6 +1294,12 @@ except Exception as e:
 settings = Settings()
 print("✅ Settings manager initialized")
 
+# Initialize to None before the conditional below so the downstream
+# `_shared.set_services(unifi_resource_monitor=...)` call always has a
+# bound reference even when no UniFi cameras are configured (e.g. fresh
+# clone with empty cameras.json, or test stack with zero cameras).
+unifi_resource_monitor = None
+
 try:
     restart_handler = AppRestartHandler(stream_manager, bridge_watchdog, eufy_bridge)
 

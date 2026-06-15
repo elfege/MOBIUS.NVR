@@ -16,7 +16,7 @@
 services:
   nvr-edge:
     image: nginx:1.27-alpine
-    container_name: nvr-edge
+    container_name: ${CONTAINER_PREFIX:-}nvr-edge
     restart: unless-stopped
     depends_on:
       - nvr
@@ -35,7 +35,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: unified-nvr
+    container_name: ${CONTAINER_PREFIX:-}unified-nvr
     ports:
       - "127.0.0.1:${NVR_FLASK_PORT:-5000}:5000"
       # Eufy P2P communication ports (UDP). Disabled in test mode via
@@ -153,10 +153,15 @@ services:
 
   packager:
     image: bluenviron/mediamtx:latest
-    container_name: nvr-packager
+    container_name: ${CONTAINER_PREFIX:-}nvr-packager
     restart: unless-stopped
     networks:
-      - nvr-net
+      nvr-net:
+        # Stable in-network DNS name regardless of CONTAINER_PREFIX.
+        # App code addresses MediaMTX as http://nvr-packager:9997 —
+        # this alias keeps that working for the prefixed test stack.
+        aliases:
+          - nvr-packager
     volumes:
       - ./packager/mediamtx.yml:/mediamtx.yml:ro
       - ./certs/dev:/certs:ro
@@ -172,8 +177,12 @@ services:
   # go2rtc - ONVIF AudioBackChannel and WebRTC two-way audio
   go2rtc:
     image: alexxit/go2rtc:latest
-    container_name: nvr-go2rtc
+    container_name: ${CONTAINER_PREFIX:-}nvr-go2rtc
     restart: unless-stopped
+    networks:
+      nvr-net:
+        aliases:
+          - nvr-go2rtc
     volumes:
       - /dev/shm/nvr-go2rtc:/config
     ports:
@@ -188,12 +197,10 @@ services:
     environment:
       - TZ=America/New_York
       - NVR_HOST_IP=${NVR_HOST_IP}
-    networks:
-      - nvr-net
 
   neolink:
     image: quantumentangledandy/neolink:v0.6.2
-    container_name: nvr-neolink
+    container_name: ${CONTAINER_PREFIX:-}nvr-neolink
     restart: unless-stopped
     volumes:
       - ./config/neolink.toml:/etc/neolink.toml:ro
@@ -204,7 +211,7 @@ services:
 
   postgres:
     image: postgres:16-alpine
-    container_name: nvr-postgres
+    container_name: ${CONTAINER_PREFIX:-}nvr-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: nvr
@@ -235,7 +242,11 @@ services:
 
   postgrest:
     image: postgrest/postgrest:v12.0.2
-    container_name: nvr-postgrest
+    container_name: ${CONTAINER_PREFIX:-}nvr-postgrest
+    networks:
+      nvr-net:
+        aliases:
+          - nvr-postgrest
     restart: unless-stopped
     environment:
       PGRST_DB_URI: postgres://nvr_api:nvr_internal_db_key@postgres:5432/nvr
@@ -250,8 +261,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - nvr-net
 
 networks:
   nvr-net:

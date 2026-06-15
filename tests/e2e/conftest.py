@@ -35,6 +35,7 @@ import os
 import time
 from pathlib import Path
 
+import bcrypt
 import psycopg2
 import pytest
 
@@ -58,11 +59,11 @@ TEST_DB = {
 # A known test admin — seeded once per session. NOT the real admin/admin
 # baked into init-db.sql; this one has must_change_password=false so the
 # test can land directly on /streams.
+#
+# The bcrypt hash is computed at fixture-setup time from the password
+# below — no frozen hash to rot if the password ever changes.
 TEST_ADMIN_USERNAME = "e2e_admin"
 TEST_ADMIN_PASSWORD = "e2e_admin_password"
-# bcrypt hash of the above password (cost 12). Re-generate via:
-#   python -c "import bcrypt; print(bcrypt.hashpw(b'e2e_admin_password', bcrypt.gensalt(12)).decode())"
-TEST_ADMIN_BCRYPT = "$2b$12$Yp.UQI8Ny9R/Tr2lqJZ.0eNwKVi0g6Q7c7v1ZqQR1f4tT2gK1aOyW"
 
 
 # ---------------------------------------------------------------------------
@@ -116,7 +117,15 @@ def seed_test_admin(db_conn):
     """
     Insert (or update) the e2e_admin user so login tests have a known
     identity. Returns (username, password) for the test to use.
+
+    The bcrypt hash is computed fresh here (cost 12) — there's no
+    frozen hash constant elsewhere that could drift from the password.
     """
+    bcrypt_hash = bcrypt.hashpw(
+        TEST_ADMIN_PASSWORD.encode("utf-8"),
+        bcrypt.gensalt(12),
+    ).decode("utf-8")
+
     with db_conn.cursor() as cur:
         cur.execute(
             """
@@ -127,7 +136,7 @@ def seed_test_admin(db_conn):
                           role = 'admin',
                           must_change_password = false
             """,
-            (TEST_ADMIN_USERNAME, TEST_ADMIN_BCRYPT),
+            (TEST_ADMIN_USERNAME, bcrypt_hash),
         )
     return TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD
 

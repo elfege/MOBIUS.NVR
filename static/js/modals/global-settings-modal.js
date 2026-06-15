@@ -74,8 +74,18 @@ export class SettingsUI {
                 // rows + POST disclosure ack. Routed through the
                 // EvidenceCollectionTab module to keep this file lean.
                 await evidenceTab.save();
+            } else if (activeTab === 'data') {
+                // Data tab has its own save flow — POST /api/telemetry/settings.
+                // No inline save button; this header Save is the only trigger.
+                await dataTab.saveIfDirty();
             } else {
                 await this._saveAllPending();
+            }
+            // Data tab is dirty-when-leaving: even when the active tab is
+            // something else, flush any unsaved Data tab changes here so a
+            // single click of the header Save persists across all tabs.
+            if (activeTab !== 'data' && window.USER_ROLE === 'admin') {
+                try { await dataTab.saveIfDirty(); } catch (_) { /* best-effort */ }
             }
         });
 
@@ -90,6 +100,15 @@ export class SettingsUI {
 
         this.$content.on('click', '.settings-tab-btn', (e) => {
             const tab = $(e.currentTarget).data('tab');
+
+            // Auto-flush Data tab on switch-away — operator directive 2026-06-14:
+            // no inline save button, changing tab persists pending changes.
+            // Fire-and-forget; tab switch is not blocked on the save.
+            const prevTab = this.$content.find('.settings-tab-btn.active').data('tab');
+            if (prevTab === 'data' && tab !== 'data' && window.USER_ROLE === 'admin') {
+                try { dataTab.saveIfDirty(); } catch (_) { /* best-effort */ }
+            }
+
             this.$content.find('.settings-tab-btn').removeClass('active');
             this.$content.find('.settings-tab-panel').removeClass('active');
             $(e.currentTarget).addClass('active');

@@ -144,16 +144,14 @@ export class DataTab {
                 </div>
             </div>
 
-            <!-- ── Save ─────────────────────────────────────────────────── -->
+            <!-- Save status only — the modal's global Save button is the
+                 single save trigger across all tabs. Changing tab also
+                 auto-flushes any pending Data tab changes. -->
             <div class="setting-row" style="border-left:none;">
                 <div class="setting-top">
                     <div class="setting-label"></div>
                     <div class="setting-control">
-                        <button id="data-tab-save-btn" class="setting-btn setting-btn-primary"
-                                style="font-size:13px;padding:6px 14px;" disabled>
-                            <i class="fas fa-save"></i> Save Settings
-                        </button>
-                        <span id="data-tab-save-status" style="font-size:12px;color:#888;margin-left:8px;"></span>
+                        <span id="data-tab-save-status" style="font-size:12px;color:#888;"></span>
                     </div>
                 </div>
             </div>
@@ -172,7 +170,6 @@ export class DataTab {
         // Toggle
         $panel.find('#data-tab-telemetry-toggle').off('change.data-tab').on('change.data-tab', (e) => {
             this._pending.enabled = $(e.currentTarget).is(':checked');
-            this._updateSaveButton();
         });
 
         // Slider <-> number two-way bind
@@ -180,7 +177,6 @@ export class DataTab {
             const v = parseInt($(e.currentTarget).val(), 10);
             $panel.find('#data-tab-max-size-number').val(v);
             this._pending.max_size_mb = v;
-            this._updateSaveButton();
         });
         $panel.find('#data-tab-max-size-number').off('input.data-tab').on('input.data-tab', (e) => {
             let v = parseInt($(e.currentTarget).val(), 10);
@@ -188,17 +184,36 @@ export class DataTab {
             v = Math.max(10, Math.min(2048, v));
             $panel.find('#data-tab-max-size-slider').val(v);
             this._pending.max_size_mb = v;
-            this._updateSaveButton();
         });
 
         // Retention radios
         $panel.find('input[name="data-tab-retention"]').off('change.data-tab').on('change.data-tab', (e) => {
             this._pending.retention_days = parseInt($(e.currentTarget).val(), 10);
-            this._updateSaveButton();
         });
+    }
 
-        // Save
-        $panel.find('#data-tab-save-btn').off('click.data-tab').on('click.data-tab', () => this.save());
+    /**
+     * True when at least one form field differs from the last-loaded
+     * server state. The modal asks this before firing a background
+     * save on tab change / global Save click.
+     */
+    isDirty() {
+        if (!this._settings) return false;
+        if ('enabled' in this._pending && this._pending.enabled !== this._settings.enabled) return true;
+        if ('max_size_mb' in this._pending && this._pending.max_size_mb !== this._settings.max_size_mb) return true;
+        if ('retention_days' in this._pending && this._pending.retention_days !== this._settings.retention_days) return true;
+        return false;
+    }
+
+    /**
+     * Save only if there are actually pending changes. Returns the
+     * settings snapshot from the server on success, null on no-op or
+     * failure. Called from the modal when the user switches away from
+     * the Data tab or hits the global Save button.
+     */
+    async saveIfDirty() {
+        if (!this.isDirty()) return null;
+        return await this.save();
     }
 
     /**
@@ -211,7 +226,6 @@ export class DataTab {
             this._loadTelemetry(),
             this._loadStorageOverview(),
         ]);
-        this._updateSaveButton();
     }
 
     async _loadTelemetry() {
@@ -317,25 +331,10 @@ export class DataTab {
         ));
     }
 
-    _updateSaveButton() {
-        // Enable save only when at least one field differs from the loaded value.
-        if (!this._settings) {
-            this.$panel.find('#data-tab-save-btn').prop('disabled', true);
-            return;
-        }
-        let dirty = false;
-        if ('enabled' in this._pending && this._pending.enabled !== this._settings.enabled) dirty = true;
-        if ('max_size_mb' in this._pending && this._pending.max_size_mb !== this._settings.max_size_mb) dirty = true;
-        if ('retention_days' in this._pending && this._pending.retention_days !== this._settings.retention_days) dirty = true;
-        this.$panel.find('#data-tab-save-btn').prop('disabled', !dirty);
-    }
-
     async save() {
-        const $btn = this.$panel.find('#data-tab-save-btn');
-        const $status = this.$panel.find('#data-tab-save-status');
-        if (Object.keys(this._pending).length === 0) return;
-        $btn.prop('disabled', true);
-        $status.text('Saving…').css('color', '#888');
+        const $status = this.$panel ? this.$panel.find('#data-tab-save-status') : null;
+        if (Object.keys(this._pending).length === 0) return null;
+        if ($status) $status.text('Saving…').css('color', '#888');
         try {
             const res = await fetch('/api/telemetry/settings', {
                 method: 'POST',
@@ -343,14 +342,16 @@ export class DataTab {
                 body: JSON.stringify(this._pending),
             }).then(r => r.json());
             if (!res.success) {
-                $status.text('Failed: ' + (res.error || 'unknown')).css('color', '#dc3545');
-                return;
+                if ($status) $status.text('Failed: ' + (res.error || 'unknown')).css('color', '#dc3545');
+                return null;
             }
-            $status.text('Saved').css('color', '#28a745');
+            if ($status) $status.text('Saved').css('color', '#28a745');
             await this.load();    // refresh to show server-side state of truth
-            setTimeout(() => $status.text(''), 2500);
+            if ($status) setTimeout(() => $status.text(''), 2500);
+            return res.settings;
         } catch (e) {
-            $status.text('Error: ' + e.message).css('color', '#dc3545');
+            if ($status) $status.text('Error: ' + e.message).css('color', '#dc3545');
+            return null;
         }
     }
 }

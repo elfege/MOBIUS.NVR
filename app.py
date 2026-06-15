@@ -201,7 +201,13 @@ app.register_blueprint(ui_event_bp)
 for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
            external_api_bp, evidence_bp, audit_bp, ui_event_bp, host_state_bp,
-           host_agent_install_bp, host_agent_install_ssh_bp, telemetry_bp]:
+           host_agent_install_bp, host_agent_install_ssh_bp, telemetry_bp,
+           # Caught by tests/regression/test_csrf_blueprint_coverage.py
+           # 2026-06-15. Each of these was registered but never exempted,
+           # so any POST would have returned the Flask-WTF HTML 'session
+           # required' page → JSON.parse fail in browser. Same shape as
+           # the 2026-06-14 telemetry_bp bug.
+           cert_bp, onvif_health_bp, settings_bp]:
     csrf.exempt(bp)
 
 # ===== License Validation =====

@@ -27,6 +27,7 @@ import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 
+from routes.helpers import csrf_exempt
 from services import telemetry_settings as ts
 from services import telemetry_cleanup
 
@@ -67,6 +68,7 @@ def api_telemetry_settings_get():
 
 
 @telemetry_bp.route('/api/telemetry/settings', methods=['POST'])
+@csrf_exempt
 @login_required
 def api_telemetry_settings_set():
     """

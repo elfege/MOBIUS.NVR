@@ -252,35 +252,69 @@ export class DataTab {
     }
 
     async _loadStorageOverview() {
+        const $box = this.$panel.find('#data-tab-storage-overview');
         try {
             const res = await fetch('/api/storage/stats').then(r => r.json());
             if (!res || res.error) {
-                this.$panel.find('#data-tab-storage-overview').html(
-                    `<em style="color:#dc3545;">Failed to load: ${res?.error || 'unknown'}</em>`
-                );
+                $box.html(`<em style="color:#dc3545;">Failed to load: ${res?.error || 'unknown'}</em>`);
                 return;
             }
-            // The /api/storage/stats payload shape varies; render whatever
-            // keys it returns in a generic key→value list so we don't
-            // tightly couple to its current schema.
-            const lines = [];
-            const fmt = (v) => {
-                if (v == null) return '—';
-                if (typeof v === 'object') return JSON.stringify(v);
-                return String(v);
-            };
-            for (const [k, v] of Object.entries(res)) {
-                if (k === 'success' || k === 'error') continue;
-                lines.push(`<div><span style="color:#888;">${k}:</span> ${fmt(v)}</div>`);
-            }
-            this.$panel.find('#data-tab-storage-overview').html(
-                lines.length ? lines.join('') : '<em style="color:#888;">No storage data</em>'
-            );
+            $box.html(this._renderStorageOverview(res));
         } catch (e) {
-            this.$panel.find('#data-tab-storage-overview').html(
-                `<em style="color:#dc3545;">Error: ${e.message}</em>`
-            );
+            $box.html(`<em style="color:#dc3545;">Error: ${e.message}</em>`);
         }
+    }
+
+    /**
+     * Render two storage-tier rows (recent + archive) with progress bars
+     * and a warnings strip. The /api/storage/stats payload uses
+     * { recent: {...}, archive: {...}, warnings: [...], config: {...} }.
+     * Read-only — migration controls live in the Storage tab, not here.
+     */
+    _renderStorageOverview(stats) {
+        const tier = (label, t) => {
+            if (!t || typeof t !== 'object') return '';
+            const usedGB  = (t.used_gb  ?? 0).toFixed(1);
+            const totalGB = (t.total_gb ?? 0).toFixed(1);
+            const freeGB  = (t.free_gb  ?? 0).toFixed(1);
+            const usedPct = Math.max(0, Math.min(100, (t.free_percent != null) ? (100 - t.free_percent) : 0));
+            // Colour bands: green <70 %, amber 70-90 %, red ≥90 %.
+            const bar = usedPct >= 90 ? '#dc3545' : (usedPct >= 70 ? '#ff9800' : '#28a745');
+            const hostPath = t.host_path || '—';
+            const recCount = (t.recording_count ?? 0).toLocaleString();
+            return `
+            <div style="margin-bottom:14px;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px;">
+                    <span style="color:#ddd;font-weight:600;font-family:sans-serif;font-size:13px;">${label}</span>
+                    <span style="color:#888;font-family:sans-serif;font-size:11px;">${hostPath}</span>
+                </div>
+                <div style="position:relative;background:#222;border-radius:4px;height:18px;overflow:hidden;">
+                    <div style="background:${bar};width:${usedPct.toFixed(1)}%;height:100%;transition:width 0.3s ease;"></div>
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+                                font-family:sans-serif;font-size:11px;color:#fff;text-shadow:0 0 3px rgba(0,0,0,0.8);">
+                        ${usedGB} / ${totalGB} GB &nbsp;(${usedPct.toFixed(1)}% used · ${freeGB} GB free)
+                    </div>
+                </div>
+                <div style="color:#888;font-family:sans-serif;font-size:11px;margin-top:3px;">
+                    ${recCount} recordings
+                </div>
+            </div>`;
+        };
+        const warningsHtml = (stats.warnings && stats.warnings.length)
+            ? `<div style="margin-top:10px;padding:8px 10px;background:#3a2a14;border-left:3px solid #ff9800;
+                         font-family:sans-serif;font-size:12px;color:#ffcc80;border-radius:3px;">
+                 ${stats.warnings.map(w => '⚠ ' + this._escapeHtml(w)).join('<br>')}
+               </div>`
+            : '';
+        return tier('Recent storage',  stats.recent)
+             + tier('Archive storage', stats.archive)
+             + warningsHtml;
+    }
+
+    _escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => (
+            {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+        ));
     }
 
     _updateSaveButton() {

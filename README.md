@@ -1,17 +1,17 @@
 # MOBIUS.NVR
 
-A multi-vendor Network Video Recorder built with Flask, PostgreSQL, FFmpeg, MediaMTX, and go2rtc. Provides unified streaming, PTZ control, motion detection, recording, and per-user preferences across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras.
+A multi-vendor Network Video Recorder built with Flask, PostgreSQL, FFmpeg, MediaMTX, and go2rtc. One UI for streaming, PTZ, motion detection, recording, and per-user preferences across Eufy, Reolink, UniFi, Amcrest, and SV3C cameras.
 
 ## Overview
 
-MOBIUS.NVR abstracts vendor-specific camera protocols behind a common streaming interface. Each camera's streaming hub (MediaMTX or go2rtc) is configurable per-camera. The system supports 17+ cameras with multiple latency options: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS (~4s), MJPEG, or snapshot polling.
+The whole point of MOBIUS.NVR is that you stop caring which vendor sits behind each tile. Each camera picks its own streaming hub (MediaMTX, go2rtc, or — for cameras whose RTSP exporter is broken — a native MJPEG fallback), and the rest of the system talks to the hub, not the camera. Currently runs 19+ cameras here on a mix of WebRTC (~200 ms), Low-Latency HLS (~2 s), Classic HLS (~4 s), MJPEG, and 1 fps snapshot polling for the iOS grid.
 
-The database is the runtime source of truth — `cameras.json` is a seed file synced to PostgreSQL on startup. All runtime configuration, credentials, and user preferences live in the database.
+The database is the runtime source of truth. `cameras.json` is just a seed file that gets synced into PostgreSQL on startup — once the container is up, runtime config, credentials, and per-user preferences all live in the DB.
 
 ## Features
 
 - **Multi-Vendor Support**: Eufy, Reolink, UniFi Protect, Amcrest, SV3C cameras
-- **Dual Streaming Hub**: Per-camera choice of MediaMTX or go2rtc as the streaming relay
+- **Streaming Hubs (three)**: Per-camera choice of MediaMTX, go2rtc, or `native_mjpeg` (vendor MJPEG fallback for cameras with broken RTSP exporters). MediaMTX is the default and the most reliable hub in practice.
 - **Streaming Protocols**: WebRTC (~200ms), Low-Latency HLS (~2s), Classic HLS, MJPEG proxy, snapshot polling
 - **Neolink Bridge**: Baichuan-to-RTSP protocol bridge for Reolink E1 cameras via go2rtc
 - **Two-Way Audio**: Talkback for Eufy cameras; ONVIF backchannel via go2rtc for SV3C/Amcrest
@@ -28,8 +28,8 @@ The database is the runtime source of truth — `cameras.json` is a seed file sy
 - **Power Cycle Safety**: Optional auto power-cycle for Hubitat-connected cameras (disabled by default, 24h cooldown)
 - **HTTPS/TLS**: Nginx reverse proxy with HTTP/2 support
 - **Docker Deployment**: Full containerization with docker-compose (7 services)
-- **Per-Layer Telemetry Event Log** (admin-opt-in, off by default — v6.2.x): bounded-retention Postgres event log that records camera-state transitions, publisher-state transitions, MediaMTX + go2rtc path-lifecycle diffs, per-camera RTSP `ffprobe` pass/fail, and periodic resource snapshots (FFmpeg subprocess count, gunicorn worker RSS, Docker conntrack table) so long-uptime streaming failures can be localized to a specific layer. Admin sets the table size cap (10 MB – 2 GB, default 100 MB) and retention window (24h / 7d / 30d) from **Settings → Data**. Hourly cleanup tick enforces both. Toggle, cap, and retention persist in `nvr_settings`; turning the feature off preserves existing rows for post-mortem.
-- **Settings Audit Log + UI Event Log**: Two separate append-only logs. Server-side `setting_audit_log` (Postgres triggers, 90d retention) captures every `nvr_settings` / `cameras` / `user_camera_preferences` change with old + new value. Browser-side `ui_event_log` outbox records UI interactions (clicks, focus, navigations — passwords masked to `*` before storage) for accountability and forensic purposes. Both are admin-viewable via the existing Logs tab.
+- **Per-Layer Telemetry Event Log** (admin opt-in, off by default — v6.2.x): bounded-retention Postgres event log that records camera-state transitions, publisher-state transitions, MediaMTX + go2rtc path-lifecycle diffs, per-camera RTSP `ffprobe` pass/fail, and periodic resource snapshots (FFmpeg subprocess count, gunicorn worker RSS, Docker conntrack table). The point is to localize long-uptime streaming failures to a specific layer instead of restarting and hoping. Admin sets the table size cap (10 MB – 2 GB, default 100 MB) and retention window (24h / 7d / 30d) from **Settings → Data**. Hourly cleanup tick enforces both. Flipping the feature off keeps the existing rows around for post-mortem.
+- **Settings Audit Log + UI Event Log**: Two separate append-only logs, both visible from Settings → Logs (admin only). The server-side `setting_audit_log` (Postgres triggers, 90 d retention) captures every `nvr_settings` / `cameras` / `user_camera_preferences` change with old + new value. The browser-side `ui_event_log` outbox records UI interactions (clicks, focus, navigations — passwords masked to `*` before storage) for accountability and forensic purposes.
 
 ## Architecture
 
@@ -150,6 +150,10 @@ MOBIUS.NVR/
 │   ├── recording.py               # Recording management
 │   ├── ptz.py                     # PTZ control
 │   ├── auth.py                    # Authentication, user management
+│   ├── storage.py                 # Storage tiers, migration, cleanup, motion
+│   ├── audit_routes.py            # Settings audit log API (admin)
+│   ├── ui_event_routes.py         # UI event outbox endpoint (browser → DB)
+│   ├── telemetry.py               # Per-layer telemetry log API (admin, opt-in)
 │   └── settings_routes.py         # User preferences API
 ├── streaming/
 │   ├── stream_manager.py          # Stream orchestration
@@ -159,9 +163,14 @@ MOBIUS.NVR/
 ├── services/
 │   ├── camera_repository.py       # Camera config access (DB-backed)
 │   ├── camera_config_sync.py      # cameras.json -> DB sync on startup
-│   ├── camera_state_tracker.py    # Health state machine (ONLINE/DEGRADED/OFFLINE)
+│   ├── camera_state_tracker.py    # Health state machine (ONLINE/STARTING/DEGRADED/OFFLINE)
 │   ├── stream_watchdog.py         # Backend stream restart watchdog
-│   ├── streaming_hub.py           # RTSP source URL resolution (MediaMTX vs go2rtc)
+│   ├── streaming_hub.py           # RTSP source URL resolution (MediaMTX vs go2rtc vs native_mjpeg)
+│   ├── telemetry_settings.py      # Typed wrapper around the three nvr_settings keys
+│   ├── telemetry_event_log.py     # Gated emit() helper for every probe
+│   ├── telemetry_cleanup.py       # Hourly retention + size-cap cleanup tick
+│   ├── telemetry_probes.py        # MediaMTX/go2rtc path diff, RTSP ffprobe, resource snapshot
+│   ├── audit_listener.py          # Postgres LISTEN/NOTIFY fan-out for setting_audit_log
 │   ├── credentials/               # Per-vendor credential providers (DB + env fallback)
 │   ├── recording/                 # Recording, snapshots, storage, timeline
 │   ├── motion/                    # Motion detection (Baichuan, ONVIF, FFmpeg)
@@ -175,7 +184,7 @@ MOBIUS.NVR/
 │       ├── controllers/           # PTZ, recording, camera selector, power
 │       ├── modals/                # Settings, timeline, user management modals
 │       ├── layout/                # Grid layout engine (4 modes)
-│       └── settings/              # Fullscreen handler, settings manager
+│       └── settings/              # Fullscreen handler, settings manager, data-tab (telemetry + storage overview)
 ├── templates/
 │   └── streams.html               # Main streaming interface
 ├── psql/
@@ -218,8 +227,9 @@ Each camera entry requires a serial number as its key:
 
 | Hub | Config Value | Use Case |
 |-----|-------------|----------|
-| MediaMTX | `"streaming_hub": "mediamtx"` | Default. Camera -> FFmpeg -> MediaMTX -> browser |
-| go2rtc | `"streaming_hub": "go2rtc"` | Single-consumer cameras, Neolink/Baichuan devices |
+| MediaMTX | `"streaming_hub": "mediamtx"` | Default. Camera → FFmpeg → MediaMTX → browser. Most reliable hub in pratice. |
+| go2rtc | `"streaming_hub": "go2rtc"` | Single-consumer cameras, Neolink/Baichuan devices. Cameras get re-exported as RTSP for FFmpeg-driven recording. |
+| native_mjpeg | `"streaming_hub": "native_mjpeg"` | Last-resort fallback for cameras whose RTSP exporter is broken or unstable. We tap the vendor's MJPEG buffer instead of trying to negotaite RTSP. Recording works via MJPEG capture. |
 
 ### Vendor-Specific Configuration
 
@@ -280,6 +290,26 @@ services:
 |----------|--------|-------------|
 | `/api/my-preferences` | GET/PUT | Get/set user preferences (grid layout, video fit) |
 | `/api/cameras/<id>/display` | PUT | Per-camera display settings (stream type, order, visibility) |
+
+### Storage (admin-only)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/storage/stats` | GET | Disk usage per tier (recent + archive), with warnings when free space drops low. The new Data tab's storage widget reads from here. |
+| `/api/storage/settings` | GET/POST | Migration thresholds and cleanup config (`age_threshold_days`, `archive_retention_days`, `min_free_space_percent`, enable flag). |
+| `/api/storage/migrate` | POST | Move recent recordings older than the threshold into archive. |
+| `/api/storage/cleanup` | POST | Delete archive recordings older than `archive_retention_days`. |
+| `/api/storage/reconcile` | POST | Walk the filesystem and reconcile `recordings` table against actual files on disk. |
+| `/api/storage/operations` | GET | List the recent migration / cleanup / reconcile operations + their progress snapshots. |
+| `/api/storage/cancel` | POST | Cancel the in-progress operation. |
+
+### Audit + UI events (admin-only)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/audit/recent` | GET | Tail the `setting_audit_log` (Postgres-trigger-driven; one row per nvr_settings / cameras / user_camera_preferences mutation). Filters: `since_minutes`, `table`, `user`. |
+| `/api/ui-event/record` | POST | Browser-side outbox endpoint — `static/js/audit/ui-event-outbox.js` posts batches of UI interactions here. |
+| `/api/ui-event/recent` | GET | Read the `ui_event_log` (clicks, focus changes, navigations; passwords masked to `*`). |
 
 ### Host-Agent / Per-Machine Performance
 
@@ -374,11 +404,13 @@ The `post-merge` hook automatically pushes `main` to the public repo when featur
 
 ## Known Limitations
 
-- Eufy Video Doorbell E340: Pure P2P device (no RTSP), requires Home Base 3 for streaming
-- go2rtc `eufy://` scheme not compiled in standard builds (requires CGO + native bindings)
-- Neolink E1 PTZ latency: ~4-5s per command (Baichuan protocol overhead)
-- ONVIF event listener partially implemented
-- UniFi Protect requires valid console session
+- Eufy Video Doorbell E340: Pure P2P device (no RTSP), requires Home Base 3 for streaming.
+- go2rtc `eufy://` scheme isn't compiled into standard builds — needs CGO + native bindings.
+- Neolink E1 PTZ latency: ~4-5 s per command (Baichuan protocol overhead).
+- ONVIF event listener partially implemented; some vendors return "Action Not Implemented" on Subscribe.
+- UniFi Protect requires a valid console session refreshed on auth expiry.
+- Long-uptime entropy: across hubs (mediamtx + go2rtc), some camera streams silently 404 from inside the container after hours of runtime, while the same RTSP URL plays fine in VLC from the host LAN. Restart fixes it. The new admin-opt-in telemetry log (Settings → Data) is the first instrument we have to localize which layer leaks — investigation in progress.
+- Windows / macOS deployment: works today via Docker Desktop with WSL2 backend; some host paths in `docker-compose.yml` (`/mnt/...`, `/etc/localtime`) need to be templated as env vars before it's frictionless. Inside the container the app is platform-agnostic.
 
 ## License
 

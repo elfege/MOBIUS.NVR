@@ -413,6 +413,22 @@ A git pre-commit hook at [`scripts/hooks/pre-commit`](scripts/hooks/pre-commit) 
 
 Total ~1.5 s. Bypass with `git commit --no-verify` (don't push the result). Install hooks on a fresh clone with `./scripts/hooks/install-hooks.sh`.
 
+### Interactive launcher
+
+`./test.sh` is a numbered menu over the common pytest invocations — `ALL`, `Static`, `Regression only`, `E2E`, `E2E auth only`, `Pre-commit smoke`, `Ruff F821 lint`, `Regression ledger table`, `Custom path`. Accepts a direct argument for muscle memory: `./test.sh 2` runs the static tier without the prompt; `./test.sh 8` prints the regression-ledger table.
+
+Pair it with this shell function (e.g. in `~/.bash_aliases`) so `test` at any project root launches the menu but still falls through to the builtin `test`/`[` in non-project dirs:
+
+```bash
+test() {
+    if [[ -x "$(pwd)/test.sh" ]]; then
+        /bin/clear && "$(pwd)/test.sh" "$@"
+    else
+        builtin test "$@"
+    fi
+}
+```
+
 ## Documentation
 
 - `docs/functionality_reference.md` - Per-feature spec, the source for the E2E suite (121 rows, 21 surfaces)

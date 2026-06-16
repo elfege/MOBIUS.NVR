@@ -22,6 +22,35 @@ SCRIPT_DIR="${SCRIPT_R_PATH%${SCRIPT_NAME}}"
 cd "$SCRIPT_DIR" &>/dev/null || true
 
 # =============================================================================
+# --test : bring up the e2e test stack and return.
+#
+# Short-circuit before any of the prod-only setup (lockfile, status file, AWS
+# secrets pull, image build). The test stack uses the SAME docker-compose.yml
+# as prod, but with `-p nvr_test` (container_name prefix) and `--env-file
+# .env.test` (port offsets + ephemeral paths). See tests/e2e/conftest.py
+# header for the architecture rationale.
+#
+# Idempotent: re-running while the stack is already up is a no-op (compose
+# only recreates containers if their config changed).
+# =============================================================================
+if [[ "${1:-}" == "--test" ]]; then
+	cd ~/0_MOBIUS.NVR
+	if [[ ! -f .env.test ]]; then
+		echo "ERROR: .env.test not found at $(pwd)/.env.test" >&2
+		exit 1
+	fi
+	echo "Bringing up nvr_test stack (this is the same compose file as prod,"
+	echo "with .env.test overrides; container names get the nvr_test_ prefix)..."
+	docker compose -p nvr_test --env-file .env.test up -d --wait
+	rc=$?
+	if [[ $rc -eq 0 ]]; then
+		echo
+		docker compose -p nvr_test --env-file .env.test ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"
+	fi
+	exit $rc
+fi
+
+# =============================================================================
 # Single-instance lock — kill previous instance if running, then take over
 # =============================================================================
 LOCKFILE="/tmp/nvr_start.lock"

@@ -39,9 +39,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.regression._ledger import entry_for, format_failure_context
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 STREAMING_ROUTES = REPO_ROOT / "routes" / "streaming.py"
+_LEDGER_CONTEXT = format_failure_context(entry_for(__file__))
 
 
 def test_snap_endpoint_consults_state_tracker():
@@ -59,6 +62,7 @@ def test_snap_endpoint_consults_state_tracker():
     assert snap_section, (
         "Couldn't locate `/api/snap/...` handler in routes/streaming.py. "
         "Either the URL pattern moved or the regex needs updating."
+        + _LEDGER_CONTEXT
     )
 
     body = snap_section.group(0)
@@ -66,6 +70,7 @@ def test_snap_endpoint_consults_state_tracker():
         "The /api/snap handler doesn't reference `camera_state_tracker`. "
         "The publisher-state gate that prevents stale-frame serves to "
         "dead streams (commit 33b31431, 2026-06-13) is missing."
+        + _LEDGER_CONTEXT
     )
 
 
@@ -85,6 +90,7 @@ def test_snap_endpoint_returns_503_on_degraded_or_offline():
         f"snap-gate signal lost in routes/streaming.py: "
         f"degraded={has_degraded} offline={has_offline} 503={has_503}. "
         "The fix (33b31431) requires all three to be present."
+        + _LEDGER_CONTEXT
     )
 
     # Sharper check — the 503 branch must be wired to the availability
@@ -97,4 +103,5 @@ def test_snap_endpoint_returns_503_on_degraded_or_offline():
         "Couldn't find a 503 return tied to `availability` in "
         "routes/streaming.py. The snap-gate against degraded/offline "
         "publishers appears to have been removed."
+        + _LEDGER_CONTEXT
     )

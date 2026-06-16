@@ -1301,10 +1301,12 @@ settings = Settings()
 print("✅ Settings manager initialized")
 
 # Initialize to None before the conditional below so the downstream
-# `_shared.set_services(unifi_resource_monitor=...)` call always has a
-# bound reference even when no UniFi cameras are configured (e.g. fresh
-# clone with empty cameras.json, or test stack with zero cameras).
+# `_shared.set_services(...=...)` call always has a bound reference even
+# if the constructors throw or the UniFi branch doesn't fire. Same shape
+# as the 2026-06-15 unifi_resource_monitor regression; guarded by
+# tests/regression/test_app_init_bound_globals.py.
 unifi_resource_monitor = None
+restart_handler = None
 
 try:
     restart_handler = AppRestartHandler(stream_manager, bridge_watchdog, eufy_bridge)

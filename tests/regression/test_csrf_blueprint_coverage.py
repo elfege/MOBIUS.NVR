@@ -44,9 +44,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.regression._ledger import entry_for, format_failure_context
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 APP_PY = REPO_ROOT / "app.py"
+_LEDGER_CONTEXT = format_failure_context(entry_for(__file__))
 
 # Blueprints intentionally NOT csrf.exempt'd. Empty today — every
 # blueprint is exempt for the reasons in the module docstring. If you
@@ -161,6 +164,7 @@ def test_every_registered_blueprint_is_csrf_exempt():
         "would return Flask-WTF's HTML 'session required' page, which "
         "then breaks any JSON.parse() in the JS fetch handler. Add the "
         "blueprint(s) to the csrf.exempt for-loop in app.py."
+        + _LEDGER_CONTEXT
     )
 
 
@@ -180,5 +184,5 @@ def test_no_orphan_exemptions():
         f"Blueprints in csrf.exempt(...) but NOT registered: {orphans}. "
         "Either register them or remove from the exempt list — dead "
         "names in this loop are a red flag that something got half-"
-        "removed."
+        "removed." + _LEDGER_CONTEXT
     )

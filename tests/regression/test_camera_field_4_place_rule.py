@@ -40,11 +40,14 @@ from pathlib import Path
 
 import pytest
 
+from tests.regression._ledger import entry_for, format_failure_context
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_SYNC = REPO_ROOT / "services" / "camera_config_sync.py"
 REPOSITORY  = REPO_ROOT / "services" / "camera_repository.py"
 MIGRATIONS_DIR = REPO_ROOT / "psql" / "migrations"
+_LEDGER_CONTEXT = format_failure_context(entry_for(__file__))
 
 # Bookkeeping columns the app doesn't need to read directly. Add to this
 # set if a new column genuinely shouldn't be surfaced by camera_repository.
@@ -178,7 +181,7 @@ def test_direct_fields_writer_is_subset_of_reader():
         "The seed pipeline will write them to the DB and the app will "
         "never see them — same shape as the historical streaming_hub bug. "
         "Add the field(s) to camera_repository._db_row_to_camera_config()'s "
-        "direct_fields list."
+        "direct_fields list." + _LEDGER_CONTEXT
     )
 
 
@@ -211,4 +214,5 @@ def test_every_scalar_cameras_column_is_readable():
         "this is the 'streaming_hub no-route' bug shape. Either add the "
         "column to direct_fields, or (if it's truly bookkeeping) add it to "
         "SCALAR_COLUMNS_EXEMPT_FROM_REPO_READ in this test file."
+        + _LEDGER_CONTEXT
     )

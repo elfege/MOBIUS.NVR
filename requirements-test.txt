@@ -24,3 +24,9 @@ httpx==0.27.2
 # Convenience: cleaner test reports
 pytest-xdist==3.6.1
 pytest-timeout==2.3.1
+
+# Used by tests/regression/_ledger.py to parse tests/regression/ledger.yaml
+# (the human-readable bug ledger that backs every regression-test failure
+# message). System Python on dev hosts already carries PyYAML; pinning here
+# so CI / fresh venvs install it explicitly.
+PyYAML>=6.0

@@ -31,12 +31,15 @@ from pathlib import Path
 
 import pytest
 
+from tests.regression._ledger import entry_for, format_failure_context
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 REQUIREMENTS = [
     REPO_ROOT / "requirements.txt",
     REPO_ROOT / "requirements-test.txt",
 ]
+_LEDGER_CONTEXT = format_failure_context(entry_for(__file__))
 
 # Historical typos we never want to see in a requirement file again.
 # Each entry is paired with the bug timestamp + fixing commit for audit.
@@ -83,7 +86,7 @@ def test_no_known_historical_typos(req_file):
     assert not offenders, (
         f"{req_file.name} contains historically-known-bad tokens: "
         f"{offenders}. These were typos we already fixed once; their "
-        "reappearance is a regression."
+        "reappearance is a regression." + _LEDGER_CONTEXT
     )
 
 
@@ -106,4 +109,5 @@ def test_each_line_is_one_requirement(req_file):
         assert m, (
             f"{req_file.name}:{line_no} doesn't parse as a single requirement: "
             f"{line!r}. Concatenated names produce this exact failure shape."
+            + _LEDGER_CONTEXT
         )

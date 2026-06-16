@@ -38,8 +38,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.regression._ledger import entry_for, format_failure_context
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_LEDGER_CONTEXT = format_failure_context(entry_for(__file__))
 
 # Directories to scan. Tests + venv excluded.
 SCAN_DIRS = [
@@ -108,6 +111,7 @@ def test_no_recordings_status_failed_literal():
         f"CHECK constraint REJECTS that value. Offenders: {offenders}. "
         "Allowed values: recording | completed | archived | error. "
         "Use 'error' instead of 'failed' for error states."
+        + _LEDGER_CONTEXT
     )
 
 
@@ -157,11 +161,12 @@ def test_check_constraint_unchanged_in_migrations():
         assert not missing, (
             f"recordings_status_check appears to have dropped allowed value(s): "
             f"{missing}. If intentional, update this regression test."
+            + _LEDGER_CONTEXT
         )
         assert not snuck_in, (
             f"recordings_status_check now allows forbidden value(s): "
             f"{snuck_in}. If intentional (e.g., promoting 'failed' to a "
             "real state), update this regression test AND the "
             "project_recordings_status_constraint memory entry AND every "
-            "code-side consumer."
+            "code-side consumer." + _LEDGER_CONTEXT
         )

@@ -1,0 +1,184 @@
+# =============================================================================
+# tests/regression/ledger.yaml
+# =============================================================================
+#
+# Human-readable, machine-loaded ledger of every bug that has a permanent
+# regression-test guard in `tests/regression/`. One entry per regression-test
+# file. The tests in that file READ this entry at failure time to embed the
+# original incident context in the assertion message — so when a future
+# maintainer breaks the guard, they see:
+#
+#     "you broke regression class X (bug Y on date Z, original fix commit W)"
+#
+# instead of a bare static-analysis message.
+#
+# Add an entry HERE first when you write a new regression test. The test reads
+# its narrative from this file via `tests/regression/_ledger.py`. Never embed
+# the narrative in the test file's docstring as the source of truth — the
+# ledger is the source of truth.
+#
+# Browse the table:
+#     pytest --regression-ledger        # prints the ledger as a fixed-width table
+#     cat tests/regression/ledger.yaml  # same content, full prose
+#
+# Schema:
+#   id              kebab-case, stable, used as lookup key
+#   title           one-line description suitable for a column heading
+#   discovered      ISO date the bug was discovered / shipped broken
+#   fixed_in        commit SHA (short) of the original fix
+#   symptom         what the operator / developer actually observed
+#   root_cause      the technical explanation, "why" not just "what"
+#   guard_strategy  one or two sentences on how the test catches recurrence
+#   test_file       path relative to repo root (the lookup key)
+#   tags            optional list — used for grouping in the table view
+# =============================================================================
+
+entries:
+
+  # ---------------------------------------------------------------------------
+  - id: app-init-unbound-globals
+    title: "Module-level reference to conditionally-assigned name (NameError at import)"
+    discovered: 2026-06-15
+    fixed_in: ecb2f6f1
+    symptom: |
+      gunicorn worker boot crashed with code 3:
+        NameError: name 'unifi_resource_monitor' is not defined
+      Triggered on any boot path where `unifi_cameras` was falsy — zero-camera
+      test stacks, fresh clones, deployments without UniFi Protect.
+    root_cause: |
+      In app.py's services-init block, `unifi_resource_monitor` was assigned
+      ONLY inside `if unifi_cameras:`. When the condition was false the name
+      never bound; the unconditional usage at
+      `_shared.set_services(unifi_resource_monitor=unifi_resource_monitor)`
+      then crashed at the first reference.
+    guard_strategy: |
+      AST walk of app.py. For every name read at module scope, verify it
+      appears in an unconditional assignment / def / class / import — i.e.
+      one that runs every time the file is loaded. Names defined only inside
+      `if/try/with/for/while` blocks at module scope are flagged.
+    test_file: tests/regression/test_app_init_bound_globals.py
+    tags: [python, app-init, name-binding, ast]
+
+  # ---------------------------------------------------------------------------
+  - id: camera-field-4-place-rule
+    title: "New `cameras` column silently invisible to the app (4-place duplication)"
+    discovered: 2026-04-?? # pre-existed; surfaced by streaming_hub work
+    fixed_in: a16bf12
+    symptom: |
+      A new column was added to the `cameras` table and seeded from
+      `config/cameras.json`, but every `camera.get('<field>')` in the app
+      returned None. No error in logs — the value lived in the DB row,
+      psql showed it populated, and yet the app code couldn't see it.
+      Historical victim: `streaming_hub` (routing silently did nothing).
+    root_cause: |
+      Adding a `cameras` field requires touching FOUR separate places (see
+      CLAUDE.md RULE 11.2):
+        (1) config/cameras.json seed
+        (2) a migration in psql/migrations/
+        (3) DIRECT_FIELDS in services/camera_config_sync.py (writer)
+        (4) direct_fields in services/camera_repository.py (reader)
+      (3) and (4) are hand-maintained lists in different files. Missing (4)
+      means the value lands in the DB and the reader never surfaces it.
+    guard_strategy: |
+      (a) Assert DIRECT_FIELDS (writer) ⊆ direct_fields (reader) — writer
+      can't seed fields the reader doesn't expose.
+      (b) Assert every scalar column added in psql/migrations/ to the
+      `cameras` table appears in direct_fields, except an explicit
+      bookkeeping/exemption set.
+    test_file: tests/regression/test_camera_field_4_place_rule.py
+    tags: [db, schema, camera-config, ast]
+
+  # ---------------------------------------------------------------------------
+  - id: csrf-blueprint-coverage
+    title: "Blueprint registered on Flask app but missing from csrf.exempt() loop"
+    discovered: 2026-06-14
+    fixed_in: 989775d6
+    symptom: |
+      Operator saw "Error: Unexpected token '<', "<!doctype "... is not valid
+      JSON" when trying to save settings in the v6.2.x telemetry tab. The
+      POST to /api/telemetry/settings was being intercepted by Flask-WTF
+      CSRF and returning the HTML "session required" page, which the JS
+      fetch then tried to JSON.parse.
+    root_cause: |
+      A `@csrf_exempt` decorator from routes/helpers.py was applied to the
+      view function — but that decorator is a no-op (sets `f._csrf_exempt`
+      which Flask-WTF doesn't consult). Flask-WTF reads `_exempt_blueprints`,
+      populated only via `csrf.exempt(bp)` at app boot. The telemetry_bp
+      was missing from that loop, alongside two siblings (cert_bp,
+      onvif_health_bp, settings_bp) found while writing this test.
+    guard_strategy: |
+      AST-walk app.py: collect every blueprint passed to
+      `app.register_blueprint(...)` and every blueprint passed to
+      `csrf.exempt(...)`. Assert (registered) ⊆ (exempted), minus an
+      explicit CSRF_PROTECTED_BLUEPRINTS allow-list (today: empty).
+    test_file: tests/regression/test_csrf_blueprint_coverage.py
+    tags: [flask, csrf, security-policy, ast]
+
+  # ---------------------------------------------------------------------------
+  - id: dependency-drift-concat-typo
+    title: "Two PyPI names concatenated on one requirements.txt line"
+    discovered: 2026-06-15
+    fixed_in: 6b9d20f0
+    symptom: |
+      `docker compose build` failed with
+        ERROR: No matching distribution found for pycryptodomextflite-runtime
+      The running image was unaffected because it was built before the typo
+      landed; any fresh build (including a third-party deploy) would have
+      hit it immediately.
+    root_cause: |
+      `requirements.txt` line read `pycryptodomextflite-runtime>=2.14,<3` —
+      `pycryptodomex` and `tflite-runtime` collapsed onto one line with no
+      separator (probably a copy-paste / autoformat accident). pip parses
+      that as a single (non-existent) package name.
+    guard_strategy: |
+      Pure-text scan: (a) explicit blocklist of historical concatenated
+      tokens, (b) PEP-508-shaped regex applied per line — every non-blank
+      non-comment line must parse as exactly one requirement.
+    test_file: tests/regression/test_dependency_drift.py
+    tags: [packaging, requirements, deployment]
+
+  # ---------------------------------------------------------------------------
+  - id: recordings-status-failed-literal
+    title: "SQL writes `status='failed'` to recordings (rejected by CHECK constraint)"
+    discovered: pre-2026-06-15
+    fixed_in: pre-existing-fix
+    symptom: |
+      psycopg2 IntegrityError on INSERT/UPDATE against `recordings`:
+        new row violates check constraint "recordings_status_check"
+      Surfaces as a 500 with no breadcrumb pointing to the actual cause.
+    root_cause: |
+      The `recordings.status` CHECK constraint allows only the set
+      `{recording, completed, archived, error}`. A developer (or an LLM)
+      hand-writing the INSERT will reach for `'failed'` because it's the
+      intuitive word for an errored-out recording — and the DB will reject.
+    guard_strategy: |
+      Grep service/route/config/SQL files for `recordings.*status=failed`
+      patterns (INSERT/UPDATE/PostgREST PATCH shapes). Plus a constraint
+      pin: parse the migrations and assert the allowed set equals
+      {recording, completed, archived, error} — a future migration loosening
+      the constraint must update this test in lock-step.
+    test_file: tests/regression/test_recordings_status_constraint.py
+    tags: [db, constraint, recordings, sql]
+
+  # ---------------------------------------------------------------------------
+  - id: snap-gate-publisher-state
+    title: "/api/snap serves stale frame for dead publisher (no signal-lost overlay)"
+    discovered: 2026-06-13
+    fixed_in: 33b31431
+    symptom: |
+      Operator quote: "still have a snapshot instead of black stream when
+      stream is down. THIS IS MISLEADING AND PREVENTS ME FROM SEEING IT IS
+      NOT WORKING."
+      Tile shows the last frame the snap endpoint cached; the publisher has
+      been dead for minutes and there's no visible cue.
+    root_cause: |
+      `/api/snap/<camera_id>` returned 200 with whatever JPEG sat in the
+      snap buffer, irrespective of camera_state_tracker availability. A
+      stale frame is indistinguishable from a live frame from the UI.
+    guard_strategy: |
+      Static scan of routes/streaming.py: the /api/snap handler must
+      reference `camera_state_tracker`, must contain a `503` return path,
+      and the 503 must be tied to `availability` (not e.g. an auth check).
+      All three signals must be present together.
+    test_file: tests/regression/test_snap_gate_code_present.py
+    tags: [streaming, snap, publisher-state, ui-truth]

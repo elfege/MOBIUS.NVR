@@ -70,12 +70,12 @@ Code anchors: [routes/auth.py](../routes/auth.py), [templates/login.html](../tem
 |---|---|---|---|---|
 | `AUTH.LOGIN.OK` | User submits correct username + password on `/login` | Redirect to `/streams` (or `/light` per device sniff), session cookie set, `user_sessions` row created | [routes/auth.py](../routes/auth.py), [routes/helpers.py#_create_user_session](../routes/helpers.py) | e2e:PASS |
 | `AUTH.LOGIN.WRONG_PASSWORD` | User submits valid username + wrong password | Stays on `/login`, error banner, no session cookie | [routes/auth.py](../routes/auth.py) | e2e:PASS |
-| `AUTH.LOGIN.UNKNOWN_USER` | User submits username that doesn't exist | Same banner as wrong password (no user-enumeration leak) | [routes/auth.py](../routes/auth.py) | — |
-| `AUTH.LOGOUT` | User clicks Logout | Session destroyed, `user_sessions.is_active=false`, redirect to `/login` | [routes/auth.py](../routes/auth.py), [routes/helpers.py#_deactivate_user_session](../routes/helpers.py) | — |
-| `AUTH.ROLE.ADMIN_ONLY` | Viewer-role user hits an admin-only endpoint (e.g., `/api/telemetry/settings`) | HTTP 403 JSON `{"error": "Admin access required"}` | [routes/telemetry.py](../routes/telemetry.py), [routes/audit_routes.py](../routes/audit_routes.py), [routes/storage.py](../routes/storage.py) | — |
+| `AUTH.LOGIN.UNKNOWN_USER` | User submits username that doesn't exist | Same banner as wrong password (no user-enumeration leak) | [routes/auth.py](../routes/auth.py) | e2e:PASS |
+| `AUTH.LOGOUT` | User clicks Logout | Session destroyed, `user_sessions.is_active=false`, redirect to `/login` | [routes/auth.py](../routes/auth.py), [routes/helpers.py#_deactivate_user_session](../routes/helpers.py) | e2e:PASS |
+| `AUTH.ROLE.ADMIN_ONLY` | Viewer-role user hits an admin-only endpoint (e.g., `/api/telemetry/settings`) | HTTP 403 JSON `{"error": "Admin access required"}` | [routes/telemetry.py](../routes/telemetry.py), [routes/audit_routes.py](../routes/audit_routes.py), [routes/storage.py](../routes/storage.py) | e2e:PASS |
 | `AUTH.TRUSTED_NETWORK.BYPASS` | Operator with `TRUSTED_NETWORK_ENABLED=true` + matching subnet hits any page | Skips login, lands directly on `/streams` (or `/light`) | [routes/auth.py](../routes/auth.py), `trusted_devices` table | — |
-| `AUTH.CHANGE_PASSWORD.FIRST_LOGIN` | New user logs in with `must_change_password=true` | Forced redirect to `/change_password` until set | [templates/change_password.html](../templates/change_password.html) | — |
-| `AUTH.CSRF.EXEMPT_JSON_API` | JS `fetch` POST to any `/api/*` endpoint without an X-CSRFToken header | Endpoint processes the request (all API blueprints are CSRF-exempted at app boot — see [app.py:201-205](../app.py)). Telemetry was the last one added 2026-06-14. | [app.py](../app.py) | manual:2026-06-14 (telemetry POST) |
+| `AUTH.CHANGE_PASSWORD.FIRST_LOGIN` | New user logs in with `must_change_password=true` | Forced redirect to `/change_password` until set (today: enforced only on the post-login redirect — see test docstring for the navigation-bypass gap) | [templates/change_password.html](../templates/change_password.html) | e2e:PASS (initial redirect only) |
+| `AUTH.CSRF.EXEMPT_JSON_API` | JS `fetch` POST to any `/api/*` endpoint without an X-CSRFToken header | Endpoint processes the request (all API blueprints are CSRF-exempted at app boot — see [app.py:201-205](../app.py)). Telemetry was the last one added 2026-06-14. | [app.py](../app.py) | e2e:PASS |
 
 ---
 
@@ -398,11 +398,11 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 
 | Surface | Rows total | Manually verified | E2E covered |
 |---|---|---|---|
-| Auth | 8 | 0 | 0 |
-| Streams page | 10 | 4 | 0 |
-| Light page | 4 | 1 | 0 |
+| Auth | 8 | 0 | 7 |
+| Streams page | 10 | 4 | 1 |
+| Light page | 4 | 1 | 1 |
 | Stream lifecycle | 6 | 1 | 0 |
-| Snapshots | 4 | 1 | 0 |
+| Snapshots | 4 | 1 | 1 |
 | PTZ | 6 | 1 | 0 |
 | Recording | 8 | 0 | 0 |
 | Motion | 3 | 0 | 0 |
@@ -419,12 +419,17 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **121** | **23** | **1** |
+| **TOTAL** | **121** | **23** | **11** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)
 - `AUTH.LOGIN.OK` — `tests/e2e/test_auth_login.py::test_auth_login_ok`
 - `AUTH.LOGIN.WRONG_PASSWORD` — `tests/e2e/test_auth_login.py::test_auth_login_wrong_password`
+- `AUTH.LOGIN.UNKNOWN_USER` — `tests/e2e/test_auth_coverage.py::test_auth_login_unknown_user_no_enumeration_leak`
+- `AUTH.LOGOUT` — `tests/e2e/test_auth_coverage.py::test_auth_logout_destroys_session` (also surfaced + fixed the silently-broken `user_sessions` UPDATE trigger; see migration `043_fix_user_sessions_last_activity_trigger.sql`)
+- `AUTH.ROLE.ADMIN_ONLY` — `tests/e2e/test_auth_coverage.py::test_auth_admin_only_returns_403_for_viewer`
+- `AUTH.CHANGE_PASSWORD.FIRST_LOGIN` — `tests/e2e/test_auth_coverage.py::test_auth_change_password_forced_on_first_login` (initial-redirect only; navigation-bypass gap documented in test docstring)
+- `AUTH.CSRF.EXEMPT_JSON_API` — `tests/e2e/test_auth_coverage.py::test_auth_csrf_exempt_for_json_api`
 - `STREAMS.PAGE.UA_SNIFF_REDIRECT` — `tests/e2e/test_streams_ua_redirect.py::test_streams_redirects_ios_ua_to_light` + `test_streams_keeps_desktop_ua`
 - `LIGHT.PREFER_FULL.OVERRIDE` — `tests/e2e/test_streams_ua_redirect.py::test_localstorage_full_opt_in_keeps_ios_on_streams`
 - `SNAP.GET.PUBLISHER_OFFLINE` — `tests/regression/test_snap_gate_code_present.py` (static code-presence guard; full e2e would need access to the in-process state tracker)

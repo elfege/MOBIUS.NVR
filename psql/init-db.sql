@@ -244,10 +244,22 @@ CREATE INDEX idx_user_sessions_lookup
     ON user_sessions(id, user_id, is_active)
     WHERE is_active = true;
 
+-- Bump `last_activity` (not `updated_at` — this table has no such column)
+-- on every UPDATE. Uses a dedicated function defined below; see
+-- psql/migrations/043_fix_user_sessions_last_activity_trigger.sql for the
+-- bug history.
+CREATE OR REPLACE FUNCTION update_last_activity_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.last_activity = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER update_sessions_last_activity
     BEFORE UPDATE ON user_sessions
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    EXECUTE FUNCTION update_last_activity_column();
 
 -- =============================================================================
 -- USER CAMERA PREFERENCES TABLE

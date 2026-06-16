@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# pre-commit — smoke subset of the static test suite + ruff F821 lint net.
+#
+# What this runs (in order, fail-fast):
+#
+#   1. ruff check .                         (broad pyflakes net; F821 today)
+#   2. pytest tests/test_audit_coverage.py  (every audit-tracked table has a trigger)
+#   3. pytest tests/test_env_conformity.py  (.env.test ⊇ .env.example, etc.)
+#   4. pytest tests/regression/             (the bug-class ledger guards)
+#
+# Why pre-commit and not pre-push:
+#   These are the cheap, deterministic, NO-running-stack-required checks.
+#   Total runtime: ~1.5 s on a modern dev host. Pre-push already exists for
+#   private-path enforcement (RULE 14.6); we don't add to it because we want
+#   the operator to see lint failures BEFORE typing the commit message.
+#
+# When to bypass:
+#   `git commit --no-verify` if you're committing a WIP intermediate state
+#   where one of these checks is intentionally red — but DON'T push that
+#   commit until it's clean. The pre-push hook will still let it through
+#   (it only checks private-path leaks), so the safety net is the operator.
+#
+# Install:
+#   ./scripts/hooks/install-hooks.sh
+#
+# This script lives in scripts/hooks/ (tracked) and is copied into
+# .git/hooks/ by the installer. The .git/hooks/ copy is the one git
+# actually executes; if you edit it directly, your changes will be
+# overwritten on the next install run. Edit THIS file instead.
+# ─────────────────────────────────────────────────────────────────────────────
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Find the python + pytest + ruff to use. Prefer the project venv; fall
+# back to whatever's on PATH (CI environments). Don't activate the venv
+# globally — just call its binaries.
+if [[ -x "$REPO_ROOT/venv/bin/python" ]]; then
+    PY="$REPO_ROOT/venv/bin/python"
+    PYTEST="$REPO_ROOT/venv/bin/pytest"
+    RUFF="$REPO_ROOT/venv/bin/ruff"
+else
+    PY="$(command -v python3 || command -v python)"
+    PYTEST="$(command -v pytest)"
+    RUFF="$(command -v ruff)"
+fi
+
+# If a binary is missing we'd rather skip the step with a loud message than
+# abort the commit — the operator may be working on a host without the dev
+# stack installed (a quick edit on a server, for example).
+warn() { echo -e "\033[33m[pre-commit] $*\033[0m" >&2; }
+fail() { echo -e "\033[31m[pre-commit] $*\033[0m" >&2; }
+ok()   { echo -e "\033[32m[pre-commit] $*\033[0m"; }
+
+ALL_OK=1
+
+# ----- 1. ruff F821 ----------------------------------------------------------
+if [[ -n "${RUFF:-}" && -x "$RUFF" ]] || command -v "${RUFF:-ruff}" >/dev/null 2>&1; then
+    if ! "$RUFF" check . ; then
+        fail "ruff: F821 (undefined name) violation — see above"
+        ALL_OK=0
+    else
+        ok "ruff: clean"
+    fi
+else
+    warn "ruff not installed — skipping lint step (pip install -r requirements-test.txt)"
+fi
+
+# ----- 2-4. pytest smoke subset ----------------------------------------------
+SMOKE_TARGETS=(
+    "tests/test_audit_coverage.py"
+    "tests/test_env_conformity.py"
+    "tests/regression"
+)
+
+if [[ -n "${PYTEST:-}" && -x "$PYTEST" ]] || command -v "${PYTEST:-pytest}" >/dev/null 2>&1; then
+    # -q keeps the output tight; --tb=short means the operator sees the
+    # ledger-context failure body but not a 40-line traceback.
+    if ! "$PYTEST" -q --tb=short --no-header "${SMOKE_TARGETS[@]}" ; then
+        fail "pytest smoke subset failed — see above"
+        ALL_OK=0
+    else
+        ok "pytest smoke: $(printf '%s ' "${SMOKE_TARGETS[@]}")— clean"
+    fi
+else
+    warn "pytest not installed — skipping smoke tests (pip install -r requirements-test.txt)"
+fi
+
+if (( ALL_OK == 0 )); then
+    fail "pre-commit checks failed. Fix the above or commit with --no-verify (NOT recommended)."
+    exit 1
+fi
+
+ok "all pre-commit checks passed"
+exit 0

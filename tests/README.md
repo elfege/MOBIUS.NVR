@@ -62,10 +62,10 @@ The env-file conformity test ([`tests/test_env_conformity.py`](test_env_conformi
 The build-out follows the methodology in [`docs/plans/cross_platform_deployment_assessment_and_storage_selection_and_e2e_test_methodology_2026_06_15.md`](../docs/plans/cross_platform_deployment_assessment_and_storage_selection_and_e2e_test_methodology_2026_06_15.md) (operator-local; not in the public mirror).
 
 - **Phase A (done, v6.4.0)** — Functionality reference skeleton at `docs/functionality_reference.md`. 121 rows, 21 surfaces.
-- **Phase B (in progress)** — Scaffold one runnable case. ← this file + `tests/e2e/test_auth_login.py`.
-- **Phase C** — Regression test ledger. One case per documented past bug (Eufy P2P expiry, MediaMTX API auth, snap-gate signal-lost regression, v6.2.x CSRF + render bugs, etc.).
+- **Phase B (done, v6.5.x)** — Scaffold one runnable case. ← this file + `tests/e2e/test_auth_login.py`.
+- **Phase C (done, v6.6.x)** — Regression test ledger. One case per documented past bug. Narrative-source-of-truth lives in [`tests/regression/ledger.yaml`](regression/ledger.yaml); browse the index with `pytest --regression-ledger`.
 - **Phase D** — Backfill the rest of the reference doc, prioritized by user impact.
-- **Phase E** — Local pre-commit hook for the smoke subset; full suite stays a manual-or-scheduled run.
+- **Phase E (done, v6.7.x)** — Local pre-commit hook at [`scripts/hooks/pre-commit`](../scripts/hooks/pre-commit). Runs `ruff check .` (F821 broad pyflakes net via [`ruff.toml`](../ruff.toml)) + the static pytest tier in ~1.5 s. Full e2e suite stays a manual-or-scheduled run. Install on fresh clone via `./scripts/hooks/install-hooks.sh`.
 
 CI runners on GitHub Actions were considered and explicitly skipped (the operator prefers on-premises execution to avoid runner costs + secret exposure). The suite is built to be runnable by anyone who clones the repo and has Docker.
 

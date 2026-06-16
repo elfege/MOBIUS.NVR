@@ -193,7 +193,13 @@ class FFmpegMotionDetector:
                 # Fall through to ffprobe fallback
 
         # Fallback: ffprobe check (creates RTSP connection - not ideal)
+        # Look up the camera config from the repo — until 2026-06-16 this
+        # block referenced an undefined `camera` (caught by ruff F821 as
+        # part of the Phase E lint-net rollout). Dead code path in practice
+        # because the state tracker IS configured everywhere; the fix
+        # restores correctness in case the tracker is ever disabled.
         from services.streaming_hub import get_rtsp_source_url
+        camera = self.camera_repo.get_camera(camera_id)
         rtsp_url = get_rtsp_source_url(camera_id, camera)
         cmd = [
             'ffprobe',

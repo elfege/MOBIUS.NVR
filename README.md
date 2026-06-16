@@ -399,10 +399,19 @@ The `post-merge` hook automatically pushes `main` to the public repo when featur
 
 Two-tier suite under [`tests/`](tests/):
 
-- **Static checks** (no stack) — `pytest tests/test_audit_coverage.py`. Parses every migration as text and asserts that every audit-tracked table has the right trigger. Fast, runs as a CI guard.
-- **End-to-end** (browser + docker stack) — Playwright drives a real browser against an isolated `docker-compose.test.yml` stack. See [`tests/README.md`](tests/README.md) for setup + the three commands to run it.
+- **Static checks** (no stack) — `pytest tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression`. Audit-trigger coverage, env-file conformity, and the per-bug regression ledger. The ledger lives at [`tests/regression/ledger.yaml`](tests/regression/ledger.yaml) — browse it as a table with `pytest --regression-ledger`. Total: ~1 s.
+- **End-to-end** (browser + docker stack) — Playwright drives a real browser against an isolated docker-compose stack. See [`tests/README.md`](tests/README.md) for setup + the three commands to run it.
 
 Every test references a feature ID (e.g. `AUTH.LOGIN.OK`) from [`docs/functionality_reference.md`](docs/functionality_reference.md), which is the human-readable spec — 121 user-visible features across 21 surfaces. Spec and suite are kept in sync by hard rule in CLAUDE.md.
+
+### Pre-commit hook
+
+A git pre-commit hook at [`scripts/hooks/pre-commit`](scripts/hooks/pre-commit) runs the smoke subset on every commit:
+
+1. `ruff check .` — broad pyflakes-style net, F821 (undefined name) enforced; config at [`ruff.toml`](ruff.toml). Caught 3 real latent bugs during rollout.
+2. `pytest tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression` — the static tier.
+
+Total ~1.5 s. Bypass with `git commit --no-verify` (don't push the result). Install hooks on a fresh clone with `./scripts/hooks/install-hooks.sh`.
 
 ## Documentation
 

@@ -30,3 +30,9 @@ pytest-timeout==2.3.1
 # message). System Python on dev hosts already carries PyYAML; pinning here
 # so CI / fresh venvs install it explicitly.
 PyYAML>=6.0
+
+# Broad pyflakes-style lint net invoked by scripts/hooks/pre-commit. Today
+# only F821 (undefined name) is enforced — see ruff.toml. Already caught 3
+# real latent bugs during the Phase E rollout (storage migrate import,
+# motion detector camera ref, cleanup_handler sys + camera_id typos).
+ruff>=0.6

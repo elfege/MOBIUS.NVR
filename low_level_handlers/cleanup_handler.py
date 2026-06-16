@@ -1,5 +1,6 @@
 from threading import Thread
 import os
+import sys
 import time
 import signal
 import subprocess
@@ -64,7 +65,7 @@ def stop_all_streaming_watchdogs(stream_manager):
         except:
             print(traceback.print_exc())
             raise Exception(
-                f"❌ FAILED to stop watchdog for stream:{camera_id}")
+                f"❌ FAILED to stop watchdog for stream:{camera_serial}")
 
         print(f"✅ watchdog for stream {camera_serial} stopped")
 

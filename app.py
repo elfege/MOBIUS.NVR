@@ -93,7 +93,7 @@ from routes.power import power_bp
 from routes.presence import presence_bp
 from routes.ptz import ptz_bp
 from routes.recording import recording_bp
-from routes.storage import storage_bp
+from routes.storage import storage_bp, get_storage_migration_service
 from routes.streaming import streaming_bp, init_socketio as _init_streaming_socketio
 from routes.settings_routes import settings_bp
 from routes.talkback import talkback_bp, init_socketio as _init_talkback_socketio

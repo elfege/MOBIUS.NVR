@@ -1,0 +1,65 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# ruff.toml — minimal ruff configuration for MOBIUS.NVR.
+#
+# Scope: ruff runs as the broad pyflakes-style net in the pre-commit hook,
+# complementing the hand-rolled per-bug regression tests in
+# `tests/regression/`. The two layers do different jobs:
+#
+#   - tests/regression/   narrative + ledger context for KNOWN bug classes
+#                         we've already paid for once (e.g. the
+#                         unifi_resource_monitor / restart_handler
+#                         conditional-init shape, the 4-place cameras-field
+#                         duplication trap, the recordings.status='failed'
+#                         CHECK-constraint footgun).
+#
+#   - ruff (this file)    blanket coverage for the bug-classes we haven't
+#                         bothered to write tests for. Today only F821
+#                         (undefined name) is enforced — that single check
+#                         already caught two real latent bugs during the
+#                         Phase E rollout:
+#                           * `get_storage_migration_service()` called in
+#                             app.py without an import — the storage
+#                             auto-migration silently never started because
+#                             the try/except swallowed the NameError.
+#                           * `camera` referenced in
+#                             services/motion/ffmpeg_motion_detector.py's
+#                             ffprobe-fallback path with no enclosing binding.
+#
+# Why so narrow: we want CI/pre-commit to fire on REAL defects, not style
+# arguments. Style rules (E*, W*, line-length) are intentionally left off;
+# adopt them via a separate pass with operator sign-off if/when desired.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Match the production Python version (gunicorn image runs on 3.12).
+target-version = "py312"
+
+# Generous line length so existing code doesn't drown the diff on first run.
+# When/if we adopt style rules, revisit; today this is a no-op (no E501).
+line-length = 120
+
+# Paths to skip — venv, vendored, generated, and operator-private docs.
+extend-exclude = [
+    "venv",
+    "venv_*",
+    ".git",
+    "node_modules",
+    "static/vendor",
+    "docs",                # operator-private subtrees + generated HTML
+    "psql/migrations",     # SQL, not Python
+    "tmp_test",
+    "data",
+    "__pycache__",
+]
+
+[lint]
+# Start narrow. ONLY enforce undefined-name (F821) for now. Add new rule
+# codes here when the team explicitly opts in.
+select = ["F821"]
+
+# We're not opting into anything else yet; nothing to ignore.
+ignore = []
+
+# Per-file overrides — kept empty on purpose. If a file legitimately needs
+# F821 disabled (e.g. dynamic `from foo import *` patterns the analyzer
+# can't see through), add it here with a comment explaining why.
+[lint.per-file-ignores]

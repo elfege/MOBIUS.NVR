@@ -295,9 +295,13 @@ Code anchors: [routes/camera.py](../routes/camera.py), [static/js/modals/camera-
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `CAM.ADD.OK` | Admin adds a new camera via UI (or `cameras.json` seed at startup) | Row created in DB; configs regenerated; camera appears in grid after restart or hot-reload | [routes/camera.py](../routes/camera.py), [services/camera_config_sync.py](../services/camera_config_sync.py) | TBD |
-| `CAM.EDIT.HOST_CHANGE` | Admin changes camera's IP / host | DB updated; streaming hub regenerates; FFmpeg uses new URL on next restart | [routes/camera.py](../routes/camera.py) | TBD |
-| `CAM.DELETE` | Admin removes a camera | Row deleted; recording rows orphaned but preserved; streaming hub paths removed on next regen | [routes/camera.py](../routes/camera.py) | TBD |
+| `CAM.ADD.OK` | Admin edits `cameras.json` + restarts (NO `POST /api/cameras` endpoint exists today; addition is a file+restart contract) | Row created in DB by `sync_cameras_json_to_db()` on next boot; configs regenerated | [services/camera_config_sync.py](../services/camera_config_sync.py) | file-restart-contract:SKIP (covered by 4-place regression test) |
+| `CAM.EDIT.HOST_CHANGE` | `PUT /api/settings/camera/<serial>/host` | `cameras.host` updated; streaming hub regenerates on next restart | [routes/settings_routes.py](../routes/settings_routes.py), [services/streaming_hub.py](../services/streaming_hub.py) | e2e:PASS |
+| `CAM.RENAME` | `PUT /api/camera/<serial>/name` | `cameras.name` updated in DB + cameras.json + in-memory cache; returns `previous_name` | [routes/camera.py:423](../routes/camera.py) | e2e:PASS |
+| `CAM.GET` | `GET /api/cameras/<serial>` | Single camera config dict — always fresh from DB | [routes/camera.py:405](../routes/camera.py) | e2e:PASS |
+| `CAM.RENAME.EMPTY` | `PUT /api/camera/<serial>/name` with whitespace-only `name` | HTTP 400 `{error: 'Camera name cannot be empty'}` | [routes/camera.py:443](../routes/camera.py) | e2e:PASS |
+| `CAM.RENAME.NOT_FOUND` | `PUT /api/camera/UNKNOWN/name` | HTTP 404 `{error: 'Camera not found: ...'}` | [routes/camera.py:452](../routes/camera.py) | e2e:PASS |
+| `CAM.DELETE` | Admin edits `cameras.json` (removes entry) + restart, OR direct SQL `DELETE FROM cameras` (NO `DELETE /api/cameras/<id>` endpoint exists today) | Row gone; recording rows orphaned but preserved (no FK cascade); streaming hub paths removed on next regen | [routes/camera.py](../routes/camera.py) | file-restart-contract:SKIP |
 | `CAM.HEALTH.STATE_API` | `GET /api/camera/state/<serial>` | JSON with `availability`, `publisher_active`, `failure_count`, `backoff_seconds`, `last_seen` | [routes/camera.py](../routes/camera.py) | — |
 
 ---
@@ -416,14 +420,14 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Storage | 7 | 1 | 7 |
 | Telemetry | 15 | 7 | 5 |
 | Audit | 7 | 0 | 1 |
-| Camera management | 4 | 0 | 0 |
+| Camera management | 7 | 0 | 5 |
 | User management | 4 | 0 | 4 |
 | Host agent | 4 | 0 | 0 |
 | Eufy bridge | 3 | 0 | 0 |
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **124** | **23** | **36** |
+| **TOTAL** | **127** | **23** | **41** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

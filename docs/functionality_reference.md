@@ -282,13 +282,14 @@ Code anchors: [routes/audit_routes.py](../routes/audit_routes.py), [services/aud
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `AUDIT.SETTINGS.INSERT_ROW_FIRES_TRIGGER` | INSERT into any of `cameras` / `nvr_settings` / `user_camera_preferences` / `trusted_devices` / `camera_credentials` / `host_settings` / `evidence_camera_settings` | New `setting_audit_log` row with `op='INSERT'`, full new value as JSONB | [psql/migrations/036_setting_audit_log_and_triggers.sql](../psql/migrations/036_setting_audit_log_and_triggers.sql) | — |
-| `AUDIT.SETTINGS.UPDATE_ROW_FIRES_TRIGGER` | UPDATE on any audit-tracked table | Same shape, `op='UPDATE'`, `old` + `new` JSON | [psql/migrations/036_setting_audit_log_and_triggers.sql](../psql/migrations/036_setting_audit_log_and_triggers.sql) | — |
+| `AUDIT.SETTINGS.INSERT_ROW_FIRES_TRIGGER` | INSERT into any of `cameras` / `nvr_settings` / `user_camera_preferences` / `trusted_devices` / `camera_credentials` / `host_settings` / `evidence_camera_settings` | `setting_audit_log` row with `old_value IS NULL` and `new_value` = full new row JSONB. (Schema doesn't have an `op` column — op is inferred from which of old/new is NULL.) | [psql/migrations/036_setting_audit_log_and_triggers.sql](../psql/migrations/036_setting_audit_log_and_triggers.sql) | e2e:PASS |
+| `AUDIT.SETTINGS.UPDATE_ROW_FIRES_TRIGGER` | UPDATE on any audit-tracked table | `setting_audit_log` row with both `old_value` and `new_value` non-NULL JSONB snapshots | [psql/migrations/036_setting_audit_log_and_triggers.sql](../psql/migrations/036_setting_audit_log_and_triggers.sql) | e2e:PASS |
 | `AUDIT.COVERAGE.STATIC_CHECK` | New audit-tracked table added without trigger | `tests/test_audit_coverage.py` fails CI | [tests/test_audit_coverage.py](../tests/test_audit_coverage.py) | e2e:PASS |
-| `AUDIT.LISTEN_NOTIFY.LIVE_FANOUT` | A `setting_audit_log` INSERT happens | `audit_listener.py` consumes via LISTEN/NOTIFY, emits `setting_changed` over `/stream_events` socketio | [services/audit_listener.py](../services/audit_listener.py) | — |
-| `UI_EVENT.OUTBOX.POST_BATCH` | Browser auditOutbox flushes 20 events | `POST /api/ui-event/record` writes one `ui_event_log` row per event | [routes/ui_event_routes.py](../routes/ui_event_routes.py) | — |
-| `UI_EVENT.PASSWORD_MASK` | User types in a password field | Event payload stores `*` of the same length, never the plaintext | [routes/ui_event_routes.py](../routes/ui_event_routes.py) | — |
-| `AUDIT.LOG.ADMIN_ONLY_READ` | Viewer hits `/api/audit/recent` | 403 | [routes/audit_routes.py](../routes/audit_routes.py) | — |
+| `AUDIT.LISTEN_NOTIFY.LIVE_FANOUT` | A `setting_audit_log` INSERT happens | `audit_listener.py` consumes via LISTEN/NOTIFY, emits `setting_changed` over `/stream_events` socketio | [services/audit_listener.py](../services/audit_listener.py) | socketio-required:SKIP (needs WS subscription; covered manually) |
+| `UI_EVENT.OUTBOX.POST_BATCH` | `POST /api/ui-event/batch` with a `{host_label, events:[…]}` payload | One `ui_event_log` row per event; response `{accepted, rejected}` | [routes/ui_event_routes.py](../routes/ui_event_routes.py) | e2e:PASS |
+| `UI_EVENT.PASSWORD_MASK` | User types in a password field | Event payload stores `*` of the same length, never the plaintext. **Masking is CLIENT-SIDE** (browser scrubs before POST); the server stores what arrives — no server-side enforcement. | [static/js/ui-event-outbox.js](../static/js/ui-event-outbox.js), [routes/ui_event_routes.py](../routes/ui_event_routes.py) | client-side:SKIP (server-side test would only echo whatever the client sent) |
+| `AUDIT.LOG.ADMIN_ONLY_READ` | Viewer hits `GET /api/audit/log` | HTTP 403 `{error: 'admin only'}` | [routes/audit_routes.py:254](../routes/audit_routes.py) | e2e:PASS |
+| `AUDIT.LOG.GET_BY_ADMIN` | Admin `GET /api/audit/log?limit=N` | Envelope `{rows: [...], total, limit, offset}` | [routes/audit_routes.py:254](../routes/audit_routes.py) | e2e:PASS |
 
 ---
 
@@ -422,7 +423,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Settings (per-camera) | 6 | 0 | 5 |
 | Storage | 7 | 1 | 7 |
 | Telemetry | 15 | 7 | 5 |
-| Audit | 7 | 0 | 1 |
+| Audit | 8 | 0 | 6 |
 | Camera management | 7 | 0 | 5 |
 | User management | 4 | 0 | 4 |
 | Host agent | 4 | 0 | 0 |
@@ -430,7 +431,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **129** | **23** | **46** |
+| **TOTAL** | **130** | **23** | **51** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

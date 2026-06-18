@@ -203,17 +203,20 @@ Code anchors: [static/js/modals/global-settings-modal.js](../static/js/modals/gl
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `SETTINGS.MODAL.OPEN` | User clicks the gear icon | Modal opens, "View" tab active by default | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | — |
-| `SETTINGS.HEADER_SAVE` | User clicks "Save" in the modal header | Tab-aware save: streaming → hub assignments; evidence → evidence save; data → telemetry save; otherwise → advanced-settings batch save. ALWAYS flushes pending Data tab changes too. | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | manual:2026-06-14 |
-| `SETTINGS.TAB.SWITCH_AUTOSAVE_DATA` | User makes a change in Data tab, clicks another tab | Data tab pending changes flushed fire-and-forget; tab switch is not blocked | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | manual:2026-06-14 |
-| `SETTINGS.TAB.VIEW.GRID_STYLE` | User changes grid style dropdown | Layout re-renders without reload | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | — |
-| `SETTINGS.TAB.FULLSCREEN.AUTO_DELAY` | Admin sets auto-fullscreen delay | Persisted to `user_camera_preferences`; effect on next page load | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | — |
-| `SETTINGS.TAB.PERFORMANCE.THROTTLE` | Admin opens Performance tab | Per-host throttle controls render (CPU max, hysteresis, enable) | [static/js/settings/performance-throttle.js](../static/js/settings/performance-throttle.js) | — |
-| `SETTINGS.TAB.EVIDENCE.HIDDEN_WHEN_OFF` | Master `evidence_collection_enabled` flag is false | "Collect Evidence" tab does NOT render in the modal | [routes/config.py](../routes/config.py), [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | manual:2026-06-15 |
-| `SETTINGS.TAB.DATA.RENDER` | Admin clicks the Data tab | Storage overview (recent + archive bars + warnings) + telemetry toggle + max size slider + retention radios render | [static/js/settings/data-tab.js](../static/js/settings/data-tab.js) | manual:2026-06-14 |
-| `SETTINGS.TAB.DATA.ADMIN_ONLY` | Viewer-role user opens settings modal | Data tab not in the tab strip; `GET /api/telemetry/settings` returns 403 if hit directly | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js), [routes/telemetry.py](../routes/telemetry.py) | — |
-| `SETTINGS.TAB.LOGS.OPEN_AUDIT_LOG` | Admin clicks "Open Audit Log" in Logs tab | `auditLogModal` opens, paginated rows from `setting_audit_log` | [static/js/modals/audit-log-modal.js](../static/js/modals/audit-log-modal.js) | — |
-| `SETTINGS.TAB.STORAGE.STATS` | Admin opens Storage tab | Disk usage per tier + warnings; migration controls present | [static/js/settings/storage-status.js](../static/js/settings/storage-status.js) | — |
+| `SETTINGS.MODAL.OPEN` | User clicks the gear icon | Modal opens, "View" tab active by default | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | modal-driven:SKIP |
+| `SETTINGS.HEADER_SAVE` | User clicks "Save" in the modal header | Tab-aware save: streaming → hub assignments; evidence → evidence save; data → telemetry save; otherwise → advanced-settings batch save. ALWAYS flushes pending Data tab changes too. | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | modal-driven:SKIP (manual:2026-06-14) |
+| `SETTINGS.TAB.SWITCH_AUTOSAVE_DATA` | User makes a change in Data tab, clicks another tab | Data tab pending changes flushed fire-and-forget; tab switch is not blocked | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | modal-driven:SKIP (manual:2026-06-14) |
+| `SETTINGS.TAB.VIEW.GRID_STYLE` | User changes grid style dropdown | Layout re-renders without reload | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | modal-driven:SKIP |
+| `SETTINGS.TAB.FULLSCREEN.AUTO_DELAY` | Admin sets auto-fullscreen delay | Persisted to `user_camera_preferences`; effect on next page load | [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | modal-driven:SKIP (per-user pref API tested in CAM.SETTINGS.DISPLAY_ORDER) |
+| `SETTINGS.TAB.PERFORMANCE.THROTTLE` | Admin opens Performance tab | Per-host throttle controls render (CPU max, hysteresis, enable) | [static/js/settings/performance-throttle.js](../static/js/settings/performance-throttle.js) | modal-driven:SKIP |
+| `SETTINGS.TAB.EVIDENCE.HIDDEN_WHEN_OFF` | Master `evidence_collection_enabled` flag is false | "Collect Evidence" tab does NOT render in the modal | [routes/config.py](../routes/config.py), [static/js/modals/global-settings-modal.js](../static/js/modals/global-settings-modal.js) | modal-driven:SKIP (manual:2026-06-15) |
+| `SETTINGS.TAB.DATA.RENDER` | Admin clicks the Data tab | Storage overview (recent + archive bars + warnings) + telemetry toggle + max size slider + retention radios render | [static/js/settings/data-tab.js](../static/js/settings/data-tab.js) | modal-driven:SKIP (manual:2026-06-14; backing APIs covered) |
+| `SETTINGS.TAB.DATA.ADMIN_ONLY` | Viewer hits `GET /api/telemetry/settings` directly | HTTP 403 (the modal tab also hides client-side, but the gate is the route's admin check) | [routes/telemetry.py](../routes/telemetry.py) | e2e:PASS |
+| `SETTINGS.TAB.LOGS.OPEN_AUDIT_LOG` | Admin clicks "Open Audit Log" in Logs tab | `auditLogModal` opens, paginated rows from `setting_audit_log` | [static/js/modals/audit-log-modal.js](../static/js/modals/audit-log-modal.js) | modal-driven:SKIP (audit API covered in AUDIT surface) |
+| `SETTINGS.TAB.STORAGE.STATS` | Admin opens Storage tab — backing fetch is `GET /api/storage/stats` | Envelope `{success, recent, archive, config, warnings}` | [static/js/settings/storage-status.js](../static/js/settings/storage-status.js), [routes/storage.py:137](../routes/storage.py) | e2e:PASS (re-pinned from modal-fetch-shape POV) |
+| `SETTINGS.GLOBAL.GET` | `GET /api/settings/global/<key>` | `{value: <stored-value>}` | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS |
+| `SETTINGS.GLOBAL.SET` | `PUT /api/settings/global/<key>` with `{"value": ...}` | nvr_settings row upserted | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS |
+| `SETTINGS.GLOBAL.LIST_ALL` | `GET /api/settings/global` | Dict `{key: value}` of every nvr_settings row | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS |
 | `SETTINGS.TAB.NETWORK.TRUSTED` | Admin toggles trusted-network | Persisted to `nvr_settings`; effect on next session check | [routes/config.py](../routes/config.py) | — |
 
 ---
@@ -415,7 +418,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Recording | 9 | 0 | 4 |
 | Motion | 3 | 0 | 0 |
 | Audio | 3 | 0 | 0 |
-| Settings (global modal) | 12 | 4 | 0 |
+| Settings (global modal) | 14 | 4 | 5 |
 | Settings (per-camera) | 6 | 0 | 5 |
 | Storage | 7 | 1 | 7 |
 | Telemetry | 15 | 7 | 5 |
@@ -427,7 +430,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **127** | **23** | **41** |
+| **TOTAL** | **129** | **23** | **46** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

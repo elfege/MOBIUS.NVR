@@ -308,9 +308,10 @@ Code anchors: [static/js/modals/user-management-modal.js](../static/js/modals/us
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `USER.ADD` | Admin creates a new user | bcrypt hash stored; `must_change_password=true`; user can log in once and forced to change password | [routes/auth.py](../routes/auth.py) | — |
-| `USER.ROLE.CHANGE` | Admin changes a user's role admin ↔ viewer | New role takes effect on next login; UI re-renders admin-only tabs/sections accordingly | [routes/auth.py](../routes/auth.py) | — |
-| `USER.ACCESS_CONTROL.PER_CAMERA` | Admin restricts user to a subset of cameras | User's grid only shows allowed cameras; direct URL access denied | [routes/auth.py](../routes/auth.py), [routes/config.py](../routes/config.py) | TBD |
+| `USER.ADD` | Admin `POST /api/users` | bcrypt hash stored; `must_change_password=true` (default); 200 with `{success, user:{id, username, role}}` | [routes/auth.py:206](../routes/auth.py) | e2e:PASS |
+| `USER.ROLE.CHANGE` | Admin `PATCH /api/users/<id>` with `{role}` | New role flipped in DB; takes effect on next login | [routes/auth.py:266](../routes/auth.py) | e2e:PASS (DB-side; UI re-render covered separately) |
+| `USER.ACCESS_CONTROL.PER_CAMERA` | Admin `PUT /api/users/<id>/camera-access` with `{cameras:[{camera_serial, allowed}]}` | Allowlist replaces existing rules; GET returns the allowed-camera list | [routes/auth.py:673](../routes/auth.py) | e2e:PASS (DB-side allowlist; /streams grid-filter is the UI side) |
+| `USER.ADD.WEAK_PASSWORD` | `POST /api/users` with `password` shorter than 8 chars | HTTP 400 `{error: 'Password must be at least 8 characters'}` | [routes/auth.py:228](../routes/auth.py) | e2e:PASS (negative-shape pin) |
 
 ---
 
@@ -416,13 +417,13 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Telemetry | 15 | 7 | 0 |
 | Audit | 7 | 0 | 1 |
 | Camera management | 4 | 0 | 0 |
-| User management | 3 | 0 | 0 |
+| User management | 4 | 0 | 4 |
 | Host agent | 4 | 0 | 0 |
 | Eufy bridge | 3 | 0 | 0 |
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **123** | **23** | **27** |
+| **TOTAL** | **124** | **23** | **31** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

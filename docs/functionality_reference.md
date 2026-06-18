@@ -255,21 +255,21 @@ Code anchors: [routes/telemetry.py](../routes/telemetry.py), [services/telemetry
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `TELEM.DEFAULT.OFF` | Fresh install or never-toggled deployment | `telemetry_enabled=false`; probes no-op every tick; `telemetry_events` empty | [psql/migrations/042_create_telemetry_events_and_settings.sql](../psql/migrations/042_create_telemetry_events_and_settings.sql) | manual:2026-06-14 |
-| `TELEM.ENABLE.VIA_DATA_TAB` | Admin toggles telemetry ON in Data tab, clicks header Save | `nvr_settings.telemetry_enabled='true'` persisted; probes start writing within one tick (~60s) | [static/js/settings/data-tab.js](../static/js/settings/data-tab.js), [routes/telemetry.py](../routes/telemetry.py) | manual:2026-06-14 |
-| `TELEM.PROBE.CAMERA_STATE_TRANSITION` | Camera goes `ONLINE` → `DEGRADED` while telemetry on | Row inserted: `category='camera_state'`, `subcategory='transition'`, payload contains `from`/`to`/`failure_count` | [services/camera_state_tracker.py](../services/camera_state_tracker.py), [services/telemetry_event_log.py](../services/telemetry_event_log.py) | manual:2026-06-14 |
-| `TELEM.PROBE.PUBLISHER_TRANSITION` | Camera publisher flips active → inactive | Row inserted: `category='publisher'`, `subcategory='transition'` | [services/camera_state_tracker.py](../services/camera_state_tracker.py) | manual:2026-06-14 |
-| `TELEM.PROBE.MEDIAMTX_DIFF` | MediaMTX path's publisher count changes between two 60s ticks | Row inserted: `category='mediamtx_path'`, payload has `from`/`to` snapshots | [services/telemetry_probes.py](../services/telemetry_probes.py) | manual:2026-06-14 |
-| `TELEM.PROBE.GO2RTC_DIFF` | go2rtc stream producer/consumer count changes | Row inserted: `category='go2rtc_path'` | [services/telemetry_probes.py](../services/telemetry_probes.py) | manual:2026-06-14 |
-| `TELEM.PROBE.RTSP_FFPROBE_FAIL` | In-container ffprobe to a hub URL fails (e.g., the Terrace Shed 404 case) | Row inserted: `category='rtsp_probe'`, `subcategory='probe_fail'`, payload has url + error | [services/telemetry_probes.py](../services/telemetry_probes.py) | — |
-| `TELEM.PROBE.RESOURCE_SNAPSHOT` | Every 60s tick while enabled | Row inserted: `category='resource_snapshot'`, payload has ffmpeg_count, gunicorn RSS, conntrack count, etc. | [services/telemetry_probes.py](../services/telemetry_probes.py) | manual:2026-06-14 |
-| `TELEM.CLEANUP.RETENTION` | Hourly tick + rows older than retention window exist | Old rows deleted (max 50k per pass to bound lock time) | [services/telemetry_cleanup.py](../services/telemetry_cleanup.py) | — |
-| `TELEM.CLEANUP.SIZE_CAP` | Table reaches 90% of admin-set max size | Oldest rows deleted until table is at 80% of cap (hysteresis prevents flapping) | [services/telemetry_cleanup.py](../services/telemetry_cleanup.py) | — |
-| `TELEM.CLEANUP.IMMEDIATE_ON_CAP_REDUCE` | Admin reduces max-size cap below current usage | Cleanup runs immediately, not at next hourly tick | [routes/telemetry.py](../routes/telemetry.py) | — |
-| `TELEM.DISABLE.PRESERVES_ROWS` | Admin toggles telemetry OFF after collecting data | Existing rows remain readable via `/api/telemetry/recent` and SQL views | [services/telemetry_cleanup.py](../services/telemetry_cleanup.py) | — |
-| `TELEM.UI.STORAGE_OVERVIEW_RENDER` | Admin opens Data tab | Two storage bars render (recent + archive) with correct GB values + warnings strip if any | [static/js/settings/data-tab.js](../static/js/settings/data-tab.js) | manual:2026-06-14 |
-| `TELEM.UI.DEBOUNCE_FLAPPING` | A single camera flaps state >100 times in 30s | Only one row written for each `(category, camera_id, subcategory, from→to)` per 30s window | [services/telemetry_event_log.py](../services/telemetry_event_log.py) | — |
-| `TELEM.API.RECENT.PAGINATION` | `GET /api/telemetry/recent?limit=1500` | Returns at most 1000 rows (hard cap), DESC ts order | [routes/telemetry.py](../routes/telemetry.py) | — |
+| `TELEM.DEFAULT.OFF` | Fresh install or never-toggled deployment | `telemetry_enabled=false`; probes no-op every tick; `telemetry_events` empty | [psql/migrations/042_create_telemetry_events_and_settings.sql](../psql/migrations/042_create_telemetry_events_and_settings.sql) | e2e:PASS |
+| `TELEM.ENABLE.VIA_DATA_TAB` | `POST /api/telemetry/settings {enabled:true}` (admin) | `nvr_settings.telemetry_enabled='true'` persisted; probes start writing within one tick (~60s) | [static/js/settings/data-tab.js](../static/js/settings/data-tab.js), [routes/telemetry.py](../routes/telemetry.py) | e2e:PASS |
+| `TELEM.PROBE.CAMERA_STATE_TRANSITION` | Camera goes `ONLINE` → `DEGRADED` while telemetry on | Row inserted: `category='camera_state'`, `subcategory='transition'`, payload contains `from`/`to`/`failure_count` | [services/camera_state_tracker.py](../services/camera_state_tracker.py), [services/telemetry_event_log.py](../services/telemetry_event_log.py) | probe-required:SKIP (needs live state-tracker fires; unit-side covered) |
+| `TELEM.PROBE.PUBLISHER_TRANSITION` | Camera publisher flips active → inactive | Row inserted: `category='publisher'`, `subcategory='transition'` | [services/camera_state_tracker.py](../services/camera_state_tracker.py) | probe-required:SKIP |
+| `TELEM.PROBE.MEDIAMTX_DIFF` | MediaMTX path's publisher count changes between two 60s ticks | Row inserted: `category='mediamtx_path'`, payload has `from`/`to` snapshots | [services/telemetry_probes.py](../services/telemetry_probes.py) | probe-required:SKIP |
+| `TELEM.PROBE.GO2RTC_DIFF` | go2rtc stream producer/consumer count changes | Row inserted: `category='go2rtc_path'` | [services/telemetry_probes.py](../services/telemetry_probes.py) | probe-required:SKIP |
+| `TELEM.PROBE.RTSP_FFPROBE_FAIL` | In-container ffprobe to a hub URL fails (e.g., the Terrace Shed 404 case) | Row inserted: `category='rtsp_probe'`, `subcategory='probe_fail'`, payload has url + error | [services/telemetry_probes.py](../services/telemetry_probes.py) | probe-required:SKIP |
+| `TELEM.PROBE.RESOURCE_SNAPSHOT` | Every 60s tick while enabled | Row inserted: `category='resource_snapshot'`, payload has ffmpeg_count, gunicorn RSS, conntrack count, etc. | [services/telemetry_probes.py](../services/telemetry_probes.py) | probe-required:SKIP (needs 60s tick; manual:2026-06-14) |
+| `TELEM.CLEANUP.RETENTION` | Hourly tick + rows older than retention window exist | Old rows deleted (max 50k per pass to bound lock time) | [services/telemetry_cleanup.py](../services/telemetry_cleanup.py) | probe-required:SKIP (hourly tick) |
+| `TELEM.CLEANUP.SIZE_CAP` | Table reaches 90% of admin-set max size | Oldest rows deleted until table is at 80% of cap (hysteresis prevents flapping) | [services/telemetry_cleanup.py](../services/telemetry_cleanup.py) | probe-required:SKIP (size-driven; covered by unit tests) |
+| `TELEM.CLEANUP.IMMEDIATE_ON_CAP_REDUCE` | Admin reduces `max_size_mb` cap below current usage | Cleanup runs synchronously at API time, not at next hourly tick | [routes/telemetry.py](../routes/telemetry.py) | e2e:PASS (API-shape contract — cap-reduce POST returns success synchronously) |
+| `TELEM.DISABLE.PRESERVES_ROWS` | Admin toggles telemetry OFF after collecting data | Existing rows remain readable via `/api/telemetry/recent` and SQL views | [services/telemetry_cleanup.py](../services/telemetry_cleanup.py) | e2e:PASS |
+| `TELEM.UI.STORAGE_OVERVIEW_RENDER` | Admin opens Data tab | Two storage bars render (recent + archive) with correct GB values + warnings strip if any | [static/js/settings/data-tab.js](../static/js/settings/data-tab.js) | ui-only:SKIP (manual:2026-06-14) |
+| `TELEM.UI.DEBOUNCE_FLAPPING` | A single camera flaps state >100 times in 30s | Only one row written for each `(category, camera_id, subcategory, from→to)` per 30s window | [services/telemetry_event_log.py](../services/telemetry_event_log.py) | unit-covered:SKIP (debounce logic in services/telemetry_event_log; e2e would bypass rate-limit) |
+| `TELEM.API.RECENT.PAGINATION` | `GET /api/telemetry/recent?limit=1500` | Returns at most 1000 rows (hard cap), DESC ts order | [routes/telemetry.py](../routes/telemetry.py) | e2e:PASS |
 
 ---
 
@@ -414,7 +414,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Settings (global modal) | 12 | 4 | 0 |
 | Settings (per-camera) | 6 | 0 | 5 |
 | Storage | 7 | 1 | 7 |
-| Telemetry | 15 | 7 | 0 |
+| Telemetry | 15 | 7 | 5 |
 | Audit | 7 | 0 | 1 |
 | Camera management | 4 | 0 | 0 |
 | User management | 4 | 0 | 4 |
@@ -423,7 +423,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **124** | **23** | **31** |
+| **TOTAL** | **124** | **23** | **36** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

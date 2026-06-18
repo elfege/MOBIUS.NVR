@@ -74,15 +74,16 @@ def admin_client(base_url, seed_test_admin):
 
 
 @pytest.fixture(params=VENDORS, ids=[v[2] for v in VENDORS])
-def seed_vendor_camera(request, db_conn, seed_test_admin):
+def seed_vendor_camera(request, db_conn, seed_test_admin, worker_tag):
     """
     Parametrized fixture — yields (serial, type, fixture_id) for each
     vendor in VENDORS. Test methods that use it run once per vendor.
     Capabilities are seeded as JSONB so ptz_validator's
     `'ptz' in camera.get('capabilities', [])` returns true.
+    Serial is worker-suffixed for xdist isolation.
     """
     cam_type, capabilities, fixture_id, _note = request.param
-    serial = f"E2E_PTZ_{fixture_id.upper()}"
+    serial = f"E2E_PTZ_{fixture_id.upper()}_{worker_tag}"
     import json
     with db_conn.cursor() as cur:
         cur.execute(
@@ -232,12 +233,12 @@ def test_ptz_unknown_camera_returns_400_or_404(admin_client):
     )
 
 
-def test_ptz_non_ptz_camera_returns_400(admin_client, db_conn, seed_test_admin):
+def test_ptz_non_ptz_camera_returns_400(admin_client, db_conn, seed_test_admin, worker_tag):
     """
     A camera without 'ptz' in capabilities gets 400 at the validator
     gate, before any vendor dispatch happens.
     """
-    serial = "E2E_PTZ_FIXED_CAM"
+    serial = f"E2E_PTZ_FIXED_CAM_{worker_tag}"
     try:
         with db_conn.cursor() as cur:
             cur.execute(

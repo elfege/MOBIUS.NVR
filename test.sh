@@ -250,27 +250,40 @@ run() {
     "$@"
 }
 
+# Wrapper that injects $JOBS_FLAG (if set) before the pytest path args.
+# Use this for every test-running dispatch path so `--jobs=N` works
+# uniformly. Echo includes the flag so the printed command is the same
+# one the operator can paste back.
+run_pytest() {
+    if [[ -n "$JOBS_FLAG" ]]; then
+        # shellcheck disable=SC2086  # word-split JOBS_FLAG intentional
+        run "$PYTEST" $JOBS_FLAG "$@"
+    else
+        run "$PYTEST" "$@"
+    fi
+}
+
 # Single dispatch table — the numbered shortcut, the named flag, and the
 # interactive menu all resolve to one of these canonical actions.
 dispatch() {
     local action="$1"; shift
     case "$action" in
         all)
-            run "$PYTEST" -v --tb=short tests/ "$@"
+            run_pytest -v --tb=short tests/ "$@"
             ;;
         static)
-            run "$PYTEST" -v --tb=short tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
+            run_pytest -v --tb=short tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
             ;;
         regression)
-            run "$PYTEST" -v --tb=short tests/regression "$@"
+            run_pytest -v --tb=short tests/regression "$@"
             ;;
         e2e)
-            run "$PYTEST" -v --tb=short tests/e2e "$@"
+            run_pytest -v --tb=short tests/e2e "$@"
             ;;
         auth)
             # Backward-compat alias for the two-file auth bundle. Equivalent to
             # `test --surface=auth`. New code should prefer the surface form.
-            run "$PYTEST" -v --tb=short tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py "$@"
+            run_pytest -v --tb=short tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py "$@"
             ;;
         surface)
             # `test --surface=NAME` (or numbered option 5) — auto-discover and
@@ -289,7 +302,7 @@ dispatch() {
                 exit 1
             fi
             # shellcheck disable=SC2086  # intentional word-splitting for multi-path
-            run "$PYTEST" -v --tb=short $pytest_args "$@"
+            run_pytest -v --tb=short $pytest_args "$@"
             ;;
         smoke)
             echo -e "${BOLD}[1/2] ruff check .${NC}"
@@ -300,7 +313,7 @@ dispatch() {
             fi
             echo
             echo -e "${BOLD}[2/2] pytest smoke subset${NC}"
-            run "$PYTEST" -v --tb=short tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
+            run_pytest -v --tb=short tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
             ;;
         ruff)
             if [[ -z "$RUFF" ]]; then
@@ -329,7 +342,7 @@ dispatch() {
                 echo
             fi
             # shellcheck disable=SC2086  # word-splitting intentional for multi-path input
-            run "$PYTEST" -v --tb=short $custom_path "$@"
+            run_pytest -v --tb=short $custom_path "$@"
             ;;
         quit)
             exit 0
@@ -393,6 +406,36 @@ split_value_arg() {
         *) echo ""; ;;
     esac
 }
+
+# Pre-parse --jobs=N from the argv tail. Sets global JOBS_FLAG to either
+# "" (serial) or "-n N" (parallel via xdist). Also rewrites $@ via
+# REMAINING_ARGS so the rest of the script sees a clean argv.
+#
+# `--jobs=auto` → -n auto (CPU-count workers)
+# `--jobs=4`    → -n 4
+# unset         → no flag, serial run
+JOBS_FLAG=""
+REMAINING_ARGS=()
+parse_jobs_from_args() {
+    REMAINING_ARGS=()
+    JOBS_FLAG=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            # --dist=loadgroup makes pytest-xdist honour the
+            # @pytest.mark.xdist_group marker — tests sharing a group
+            # name route to the same worker. Used by telemetry tests
+            # (test_telemetry.py has pytestmark = xdist_group) which
+            # share a process-wide Settings cache that we can't safely
+            # race across workers.
+            --jobs=*) JOBS_FLAG="-n ${1#--jobs=} --dist=loadgroup"; shift ;;
+            --jobs)   JOBS_FLAG="-n $2 --dist=loadgroup"; shift 2 ;;
+            *)        REMAINING_ARGS+=("$1"); shift ;;
+        esac
+    done
+}
+
+parse_jobs_from_args "$@"
+set -- "${REMAINING_ARGS[@]}"
 
 if [[ $# -eq 0 ]]; then
     # No args → interactive menu.

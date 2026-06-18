@@ -39,29 +39,29 @@ def admin_client(base_url: str, seed_test_admin):
 
 
 @pytest.fixture
-def disposable_username():
+def disposable_username(worker_tag):
     """
     A unique username per test so re-runs don't collide on the UNIQUE
-    constraint. The teardown deletes any user with this prefix in
-    /api/users/<id> DELETE, but we add a DB-side cleanup as a belt
-    against partial-test failures.
+    constraint. Worker-tag suffix keeps xdist workers isolated.
+    The autouse teardown below scopes its wipe to THIS worker's prefix
+    so concurrent workers don't clobber each other's users.
     """
-    name = "e2e_user_add_target"
-    yield name
+    yield f"e2e_user_add_target_{worker_tag}"
 
 
 @pytest.fixture(autouse=True)
-def cleanup_disposable_users(db_conn):
+def cleanup_disposable_users(db_conn, worker_tag):
     """
-    Remove any e2e_user_* users created by these tests, before AND
-    after each test, so re-runs always start clean. Independent of
-    test-side cleanup so a mid-test crash doesn't leave junk users
-    forever.
+    Remove any users created by THIS worker's tests, before AND after
+    each test, so re-runs always start clean. The pattern is scoped to
+    `e2e_user_%_<worker_tag>` so two parallel workers don't delete each
+    other's in-flight users.
     """
+    pattern = f"e2e_user_%_{worker_tag}"
     def _wipe():
         with db_conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM users WHERE username LIKE 'e2e_user_%'"
+                "DELETE FROM users WHERE username LIKE %s", (pattern,)
             )
     _wipe()
     yield
@@ -155,14 +155,14 @@ def test_user_role_change_admin_to_viewer(admin_client, db_conn, disposable_user
 # ---------------------------------------------------------------------------
 
 def test_user_camera_access_allowlist_persists(
-    admin_client, db_conn, disposable_username
+    admin_client, db_conn, disposable_username, worker_tag
 ):
     """
     USER.ACCESS_CONTROL.PER_CAMERA — seed a camera, create a user, PUT
     a camera-access allowlist, then GET and assert the allowlist comes
     back with just that camera.
     """
-    serial = "E2E_USER_ACCESS_CAM"
+    serial = f"E2E_USER_ACCESS_CAM_{worker_tag}"
 
     # Seed a camera (no need for user_camera_preferences here)
     with db_conn.cursor() as cur:

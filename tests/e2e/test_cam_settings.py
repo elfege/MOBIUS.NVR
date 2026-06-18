@@ -37,7 +37,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def seed_test_camera(db_conn, seed_test_admin):
+def seed_test_camera(db_conn, seed_test_admin, worker_tag):
     """
     Insert a minimal `cameras` row AND a baseline `user_camera_preferences`
     row for the test admin so the settings endpoints have a real target.
@@ -57,7 +57,7 @@ def seed_test_camera(db_conn, seed_test_admin):
     Yields the camera serial. Both rows dropped on teardown (FK cascade
     would catch the prefs row, but explicit is clearer).
     """
-    serial = "E2E_TEST_CAMERA_001"
+    serial = f"E2E_TEST_CAMERA_001_{worker_tag}"
     with db_conn.cursor() as cur:
         cur.execute(
             """
@@ -72,12 +72,15 @@ def seed_test_camera(db_conn, seed_test_admin):
             """,
             (serial, serial),
         )
+        # Use the worker-scoped admin username (seed_test_admin yields
+        # `(username, password)`; worker_id is suffixed under xdist).
+        admin_username = seed_test_admin[0]
         cur.execute(
             """
             INSERT INTO user_camera_preferences (
                 user_id, camera_serial, preferred_stream_type, visible, display_order
             ) VALUES (
-                (SELECT id FROM users WHERE username = 'e2e_admin'),
+                (SELECT id FROM users WHERE username = %s),
                 %s, 'LL_HLS', true, 0
             )
             ON CONFLICT (user_id, camera_serial) DO UPDATE SET
@@ -85,7 +88,7 @@ def seed_test_camera(db_conn, seed_test_admin):
                 visible = true,
                 display_order = 0
             """,
-            (serial,),
+            (admin_username, serial),
         )
     yield serial
     with db_conn.cursor() as cur:
@@ -166,7 +169,7 @@ def test_cam_settings_open_modal_reachable(page, base_url, seed_test_admin, seed
 # ---------------------------------------------------------------------------
 
 def test_cam_settings_stream_type_change_persists(
-    admin_client, db_conn, seed_test_camera
+    admin_client, db_conn, seed_test_camera, admin_username
 ):
     """
     CAM.SETTINGS.STREAM_TYPE.CHANGE — PUT a new preferred stream type via
@@ -188,9 +191,9 @@ def test_cam_settings_stream_type_change_persists(
             SELECT preferred_stream_type
               FROM user_camera_preferences
               WHERE camera_serial = %s
-                AND user_id = (SELECT id FROM users WHERE username = 'e2e_admin')
+                AND user_id = (SELECT id FROM users WHERE username = %s)
             """,
-            (serial,),
+            (serial, admin_username),
         )
         row = cur.fetchone()
     assert row is not None, "no user_camera_preferences row written"
@@ -273,7 +276,7 @@ def test_cam_settings_nickname_set_persists(
 # ---------------------------------------------------------------------------
 
 def test_cam_settings_visibility_hide_persists(
-    admin_client, db_conn, seed_test_camera
+    admin_client, db_conn, seed_test_camera, admin_username
 ):
     """
     CAM.SETTINGS.VISIBILITY.HIDE — user toggles a camera off from their
@@ -294,9 +297,9 @@ def test_cam_settings_visibility_hide_persists(
             """
             SELECT visible FROM user_camera_preferences
               WHERE camera_serial = %s
-                AND user_id = (SELECT id FROM users WHERE username = 'e2e_admin')
+                AND user_id = (SELECT id FROM users WHERE username = %s)
             """,
-            (serial,),
+            (serial, admin_username),
         )
         row = cur.fetchone()
     assert row is not None, "no user_camera_preferences row written"
@@ -308,7 +311,7 @@ def test_cam_settings_visibility_hide_persists(
 # ---------------------------------------------------------------------------
 
 def test_cam_settings_display_order_persists(
-    admin_client, db_conn, seed_test_camera
+    admin_client, db_conn, seed_test_camera, admin_username
 ):
     """
     CAM.SETTINGS.DISPLAY_ORDER — user reorders via drag-and-drop in the UI;
@@ -328,9 +331,9 @@ def test_cam_settings_display_order_persists(
             """
             SELECT display_order FROM user_camera_preferences
               WHERE camera_serial = %s
-                AND user_id = (SELECT id FROM users WHERE username = 'e2e_admin')
+                AND user_id = (SELECT id FROM users WHERE username = %s)
             """,
-            (serial,),
+            (serial, admin_username),
         )
         row = cur.fetchone()
     assert row is not None

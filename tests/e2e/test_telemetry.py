@@ -39,6 +39,17 @@ import httpx
 import pytest
 
 
+# Telemetry tests share the global `nvr_settings.telemetry_enabled`
+# row AND the `telemetry_events` table (autouse fixture below wipes it
+# between tests). Under `pytest -n auto`, two workers running
+# telemetry tests would clobber each other's setup state. Pinning the
+# module to one xdist worker keeps that race away — the rest of the
+# suite still parallelizes. xdist's `--dist=loadgroup` (default for
+# functions tagged with `xdist_group`) routes all tests in this group
+# to the same worker.
+pytestmark = pytest.mark.xdist_group(name="telemetry_serial")
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -56,18 +67,31 @@ def admin_client(base_url: str, seed_test_admin):
 
 
 @pytest.fixture(autouse=True)
-def reset_telemetry_state(db_conn):
+def reset_telemetry_state(db_conn, base_url, seed_test_admin):
     """
     Each test starts with telemetry OFF + zero rows in the table.
     Without this, a previous test's INSERTs would survive into the next
     test's TELEM.RECENT.PAGINATION assertion.
+
+    NOTE: the `enabled` toggle MUST go through the API
+    (`POST /api/telemetry/settings {enabled: false}`) — not a direct
+    UPDATE on `nvr_settings` — because Flask's in-process Settings
+    cache reads from itself on the GET path, NOT from the DB on every
+    request. A direct UPDATE leaves the cache stale; the next
+    GET /api/telemetry/settings still returns the old `enabled` value.
+    This bit TELEM.DEFAULT.OFF when a previous test's POST set
+    enabled=true and the autouse reset only touched the DB.
     """
+    username, password = seed_test_admin
     def _reset():
+        # 1. Wipe event rows directly — no cache for these.
         with db_conn.cursor() as cur:
             cur.execute("DELETE FROM telemetry_events")
-            cur.execute(
-                "UPDATE nvr_settings SET value = 'false' WHERE key = 'telemetry_enabled'"
-            )
+        # 2. Toggle enabled=false via the API so the in-memory cache
+        # AND the DB row are both updated.
+        with httpx.Client(base_url=base_url, follow_redirects=False) as c:
+            c.post("/login", data={"username": username, "password": password})
+            c.post("/api/telemetry/settings", json={"enabled": False})
     _reset()
     yield
     _reset()

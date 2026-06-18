@@ -113,14 +113,20 @@ def db_conn():
 
 
 @pytest.fixture(scope="session")
-def seed_test_admin(db_conn):
+def seed_test_admin(db_conn, worker_id):
     """
     Insert (or update) the e2e_admin user so login tests have a known
     identity. Returns (username, password) for the test to use.
 
+    Worker-scoped under xdist: each xdist worker gets its own admin
+    (`e2e_admin_<worker_id>`) so concurrent logins / logouts don't race
+    on the same `user_sessions` rows. Under serial mode, `worker_id`
+    is "master" and the username is `e2e_admin_master`.
+
     The bcrypt hash is computed fresh here (cost 12) — there's no
     frozen hash constant elsewhere that could drift from the password.
     """
+    username = f"{TEST_ADMIN_USERNAME}_{worker_id}"
     bcrypt_hash = bcrypt.hashpw(
         TEST_ADMIN_PASSWORD.encode("utf-8"),
         bcrypt.gensalt(12),
@@ -136,9 +142,9 @@ def seed_test_admin(db_conn):
                           role = 'admin',
                           must_change_password = false
             """,
-            (TEST_ADMIN_USERNAME, bcrypt_hash),
+            (username, bcrypt_hash),
         )
-    return TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD
+    return username, TEST_ADMIN_PASSWORD
 
 
 # ---------------------------------------------------------------------------
@@ -161,3 +167,34 @@ def fresh_context(browser):
     context = browser.new_context()
     yield context
     context.close()
+
+
+# ---------------------------------------------------------------------------
+# Parallel-run helpers (pytest-xdist)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def worker_tag(worker_id):
+    """
+    Worker-unique tag for seed-fixture names. Under `pytest -n auto`,
+    `worker_id` is "gw0"/"gw1"/etc.; serial mode returns "master".
+    Tests use this to suffix any DB primary-key string so concurrent
+    workers don't race on the same row.
+
+        @pytest.fixture
+        def seed_camera(db_conn, worker_tag):
+            serial = f"E2E_CAM_{worker_tag}"
+            ...
+    """
+    return worker_id
+
+
+@pytest.fixture
+def admin_username(seed_test_admin):
+    """
+    Shorthand for the worker-scoped admin username. Test SQL that needs
+    `(SELECT id FROM users WHERE username = %s)` should use this rather
+    than the literal 'e2e_admin' — `seed_test_admin` is worker-suffixed
+    under xdist (`e2e_admin_<worker_id>`), so the literal would miss.
+    """
+    return seed_test_admin[0]

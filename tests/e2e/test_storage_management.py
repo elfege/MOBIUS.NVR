@@ -48,9 +48,10 @@ def admin_client(base_url: str, seed_test_admin):
 
 
 @pytest.fixture
-def seed_viewer(db_conn, seed_test_admin):
-    """Insert (or refresh) a viewer-role user for admin-only-policy checks."""
-    username = "e2e_storage_viewer"
+def seed_viewer(db_conn, seed_test_admin, worker_tag):
+    """Insert (or refresh) a viewer-role user for admin-only-policy checks.
+    Username worker-suffixed for xdist isolation."""
+    username = f"e2e_storage_viewer_{worker_tag}"
     password = "viewer_pw"
     bcrypt_hash = bcrypt.hashpw(
         password.encode("utf-8"), bcrypt.gensalt(12)

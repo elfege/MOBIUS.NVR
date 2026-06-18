@@ -33,8 +33,8 @@ def admin_client(base_url, seed_test_admin):
 
 
 @pytest.fixture
-def seed_audit_viewer(db_conn, seed_test_admin):
-    username = "e2e_audit_viewer"
+def seed_audit_viewer(db_conn, seed_test_admin, worker_tag):
+    username = f"e2e_audit_viewer_{worker_tag}"
     password = "viewer_pw"
     bcrypt_hash = bcrypt.hashpw(
         password.encode("utf-8"), bcrypt.gensalt(12)
@@ -103,7 +103,7 @@ def test_audit_log_get_returns_envelope(admin_client):
 # AUDIT.SETTINGS.INSERT_ROW_FIRES_TRIGGER
 # ---------------------------------------------------------------------------
 
-def test_audit_settings_insert_fires_trigger(db_conn):
+def test_audit_settings_insert_fires_trigger(db_conn, worker_tag):
     """
     AUDIT.SETTINGS.INSERT_ROW_FIRES_TRIGGER — INSERT into cameras must
     produce a setting_audit_log row with op='INSERT'.
@@ -111,7 +111,7 @@ def test_audit_settings_insert_fires_trigger(db_conn):
     We use a unique camera serial so we can find the audit row even if
     other tests are concurrently writing to the table.
     """
-    serial = "E2E_AUDIT_INSERT_CAM"
+    serial = f"E2E_AUDIT_INSERT_CAM_{worker_tag}"
     try:
         with db_conn.cursor() as cur:
             cur.execute(
@@ -152,13 +152,13 @@ def test_audit_settings_insert_fires_trigger(db_conn):
 # AUDIT.SETTINGS.UPDATE_ROW_FIRES_TRIGGER
 # ---------------------------------------------------------------------------
 
-def test_audit_settings_update_fires_trigger(db_conn):
+def test_audit_settings_update_fires_trigger(db_conn, worker_tag):
     """
     AUDIT.SETTINGS.UPDATE_ROW_FIRES_TRIGGER — UPDATE on cameras must
     produce a setting_audit_log row with op='UPDATE' and both old + new
     JSON snapshots.
     """
-    serial = "E2E_AUDIT_UPDATE_CAM"
+    serial = f"E2E_AUDIT_UPDATE_CAM_{worker_tag}"
     try:
         with db_conn.cursor() as cur:
             cur.execute(

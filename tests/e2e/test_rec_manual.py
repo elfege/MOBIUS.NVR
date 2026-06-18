@@ -48,21 +48,24 @@ import pytest
 
 
 # Use a distinct camera serial from CAM.SETTINGS tests so the two files
-# can be run together (or alone) without colliding on rows.
-TEST_CAM_SERIAL = "E2E_REC_TEST_CAMERA"
+# can be run together (or alone) without colliding on rows. Worker-suffixed
+# for xdist parallelization.
 
 
 @pytest.fixture
-def seed_rec_camera(db_conn, seed_test_admin):
+def seed_rec_camera(db_conn, seed_test_admin, worker_tag):
     """
     Insert a minimal cameras row for the recording tests. Same shape as
     CAM.SETTINGS's seed_test_camera but with its own serial — the two
     file's fixtures don't interfere if both run in the same session.
 
+    Serial is worker-suffixed so xdist workers each get their own row.
+
     No matching user_camera_preferences row is needed (manual recordings
     don't read user prefs). The recordings table cleanup runs in the
     teardown.
     """
+    TEST_CAM_SERIAL = f"E2E_REC_TEST_CAMERA_{worker_tag}"
     with db_conn.cursor() as cur:
         cur.execute(
             """

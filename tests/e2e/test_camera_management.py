@@ -35,9 +35,6 @@ import httpx
 import pytest
 
 
-CAM_SERIAL = "E2E_CAM_MGMT_TEST"
-
-
 @pytest.fixture
 def admin_client(base_url: str, seed_test_admin):
     username, password = seed_test_admin
@@ -51,11 +48,13 @@ def admin_client(base_url: str, seed_test_admin):
 
 
 @pytest.fixture
-def seed_camera(db_conn, seed_test_admin):
+def seed_camera(db_conn, seed_test_admin, worker_tag):
     """
     Seed a camera with a known starting state so each test sees the
-    same baseline (name='Pre-rename', host=10.0.0.1).
+    same baseline (name='Pre-rename', host=10.0.0.1). Serial is
+    worker-suffixed so xdist workers don't collide.
     """
+    cam_serial = f"E2E_CAM_MGMT_TEST_{worker_tag}"
     with db_conn.cursor() as cur:
         cur.execute(
             """
@@ -71,11 +70,16 @@ def seed_camera(db_conn, seed_test_admin):
                 hidden = false,
                 streaming_hub = 'mediamtx'
             """,
-            (CAM_SERIAL, CAM_SERIAL),
+            (cam_serial, cam_serial),
         )
-    yield CAM_SERIAL
+    yield cam_serial
     with db_conn.cursor() as cur:
-        cur.execute("DELETE FROM cameras WHERE serial = %s", (CAM_SERIAL,))
+        cur.execute("DELETE FROM cameras WHERE serial = %s", (cam_serial,))
+
+
+# All test functions take `seed_camera` (the fixture) and dereference the
+# yielded value as `seed_camera` — the cam_serial value is the fixture's
+# yield, not a module-level constant. No further changes needed below.
 
 
 # ---------------------------------------------------------------------------

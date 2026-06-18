@@ -53,8 +53,8 @@ def admin_client(base_url: str, seed_test_admin):
 
 
 @pytest.fixture
-def seed_settings_viewer(db_conn, seed_test_admin):
-    username = "e2e_settings_viewer"
+def seed_settings_viewer(db_conn, seed_test_admin, worker_tag):
+    username = f"e2e_settings_viewer_{worker_tag}"
     password = "viewer_pw"
     bcrypt_hash = bcrypt.hashpw(
         password.encode("utf-8"), bcrypt.gensalt(12)
@@ -85,17 +85,24 @@ def viewer_client(base_url, seed_settings_viewer):
     client.close()
 
 
-# Test setting key — chosen to avoid colliding with any real prod key.
-TEST_KEY = "_e2e_test_global_setting"
+# Test setting key — chosen to avoid colliding with any real prod key
+# AND with concurrent xdist workers (worker_tag is appended).
 
 
 @pytest.fixture
-def cleanup_test_setting(db_conn):
+def test_key(worker_tag):
+    """Worker-scoped global-setting key so concurrent xdist workers
+    don't race on the same nvr_settings row."""
+    return f"_e2e_test_global_setting_{worker_tag}"
+
+
+@pytest.fixture
+def cleanup_test_setting(db_conn, test_key):
     """Remove our test key on enter + exit so re-runs are clean."""
     def _wipe():
         try:
             with db_conn.cursor() as cur:
-                cur.execute("DELETE FROM nvr_settings WHERE key = %s", (TEST_KEY,))
+                cur.execute("DELETE FROM nvr_settings WHERE key = %s", (test_key,))
         except Exception:
             pass  # nvr_settings might not exist in some test scenarios
     _wipe()
@@ -108,14 +115,14 @@ def cleanup_test_setting(db_conn):
 # ---------------------------------------------------------------------------
 
 def test_settings_global_set_persists(
-    admin_client, db_conn, cleanup_test_setting
+    admin_client, db_conn, test_key, cleanup_test_setting
 ):
     """
     SETTINGS.GLOBAL.SET — PUT /api/settings/global/<key> writes to
     nvr_settings. Verify the row appears with the new value.
     """
     resp = admin_client.put(
-        f"/api/settings/global/{TEST_KEY}",
+        f"/api/settings/global/{test_key}",
         json={"value": "test_value_42"},
     )
     assert resp.status_code == 200, f"{resp.status_code} {resp.text[:200]}"
@@ -123,10 +130,10 @@ def test_settings_global_set_persists(
 
     with db_conn.cursor() as cur:
         cur.execute(
-            "SELECT value FROM nvr_settings WHERE key = %s", (TEST_KEY,)
+            "SELECT value FROM nvr_settings WHERE key = %s", (test_key,)
         )
         row = cur.fetchone()
-    assert row is not None, f"nvr_settings row for {TEST_KEY} missing after PUT"
+    assert row is not None, f"nvr_settings row for {test_key} missing after PUT"
     assert row[0] == "test_value_42", f"value stored as {row[0]!r}"
 
 
@@ -135,18 +142,18 @@ def test_settings_global_set_persists(
 # ---------------------------------------------------------------------------
 
 def test_settings_global_get_returns_value(
-    admin_client, db_conn, cleanup_test_setting
+    admin_client, db_conn, test_key, cleanup_test_setting
 ):
     """
     SETTINGS.GLOBAL.GET — PUT then GET reads back the same value.
     """
     # Seed via PUT (also verifies the PUT path again — harmless)
     admin_client.put(
-        f"/api/settings/global/{TEST_KEY}",
+        f"/api/settings/global/{test_key}",
         json={"value": "roundtrip_xyz"},
     )
 
-    resp = admin_client.get(f"/api/settings/global/{TEST_KEY}")
+    resp = admin_client.get(f"/api/settings/global/{test_key}")
     assert resp.status_code == 200, resp.text[:200]
     body = resp.json()
     assert body.get("value") == "roundtrip_xyz", f"unexpected body: {body}"
@@ -157,25 +164,25 @@ def test_settings_global_get_returns_value(
 # ---------------------------------------------------------------------------
 
 def test_settings_global_list_all_includes_our_key(
-    admin_client, cleanup_test_setting
+    admin_client, test_key, cleanup_test_setting
 ):
     """
     SETTINGS.GLOBAL.LIST_ALL — GET /api/settings/global returns a dict
     of every nvr_settings key. After PUTting a test key it must show up.
     """
     admin_client.put(
-        f"/api/settings/global/{TEST_KEY}",
+        f"/api/settings/global/{test_key}",
         json={"value": "list_visible"},
     )
     resp = admin_client.get("/api/settings/global")
     assert resp.status_code == 200, resp.text[:200]
     body = resp.json()
     # The handler returns a dict {key: value}. Verify our key appears.
-    assert TEST_KEY in body, (
-        f"PUT'd key {TEST_KEY!r} not in /api/settings/global response. "
+    assert test_key in body, (
+        f"PUT'd key {test_key!r} not in /api/settings/global response. "
         f"Keys: {sorted(body.keys())}"
     )
-    assert body[TEST_KEY] == "list_visible"
+    assert body[test_key] == "list_visible"
 
 
 # ---------------------------------------------------------------------------

@@ -33,7 +33,7 @@ from playwright.sync_api import Page, expect
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def seed_test_viewer(db_conn):
+def seed_test_viewer(db_conn, worker_tag):
     """
     Insert (or update) a viewer-role test user. Distinct from
     `seed_test_admin` so we can exercise admin-only endpoints with a
@@ -41,8 +41,9 @@ def seed_test_viewer(db_conn):
 
     Yields (username, password). Each test that touches this fixture
     gets a fresh password hash computed at fixture-setup time.
+    Username worker-suffixed for xdist isolation.
     """
-    username = "e2e_viewer"
+    username = f"e2e_viewer_{worker_tag}"
     password = "e2e_viewer_password"
     bcrypt_hash = bcrypt.hashpw(
         password.encode("utf-8"),
@@ -65,15 +66,15 @@ def seed_test_viewer(db_conn):
 
 
 @pytest.fixture
-def seed_first_login_user(db_conn):
+def seed_first_login_user(db_conn, worker_tag):
     """
     Insert a user with `must_change_password=true` so we can exercise
     the forced-redirect-to-/change-password flow.
 
     Yields (username, password). The user is deleted after the test so
-    re-runs always start clean.
+    re-runs always start clean. Username worker-suffixed for xdist.
     """
-    username = "e2e_first_login_user"
+    username = f"e2e_first_login_user_{worker_tag}"
     password = "initial_password"
     bcrypt_hash = bcrypt.hashpw(
         password.encode("utf-8"),

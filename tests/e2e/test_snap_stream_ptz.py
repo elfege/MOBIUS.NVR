@@ -18,9 +18,6 @@ import httpx
 import pytest
 
 
-SERIAL = "E2E_SSP_TEST_CAM"
-
-
 @pytest.fixture
 def admin_client(base_url, seed_test_admin):
     username, password = seed_test_admin
@@ -31,8 +28,9 @@ def admin_client(base_url, seed_test_admin):
 
 
 @pytest.fixture
-def seed_ssp_camera(db_conn, seed_test_admin):
-    """Seed a non-PTZ test camera + a PTZ-capable variant."""
+def seed_ssp_camera(db_conn, seed_test_admin, worker_tag):
+    """Seed a non-PTZ test camera. Serial worker-suffixed for xdist."""
+    SERIAL = f"E2E_SSP_TEST_CAM_{worker_tag}"
     with db_conn.cursor() as cur:
         cur.execute(
             """

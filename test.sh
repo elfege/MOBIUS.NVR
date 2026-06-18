@@ -256,21 +256,21 @@ dispatch() {
     local action="$1"; shift
     case "$action" in
         all)
-            run "$PYTEST" tests/ "$@"
+            run "$PYTEST" -v --tb=short tests/ "$@"
             ;;
         static)
-            run "$PYTEST" tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
+            run "$PYTEST" -v --tb=short tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
             ;;
         regression)
-            run "$PYTEST" tests/regression "$@"
+            run "$PYTEST" -v --tb=short tests/regression "$@"
             ;;
         e2e)
-            run "$PYTEST" tests/e2e "$@"
+            run "$PYTEST" -v --tb=short tests/e2e "$@"
             ;;
         auth)
             # Backward-compat alias for the two-file auth bundle. Equivalent to
             # `test --surface=auth`. New code should prefer the surface form.
-            run "$PYTEST" tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py "$@"
+            run "$PYTEST" -v --tb=short tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py "$@"
             ;;
         surface)
             # `test --surface=NAME` (or numbered option 5) — auto-discover and
@@ -289,7 +289,7 @@ dispatch() {
                 exit 1
             fi
             # shellcheck disable=SC2086  # intentional word-splitting for multi-path
-            run "$PYTEST" $pytest_args "$@"
+            run "$PYTEST" -v --tb=short $pytest_args "$@"
             ;;
         smoke)
             echo -e "${BOLD}[1/2] ruff check .${NC}"
@@ -300,7 +300,7 @@ dispatch() {
             fi
             echo
             echo -e "${BOLD}[2/2] pytest smoke subset${NC}"
-            run "$PYTEST" tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
+            run "$PYTEST" -v --tb=short tests/test_audit_coverage.py tests/test_env_conformity.py tests/regression "$@"
             ;;
         ruff)
             if [[ -z "$RUFF" ]]; then
@@ -329,7 +329,7 @@ dispatch() {
                 echo
             fi
             # shellcheck disable=SC2086  # word-splitting intentional for multi-path input
-            run "$PYTEST" $custom_path "$@"
+            run "$PYTEST" -v --tb=short $custom_path "$@"
             ;;
         quit)
             exit 0

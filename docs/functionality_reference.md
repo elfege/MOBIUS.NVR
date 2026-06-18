@@ -239,12 +239,13 @@ Code anchors: [routes/storage.py](../routes/storage.py), [static/js/settings/sto
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `STORAGE.STATS.READ` | `GET /api/storage/stats` (admin) | JSON with `recent`, `archive`, `config`, `warnings` keys; used by Storage tab AND Data tab overview widget | [routes/storage.py:137](../routes/storage.py) | manual:2026-06-14 |
-| `STORAGE.MIGRATE.MANUAL` | Admin clicks "Migrate Now" in Storage tab | Files older than `age_threshold_days` move to archive; progress streams via SSE/poll | [routes/storage.py](../routes/storage.py) | TBD |
-| `STORAGE.CLEANUP.MANUAL` | Admin clicks "Cleanup Archive" | Files older than `archive_retention_days` deleted from archive | [routes/storage.py](../routes/storage.py) | TBD |
-| `STORAGE.RECONCILE` | Admin clicks "Reconcile" | Filesystem walked; orphan files removed, missing-file rows updated | [routes/storage.py](../routes/storage.py) | TBD |
-| `STORAGE.SETTINGS.UPDATE` | Admin sets `archive_retention_days=60` | Persisted to `recording_settings.json` via `/api/storage/settings`; migration service reloaded | [routes/storage.py:495](../routes/storage.py) | — |
-| `STORAGE.CANCEL_IN_PROGRESS` | Admin clicks "Cancel" during a migration | Operation halts cleanly; partial migration is durable | [routes/storage.py](../routes/storage.py) | TBD |
+| `STORAGE.STATS.READ` | `GET /api/storage/stats` (admin) | JSON with `recent`, `archive`, `config`, `warnings` keys; used by Storage tab AND Data tab overview widget | [routes/storage.py:137](../routes/storage.py) | e2e:PASS |
+| `STORAGE.MIGRATE.MANUAL` | `POST /api/storage/migrate` (admin) | Files older than `age_threshold_days` move to archive; synchronous run; returns `{success, migrated, failed, skipped, bytes_processed}` | [routes/storage.py](../routes/storage.py) | e2e:PASS (zero-file contract; file-move mechanics covered by storage_migration unit tests) |
+| `STORAGE.CLEANUP.MANUAL` | `POST /api/storage/cleanup` (admin) | Files older than `archive_retention_days` deleted from archive | [routes/storage.py](../routes/storage.py) | e2e:PASS |
+| `STORAGE.RECONCILE` | `POST /api/storage/reconcile` (admin) | Filesystem walked; orphan files removed, missing-file rows updated | [routes/storage.py](../routes/storage.py) | e2e:PASS |
+| `STORAGE.SETTINGS.UPDATE` | `POST /api/storage/settings` with `archive_retention_days=N` | Persisted to `recording_settings.json`; GET roundtrip returns the new value; migration service reloaded | [routes/storage.py:495](../routes/storage.py) | e2e:PASS |
+| `STORAGE.CANCEL_IN_PROGRESS` | `POST /api/storage/cancel` during a migration | Operation halts cleanly; partial migration is durable. (E2E test verifies the cancel endpoint is idle-safe — staging an in-progress op from a test is racy because the migrate endpoint is synchronous.) | [routes/storage.py](../routes/storage.py) | e2e:PASS (idle-safe shape; in-progress halt requires async runner) |
+| `STORAGE.ADMIN_ONLY` | Viewer hits `POST /api/storage/settings` | HTTP 403 `{error: 'Admin access required'}` | [routes/storage.py](../routes/storage.py) | e2e:PASS |
 
 ---
 
@@ -411,7 +412,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Audio | 3 | 0 | 0 |
 | Settings (global modal) | 12 | 4 | 0 |
 | Settings (per-camera) | 6 | 0 | 5 |
-| Storage | 6 | 1 | 0 |
+| Storage | 7 | 1 | 7 |
 | Telemetry | 15 | 7 | 0 |
 | Audit | 7 | 0 | 1 |
 | Camera management | 4 | 0 | 0 |
@@ -421,7 +422,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **122** | **23** | **20** |
+| **TOTAL** | **123** | **23** | **27** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

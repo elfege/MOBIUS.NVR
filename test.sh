@@ -69,13 +69,24 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 
 discover_e2e_surfaces() {
-    # Output: one surface name per line, sorted, sans the test_ prefix
-    # and .py suffix. E.g. tests/e2e/test_audit_log.py → "audit_log".
+    # Output: one surface name per line, sans the test_ prefix and .py
+    # suffix. E.g. tests/e2e/test_audit_log.py → "audit_log".
+    #
+    # Sort order: non-PTZ surfaces alphabetically first, then PTZ
+    # surfaces (anything containing "ptz") at the end. The menu prints a
+    # "PTZ (vendor-aware)" banner right before the PTZ block so the
+    # subsection is visually clear. The numbering applied at print time
+    # (13+) sticks to this same order, so surface_number_to_name() stays
+    # consistent.
     if [[ ! -d "$REPO_ROOT/tests/e2e" ]]; then
         return
     fi
-    ls "$REPO_ROOT/tests/e2e/"test_*.py 2>/dev/null | \
-        sed -e 's|.*/test_||' -e 's|\.py$||' | sort -u
+    local all
+    all="$(ls "$REPO_ROOT/tests/e2e/"test_*.py 2>/dev/null | \
+           sed -e 's|.*/test_||' -e 's|\.py$||' | sort -u)"
+    # Emit non-PTZ first, then PTZ
+    grep -v 'ptz' <<<"$all"
+    grep 'ptz' <<<"$all"
 }
 
 # Map a surface name to its pytest path(s). The "auth" shorthand
@@ -124,22 +135,65 @@ ${BOLD}${CYAN}──────────────────────
 ${BOLD}${CYAN}─────────────────────────────────────────────────────────────────${NC}
 EOF
 
-    # Append the discovered surface list as copy-paste-ready commands.
-    # NO numbers here — the only numbered prompt is the main "Choose:"
-    # above (1-12, q). Numbering this list too would invite typing "0"
-    # at the main prompt expecting it to dispatch (it won't — these are
-    # copy-paste references, not main-menu items). The number prompt
-    # appears when you actually pick option 5 and reach the sub-picker.
+    # Append the discovered surface list. Number them so they're
+    # selectable from the main "Choose:" prompt — surfaces get number
+    # 0 (the all-surfaces shorthand) and 13+ (one per file, avoiding
+    # collision with the main actions 1-12). Each line ALSO shows the
+    # copy-paste-ready --surface=NAME form for shell-history reuse.
+    #
+    # PTZ surfaces (the ones with `ptz` in the filename) get a separate
+    # subsection because PTZ is vendor-aware (different protocols per
+    # vendor — Reolink Baichuan, Amcrest CGI/ONVIF, Eufy bridge, SV3C
+    # ONVIF-only) and operators usually want to scope a PTZ debug
+    # session to just those tests.
     local surfaces
     surfaces="$(discover_e2e_surfaces)"
     if [[ -n "$surfaces" ]]; then
-        echo -e " ${BOLD}E2E surface invocations${NC} ${DIM}(copy/paste — or pick 5 above for a numbered sub-prompt):${NC}"
-        echo -e "   ${GREEN}test --surface=all${NC}   ${DIM}(every surface — same as menu option 4)${NC}"
+        echo -e " ${BOLD}E2E surfaces${NC} ${DIM}(pick number at the Choose: prompt, or copy --surface=NAME):${NC}"
+        printf "  ${MAGENTA}%2d${NC}) ${GREEN}test --surface=all${NC}   ${DIM}(every surface — same as menu option 4)${NC}\n" 0
+
+        # Split into PTZ vs non-PTZ so the PTZ block stays cohesive.
+        local non_ptz_surfaces=""
+        local ptz_surfaces=""
         while IFS= read -r s; do
-            echo -e "   ${GREEN}test --surface=${s}${NC}"
+            if [[ "$s" == *ptz* ]]; then
+                ptz_surfaces+="$s"$'\n'
+            else
+                non_ptz_surfaces+="$s"$'\n'
+            fi
+        done <<<"$surfaces"
+
+        # We must number every surface in the SAME order discover_e2e_surfaces
+        # returned, so surface_number_to_name() (sed -n "$idx p" against the
+        # SAME ordering) stays consistent. Print the non-PTZ ones first AT
+        # THEIR ORIGINAL INDEX, then a PTZ banner, then the PTZ ones at
+        # their original index. To do this cleanly we re-iterate the
+        # original list and switch between sections on the fly.
+        local n=13
+        local in_ptz=0
+        while IFS= read -r s; do
+            if [[ "$s" == *ptz* ]] && (( in_ptz == 0 )); then
+                echo -e " ${BOLD}PTZ (vendor-aware)${NC} ${DIM}— Reolink/Amcrest/SV3C/Eufy each have a different protocol; tests dispatch per camera_type:${NC}"
+                in_ptz=1
+            fi
+            printf "  ${MAGENTA}%2d${NC}) ${GREEN}test --surface=%s${NC}\n" "$n" "$s"
+            n=$((n + 1))
         done <<<"$surfaces"
         echo
     fi
+}
+
+# Map a numeric main-prompt choice (0 or 13+) to a surface name.
+# Returns "" if not in the surface range.
+surface_number_to_name() {
+    local n="$1"
+    if [[ "$n" == "0" ]]; then echo "all"; return 0; fi
+    if ! [[ "$n" =~ ^[0-9]+$ ]] || (( n < 13 )); then
+        echo ""
+        return 1
+    fi
+    local idx=$((n - 13))
+    discover_e2e_surfaces | sed -n "$((idx + 1))p"
 }
 
 # Prompt for an e2e surface and echo the selected name. Returns 1 if
@@ -289,6 +343,9 @@ dispatch() {
 }
 
 # Map any accepted token (number, named flag, bare word) to a canonical action.
+# For surface-number inputs (0 / 13+) the caller should additionally call
+# surface_number_to_name to recover the surface — those return the literal
+# token "surface" here.
 arg_to_action() {
     case "$1" in
         1|--all|all|ALL)                                  echo "all" ;;
@@ -305,6 +362,15 @@ arg_to_action() {
         11|--stack-down|stack-down)                       echo "stack-down" ;;
         12|--custom|custom|Custom)                        echo "custom" ;;
         q|Q|--quit|quit|Quit|exit)                        echo "quit" ;;
+        # 0 = all surfaces; 13+ = a specific discovered surface. The
+        # entry point pulls the surface name via surface_number_to_name.
+        0|1[3-9]|2[0-9]|3[0-9])
+            if [[ -n "$(surface_number_to_name "$1" 2>/dev/null)" ]]; then
+                echo "surface"
+            else
+                echo ""
+            fi
+            ;;
         *) echo "" ;;
     esac
 }
@@ -338,6 +404,14 @@ if [[ $# -eq 0 ]]; then
         echo -e "${RED}Unknown choice: $choice${NC}"
         exit 1
     fi
+    # Surface-number picks (0 / 13+) resolve to (action='surface', arg=<name>)
+    if [[ "$action" == "surface" ]] && [[ "$choice" =~ ^[0-9]+$ ]]; then
+        surf="$(surface_number_to_name "$choice")"
+        if [[ -n "$surf" ]]; then
+            dispatch "surface" "$surf"
+            exit $?
+        fi
+    fi
     dispatch "$action"
 else
     first="$1"; shift
@@ -361,6 +435,15 @@ else
         echo
         print_menu
         exit 1
+    fi
+    # Surface-number positional (0 / 13+) resolves the same way as
+    # interactive: surface_number_to_name → dispatch surface <name>.
+    if [[ "$action" == "surface" ]] && [[ "$first" =~ ^[0-9]+$ ]]; then
+        surf="$(surface_number_to_name "$first")"
+        if [[ -n "$surf" ]]; then
+            dispatch "surface" "$surf" "$@"
+            exit $?
+        fi
     fi
     dispatch "$action" "$@"
 fi

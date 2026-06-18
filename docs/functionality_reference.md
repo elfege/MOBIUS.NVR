@@ -150,9 +150,13 @@ Code anchors: [routes/ptz.py](../routes/ptz.py), [services/ptz/](../services/ptz
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
 | `PTZ.MOVE.PAN` | `POST /api/ptz/<serial>/<direction>` on a PTZ-capable camera | Camera pans; movement stops on PTZ.STOP or after timeout | [routes/ptz.py:42](../routes/ptz.py) | hardware-required:SKIP (no real PTZ cam in test stack) |
+| `PTZ.MOVE.DISPATCH_PER_VENDOR` | Same endpoint, 4 vendor branches (Reolink-ONVIF / Amcrest / SV3C / Eufy) | Route dispatches to the right handler without 5xx — every vendor returns a structured JSON envelope | [routes/ptz.py:42](../routes/ptz.py) | e2e:PASS (shape contract; real movement still hardware-required) |
+| `PTZ.RECALIBRATE` | `POST /api/ptz/<serial>/recalibrate` — the auto-tour / re-zero gimbal verb shown on `[class="ptz-recal-btn"]` | Routes through Baichuan for Reolink (ONVIF home unreliable across the Reolink range 2026-05); ONVIF for Amcrest/SV3C; Eufy bridge `recalibrate=0` for Eufy. Same uniform API surface across vendors. | [routes/ptz.py:42](../routes/ptz.py), [services/ptz/baichuan_ptz_handler.py:322](../services/ptz/baichuan_ptz_handler.py) | e2e:PASS (shape per vendor) |
 | `PTZ.MOVE.NON_PTZ_CAM` | PTZ command on a fixed (capability-less) camera | HTTP 4xx (400 / 404 / 405), no side effects | [routes/ptz.py:42](../routes/ptz.py) | e2e:PASS |
-| `PTZ.PRESET.GOTO` | `POST /api/ptz/<serial>/preset/<id>` | Camera moves to preset; cached preset list updated if drift detected | [routes/ptz.py:223](../routes/ptz.py) | hardware-required:SKIP |
-| `PTZ.PRESETS.LIST` | `GET /api/ptz/<serial>/presets` | JSON list of preset id + label | [routes/ptz.py:155](../routes/ptz.py) | hardware-required:SKIP (`.UNKNOWN` shape pinned via e2e:PASS) |
+| `PTZ.PRESET.SAVE` | `POST /api/ptz/<serial>/preset` with `{name}` (ONVIF) or `{index}` (Eufy 0-3) | Preset stored; ONVIF/Baichuan/Eufy branches each return success envelope | [routes/ptz.py:282](../routes/ptz.py) | e2e:PASS (shape per vendor) |
+| `PTZ.PRESET.GOTO` | `POST /api/ptz/<serial>/preset/<token>` | Camera moves to preset; cached preset list updated if drift detected | [routes/ptz.py:223](../routes/ptz.py) | e2e:PASS (shape per vendor) |
+| `PTZ.PRESET.DELETE` | `DELETE /api/ptz/<serial>/preset/<token>` | Preset removed from camera; cache invalidated | [routes/ptz.py:377](../routes/ptz.py) | e2e:PASS (shape per vendor) |
+| `PTZ.PRESETS.LIST` | `GET /api/ptz/<serial>/presets` | JSON envelope `{success, camera, presets[], cached, method}`. **Bug fixed 2026-06-18: upstream-unreachable now returns 503 (not 500)** — caught by the vendor-matrix test for ONVIF cameras with no real device behind them. | [routes/ptz.py:155](../routes/ptz.py) | e2e:PASS (shape per vendor) |
 | `PTZ.PRESETS.UNKNOWN` | `GET /api/ptz/<unknown>/presets` | 4xx, not 5xx | [routes/ptz.py:155](../routes/ptz.py) | e2e:PASS |
 | `PTZ.LATENCY.GET` | `GET /api/ptz/latency/<client_uuid>/<serial>` | JSON envelope (latency snapshot or empty) | [routes/ptz.py:426](../routes/ptz.py) | e2e:PASS (shape only) |
 | `PTZ.UI.OVERLAY_OPEN_CLOSE` | User clicks PTZ-toggle button on an expanded tile | PTZ overlay appears; close-X dismisses it; bar stays accessible | [static/js/streaming/overlay-close.js](../static/js/streaming/overlay-close.js) | modal-driven:SKIP (manual:2026-06-13) |
@@ -421,7 +425,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Light page | 4 | 1 | 1 |
 | Stream lifecycle | 9 | 1 | 3 |
 | Snapshots | 5 | 1 | 2 |
-| PTZ | 8 | 1 | 3 |
+| PTZ | 12 | 1 | 9 |
 | Recording | 9 | 0 | 4 |
 | Motion | 3 | 0 | 0 |
 | Audio | 3 | 0 | 0 |
@@ -437,7 +441,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **135** | **23** | **59** |
+| **TOTAL** | **139** | **23** | **65** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

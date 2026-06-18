@@ -205,7 +205,11 @@ def api_ptz_get_presets(camera_serial):
             success, presets = ONVIFPTZHandler.get_presets(camera_serial, camera, force_refresh=force_refresh)
 
         if not success:
-            return jsonify({'success': False, 'error': 'Failed to retrieve presets', 'presets': []}), 500
+            # 503 (upstream unavailable), not 500 (server crashed). The
+            # ONVIF/Baichuan handler returned False — the camera itself
+            # didn't respond. The server is fine. Caught by Phase D
+            # PTZ vendor-matrix e2e test 2026-06-18.
+            return jsonify({'success': False, 'error': 'Failed to retrieve presets', 'presets': []}), 503
 
         return jsonify({
             'success': True,
@@ -216,6 +220,9 @@ def api_ptz_get_presets(camera_serial):
         })
 
     except Exception as e:
+        # True server-side exception (not just upstream unreachable) —
+        # keep 500 here so monitoring can distinguish "camera dead" from
+        # "code broken".
         logger.error(f"Get presets API error: {e}")
         return jsonify({'success': False, 'error': str(e), 'presets': []}), 500
 

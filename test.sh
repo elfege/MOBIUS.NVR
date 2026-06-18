@@ -83,6 +83,13 @@ discover_e2e_surfaces() {
 surface_to_pytest_args() {
     local surface="$1"
     case "$surface" in
+        all|ALL)
+            # Sentinel — run every tests/e2e/test_*.py. Same payload as
+            # menu option 4 / --e2e, exposed via the surface flag so a
+            # copy-pasted `test --surface=all` works the way readers
+            # naturally expect.
+            echo "tests/e2e"
+            ;;
         auth)
             echo "tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py"
             ;;
@@ -117,15 +124,19 @@ ${BOLD}${CYAN}──────────────────────
 ${BOLD}${CYAN}─────────────────────────────────────────────────────────────────${NC}
 EOF
 
-    # Append the discovered surface list so option 5 is self-documenting.
+    # Append the discovered surface list as copy-paste-ready commands.
+    # NO numbers here — the only numbered prompt is the main "Choose:"
+    # above (1-12, q). Numbering this list too would invite typing "0"
+    # at the main prompt expecting it to dispatch (it won't — these are
+    # copy-paste references, not main-menu items). The number prompt
+    # appears when you actually pick option 5 and reach the sub-picker.
     local surfaces
     surfaces="$(discover_e2e_surfaces)"
     if [[ -n "$surfaces" ]]; then
-        echo -e " ${BOLD}E2E surfaces${NC} (use number above or ${DIM}--surface=NAME${NC}):"
-        local i=1
+        echo -e " ${BOLD}E2E surface invocations${NC} ${DIM}(copy/paste — or pick 5 above for a numbered sub-prompt):${NC}"
+        echo -e "   ${GREEN}test --surface=all${NC}   ${DIM}(every surface — same as menu option 4)${NC}"
         while IFS= read -r s; do
-            printf "   ${MAGENTA}%2d${NC}) ${DIM}%s${NC}\n" "$i" "$s"
-            i=$((i + 1))
+            echo -e "   ${GREEN}test --surface=${s}${NC}"
         done <<<"$surfaces"
         echo
     fi
@@ -142,19 +153,23 @@ prompt_for_surface() {
         return 1
     fi
 
-    echo -e "${BOLD}E2E surfaces:${NC}"
+    echo -e "${BOLD}E2E surfaces${NC} (each line copy-paste-ready):"
+    # `all` is a sentinel — same payload as menu option 4 (run every
+    # tests/e2e/test_*.py). Surface-to-pytest-args treats it specially.
+    printf "  ${MAGENTA}%2d${NC}) ${GREEN}test --surface=all${NC}  ${DIM}(every surface — same as menu option 4)${NC}\n" 0
     local i=1
     local arr=()
     while IFS= read -r s; do
-        printf "  ${MAGENTA}%2d${NC}) %s\n" "$i" "$s"
+        printf "  ${MAGENTA}%2d${NC}) ${GREEN}test --surface=%s${NC}\n" "$i" "$s"
         arr+=("$s")
         i=$((i + 1))
     done <<<"$surfaces"
     echo
-    read -rp "$(echo -e "${BOLD}Surface (number or name):${NC} ") " pick
+    read -rp "$(echo -e "${BOLD}Surface (number, name, or 'all'):${NC} ") " pick
     echo
     case "$pick" in
         q|Q|"") return 1 ;;
+        0|all|ALL) echo "all"; return 0 ;;
     esac
     # Numeric pick?
     if [[ "$pick" =~ ^[0-9]+$ ]]; then

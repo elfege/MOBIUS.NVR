@@ -160,9 +160,11 @@ Code anchors: [routes/recording.py](../routes/recording.py), [services/recording
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `REC.MANUAL.START` | `POST /api/recording/start/<serial>` | Creates `recordings` row with `status='recording'`; FFmpeg writes to `/recordings/manual/...` | [routes/recording.py](../routes/recording.py) | — |
-| `REC.MANUAL.STOP` | `POST /api/recording/stop/<serial>` | FFmpeg flushes + exits; row status → `completed` | [routes/recording.py](../routes/recording.py) | — |
-| `REC.CONTINUOUS.START` | `POST /api/recording/continuous/start/<serial>` | 24/7 segments under `/recordings/continuous/<serial>/...` | [routes/recording.py](../routes/recording.py) | — |
+| `REC.MANUAL.START` | `POST /api/recording/<serial>/start` (corrected from earlier doc shape) | Creates `recordings` row with `status='recording'`; FFmpeg writes to `/recordings/manual/...` | [routes/recording.py](../routes/recording.py) | e2e:PASS |
+| `REC.MANUAL.STOP` | `POST /api/recording/<serial>/stop` (corrected from earlier doc shape) | FFmpeg flushes + exits; row status → terminal; camera no longer in `/api/recording/active` | [routes/recording.py](../routes/recording.py) | e2e:PASS |
+| `REC.MANUAL.ACTIVE` | `GET /api/recording/active` | Envelope `{success, count, recordings:[]}` (corrected from earlier doc shape — was described as bare list) | [routes/recording.py](../routes/recording.py) | e2e:PASS |
+| `REC.MANUAL.NOT_FOUND` | `POST /api/recording/<UNKNOWN_SERIAL>/start` | HTTP 404 `{error: 'Camera not found'}` | [routes/recording.py](../routes/recording.py) | e2e:PASS |
+| `REC.CONTINUOUS.START` | DOC-BUG: `POST /api/recording/continuous/start/<serial>` does not exist on the current route surface. The route surface offers per-camera start/stop only; "continuous" mode is configured via recording settings, not a separate endpoint. | (entry kept for traceability; revisit when continuous mode gets its own endpoint) | [routes/recording.py](../routes/recording.py) | doc-bug:2026-06-17 |
 | `REC.MOTION.TRIGGER` | Motion detected on a camera with motion recording enabled | Recording starts; segment lives under `/recordings/motion/<serial>/...`; pre-buffer included | [services/motion/](../services/motion/), [services/recording/](../services/recording/) | TBD |
 | `REC.MIGRATION.AGE_OUT` | Settings → Storage → Migrate Now (or hourly tick) | Files older than `age_threshold_days` move from `/recordings/...` to `/recordings/STORAGE/...` | [services/recording/storage_migration.py](../services/recording/storage_migration.py) | — |
 | `REC.CLEANUP.ARCHIVE_RETENTION` | Settings → Storage → Cleanup Now (or hourly tick) | Files older than `archive_retention_days` in archive are deleted | [routes/storage.py](../routes/storage.py) | — |
@@ -404,7 +406,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Stream lifecycle | 6 | 1 | 0 |
 | Snapshots | 4 | 1 | 1 |
 | PTZ | 6 | 1 | 0 |
-| Recording | 8 | 0 | 0 |
+| Recording | 9 | 0 | 4 |
 | Motion | 3 | 0 | 0 |
 | Audio | 3 | 0 | 0 |
 | Settings (global modal) | 12 | 4 | 0 |
@@ -419,7 +421,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **121** | **23** | **16** |
+| **TOTAL** | **122** | **23** | **20** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

@@ -50,10 +50,51 @@ fi
 # Colour helpers — only when stdout is a TTY.
 if [[ -t 1 ]]; then
     BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
-    CYAN=$'\033[36m'; YELLOW=$'\033[33m'; NC=$'\033[0m'
+    CYAN=$'\033[36m'; YELLOW=$'\033[33m'; MAGENTA=$'\033[35m'; NC=$'\033[0m'
 else
-    BOLD=""; DIM=""; RED=""; GREEN=""; CYAN=""; YELLOW=""; NC=""
+    BOLD=""; DIM=""; RED=""; GREEN=""; CYAN=""; YELLOW=""; MAGENTA=""; NC=""
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# E2E surface auto-discovery
+#
+# Every tests/e2e/test_<NAME>.py file is a "surface" — a coherent unit of
+# tests for one functional area (auth, telemetry, storage, etc.). The
+# launcher discovers them at runtime so adding a new test file requires
+# zero edits to this script.
+#
+# The "auth" surface is special-cased to bundle test_auth_login.py +
+# test_auth_coverage.py — the two are tightly related and operators
+# usually want both.
+# ─────────────────────────────────────────────────────────────────────────────
+
+discover_e2e_surfaces() {
+    # Output: one surface name per line, sorted, sans the test_ prefix
+    # and .py suffix. E.g. tests/e2e/test_audit_log.py → "audit_log".
+    if [[ ! -d "$REPO_ROOT/tests/e2e" ]]; then
+        return
+    fi
+    ls "$REPO_ROOT/tests/e2e/"test_*.py 2>/dev/null | \
+        sed -e 's|.*/test_||' -e 's|\.py$||' | sort -u
+}
+
+# Map a surface name to its pytest path(s). The "auth" shorthand
+# expands to both auth_login + auth_coverage (operator convention).
+surface_to_pytest_args() {
+    local surface="$1"
+    case "$surface" in
+        auth)
+            echo "tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py"
+            ;;
+        *)
+            local path="$REPO_ROOT/tests/e2e/test_${surface}.py"
+            if [[ ! -f "$path" ]]; then
+                return 1
+            fi
+            echo "tests/e2e/test_${surface}.py"
+            ;;
+    esac
+}
 
 print_menu() {
     cat <<EOF
@@ -64,7 +105,7 @@ ${BOLD}${CYAN}──────────────────────
   ${BOLD}2${NC}) ${GREEN}Static${NC}               ${DIM}--static${NC}         audit + env + regression (~1s, no stack)
   ${BOLD}3${NC}) ${GREEN}Regression only${NC}      ${DIM}--regression${NC}     tests/regression/
   ${BOLD}4${NC}) ${GREEN}E2E${NC}                  ${DIM}--e2e${NC}            tests/e2e/ (stack must be UP)
-  ${BOLD}5${NC}) ${GREEN}E2E auth only${NC}        ${DIM}--auth${NC}           tests/e2e/test_auth*
+  ${BOLD}5${NC}) ${GREEN}E2E surface${NC}          ${DIM}--surface=NAME${NC}   pick one (auto-discovered, see list at bottom)
   ${BOLD}6${NC}) ${GREEN}Pre-commit smoke${NC}     ${DIM}--smoke${NC}          what scripts/hooks/pre-commit runs
   ${BOLD}7${NC}) ${GREEN}Ruff F821 lint${NC}       ${DIM}--ruff${NC}           ruff check .
   ${BOLD}8${NC}) ${GREEN}Regression ledger${NC}    ${DIM}--ledger${NC}         print the bug-ledger table (no tests run)
@@ -75,6 +116,63 @@ ${BOLD}${CYAN}──────────────────────
   ${BOLD}q${NC}) Quit
 ${BOLD}${CYAN}─────────────────────────────────────────────────────────────────${NC}
 EOF
+
+    # Append the discovered surface list so option 5 is self-documenting.
+    local surfaces
+    surfaces="$(discover_e2e_surfaces)"
+    if [[ -n "$surfaces" ]]; then
+        echo -e " ${BOLD}E2E surfaces${NC} (use number above or ${DIM}--surface=NAME${NC}):"
+        local i=1
+        while IFS= read -r s; do
+            printf "   ${MAGENTA}%2d${NC}) ${DIM}%s${NC}\n" "$i" "$s"
+            i=$((i + 1))
+        done <<<"$surfaces"
+        echo
+    fi
+}
+
+# Prompt for an e2e surface and echo the selected name. Returns 1 if
+# the user picks q/Q or types something that doesn't match. Used by
+# the interactive flow for menu option 5.
+prompt_for_surface() {
+    local surfaces
+    surfaces="$(discover_e2e_surfaces)"
+    if [[ -z "$surfaces" ]]; then
+        echo -e "${RED}No tests/e2e/test_*.py files found${NC}" >&2
+        return 1
+    fi
+
+    echo -e "${BOLD}E2E surfaces:${NC}"
+    local i=1
+    local arr=()
+    while IFS= read -r s; do
+        printf "  ${MAGENTA}%2d${NC}) %s\n" "$i" "$s"
+        arr+=("$s")
+        i=$((i + 1))
+    done <<<"$surfaces"
+    echo
+    read -rp "$(echo -e "${BOLD}Surface (number or name):${NC} ") " pick
+    echo
+    case "$pick" in
+        q|Q|"") return 1 ;;
+    esac
+    # Numeric pick?
+    if [[ "$pick" =~ ^[0-9]+$ ]]; then
+        local idx=$((pick - 1))
+        if (( idx >= 0 && idx < ${#arr[@]} )); then
+            echo "${arr[$idx]}"
+            return 0
+        fi
+        echo -e "${RED}Out of range${NC}" >&2
+        return 1
+    fi
+    # Name pick — must match a discovered surface or the "auth" alias
+    if [[ "$pick" == "auth" ]] || printf '%s\n' "${arr[@]}" | grep -qx "$pick"; then
+        echo "$pick"
+        return 0
+    fi
+    echo -e "${RED}Unknown surface: $pick${NC}" >&2
+    return 1
 }
 
 # Echo each command before running so a single invocation is copy/pastable.
@@ -101,7 +199,28 @@ dispatch() {
             run "$PYTEST" tests/e2e "$@"
             ;;
         auth)
+            # Backward-compat alias for the two-file auth bundle. Equivalent to
+            # `test --surface=auth`. New code should prefer the surface form.
             run "$PYTEST" tests/e2e/test_auth_login.py tests/e2e/test_auth_coverage.py "$@"
+            ;;
+        surface)
+            # `test --surface=NAME` (or numbered option 5) — auto-discover and
+            # dispatch to tests/e2e/test_<NAME>.py. When called with no NAME,
+            # show the discovered list and prompt.
+            local surface_name="${1:-}"
+            shift || true
+            if [[ -z "$surface_name" ]]; then
+                surface_name="$(prompt_for_surface)" || exit 1
+            fi
+            local pytest_args
+            if ! pytest_args="$(surface_to_pytest_args "$surface_name")"; then
+                echo -e "${RED}No tests/e2e/test_${surface_name}.py found${NC}"
+                echo "Discovered surfaces:"
+                discover_e2e_surfaces | sed 's/^/  /'
+                exit 1
+            fi
+            # shellcheck disable=SC2086  # intentional word-splitting for multi-path
+            run "$PYTEST" $pytest_args "$@"
             ;;
         smoke)
             echo -e "${BOLD}[1/2] ruff check .${NC}"
@@ -161,7 +280,8 @@ arg_to_action() {
         2|--static|static|Static)                         echo "static" ;;
         3|--regression|regression|Regression)             echo "regression" ;;
         4|--e2e|e2e|E2E)                                  echo "e2e" ;;
-        5|--auth|auth|AUTH)                               echo "auth" ;;
+        5)                                                echo "surface" ;;
+        --auth|auth|AUTH)                                 echo "auth" ;;
         6|--smoke|--pre-commit|smoke|precommit|pre-commit) echo "smoke" ;;
         7|--ruff|--lint|ruff|lint)                        echo "ruff" ;;
         8|--ledger|ledger|Ledger)                         echo "ledger" ;;
@@ -175,6 +295,24 @@ arg_to_action() {
 }
 
 # --- entry point -------------------------------------------------------------
+#
+# A few named flags carry an inline value (`--surface=NAME`); strip them
+# into a separate `prefix_args` array passed to dispatch alongside the
+# action name. Other flags / number-shortcuts don't carry inline values.
+#
+# We can't share-and-forward this through arg_to_action's stdout return
+# (it'd need a struct), so the entry point does a small pre-parse pass.
+
+split_value_arg() {
+    # Recognise `--surface=NAME`. Echo the canonical action name on stdout
+    # and the captured value on stderr; caller reads both via process subst.
+    case "$1" in
+        --surface=*) echo "surface"; echo "${1#--surface=}" >&2 ;;
+        --custom=*)  echo "custom";  echo "${1#--custom=}"  >&2 ;;
+        *) echo ""; ;;
+    esac
+}
+
 if [[ $# -eq 0 ]]; then
     # No args → interactive menu.
     print_menu
@@ -187,8 +325,21 @@ if [[ $# -eq 0 ]]; then
     fi
     dispatch "$action"
 else
-    # First arg is the action (number or named flag). Remaining args pass through.
     first="$1"; shift
+
+    # Try value-carrying flag first (--surface=X / --custom=Y).
+    value=""
+    action="$( { split_value_arg "$first" 2>/tmp/_ts_value; } )"
+    if [[ -n "$action" ]]; then
+        value="$(cat /tmp/_ts_value 2>/dev/null)"
+        rm -f /tmp/_ts_value
+        # Prepend the captured value as the first dispatch arg so e.g.
+        # `surface audit_log` reaches the case branch correctly.
+        dispatch "$action" "$value" "$@"
+        exit $?
+    fi
+    rm -f /tmp/_ts_value 2>/dev/null
+
     action="$(arg_to_action "$first")"
     if [[ -z "$action" ]]; then
         echo -e "${RED}Unknown action: $first${NC}"

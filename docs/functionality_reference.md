@@ -117,12 +117,15 @@ Code anchors: [routes/streaming.py](../routes/streaming.py), [services/stream_wa
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `STREAM.START.OK` | `POST /api/stream/start/<serial>` for an offline camera | Stream starts within ~10s; state goes `OFFLINE` → `STARTING` → `ONLINE`; publisher_active=true | [routes/streaming.py](../routes/streaming.py) | — |
-| `STREAM.START.NO_CREDS` | Start a camera with missing/invalid credentials | Stream stays in `STARTING` then transitions to `DEGRADED` with `failure_count>=1` | [services/camera_state_tracker.py](../services/camera_state_tracker.py) | — |
-| `STREAM.STOP.OK` | `POST /api/stream/stop/<serial>` for an online camera | `<video>.pause()`, `srcObject=null`, `load()`; tile shows signal-lost overlay; FFmpeg child killed | [routes/streaming.py](../routes/streaming.py), [static/js/streaming/stream.js](../static/js/streaming/stream.js) | manual:2026-06-13 |
-| `STREAM.RESTART.OK` | `POST /api/stream/restart/<serial>` on a stalled stream | FFmpeg child killed + restarted; publisher comes back within 15s | [routes/streaming.py](../routes/streaming.py) | — |
-| `STREAM.WATCHDOG.AUTO_RECOVER` | Backend detects a publisher that's been stalled > N seconds | Watchdog restarts the stream automatically (exponential backoff) | [services/stream_watchdog.py](../services/stream_watchdog.py) | TBD |
-| `STREAM.SINGLE_CONSUMER` | Two consumers (motion detector + recording) for a budget camera | Both tap the streaming hub (mediamtx/go2rtc/native_mjpeg); ONE RTSP connection at the camera | [services/streaming_hub.py](../services/streaming_hub.py) | TBD |
+| `STREAM.START.OK` | `POST /api/stream/start/<serial>` for an offline camera | Stream starts within ~10s; state goes `OFFLINE` → `STARTING` → `ONLINE`; publisher_active=true | [routes/streaming.py](../routes/streaming.py) | publisher-required:SKIP (needs real RTSP source) |
+| `STREAM.START.NO_CREDS` | Start a camera with missing/invalid credentials | Stream stays in `STARTING` then transitions to `DEGRADED` with `failure_count>=1` | [services/camera_state_tracker.py](../services/camera_state_tracker.py) | publisher-required:SKIP |
+| `STREAM.STOP.OK` | `POST /api/stream/stop/<serial>` for an online camera | `<video>.pause()`, `srcObject=null`, `load()`; tile shows signal-lost overlay; FFmpeg child killed | [routes/streaming.py](../routes/streaming.py), [static/js/streaming/stream.js](../static/js/streaming/stream.js) | manual:2026-06-13 (UI side); STOP.UNKNOWN e2e:PASS |
+| `STREAM.RESTART.OK` | `POST /api/stream/restart/<serial>` on a stalled stream | FFmpeg child killed + restarted; publisher comes back within 15s | [routes/streaming.py](../routes/streaming.py) | publisher-required:SKIP |
+| `STREAM.WATCHDOG.AUTO_RECOVER` | Backend detects a publisher that's been stalled > N seconds | Watchdog restarts the stream automatically (exponential backoff) | [services/stream_watchdog.py](../services/stream_watchdog.py) | publisher-required:SKIP |
+| `STREAM.SINGLE_CONSUMER` | Two consumers (motion detector + recording) for a budget camera | Both tap the streaming hub (mediamtx/go2rtc/native_mjpeg); ONE RTSP connection at the camera | [services/streaming_hub.py](../services/streaming_hub.py) | publisher-required:SKIP |
+| `STREAM.STATUS.SHAPE` | `GET /api/stream/status/<serial>` | JSON dict (state, publisher state, etc.) | [routes/streaming.py:339](../routes/streaming.py) | e2e:PASS (shape only) |
+| `STREAM.LIST.ACTIVE` | `GET /api/streams/active` | JSON list/envelope of currently-active streams | [routes/streaming.py:492](../routes/streaming.py) | e2e:PASS |
+| `STREAM.STOP.UNKNOWN` | `POST /api/stream/stop/<unknown>` | 4xx (404 / 400 / 503) — not 5xx | [routes/streaming.py:178](../routes/streaming.py) | e2e:PASS |
 
 ---
 
@@ -132,10 +135,11 @@ Code anchors: [routes/streaming.py:/api/snap](../routes/streaming.py), [static/j
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `SNAP.GET.OK` | `GET /api/snap/<serial>` while publisher is healthy | JPEG body, 200, fresh frame (< 5s old) | [routes/streaming.py](../routes/streaming.py) | — |
-| `SNAP.GET.PUBLISHER_OFFLINE` | `GET /api/snap/<serial>` while publisher state ∈ {`degraded`, `offline`} | 503 with text body; client adds `.signal-lost` to tile | [routes/streaming.py](../routes/streaming.py), [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | static-guard:PASS (full e2e blocked by tracker-state access) |
-| `SNAP.POLL.LIGHT_PAGE` | `/light` page open, 1fps polling | Each tile fetches a fresh `/api/snap` every 1000ms | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | — |
-| `SNAP.POLL.SUSPEND_ON_HIDDEN` | User switches tabs / monitor sleeps | Polling pauses via Page Visibility API; resumes on wake | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | — |
+| `SNAP.GET.OK` | `GET /api/snap/<serial>` while publisher is healthy | JPEG body, 200, fresh frame (< 5s old) | [routes/streaming.py](../routes/streaming.py) | publisher-required:SKIP (no live RTSP in test stack); shape-only e2e:PASS |
+| `SNAP.GET.PUBLISHER_OFFLINE` | `GET /api/snap/<serial>` while publisher state ∈ {`degraded`, `offline`} | 503 with text body; client adds `.signal-lost` to tile | [routes/streaming.py](../routes/streaming.py), [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | static-guard:PASS (regression test + e2e shape) |
+| `SNAP.GET.UNKNOWN` | `GET /api/snap/<unknown_serial>` | 4xx (404 / 503) — not 5xx | [routes/streaming.py:1084](../routes/streaming.py) | e2e:PASS |
+| `SNAP.POLL.LIGHT_PAGE` | `/light` page open, 1fps polling | Each tile fetches a fresh `/api/snap` every 1000ms | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | client-side:SKIP (browser polling cadence; no server-side contract to test) |
+| `SNAP.POLL.SUSPEND_ON_HIDDEN` | User switches tabs / monitor sleeps | Polling pauses via Page Visibility API; resumes on wake | [static/js/streaming/snapshot-stream.js](../static/js/streaming/snapshot-stream.js) | client-side:SKIP |
 
 ---
 
@@ -145,12 +149,14 @@ Code anchors: [routes/ptz.py](../routes/ptz.py), [services/ptz/](../services/ptz
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `PTZ.MOVE.PAN` | `POST /api/ptz/<serial>/move {direction:"left"}` on a PTZ-capable camera | Camera pans; movement stops on PTZ.STOP or after timeout | [routes/ptz.py](../routes/ptz.py) | — |
-| `PTZ.MOVE.NON_PTZ_CAM` | PTZ command on a fixed camera | 400 / 405, no side effects | [routes/ptz.py](../routes/ptz.py) | — |
-| `PTZ.PRESET.GOTO` | `POST /api/ptz/<serial>/preset/<id>` | Camera moves to preset; cached preset list updated if drift detected | [routes/ptz.py](../routes/ptz.py) | — |
-| `PTZ.PRESETS.LIST` | `GET /api/ptz/<serial>/presets` | JSON list of preset id + label | [routes/ptz.py](../routes/ptz.py) | — |
-| `PTZ.UI.OVERLAY_OPEN_CLOSE` | User clicks PTZ-toggle button on an expanded tile | PTZ overlay appears; close-X dismisses it; bar stays accessible | [static/js/streaming/overlay-close.js](../static/js/streaming/overlay-close.js) | manual:2026-06-13 |
-| `PTZ.NEOLINK_LATENCY` | PTZ command on a Neolink E1 (Baichuan bridge) | Movement starts within ~5s (known Baichuan overhead, documented in README) | [services/ptz/](../services/ptz/) | TBD |
+| `PTZ.MOVE.PAN` | `POST /api/ptz/<serial>/<direction>` on a PTZ-capable camera | Camera pans; movement stops on PTZ.STOP or after timeout | [routes/ptz.py:42](../routes/ptz.py) | hardware-required:SKIP (no real PTZ cam in test stack) |
+| `PTZ.MOVE.NON_PTZ_CAM` | PTZ command on a fixed (capability-less) camera | HTTP 4xx (400 / 404 / 405), no side effects | [routes/ptz.py:42](../routes/ptz.py) | e2e:PASS |
+| `PTZ.PRESET.GOTO` | `POST /api/ptz/<serial>/preset/<id>` | Camera moves to preset; cached preset list updated if drift detected | [routes/ptz.py:223](../routes/ptz.py) | hardware-required:SKIP |
+| `PTZ.PRESETS.LIST` | `GET /api/ptz/<serial>/presets` | JSON list of preset id + label | [routes/ptz.py:155](../routes/ptz.py) | hardware-required:SKIP (`.UNKNOWN` shape pinned via e2e:PASS) |
+| `PTZ.PRESETS.UNKNOWN` | `GET /api/ptz/<unknown>/presets` | 4xx, not 5xx | [routes/ptz.py:155](../routes/ptz.py) | e2e:PASS |
+| `PTZ.LATENCY.GET` | `GET /api/ptz/latency/<client_uuid>/<serial>` | JSON envelope (latency snapshot or empty) | [routes/ptz.py:426](../routes/ptz.py) | e2e:PASS (shape only) |
+| `PTZ.UI.OVERLAY_OPEN_CLOSE` | User clicks PTZ-toggle button on an expanded tile | PTZ overlay appears; close-X dismisses it; bar stays accessible | [static/js/streaming/overlay-close.js](../static/js/streaming/overlay-close.js) | modal-driven:SKIP (manual:2026-06-13) |
+| `PTZ.NEOLINK_LATENCY` | PTZ command on a Neolink E1 (Baichuan bridge) | Movement starts within ~5s (known Baichuan overhead, documented in README) | [services/ptz/](../services/ptz/) | hardware-required:SKIP |
 
 ---
 
@@ -413,9 +419,9 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Auth | 8 | 0 | 7 |
 | Streams page | 10 | 4 | 1 |
 | Light page | 4 | 1 | 1 |
-| Stream lifecycle | 6 | 1 | 0 |
-| Snapshots | 4 | 1 | 1 |
-| PTZ | 6 | 1 | 0 |
+| Stream lifecycle | 9 | 1 | 3 |
+| Snapshots | 5 | 1 | 2 |
+| PTZ | 8 | 1 | 3 |
 | Recording | 9 | 0 | 4 |
 | Motion | 3 | 0 | 0 |
 | Audio | 3 | 0 | 0 |
@@ -431,7 +437,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **130** | **23** | **51** |
+| **TOTAL** | **135** | **23** | **59** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

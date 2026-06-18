@@ -222,12 +222,12 @@ Code anchors: [static/js/modals/camera-settings-modal.js](../static/js/modals/ca
 
 | ID | Trigger | Expected | Code anchors | Verified |
 |---|---|---|---|---|
-| `CAM.SETTINGS.OPEN` | User clicks gear on a tile | Per-camera modal opens with current config across 6 tabs | [static/js/modals/camera-settings-modal.js](../static/js/modals/camera-settings-modal.js) | — |
-| `CAM.SETTINGS.STREAM_TYPE.CHANGE` | User picks a different stream type (e.g., WEBRTC → LL_HLS) | Persisted to `user_camera_preferences`; tile re-renders without reload | [routes/settings_routes.py](../routes/settings_routes.py) | — |
-| `CAM.SETTINGS.STREAMING_HUB.CHANGE` | Admin changes streaming hub (mediamtx → go2rtc → native_mjpeg) | Persisted to `cameras.streaming_hub`; the 4-place rule means the field must be in DIRECT_FIELDS and repo's `direct_fields` — see `memory/project_camera_field_4_places_rule` | [routes/settings_routes.py](../routes/settings_routes.py), `memory/project_camera_field_4_places_rule` | — |
-| `CAM.SETTINGS.NICKNAME.SET` | Admin sets a nickname | Saved to `cameras.nickname`; appears in display and resolves in `?fullscreen=` URL param | [routes/settings_routes.py](../routes/settings_routes.py) | — |
-| `CAM.SETTINGS.VISIBILITY.HIDE` | User toggles "Hide" for a camera | Camera disappears from their grid; admin still sees it | [routes/settings_routes.py](../routes/settings_routes.py) | — |
-| `CAM.SETTINGS.DISPLAY_ORDER` | User drags tiles to reorder | Order persisted in `user_camera_preferences`; survives reload | [routes/settings_routes.py](../routes/settings_routes.py) | — |
+| `CAM.SETTINGS.OPEN` | User clicks gear on a tile | Per-camera modal opens with current config across 6 tabs | [static/js/modals/camera-settings-modal.js](../static/js/modals/camera-settings-modal.js) | e2e:SKIP (cache-freshness gap — newly-inserted camera not in rendered grid) |
+| `CAM.SETTINGS.STREAM_TYPE.CHANGE` | User picks a different stream type (e.g., WEBRTC → LL_HLS) | Persisted to `user_camera_preferences`; tile re-renders without reload | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS |
+| `CAM.SETTINGS.STREAMING_HUB.CHANGE` | Admin changes streaming hub (mediamtx → go2rtc → native_mjpeg) | Persisted to `cameras.streaming_hub`; the 4-place rule means the field must be in DIRECT_FIELDS and repo's `direct_fields` — see `memory/project_camera_field_4_places_rule` | [routes/settings_routes.py](../routes/settings_routes.py), `memory/project_camera_field_4_places_rule` | e2e:PASS |
+| `CAM.SETTINGS.NICKNAME.SET` | Admin sets a nickname | Saved to `cameras.nickname`; appears in display and resolves in `?fullscreen=` URL param | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS (5-place fix 2026-06-17 — `nickname` added to settings.CAMERA_DIRECT_COLUMNS) |
+| `CAM.SETTINGS.VISIBILITY.HIDE` | User toggles "Hide" for a camera | Camera disappears from their grid; admin still sees it | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS (DB-write side; UI admin-visibility is separate) |
+| `CAM.SETTINGS.DISPLAY_ORDER` | User drags tiles to reorder | Order persisted in `user_camera_preferences`; survives reload | [routes/settings_routes.py](../routes/settings_routes.py) | e2e:PASS |
 
 ---
 
@@ -408,7 +408,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Motion | 3 | 0 | 0 |
 | Audio | 3 | 0 | 0 |
 | Settings (global modal) | 12 | 4 | 0 |
-| Settings (per-camera) | 6 | 0 | 0 |
+| Settings (per-camera) | 6 | 0 | 5 |
 | Storage | 6 | 1 | 0 |
 | Telemetry | 15 | 7 | 0 |
 | Audit | 7 | 0 | 1 |
@@ -419,7 +419,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **121** | **23** | **11** |
+| **TOTAL** | **121** | **23** | **16** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

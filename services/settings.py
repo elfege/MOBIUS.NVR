@@ -30,7 +30,7 @@ POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 # Direct DB columns in the cameras table (vs extra_config JSONB).
 # Must match camera_repository.py's db_columns set.
 CAMERA_DIRECT_COLUMNS = {
-    'serial', 'name', 'type', 'camera_id', 'host', 'mac',
+    'serial', 'name', 'nickname', 'type', 'camera_id', 'host', 'mac',
     'packager_path', 'stream_type', 'streaming_hub', 'go2rtc_source',
     'rtsp_alias', 'max_connections', 'onvif_port', 'power_supply',
     'hidden', 'ui_health_monitor', 'ui_health_refresh_delay_ms',
@@ -39,6 +39,11 @@ CAMERA_DIRECT_COLUMNS = {
     'll_hls', 'mjpeg_snap', 'neolink', 'player_settings',
     'rtsp_input', 'rtsp_output', 'two_way_audio',
     'power_cycle_on_failure',
+    # nickname (migration 034) — real `cameras` column with regex +
+    # uniqueness constraint. Omitting it here routed settings-UI writes
+    # into extra_config (JSONB), so the dedicated column never received
+    # the value and its constraints were dead. Caught by Phase D
+    # CAM.SETTINGS.NICKNAME.SET e2e test, 2026-06-17.
     # Per-camera tracking owner (migration 041) — real cameras column, so it
     # must be routed as a DIRECT column (not extra_config). Kept in sync with
     # camera_config_sync.DIRECT_FIELDS and camera_repository.direct_fields.
@@ -144,22 +149,70 @@ class Settings:
     def _upsert(self, table: str, data: Dict,
                 conflict_filters: Dict[str, str] = None) -> bool:
         """
-        Insert-or-update a row. Handles PostgREST merge-duplicates header
-        AND falls back to PATCH on 409 conflict.
+        Insert-or-update a row. When conflict_filters are provided we
+        PATCH first; only if no row matched do we fall through to an
+        INSERT with merge-duplicates.
 
-        This is the SINGLE place where the 409 upsert bug is handled.
+        Why PATCH-first when conflict_filters present:
+            PostgREST's `Prefer: resolution=merge-duplicates` requires
+            the INSERT itself to be valid before ON CONFLICT can fire.
+            For a partial update of an existing row in a table with
+            NOT NULL columns we don't provide, the bare INSERT trips
+            23502 (NOT NULL violation) BEFORE the conflict-on-UNIQUE
+            check, returning 400 — not 409. We never fall back, the
+            caller sees False, and the PATCH never happens. The fix is
+            to do the PATCH first: if the row exists (which is the
+            common case for "user toggles X on existing pref"), one
+            round-trip is enough; only if 0 rows matched do we INSERT.
+
+        Without conflict_filters (one-shot inserts), behaviour is
+        unchanged — POST with merge-duplicates and trust PostgREST.
 
         Args:
             table: Table name
-            data: Full row data for INSERT
-            conflict_filters: PostgREST filter params for PATCH fallback
-                              (e.g. {'key': 'eq.streaming_hub_global'})
+            data: Full row data for INSERT (or partial for PATCH)
+            conflict_filters: PostgREST filter params identifying the
+                              row to PATCH first (e.g.
+                              {'user_id': 'eq.34', 'camera_serial': 'eq.X'})
 
         Returns:
             True if row was inserted or updated
         """
         try:
-            # Attempt INSERT with merge-duplicates
+            # ── PATCH-first path ────────────────────────────────────────
+            # Use return=representation so the response body lists the
+            # affected rows; an empty list ([]) means no row matched and
+            # we must INSERT.
+            if conflict_filters:
+                resp = self._session.patch(
+                    f"{self._url}/{table}",
+                    params=conflict_filters,
+                    json=data,
+                    headers={'Prefer': 'return=representation'},
+                    timeout=5
+                )
+                if resp.status_code == 200:
+                    try:
+                        affected = resp.json()
+                    except Exception:
+                        affected = []
+                    if affected:
+                        return True
+                    # Empty list → no row matched. Fall through to INSERT.
+                elif resp.status_code == 204:
+                    # 204 with no body — PostgREST returned without
+                    # echoing rows. Treat as success only if we asked
+                    # for representation and got nothing — but we DID
+                    # ask, so 204 here means no rows matched. Fall
+                    # through to INSERT.
+                    pass
+                elif resp.status_code not in (200, 204):
+                    logger.warning(
+                        f"[Settings] UPSERT {table} PATCH returned "
+                        f"{resp.status_code}: {resp.text}; falling through to INSERT"
+                    )
+
+            # ── INSERT path (with merge-duplicates as a last safety net) ──
             headers = {'Prefer': 'resolution=merge-duplicates,return=representation'}
             resp = self._session.post(
                 f"{self._url}/{table}",
@@ -170,8 +223,9 @@ class Settings:
             if resp.status_code in (200, 201):
                 return True
 
-            # 409 = conflict (row exists), 401 = anon role lacks INSERT permission
-            # Either way, the row likely exists — fall back to PATCH update
+            # 409 = conflict, 401 = anon-role-lacks-INSERT — try PATCH if
+            # we have filters (legacy path; the PATCH-first above usually
+            # caught this already).
             if resp.status_code in (409, 401) and conflict_filters:
                 return self._patch(table, conflict_filters, data)
 

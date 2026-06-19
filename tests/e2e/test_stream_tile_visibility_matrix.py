@@ -637,3 +637,114 @@ def test_visibility_matrix_expanded_signal_lost(streams_page, icon_name):
             f"expanded+signal-lost: {icon_name} should be hidden (B2 policy, "
             f"expanded variant); effective opacity={eff_opacity}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Pinned-window + css-fullscreen matrix cells — same shape as expanded.
+#
+# Pinned-window = tile popped into a separate floating window
+#                 (stream-item.pinned-window class added by frontend).
+# css-fullscreen = browser-true fullscreen via Fullscreen API
+#                  (stream-item.css-fullscreen class).
+#
+# Per stream-item.css:458-497 the signal-lost rules are layout-agnostic
+# (no `.expanded` / `.pinned-window` / `.css-fullscreen` qualifier in the
+# selector). So the essential-set policy on a dead tile is the same across
+# all 4 layouts. Per fullscreen.css:228 and :316 the live bar is persistently
+# visible (opacity:1 !important) in both layouts.
+#
+# We mirror EXPECTATIONS_EXPANDED for both. If a future CSS change introduces
+# a layout-specific override, the test cell that fails tells the operator
+# exactly which intersection broke.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("icon_name", list(ICONS.keys()))
+def test_visibility_matrix_pinned_window_live(streams_page, icon_name):
+    """LAYOUT=pinned-window × HEALTH=live × icon=<each>.
+
+    Pinned floating window — bar persistently visible (no hover-to-reveal),
+    every icon visible. Regression that broke pinned-window visibility
+    while keeping expanded healthy would surface here.
+    """
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["pinned-window"])
+    eff_opacity = _icon_opacity(page, ICONS[icon_name])
+    assert eff_opacity != -1, f"selector missed for {icon_name}: {ICONS[icon_name]}"
+    # Same expectation as expanded+live (per fullscreen.css:228-253)
+    assert eff_opacity > 0, (
+        f"pinned-window+live: {icon_name} should be visible; effective opacity={eff_opacity}. "
+        "Pinned-window bar should be persistent (no hover-fade). Check "
+        "fullscreen.css's `.stream-item.pinned-window .stream-fullscreen-btn` block "
+        "and adjacent rules."
+    )
+
+
+@pytest.mark.parametrize("icon_name", list(ICONS.keys()))
+def test_visibility_matrix_pinned_window_signal_lost(streams_page, icon_name):
+    """LAYOUT=pinned-window × HEALTH=signal-lost × icon=<each>.
+
+    Dead pinned-window tile. The signal-lost CSS rules at stream-item.css:458-497
+    are layout-agnostic → same essential set policy as grid + expanded variants.
+    Adds CI coverage for the pinned-window × dead intersection so a future
+    layout-specific rule that breaks dead-tile button visibility surfaces here.
+    """
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["pinned-window", "signal-lost"])
+    expected = EXPECTATIONS_EXPANDED["expanded+signal-lost"][icon_name]  # same policy
+    eff_opacity = _icon_opacity(page, ICONS[icon_name])
+    assert eff_opacity != -1, f"selector missed for {icon_name}: {ICONS[icon_name]}"
+    if expected["opacity"] == "visible":
+        assert eff_opacity > 0, (
+            f"pinned-window+signal-lost: {icon_name} should be visible (B2 essential "
+            f"set, pinned variant); effective opacity={eff_opacity}"
+        )
+    else:
+        assert eff_opacity == 0, (
+            f"pinned-window+signal-lost: {icon_name} should be hidden (B2 policy, "
+            f"pinned variant); effective opacity={eff_opacity}"
+        )
+
+
+@pytest.mark.parametrize("icon_name", list(ICONS.keys()))
+def test_visibility_matrix_css_fullscreen_live(streams_page, icon_name):
+    """LAYOUT=css-fullscreen × HEALTH=live × icon=<each>.
+
+    Browser-true fullscreen (Fullscreen API). Bar persistently visible per
+    fullscreen.css:306-316. Every icon visible. Note: this tests the CSS,
+    not the actual Fullscreen-API state (which Playwright can't trigger
+    reliably across browsers from injected DOM).
+    """
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["css-fullscreen"])
+    eff_opacity = _icon_opacity(page, ICONS[icon_name])
+    assert eff_opacity != -1, f"selector missed for {icon_name}: {ICONS[icon_name]}"
+    assert eff_opacity > 0, (
+        f"css-fullscreen+live: {icon_name} should be visible; effective opacity={eff_opacity}. "
+        "css-fullscreen bar should be persistent. Check fullscreen.css's "
+        "`.stream-item.css-fullscreen .stream-fullscreen-btn` block."
+    )
+
+
+@pytest.mark.parametrize("icon_name", list(ICONS.keys()))
+def test_visibility_matrix_css_fullscreen_signal_lost(streams_page, icon_name):
+    """LAYOUT=css-fullscreen × HEALTH=signal-lost × icon=<each>.
+
+    Dead browser-fullscreen tile. signal-lost rules are layout-agnostic →
+    essential set surfaces; rest hidden.
+    """
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["css-fullscreen", "signal-lost"])
+    expected = EXPECTATIONS_EXPANDED["expanded+signal-lost"][icon_name]  # same policy
+    eff_opacity = _icon_opacity(page, ICONS[icon_name])
+    assert eff_opacity != -1, f"selector missed for {icon_name}: {ICONS[icon_name]}"
+    if expected["opacity"] == "visible":
+        assert eff_opacity > 0, (
+            f"css-fullscreen+signal-lost: {icon_name} should be visible (B2 essential "
+            f"set, css-fullscreen variant); effective opacity={eff_opacity}"
+        )
+    else:
+        assert eff_opacity == 0, (
+            f"css-fullscreen+signal-lost: {icon_name} should be hidden (B2 policy, "
+            f"css-fullscreen variant); effective opacity={eff_opacity}"
+        )

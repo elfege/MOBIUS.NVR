@@ -16,7 +16,16 @@
 #        - major  → any commit subject contains `!:` or body has `BREAKING CHANGE`
 #        - minor  → any commit subject starts with `feat:` / `feat(...)`, OR
 #                   any new `psql/migrations/*.sql` was added since the tag
-#        - patch  → anything else
+#                   AND at least one of those migrations is NOT pure-drop.
+#                   "Pure-drop" = the file contains DROP statements
+#                   (DROP TABLE / INDEX / COLUMN / SEQUENCE / POLICY / etc.
+#                   or ALTER TABLE ... DROP COLUMN/CONSTRAINT) AND NO
+#                   additive verbs (CREATE TABLE / INDEX / SEQUENCE / TYPE
+#                   / FUNCTION / TRIGGER / VIEW / POLICY, INSERT INTO,
+#                   ALTER TABLE ... ADD COLUMN/CONSTRAINT). A migration
+#                   with neither additive nor drop verbs has unknown
+#                   shape → conservative default = minor.
+#        - patch  → anything else (incl. all-added migrations are pure-drop)
 #   3. expected = bump(latest_tag, level).
 #   4. If ./.tag < expected → overwrite ./.tag with expected. If the
 #      operator pre-edited ./.tag to a HIGHER value, that wins (the
@@ -103,7 +112,56 @@ if printf '%s\n' "$msgs" | grep -qE '(^|[^-])!:|BREAKING CHANGE'; then
 elif printf '%s\n' "$msgs" | grep -qE '^feat(\(|:)'; then
     level="minor"
 elif printf '%s\n' "$added_files" | grep -qE '^psql/migrations/.*\.sql$'; then
-    level="minor"
+    # New migration file(s) present. The old rule was "any new migration
+    # → minor" but that overweighted pure-cleanup drops (e.g. 044 dropping
+    # the obsolete presence table got a minor bump v6.9.3 → v6.10.0 even
+    # though the underlying refactor was a patch). 2026-06-19 refinement:
+    # demote PURE-DROP migrations to patch by scanning each added file's
+    # content. Additive verbs (CREATE TABLE/INDEX/etc., INSERT, ALTER ADD
+    # COLUMN/CONSTRAINT) → minor. Pure DROPs → patch. Unknown shape (no
+    # DROPs either) → minor (conservative default).
+    added_migs="$(printf '%s\n' "$added_files" | grep -E '^psql/migrations/.*\.sql$' || true)"
+    has_non_drop_migration=false
+    while IFS= read -r mig; do
+        [ -z "$mig" ] && continue
+        # Pipeline:
+        #   1. Read content as it lives in HEAD (the file is in the merge tree).
+        #   2. perl -0pe slurps the whole file as one string and strips:
+        #      (a) /* ... */ block comments — these are NOT rare; operators
+        #          use them for multi-paragraph migration prologues that
+        #          mention DDL verbs as explanation.
+        #      (b) -- line comments — same false-positive risk (e.g. a
+        #          drop migration's docstring mentioning what CREATE
+        #          blocks were removed elsewhere).
+        #      The `s` flag makes `.` match newlines; `?` makes `/*..*/`
+        #      non-greedy so we don't swallow more than one block per match.
+        #   3. tr collapses newlines/tabs to spaces so multi-line DDL
+        #      (`ALTER TABLE foo\n  ADD COLUMN ...`) becomes a single line
+        #      the [[:space:]] regex matches against without -z gymnastics.
+        #   4. tr -s squeezes repeated spaces.
+        # Perl is in the standard Ubuntu base — already required by
+        # filter-repo (the public-mirror pipeline). No new dependency.
+        content="$(git show "HEAD:$mig" 2>/dev/null | \
+            perl -0pe 's|/\*.*?\*/||sg; s|--[^\n]*||g' 2>/dev/null | \
+            tr '\n\t' '  ' | \
+            tr -s ' ' || true)"
+        # Any additive verb → not pure-drop → minor.
+        if printf '%s' "$content" | grep -qiE 'CREATE TABLE|CREATE INDEX|CREATE SEQUENCE|CREATE TYPE|CREATE FUNCTION|CREATE TRIGGER|CREATE VIEW|CREATE POLICY|INSERT INTO|ALTER TABLE[[:space:]]+[^;]+ADD[[:space:]]+(COLUMN|CONSTRAINT)'; then
+            has_non_drop_migration=true
+            break
+        fi
+        # If no DROPs either, the migration's shape isn't recognizable as
+        # a cleanup — default conservative (minor).
+        if ! printf '%s' "$content" | grep -qiE 'DROP TABLE|DROP INDEX|DROP COLUMN|DROP TYPE|DROP FUNCTION|DROP TRIGGER|DROP VIEW|DROP SEQUENCE|DROP POLICY|ALTER TABLE[[:space:]]+[^;]+DROP[[:space:]]+(COLUMN|CONSTRAINT)'; then
+            has_non_drop_migration=true
+            break
+        fi
+        # Otherwise: this migration is pure-drop; loop continues to check
+        # any siblings. All-pure-drop set → level stays "patch".
+    done <<< "$added_migs"
+    if [ "$has_non_drop_migration" = true ]; then
+        level="minor"
+    fi
 fi
 
 expected="$(bump_version "$latest_version" "$level")"

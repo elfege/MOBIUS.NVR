@@ -50,7 +50,6 @@ unifi_resource_monitor = None
 stream_watchdog = None
 hubitat_power_service = None
 unifi_poe_service = None
-presence_service = None
 restart_handler = None
 settings = None  # services.settings.Settings instance — unified settings manager
 app_state = None

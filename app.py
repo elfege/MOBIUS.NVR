@@ -67,7 +67,6 @@ from services.camera_state_tracker import camera_state_tracker
 from services.stream_watchdog import StreamWatchdog
 from services.power.hubitat_power_service import HubitatPowerService
 from services.power.unifi_poe_service import UnifiPoePowerService
-from services.presence.presence_service import PresenceService
 from services.websocket_mjpeg_service import websocket_mjpeg_service
 from services.cert_routes import cert_bp
 from services.external_api_routes import external_api_bp, init_external_api
@@ -90,7 +89,6 @@ from routes.camera import camera_bp, init_camera_socketio, autogenerate_missing_
 from routes.config import config_bp
 from routes.eufy import eufy_bp
 from routes.power import power_bp
-from routes.presence import presence_bp
 from routes.ptz import ptz_bp
 from routes.recording import recording_bp
 from routes.storage import storage_bp, get_storage_migration_service
@@ -177,7 +175,6 @@ app.register_blueprint(camera_bp)
 app.register_blueprint(config_bp)
 app.register_blueprint(eufy_bp)
 app.register_blueprint(power_bp)
-app.register_blueprint(presence_bp)
 app.register_blueprint(ptz_bp)
 app.register_blueprint(recording_bp)
 app.register_blueprint(storage_bp)
@@ -198,7 +195,7 @@ app.register_blueprint(ui_event_bp)
 # The custom @csrf_exempt decorator in helpers.py sets f._csrf_exempt but
 # Flask-WTF only checks its internal _exempt_views/_exempt_blueprints sets,
 # so we must register exemptions via the CSRFProtect instance directly.
-for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp, presence_bp,
+for bp in [auth_bp, camera_bp, config_bp, eufy_bp, power_bp,
            ptz_bp, recording_bp, storage_bp, streaming_bp, talkback_bp,
            external_api_bp, evidence_bp, audit_bp, ui_event_bp, host_state_bp,
            host_agent_install_bp, host_agent_install_ssh_bp, telemetry_bp,
@@ -1080,17 +1077,6 @@ try:
 except Exception as e:
     print(f"⚠️  UniFi POE Power Service startup warning: {e}")
 
-# ===== Start Presence Service =====
-# Provides household presence tracking with Hubitat integration
-presence_service = None
-try:
-    print("\n👥 Initializing Presence Service...")
-    presence_service = PresenceService()
-    presence_service.start()
-    print("✅ Presence Service started")
-except Exception as e:
-    print(f"⚠️  Presence Service startup warning: {e}")
-
 
 # ===== Start Evidence Pipeline (audio extractor) =====
 # Reconciles the live extractor set against evidence_camera_settings every
@@ -1344,7 +1330,6 @@ _shared.set_services(
     stream_watchdog=stream_watchdog,
     hubitat_power_service=hubitat_power_service,
     unifi_poe_service=unifi_poe_service,
-    presence_service=presence_service,
     restart_handler=restart_handler,
     settings=settings,
     app_state=app_state,

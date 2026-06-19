@@ -53,7 +53,6 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/hubitat-picker.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/talkback-button.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/stream-volume-popup.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/presence-indicators.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/camera-selector.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/user-management.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/device-management.css') }}">
@@ -125,11 +124,6 @@
         <button class="navbar-hamburger" id="navbar-hamburger-btn" title="Menu">
             <i class="fas fa-bars"></i>
         </button>
-
-        <!-- Presence Indicators -->
-        <div class="presence-container" id="presence-container">
-            <!-- Populated by JavaScript -->
-        </div>
 
         <!-- Center logo — click opens TILES dashboard in overlay modal -->
         <div class="navbar-logo-section">
@@ -1129,7 +1123,6 @@
     <script type="module" src="{{ url_for('static', filename='js/modals/file-browser-modal.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/modals/hubitat-device-picker.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/power-controller.js') }}"></script>
-    <script type="module" src="{{ url_for('static', filename='js/controllers/presence-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/camera-selector-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/controllers/nav-menu-controller.js') }}"></script>
     <script type="module" src="{{ url_for('static', filename='js/streaming/stream.js') }}"></script>

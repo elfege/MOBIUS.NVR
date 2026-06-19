@@ -40,8 +40,6 @@ catches the 2026-06-13 regression (parent-bar opacity:0 cascading down).
 
 from __future__ import annotations
 
-from textwrap import dedent
-
 import pytest
 from playwright.sync_api import Page
 
@@ -299,9 +297,42 @@ def test_visibility_matrix_grid_signal_lost(streams_page, icon_name):
 # Subset of buttons that we expect to ALWAYS fire a network request when
 # clicked (so a 4xx/5xx is detectable). Buttons that only open modals or
 # toggle local CSS classes don't qualify and are skipped here.
+#
+# What's NOT in this map (and why):
+#   fullscreen / audio / more   → DOM-only (toggle CSS classes, no fetch)
+#   ptz (toggle)                → DOM-only (opens .ptz-controls panel).
+#                                 The PTZ DIRECTION buttons inside that panel
+#                                 ARE tested — see test_ptz_direction_click_no_404
+#                                 below; it carries the Eufy skip rule.
+#   controls_toggle             → DOM-only (opens .stream-controls submenu)
+#   settings / playback         → open modals; their fetches happen async on
+#                                 modal-open or on user submit, not on the icon
+#                                 click itself. The click-handler-runs check
+#                                 still surfaces a console-error regression
+#                                 (the assert at the end of the test).
+#   talkback                    → WebRTC connect — out-of-band of HTTP, not
+#                                 a 4xx/5xx pattern that fits this rig
+#   record                      → POST /api/recording/<id>/start or /stop
+#                                 (the 2026-06-19 segment-order bug)
+#   power                       → POST /api/power/<serial>/cycle (hubitat) OR
+#                                 /api/poe/<serial>/cycle (POE). Substring
+#                                 "/api/p" matches both — narrower would miss
+#                                 one variant. Only fires when the tile carries
+#                                 the `power-configured` class (i.e. the camera
+#                                 has a power_supply set), so the test scopes
+#                                 its selector accordingly to avoid clicking
+#                                 a no-op button and getting a false PASS.
 NETWORK_CLICK_BUTTONS = {
-    "record":   "POST /api/recording/",  # → POST /<id>/start or /<id>/stop
-    # Adding more (PTZ moves, snapshot fetches) is one entry each.
+    "record":   "POST /api/recording/",
+    "power":    "POST /api/p",
+}
+
+# Per-button selector override for the production /streams page. Tests look
+# up tiles via `.stream-item <button>` by default; some buttons require a
+# narrower scope (e.g. power only fires when `.power-configured` is also
+# on the element) to avoid clicking a stub variant.
+LIVE_BUTTON_SELECTOR_OVERRIDES = {
+    "power": ".stream-item .stream-power-btn.power-configured",
 }
 
 
@@ -340,7 +371,10 @@ def test_click_does_not_404_or_throw(page, base_url, seed_test_admin, icon_name)
     # Find any real tile with the target button. Skip if the test stack
     # has no cameras rendered (a known cache freshness gap — covered by
     # CAM.SETTINGS.OPEN's skip in test_cam_settings).
-    button = page.locator(f".stream-item {ICONS[icon_name]}").first
+    selector = LIVE_BUTTON_SELECTOR_OVERRIDES.get(
+        icon_name, f".stream-item {ICONS[icon_name]}"
+    )
+    button = page.locator(selector).first
     if button.count() == 0:
         pytest.skip(
             f"no .stream-item with {ICONS[icon_name]} on /streams (test "
@@ -375,3 +409,231 @@ def test_click_does_not_404_or_throw(page, base_url, seed_test_admin, icon_name)
     assert not relevant_errors, (
         f"click on {icon_name} button logged console error(s): {relevant_errors}"
     )
+
+
+# ---------------------------------------------------------------------------
+# PTZ direction click test — own function because it needs panel open first,
+# uses a different button selector (.ptz-btn data-direction), and carries the
+# Eufy-skip rule (operator directive 2026-06-19, memory file
+# feedback_eufy_ptz_skip_when_cloud_down_and_backend_failed).
+# ---------------------------------------------------------------------------
+
+
+def _eufy_cloud_status_via_page(page) -> dict:
+    """Hit /api/eufy/cloud-status via Playwright's request context, which
+    shares the browser's auth cookie. Returns the parsed JSON (defaults
+    cloud_reachable/bridge_running to False if the call fails — that's the
+    pessimistic interpretation, which matches "cloud is down" for skip-rule
+    purposes).
+    """
+    try:
+        resp = page.request.get("/api/eufy/cloud-status")
+        if not resp.ok:
+            return {"cloud_reachable": False, "bridge_running": False, "p2p_available": False}
+        return resp.json()
+    except Exception:
+        return {"cloud_reachable": False, "bridge_running": False, "p2p_available": False}
+
+
+def test_ptz_direction_click_no_404(page, base_url, seed_test_admin):
+    """
+    Click a real PTZ direction button (data-direction="left") on the live
+    /streams page. Asserts the POST /api/ptz/<serial>/left didn't 4xx/5xx.
+
+    Eufy SKIP rule (memory: feedback_eufy_ptz_skip_when_cloud_down_and_backend_failed,
+    operator directive 2026-06-19). When ALL THREE hold the test SKIPs rather
+    than FAILs — the failure is environmental, not a code regression:
+      1. Target tile's `data-camera-type == 'eufy'`
+      2. `/api/eufy/cloud-status` reports `cloud_reachable: false`
+         (operator's LAN can't reach mysecurity.eufylife.com)
+      3. The backend POST also reports failure (4xx/5xx OR success:false)
+
+    Any partial truth → real fail. Backend OK but UI fails → real frontend
+    bug. Backend fails but it's NOT Eufy → real backend bug. Eufy + cloud-up
+    + still fails → real bug.
+
+    No PTZ-capable tile rendered → SKIP (same shape as the other live-tile
+    tests; the test stack often has no real publishers).
+    """
+    username, password = seed_test_admin
+
+    network_failures: list[tuple[str, int]] = []
+    backend_failed = [False]  # closure mutability via single-elem list
+
+    def on_response(resp):
+        u = resp.url
+        # Only care about the /api/ptz/<serial>/<dir> shape (movement),
+        # not the latency/reversal probes which fire on panel open.
+        if "/api/ptz/" in u and not ("/latency/" in u or "/reversal" in u):
+            if resp.status >= 400:
+                network_failures.append((u, resp.status))
+                backend_failed[0] = True
+            else:
+                # 200 doesn't yet mean success — the backend pattern is
+                # 200 + {'success': false, ...} when the cloud/bridge is
+                # down. Check the body.
+                try:
+                    j = resp.json()
+                    if isinstance(j, dict) and j.get("success") is False:
+                        backend_failed[0] = True
+                except Exception:
+                    pass
+
+    page.on("response", on_response)
+
+    page.goto(f"{base_url}/login")
+    page.locator('input[name="username"]').fill(username)
+    page.locator('input[name="password"]').fill(password)
+    page.locator('button[type="submit"], input[type="submit"]').first.click()
+    page.wait_for_url(lambda url: "/login" not in url, timeout=10_000)
+    page.goto(f"{base_url}/streams")
+    page.wait_for_load_state("domcontentloaded", timeout=10_000)
+
+    # Locate a tile that actually has the PTZ panel emitted (template
+    # condition: 'ptz' in info.capabilities). Without one we can't click.
+    tile = page.locator(".stream-item:has(.ptz-controls)").first
+    if tile.count() == 0:
+        pytest.skip(
+            "no .stream-item with .ptz-controls on /streams (no PTZ-capable "
+            "camera in the test stack). PTZ click→backend contract still needs "
+            "prod-side verification."
+        )
+
+    camera_type = (tile.get_attribute("data-camera-type") or "").lower()
+    camera_serial = tile.get_attribute("data-camera-serial") or "?"
+
+    # Open the PTZ panel by clicking the toggle (hover first to reveal the
+    # action bar in grid mode).
+    toggle = tile.locator(".stream-ptz-toggle-btn")
+    toggle.scroll_into_view_if_needed()
+    toggle.hover(force=True)
+    toggle.click(force=True)
+    # Wait for the panel to be visible (CSS class .ptz-visible added by handler).
+    page.wait_for_timeout(500)
+
+    # Press a direction button. PTZ uses mousedown→mouseup (continuous move),
+    # so we need to dispatch both. Playwright's locator.click does that but
+    # the duration is too short for some backends; emulate hold via a small
+    # mousedown→sleep→mouseup explicitly.
+    direction_btn = tile.locator('.ptz-btn[data-direction="left"]')
+    if direction_btn.count() == 0:
+        pytest.skip("PTZ panel rendered but no data-direction='left' button (unexpected template variant).")
+    direction_btn.scroll_into_view_if_needed()
+    box = direction_btn.bounding_box()
+    if box is None:
+        pytest.skip("PTZ left-direction button has no bounding box (panel not visible after toggle).")
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    page.mouse.move(cx, cy)
+    page.mouse.down()
+    page.wait_for_timeout(400)  # let the POST fire
+    page.mouse.up()
+    page.wait_for_timeout(800)  # let any pending responses land
+
+    ui_failed = bool(network_failures) or backend_failed[0]
+
+    # Eufy skip rule — applies ONLY when the chain reports the same upstream
+    # cloud problem end-to-end.
+    if camera_type == "eufy" and ui_failed:
+        cloud_status = _eufy_cloud_status_via_page(page)
+        cloud_down = not cloud_status.get("cloud_reachable", False)
+        if cloud_down and backend_failed[0]:
+            pytest.skip(
+                f"Eufy PTZ unreachable end-to-end for {camera_serial}: "
+                f"cloud_reachable={cloud_status.get('cloud_reachable')}, "
+                f"backend reported failure too. Environmental (LAN→WAN to "
+                f"mysecurity.eufylife.com), not a regression. "
+                f"[memory: feedback_eufy_ptz_skip_when_cloud_down_and_backend_failed]"
+            )
+
+    assert not network_failures, (
+        f"PTZ direction click on {camera_serial} (type={camera_type}) "
+        f"produced HTTP failure(s): {network_failures}. "
+        "Eufy skip rule did NOT apply — either camera is non-Eufy, or cloud "
+        "IS reachable, or backend reported success. That makes this a real "
+        "regression to investigate."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Expanded-layout matrix cells — operator carry-forward from the prior session.
+# When a tile is in expanded mode (full-window single-camera view), the bar
+# rules change again (the memo "WHY THIS RECURS" lists expanded/fullscreen/
+# pinned-window as distinct CSS contexts). Today we cover the grid×live and
+# grid×signal-lost cells; expanded mode is the next intersection where past
+# regressions have hidden. (.css-fullscreen and .pinned-window remain TBD —
+# each adds its own layer of !important rules; one slice at a time.)
+# ---------------------------------------------------------------------------
+
+EXPECTATIONS_EXPANDED: dict[str, dict[str, dict[str, str]]] = {
+    "expanded+live": {
+        # In expanded mode the bar is persistently visible (no hover fade).
+        # Production policy: every icon visible on a live expanded tile.
+        icon: {"opacity": "visible"} for icon in ICONS
+    },
+    "expanded+signal-lost": {
+        # Dead expanded tile — same B2 logic applies: only the operator-
+        # actionable subset stays visible. Same set as grid+signal-lost
+        # (settings/power/playback/controls_toggle).
+        "settings":        {"opacity": "visible"},
+        "power":           {"opacity": "visible"},
+        "playback":        {"opacity": "visible"},
+        "controls_toggle": {"opacity": "visible"},
+        "fullscreen": {"opacity": "hidden"},
+        "audio":      {"opacity": "hidden"},
+        "ptz":        {"opacity": "hidden"},
+        "record":     {"opacity": "hidden"},
+        "talkback":   {"opacity": "hidden"},
+        "more":       {"opacity": "hidden"},
+    },
+}
+
+
+@pytest.mark.parametrize("icon_name", list(ICONS.keys()))
+def test_visibility_matrix_expanded_live(streams_page, icon_name):
+    """LAYOUT=expanded × HEALTH=live × icon=<each>.
+
+    Expanded tile (single camera, full window) — bar is persistently visible
+    (no hover fade). Every icon should be visible. If this fails, an
+    !important rule in stream-control-bar.css's expanded block is overriding
+    the visible-by-default policy.
+    """
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["expanded"])
+    expected = EXPECTATIONS_EXPANDED["expanded+live"][icon_name]
+    eff_opacity = _icon_opacity(page, ICONS[icon_name])
+    assert eff_opacity != -1, f"selector missed for {icon_name}: {ICONS[icon_name]}"
+    if expected["opacity"] == "visible":
+        assert eff_opacity > 0, (
+            f"expanded+live: {icon_name} should be visible; effective opacity={eff_opacity}. "
+            "Expanded-mode bar should not fade with hover — check "
+            "stream-control-bar.css's `.stream-item.expanded .stream-actions-bar` block."
+        )
+    else:
+        assert eff_opacity == 0, (
+            f"expanded+live: {icon_name} should be hidden; effective opacity={eff_opacity}"
+        )
+
+
+@pytest.mark.parametrize("icon_name", list(ICONS.keys()))
+def test_visibility_matrix_expanded_signal_lost(streams_page, icon_name):
+    """LAYOUT=expanded × HEALTH=signal-lost × icon=<each>.
+
+    Dead expanded tile — same B2 essential-set policy as grid+signal-lost.
+    Adding this cell so a future regression that fixes grid but breaks
+    expanded (or vice versa) is caught in CI.
+    """
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["expanded", "signal-lost"])
+    expected = EXPECTATIONS_EXPANDED["expanded+signal-lost"][icon_name]
+    eff_opacity = _icon_opacity(page, ICONS[icon_name])
+    assert eff_opacity != -1, f"selector missed for {icon_name}: {ICONS[icon_name]}"
+    if expected["opacity"] == "visible":
+        assert eff_opacity > 0, (
+            f"expanded+signal-lost: {icon_name} should be visible (B2 essential "
+            f"set, expanded variant); effective opacity={eff_opacity}"
+        )
+    else:
+        assert eff_opacity == 0, (
+            f"expanded+signal-lost: {icon_name} should be hidden (B2 policy, "
+            f"expanded variant); effective opacity={eff_opacity}"
+        )

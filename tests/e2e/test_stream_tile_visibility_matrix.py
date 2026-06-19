@@ -110,18 +110,22 @@ EXPECTATIONS: dict[str, dict[str, dict[str, str]]] = {
         icon: {"opacity": "hidden"} for icon in ICONS
     },
     "grid+signal-lost": {
-        # The B2 essential trio stays operable on dead tiles
-        "settings": {"opacity": "visible"},
-        "power":    {"opacity": "visible"},
-        "playback": {"opacity": "visible"},
-        # Everything else stays hidden (B2 policy)
-        "fullscreen":      {"opacity": "hidden"},
-        "audio":           {"opacity": "hidden"},
-        "ptz":             {"opacity": "hidden"},
-        "controls_toggle": {"opacity": "hidden"},
-        "record":          {"opacity": "hidden"},
-        "talkback":        {"opacity": "hidden"},
-        "more":            {"opacity": "hidden"},
+        # The B2 essential set stays operable on dead tiles. The
+        # original B2 (2026-05-23) listed 3 icons (settings/power/
+        # playback). 2026-06-19 amendment: controls-toggle added so
+        # operator can RESTART a dead stream from the grid — that's
+        # the most-needed action on a dead tile, not the least.
+        "settings":        {"opacity": "visible"},
+        "power":           {"opacity": "visible"},
+        "playback":        {"opacity": "visible"},
+        "controls_toggle": {"opacity": "visible"},
+        # Everything else stays hidden (B2 policy: meaningless on dead)
+        "fullscreen": {"opacity": "hidden"},
+        "audio":      {"opacity": "hidden"},
+        "ptz":        {"opacity": "hidden"},
+        "record":     {"opacity": "hidden"},
+        "talkback":   {"opacity": "hidden"},
+        "more":       {"opacity": "hidden"},
     },
 }
 
@@ -248,6 +252,9 @@ def test_visibility_matrix_grid_signal_lost(streams_page, icon_name):
     After the fix: the parent bar is lifted to opacity:1 on
     `.stream-item.signal-lost`, then audio/PTZ/talkback/etc. are
     explicitly re-hidden so only the B2 trio surfaces.
+
+    2026-06-19 amendment: controls-toggle joined the visible set so
+    operator can RESTART a dead stream from the grid.
     """
     page = streams_page
     _inject_tile_and_classes(page, extra_classes=["signal-lost"])
@@ -257,7 +264,7 @@ def test_visibility_matrix_grid_signal_lost(streams_page, icon_name):
     if expected["opacity"] == "visible":
         assert eff_opacity > 0, (
             f"grid+signal-lost: {icon_name} should be visible (B2 essential "
-            f"trio); effective opacity={eff_opacity}. If this fails the B2 "
+            f"set); effective opacity={eff_opacity}. If this fails the B2 "
             "rule is dead again — likely a new selector chain put opacity:0 "
             "on an ancestor of .stream-actions-bar."
         )
@@ -266,3 +273,105 @@ def test_visibility_matrix_grid_signal_lost(streams_page, icon_name):
             f"grid+signal-lost: {icon_name} should be hidden (meaningless "
             f"on a dead stream per B2 policy); effective opacity={eff_opacity}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Click-handler dimension (operator request 2026-06-19 — "buttons must not
+# just be visible, they must DO something")
+#
+# The visibility tests above prove an icon is reachable to the eye/cursor.
+# They CANNOT catch:
+#   - dead click handlers (button visible, click does nothing)
+#   - frontend URL mismatches (button visible, click sends request, 404)
+#     — e.g. the recording 404 on SV3C_Living_3 caught 2026-06-19:
+#     frontend built /api/recording/start/<id>, backend wanted /<id>/start
+#
+# This pair of tests visits the LIVE /streams page (not an injected DOM),
+# finds a real button on a real tile, and asserts:
+#   1. clicking it does NOT throw a console error
+#   2. clicking it does NOT produce a 4xx/5xx network response (where
+#      a network call is expected for that button)
+# We DON'T assert specific side-effects per button (modal opens / specific
+# class added) because those vary across button types and the goal here
+# is "the click reaches a handler that ATTEMPTS something coherent."
+# ---------------------------------------------------------------------------
+
+# Subset of buttons that we expect to ALWAYS fire a network request when
+# clicked (so a 4xx/5xx is detectable). Buttons that only open modals or
+# toggle local CSS classes don't qualify and are skipped here.
+NETWORK_CLICK_BUTTONS = {
+    "record":   "POST /api/recording/",  # → POST /<id>/start or /<id>/stop
+    # Adding more (PTZ moves, snapshot fetches) is one entry each.
+}
+
+
+@pytest.mark.parametrize("icon_name", list(NETWORK_CLICK_BUTTONS.keys()))
+def test_click_does_not_404_or_throw(page, base_url, seed_test_admin, icon_name):
+    """
+    Click each network-firing icon on a REAL grid tile (any tile that
+    exists). Capture console errors AND network responses. Fail if:
+      - a console error appears OR
+      - any response to a path containing the expected substring is 4xx/5xx
+
+    The recording 404 from 2026-06-19 (frontend built /api/recording/start/<id>
+    while backend wanted /<id>/start) would have been caught HERE — the
+    httpx tests pass against the correct URL the test hand-codes; only
+    a browser-driven click test exercises the URL the FRONTEND builds.
+    """
+    username, password = seed_test_admin
+
+    # Capture network responses + console errors via Playwright hooks
+    console_errors: list[str] = []
+    page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+    network_failures: list[tuple[str, int]] = []
+    page.on("response", lambda r: network_failures.append((r.url, r.status))
+            if r.status >= 400 and NETWORK_CLICK_BUTTONS[icon_name].split()[-1] in r.url
+            else None)
+
+    # Log in and load /streams
+    page.goto(f"{base_url}/login")
+    page.locator('input[name="username"]').fill(username)
+    page.locator('input[name="password"]').fill(password)
+    page.locator('button[type="submit"], input[type="submit"]').first.click()
+    page.wait_for_url(lambda url: "/login" not in url, timeout=10_000)
+    page.goto(f"{base_url}/streams")
+    page.wait_for_load_state("domcontentloaded", timeout=10_000)
+
+    # Find any real tile with the target button. Skip if the test stack
+    # has no cameras rendered (a known cache freshness gap — covered by
+    # CAM.SETTINGS.OPEN's skip in test_cam_settings).
+    button = page.locator(f".stream-item {ICONS[icon_name]}").first
+    if button.count() == 0:
+        pytest.skip(
+            f"no .stream-item with {ICONS[icon_name]} on /streams (test "
+            "stack has no cameras rendered). The frontend-URL contract "
+            "still needs prod-side verification."
+        )
+
+    # Make the button reachable. The grid-mode bar fades in on hover.
+    button.scroll_into_view_if_needed()
+    button.hover(force=True)
+    button.click(force=True)
+
+    # Give the page a moment for the click to dispatch + response to land
+    page.wait_for_timeout(1500)
+
+    # Network failures matching the expected URL substring are the bug
+    # we're hunting. Console errors are a softer signal but worth surfacing.
+    assert not network_failures, (
+        f"click on {icon_name} button produced HTTP failure(s) matching "
+        f"{NETWORK_CLICK_BUTTONS[icon_name]!r}: {network_failures}. "
+        "Either the frontend built the wrong URL (segment-order bug) or "
+        "the backend route moved without the JS being updated. This is "
+        "exactly the recording 404 shape from 2026-06-19."
+    )
+    # Filter known-noisy console errors (third-party libs, irrelevant
+    # warnings). The string match keeps the assertion focused on what we
+    # care about — the button's own handler throwing.
+    relevant_errors = [
+        e for e in console_errors
+        if "recording" in e.lower() or "404" in e or "axios" in e.lower()
+    ]
+    assert not relevant_errors, (
+        f"click on {icon_name} button logged console error(s): {relevant_errors}"
+    )

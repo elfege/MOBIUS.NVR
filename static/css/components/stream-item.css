@@ -464,25 +464,32 @@
 .stream-item.signal-lost .camera-settings-btn,
 .stream-item.signal-lost .stream-power-btn,
 .stream-item.signal-lost .camera-playback-btn,
+.stream-item.signal-lost .stream-controls-toggle-btn,
 .stream-item.signal-lost:hover .camera-settings-btn,
 .stream-item.signal-lost:hover .stream-power-btn,
-.stream-item.signal-lost:hover .camera-playback-btn {
+.stream-item.signal-lost:hover .camera-playback-btn,
+.stream-item.signal-lost:hover .stream-controls-toggle-btn {
     opacity: 1 !important;
     pointer-events: auto !important;
     z-index: 9;
 }
 
 /* Hide the icons B2 intentionally suppressed on dead tiles (audio / PTZ /
-   talkback / fullscreen / record / volume / controls-toggle / more) so the
-   bar-container lift above doesn't accidentally re-surface them in grid
-   mode. Operator quote (memory:project_frozen_stream_no_buttons): "meaning-
-   less on a dead stream" — keeping the explicit hide is the policy. */
+   talkback / fullscreen / record / volume / more) so the bar-container
+   lift above doesn't accidentally re-surface them in grid mode.
+   Operator quote (memory:project_frozen_stream_no_buttons): "meaningless
+   on a dead stream" — keeping the explicit hide is the policy.
+
+   2026-06-19 amendment (operator screenshot feedback): the
+   stream-controls-toggle-btn (start/stop/refresh) was originally in
+   this hide list but THAT removed the only path to restart a dead
+   stream from the grid. Restart is the most-needed action on a dead
+   tile, not the least. Moved it to the visible set above. */
 .stream-item.signal-lost .stream-actions-bar .stream-audio-btn,
 .stream-item.signal-lost .stream-actions-bar .stream-ptz-toggle-btn,
 .stream-item.signal-lost .stream-actions-bar .stream-talkback-btn,
 .stream-item.signal-lost .stream-actions-bar .stream-fullscreen-btn,
 .stream-item.signal-lost .stream-actions-bar .camera-record-btn,
-.stream-item.signal-lost .stream-actions-bar .stream-controls-toggle-btn,
 .stream-item.signal-lost .stream-actions-bar .stream-more-btn,
 .stream-item.signal-lost .stream-actions-bar > .volume-control-container {
     opacity: 0 !important;

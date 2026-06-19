@@ -54,7 +54,16 @@ export class RecordingController {
                 payload.duration = duration;
             }
             
-            const response = await axios.post(`${this.baseUrl}/start/${cameraId}`, payload);
+            // URL segment order: <camera_id>/start, NOT /start/<camera_id>.
+            // Backend route in routes/recording.py:96 is
+            // `@recording_bp.route('/api/recording/<camera_id>/start', methods=['POST'])`.
+            // The pre-2026-06-19 wording `/start/<id>` 404'd in prod —
+            // caught when operator hit "Record" on SV3C_Living_3 and saw
+            // a 404 toast (memory: project_frozen_stream_no_buttons*).
+            // The httpx e2e tests passed because they hand-coded the
+            // correct URL; only browser-driven (frontend-built-URL)
+            // testing surfaces this bug.
+            const response = await axios.post(`${this.baseUrl}/${cameraId}/start`, payload);
             
             if (response.data.recording_id) {
                 this.activeRecordings.set(cameraId, {
@@ -78,7 +87,13 @@ export class RecordingController {
      */
     async stopRecording(recordingId) {
         try {
-            const response = await axios.post(`${this.baseUrl}/stop/${recordingId}`);
+            // Same URL-segment-order fix as startRecording above. Backend
+            // route is /api/recording/<camera_id>/stop. The variable name
+            // here is `recordingId` but the route's docstring says
+            // "recording_id passed as camera_id parameter" — semantic
+            // confusion that's a separate cleanup. URL shape is what
+            // we're fixing here; the semantic mismatch stays for now.
+            const response = await axios.post(`${this.baseUrl}/${recordingId}/stop`);
             
             // Remove from active recordings
             for (const [cameraId, info] of this.activeRecordings.entries()) {

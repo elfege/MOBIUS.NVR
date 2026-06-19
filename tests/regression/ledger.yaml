@@ -161,6 +161,47 @@ entries:
     tags: [db, constraint, recordings, sql]
 
   # ---------------------------------------------------------------------------
+  - id: dead-tile-button-opacity-inheritance
+    title: "Dead-tile essential icons hidden because parent bar opacity:0 (CSS opacity chain)"
+    discovered: 2026-06-13
+    fixed_in: pending
+    symptom: |
+      On a stream tile with `.signal-lost` (dead camera), the operator
+      expects the 3 essential icons (settings / power / playback) to
+      stay visible so they can still poke at the dead tile. After the
+      2026-06-13 unified-bar refactor, those icons were INVISIBLE in
+      grid mode despite a `opacity:1 !important` rule targeting them.
+      The operator-side symptom: "frozen tile shows no buttons on
+      hover/tap" — same complaint that turned up repeatedly across
+      sessions (HD+pinned, signal-lost+idle, grid). 5 days of
+      production runtime with the fix-rule dead.
+    root_cause: |
+      CSS opacity is MULTIPLICATIVE down the DOM tree — a child's
+      `opacity:1 !important` cannot exceed a parent at `opacity:0`.
+      The 2026-06-13 refactor wrapped the icon buttons in a
+      `.stream-actions-bar` container and set the container itself to
+      `opacity:0` in grid mode (stream-control-bar.css:168). The B2
+      fix (stream-item.css:446-455, from 2026-05-23) targeted only the
+      individual buttons with `!important` — but inheriting through
+      an opacity:0 ancestor still zeros them out. `!important` has no
+      meaning for opacity multiplication; the rule's "force visibility"
+      reading was wrong.
+    guard_strategy: |
+      Playwright matrix test in tests/e2e/test_stream_tile_visibility_matrix.py.
+      Injects the production stream-item DOM into /streams, applies
+      class combinations (today: grid × {live, signal-lost}; expanded/
+      pinned/fullscreen are follow-up cells), then walks the ancestor
+      opacity chain per icon and asserts effective visibility against
+      the documented policy. The chain-walking matters: a probe that
+      just measures the icon's OWN computed opacity reads `1` even
+      when an ancestor at opacity:0 makes it invisible — exactly the
+      diagnostic miss the operator hit. Mutation-tested 2026-06-19:
+      reverting the fix surfaces 3 failures with the policy-named
+      error messages.
+    test_file: tests/e2e/test_stream_tile_visibility_matrix.py
+    tags: [css, ui, opacity, signal-lost, dead-tile, recurring]
+
+  # ---------------------------------------------------------------------------
   - id: snap-gate-publisher-state
     title: "/api/snap serves stale frame for dead publisher (no signal-lost overlay)"
     discovered: 2026-06-13

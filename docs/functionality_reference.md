@@ -89,6 +89,8 @@ Code anchors: [routes/config.py:streams_page](../routes/config.py), [templates/s
 | `STREAMS.PAGE.UA_SNIFF_REDIRECT` | iOS / mobile UA hits `/streams` without `?full=1` | Redirect to `/light` unless `localStorage.nvr_preferred_mode == 'full'` | [routes/config.py](../routes/config.py) | e2e:PASS |
 | `STREAMS.GRID.LAYOUT_MODES` | User toggles grid mode (Settings → View) | Layout updates without reload: uniform / last-row-stretch / auto-fit / masonry | [static/js/layout/](../static/js/layout/) | — |
 | `STREAMS.GRID.HOVER_SHOWS_ACTION_BAR` | Mouse hovers a grid tile | Action bar fades in (24x24 icons at bottom of tile) within 250ms | [static/css/components/stream-control-bar.css](../static/css/components/stream-control-bar.css) | manual:2026-06-13 |
+| `STREAMS.DEAD_TILE.ESSENTIAL_CONTROLS` | Tile carries `.signal-lost` class (dead stream) | settings + power + playback icons stay visible (B2 essential trio); audio / PTZ / talkback / fullscreen / record / controls-toggle / more stay hidden ("meaningless on a dead stream" — operator policy 2026-05-23). Effective opacity walked through ancestor chain. | [static/css/components/stream-item.css:446-499](../static/css/components/stream-item.css), `tests/regression/ledger.yaml#dead-tile-button-opacity-inheritance` | e2e:PASS (matrix, 10 cells; mutation-tested) |
+| `STREAMS.FREEZE.DETECT_STALE_NONBLACK` | iOS WebKit holds last frame on stall — tile is NOT black so the canvas blank-pixel sampler in `makeHealthMonitor` never trips; also iOS throttles the 6 s `setInterval` under thermal / background | Detection must NOT rely on black-pixel-only signal. Watch `<video>.currentTime` progression, use `requestVideoFrameCallback`, and/or accept the backend `state.availability` poll as authoritative for `.signal-lost`. Fixture: non-black still with stalled currentTime. | [static/js/streaming/stream.js](../static/js/streaming/stream.js), `memory/project_frozen_stream_no_buttons_ipad_health_monitor` | TBD (Defect 1 — not yet fixed) |
 | `STREAMS.EXPAND.TILE_CLICK` | User clicks on a grid tile (not on a button) | Tile expands to modal-overlay size; action bar enlarges to 32x32 | [static/js/streaming/](../static/js/streaming/) | — |
 | `STREAMS.EXPAND.AUTO_FULLSCREEN_FOR_KIOSK` | Chrome kiosk profile loads `/streams?fullscreen=<nickname>` | Resolves nickname → serial server-side, opens fullscreen on that camera | [routes/config.py](../routes/config.py) | — |
 | `STREAMS.FULLSCREEN.EXIT_VIA_X` | User clicks the X in top-right of an open overlay (PTZ or controls) in fullscreen | Overlay closes via the existing toggle handler; fullscreen state preserved | [static/js/streaming/overlay-close.js](../static/js/streaming/overlay-close.js) | manual:2026-06-13 |
@@ -421,7 +423,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Surface | Rows total | Manually verified | E2E covered |
 |---|---|---|---|
 | Auth | 8 | 0 | 7 |
-| Streams page | 10 | 4 | 1 |
+| Streams page | 12 | 4 | 2 |
 | Light page | 4 | 1 | 1 |
 | Stream lifecycle | 9 | 1 | 3 |
 | Snapshots | 5 | 1 | 2 |
@@ -441,7 +443,7 @@ Captured here so endpoint-level testing has a top-down view. The endpoint tables
 | Evidence (off) | 4 | 1 | 0 |
 | Health monitoring | 3 | 2 | 0 |
 | Power cycle | 2 | 0 | 0 |
-| **TOTAL** | **139** | **23** | **65** |
+| **TOTAL** | **141** | **23** | **66** |
 
 E2E-covered rows so far (will grow with each phase):
 - `AUDIT.COVERAGE.STATIC_CHECK` — `tests/test_audit_coverage.py` (static SQL check)

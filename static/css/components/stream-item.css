@@ -442,7 +442,25 @@
    — exactly when those are most needed (bug B2, 2026-05-23). The signal-lost
    overlay is z-index 8 and pointer-events:none, so we lift these three above
    it (z-index 9) and re-enable pointer events. Other buttons (audio, PTZ,
-   talkback, fullscreen) stay hidden — they're meaningless on a dead stream. */
+   talkback, fullscreen) stay hidden — they're meaningless on a dead stream.
+
+   2026-06-18 REGRESSION FIX (defect 2 in memory:
+   project_frozen_stream_no_buttons_ipad_health_monitor): the 2026-06-13
+   unified-bar refactor wrapped these buttons in `.stream-actions-bar` and
+   moved grid-mode visibility to the BAR CONTAINER
+   (stream-control-bar.css:168 → opacity:0 on the bar in grid). A child's
+   `opacity:1 !important` CANNOT exceed a parent at `opacity:0` — opacity
+   multiplies down the tree, no override exists. Result: the B2 exception
+   was DEAD in grid mode for 5 days. The new rule below lifts the BAR
+   CONTAINER itself when the tile is signal-lost. The child-button rules
+   above stay so the z-index + pointer-events tweaks still work on hover
+   and inside the now-visible bar. */
+.stream-item.signal-lost .stream-actions-bar,
+.stream-item.signal-lost:hover .stream-actions-bar {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+}
+
 .stream-item.signal-lost .camera-settings-btn,
 .stream-item.signal-lost .stream-power-btn,
 .stream-item.signal-lost .camera-playback-btn,
@@ -452,6 +470,23 @@
     opacity: 1 !important;
     pointer-events: auto !important;
     z-index: 9;
+}
+
+/* Hide the icons B2 intentionally suppressed on dead tiles (audio / PTZ /
+   talkback / fullscreen / record / volume / controls-toggle / more) so the
+   bar-container lift above doesn't accidentally re-surface them in grid
+   mode. Operator quote (memory:project_frozen_stream_no_buttons): "meaning-
+   less on a dead stream" — keeping the explicit hide is the policy. */
+.stream-item.signal-lost .stream-actions-bar .stream-audio-btn,
+.stream-item.signal-lost .stream-actions-bar .stream-ptz-toggle-btn,
+.stream-item.signal-lost .stream-actions-bar .stream-talkback-btn,
+.stream-item.signal-lost .stream-actions-bar .stream-fullscreen-btn,
+.stream-item.signal-lost .stream-actions-bar .camera-record-btn,
+.stream-item.signal-lost .stream-actions-bar .stream-controls-toggle-btn,
+.stream-item.signal-lost .stream-actions-bar .stream-more-btn,
+.stream-item.signal-lost .stream-actions-bar > .volume-control-container {
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 /* ============================================================================

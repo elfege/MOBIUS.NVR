@@ -22,14 +22,12 @@ a single huge prune cannot lock the table for more than a few seconds.
 """
 
 import logging
-import os
 import threading
 import time
 from typing import Optional
 
-import psycopg2
-
 from services import telemetry_settings as ts
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -44,22 +42,10 @@ _cleanup_thread: Optional[threading.Thread] = None
 _cleanup_stop_event = threading.Event()
 
 
-def _db_conn():
-    """Direct psycopg2 connection — same pattern as audit_listener._db_conn()."""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=5,
-    )
-
-
 def table_size_bytes() -> int:
     """Total relation size of telemetry_events, in bytes. 0 on failure."""
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute("SELECT pg_total_relation_size(%s)", (_TABLE,))
             row = cur.fetchone()
             return int(row[0]) if row else 0
@@ -71,7 +57,7 @@ def table_size_bytes() -> int:
 def row_count() -> int:
     """Approximate row count. Uses pg_class.reltuples (cheap, may be stale)."""
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 "SELECT GREATEST(0, reltuples)::BIGINT "
                 "FROM pg_class WHERE relname = %s",
@@ -87,7 +73,7 @@ def row_count() -> int:
 def _delete_older_than(retention_days: int) -> int:
     """Delete rows older than the retention window. Returns rows deleted."""
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 f"DELETE FROM {_TABLE} "
                 f"WHERE id IN ("
@@ -120,7 +106,7 @@ def _delete_oldest_until_below(target_bytes: int) -> int:
         # but never exceed MAX_DELETE_PER_PASS.
         chunk = min(MAX_DELETE_PER_PASS, max(1000, (bytes_to_free // avg_bytes_per_row) + 1))
         try:
-            with _db_conn() as conn, conn.cursor() as cur:
+            with db_cursor() as cur:
                 cur.execute(
                     f"DELETE FROM {_TABLE} "
                     f"WHERE id IN ("

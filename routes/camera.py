@@ -29,7 +29,6 @@ import traceback
 import time
 from threading import Thread
 
-import psycopg2
 import requests
 from flask import Blueprint, jsonify, request, Response, session
 from flask_login import login_required, current_user
@@ -37,6 +36,7 @@ from flask_login import login_required, current_user
 import routes.shared as shared
 from routes.helpers import csrf_exempt
 from services.camera_state_tracker import camera_state_tracker
+from services.db import cursor as db_cursor, connection as db_connection
 
 logger = logging.getLogger(__name__)
 
@@ -132,36 +132,26 @@ def api_put_camera_order():
         return jsonify({'error': 'order must be an array of camera serials'}), 400
 
     try:
-        # Direct psycopg2 upsert — handles the NOT NULL preferred_stream_type
+        # Pooled connection upsert — handles the NOT NULL preferred_stream_type
         # constraint by pulling the camera's default stream_type for new rows.
         # ON CONFLICT preserves existing preferred_stream_type, only updates display_order.
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=5
-        )
-        # Transactional batch (no autocommit) so SET LOCAL audit.* applied
-        # by apply_audit_actor is visible to every upsert in the loop. The
-        # audit trigger on user_camera_preferences relies on those GUCs.
-        cur = conn.cursor()
+        # Transactional batch (psycopg2's `with conn:` commits on clean exit) so
+        # SET LOCAL audit.* applied by apply_audit_actor is visible to every
+        # upsert in the loop. The audit trigger on user_camera_preferences
+        # relies on those GUCs. db_cursor imported at module top.
         from services.audit_actor import apply_audit_actor
-        apply_audit_actor(cur)
-        for idx, serial in enumerate(order):
-            cur.execute("""
-                INSERT INTO user_camera_preferences
-                    (user_id, camera_serial, preferred_stream_type, display_order)
-                SELECT %s, %s, stream_type, %s
-                FROM cameras WHERE serial = %s
-                ON CONFLICT (user_id, camera_serial)
-                DO UPDATE SET display_order = EXCLUDED.display_order,
-                              updated_at = NOW()
-            """, (current_user.id, serial, idx, serial))
-        conn.commit()
-        cur.close()
-        conn.close()
+        with db_cursor() as cur:
+            apply_audit_actor(cur)
+            for idx, serial in enumerate(order):
+                cur.execute("""
+                    INSERT INTO user_camera_preferences
+                        (user_id, camera_serial, preferred_stream_type, display_order)
+                    SELECT %s, %s, stream_type, %s
+                    FROM cameras WHERE serial = %s
+                    ON CONFLICT (user_id, camera_serial)
+                    DO UPDATE SET display_order = EXCLUDED.display_order,
+                                  updated_at = NOW()
+                """, (current_user.id, serial, idx, serial))
         return jsonify({'status': 'saved', 'count': len(order)})
     except Exception as e:
         logger.error(f"Error saving camera order: {e}")
@@ -609,7 +599,12 @@ def autogenerate_missing_nicknames() -> dict:
 
     summary = {"considered": 0, "assigned": {}, "skipped": {}}
     try:
-        with _nickname_db_conn() as conn, conn.cursor() as cur:
+        # Uses connection() (not cursor()) so the inner per-iteration
+        # `conn.rollback()` on a UPDATE-conflict path is in scope. The
+        # trailing `conn.commit()` is redundant with the pool's `with conn:`
+        # auto-commit on clean exit, but kept explicit for the per-batch
+        # semantic clarity.
+        with db_connection() as conn, conn.cursor() as cur:
             # Stamp the SET LOCAL audit.* GUCs for the cameras UPDATE
             # trigger to capture WHO. No-op if not in a request context
             # (admin batch call from a daemon would still write rows,
@@ -775,7 +770,7 @@ def api_camera_set_nickname(camera_serial):
         # serial in the error body — the DB UNIQUE index would also catch
         # this but with an opaque IntegrityError.
         try:
-            with _nickname_db_conn() as conn, conn.cursor() as cur:
+            with db_cursor() as cur:
                 cur.execute(
                     "SELECT serial FROM cameras "
                     "WHERE nickname = %s AND serial != %s",
@@ -854,7 +849,7 @@ def api_cameras_nicknames():
         return jsonify({'error': 'unauthorized'}), 401
 
     try:
-        with _nickname_db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 "SELECT serial, name, nickname "
                 "FROM cameras "
@@ -1030,18 +1025,6 @@ def api_fullscreen_exit():
 
     logger.info('fullscreen_exit: host_label=%s', host_label or '<any>')
     return jsonify(payload)
-
-
-def _nickname_db_conn():
-    """Minimal direct connection — same pattern as routes/host_state.py."""
-    return psycopg2.connect(
-        host=os.getenv('POSTGRES_HOST', 'postgres'),
-        port=os.getenv('POSTGRES_PORT', '5432'),
-        dbname=os.getenv('POSTGRES_DB', 'nvr'),
-        user=os.getenv('POSTGRES_USER', 'nvr_api'),
-        password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-        connect_timeout=3,
-    )
 
 
 # ===== Camera Settings (Generic) =====

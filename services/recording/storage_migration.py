@@ -228,18 +228,26 @@ class StorageMigrationService:
 
     def _get_db_connection(self):
         """
-        Create a direct psycopg2 connection to PostgreSQL.
-        Uses the same env vars as docker-compose provides to the container.
+        Check out a pooled connection from the central services.db pool.
+
+        Returns a regular psycopg2 connection; caller is responsible for
+        returning it via _return_db_connection() (NOT conn.close()).
+
+        The batch-delete code path here needs explicit commit/rollback
+        control across many batches in one function call, which doesn't
+        fit the auto-committing `with db_cursor()` pattern. So this
+        bypasses the context manager and uses the raw pool checkout.
         """
-        import psycopg2
-        return psycopg2.connect(
-            host=os.environ.get('POSTGRES_HOST', 'postgres'),
-            port=int(os.environ.get('POSTGRES_PORT', '5432')),
-            dbname=os.environ.get('POSTGRES_DB', 'nvr'),
-            user=os.environ.get('POSTGRES_USER', 'nvr_api'),
-            password=os.environ.get('POSTGRES_PASSWORD', ''),
-            connect_timeout=10
-        )
+        from services.db import get_conn
+        return get_conn()
+
+    def _return_db_connection(self, conn, *, close: bool = False):
+        """Return a previously-checked-out conn to the pool.
+
+        Pass close=True on error to discard rather than reuse the conn.
+        """
+        from services.db import put_conn
+        put_conn(conn, close=close)
 
     def _batch_delete_recordings(self, recording_ids: List[int], batch_size: int = 500,
                                   progress_callback: Optional[Callable] = None) -> int:
@@ -383,11 +391,12 @@ class StorageMigrationService:
                     pass
 
             cursor.close()
-            conn.close()
+            self._return_db_connection(conn)
 
         except Exception as e:
             logger.error(f"Database connection error during batch delete: {e}")
             logger.info("Falling back to individual deletes via direct SQL")
+            conn2 = None
             try:
                 conn2 = self._get_db_connection()
                 conn2.autocommit = True
@@ -399,9 +408,11 @@ class StorageMigrationService:
                     except Exception:
                         pass
                 cur2.close()
-                conn2.close()
             except Exception as e2:
                 logger.error(f"Fallback individual deletes also failed: {e2}")
+            finally:
+                if conn2 is not None:
+                    self._return_db_connection(conn2)
 
         return deleted_count
 

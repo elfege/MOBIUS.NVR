@@ -15,7 +15,6 @@ All service singletons are accessed via routes.shared to avoid circular imports.
 import os
 import logging
 
-import psycopg2
 import requests
 from flask import Blueprint, render_template, jsonify, redirect, request
 from flask_login import login_required, current_user
@@ -31,6 +30,7 @@ from routes.helpers import (
     _is_same_subnet,
     _trusted_network_cache,
 )
+from services.db import cursor as db_cursor
 from services.license_service import license, validate_license
 
 logger = logging.getLogger(__name__)
@@ -100,24 +100,14 @@ def streams_page():
         # Apply user's saved tile display order from DB
         order_map = {}
         try:
-            conn = psycopg2.connect(
-                host=os.getenv('POSTGRES_HOST', 'postgres'),
-                port=os.getenv('POSTGRES_PORT', '5432'),
-                dbname=os.getenv('POSTGRES_DB', 'nvr'),
-                user=os.getenv('POSTGRES_USER', 'nvr_api'),
-                password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-                connect_timeout=3
-            )
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT camera_serial, display_order "
-                "FROM user_camera_preferences "
-                "WHERE user_id = %s AND display_order IS NOT NULL",
-                (current_user.id,)
-            )
-            order_map = {serial: pos for serial, pos in cur.fetchall()}
-            cur.close()
-            conn.close()
+            with db_cursor() as cur:
+                cur.execute(
+                    "SELECT camera_serial, display_order "
+                    "FROM user_camera_preferences "
+                    "WHERE user_id = %s AND display_order IS NOT NULL",
+                    (current_user.id,)
+                )
+                order_map = {serial: pos for serial, pos in cur.fetchall()}
         except Exception as e:
             logger.warning(f"[streams_page] Could not load display order: {e}")
 
@@ -188,24 +178,14 @@ def streams_light_page():
         # Apply user's saved tile display order from DB
         order_map = {}
         try:
-            conn = psycopg2.connect(
-                host=os.getenv('POSTGRES_HOST', 'postgres'),
-                port=os.getenv('POSTGRES_PORT', '5432'),
-                dbname=os.getenv('POSTGRES_DB', 'nvr'),
-                user=os.getenv('POSTGRES_USER', 'nvr_api'),
-                password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-                connect_timeout=3
-            )
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT camera_serial, display_order "
-                "FROM user_camera_preferences "
-                "WHERE user_id = %s AND display_order IS NOT NULL",
-                (current_user.id,)
-            )
-            order_map = {serial: pos for serial, pos in cur.fetchall()}
-            cur.close()
-            conn.close()
+            with db_cursor() as cur:
+                cur.execute(
+                    "SELECT camera_serial, display_order "
+                    "FROM user_camera_preferences "
+                    "WHERE user_id = %s AND display_order IS NOT NULL",
+                    (current_user.id,)
+                )
+                order_map = {serial: pos for serial, pos in cur.fetchall()}
         except Exception as e:
             logger.warning(f"[streams_light_page] Could not load display order: {e}")
 
@@ -372,19 +352,9 @@ def api_advanced_settings_get():
     SECRET_KEYS = {'NVR_SECRET_KEY'}
 
     try:
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=5
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT key, value, updated_at FROM nvr_settings ORDER BY key;")
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        with db_cursor() as cur:
+            cur.execute("SELECT key, value, updated_at FROM nvr_settings ORDER BY key;")
+            rows = cur.fetchall()
 
         result = [
             {'key': r[0], 'value': r[1], 'updated_at': r[2].isoformat() if r[2] else None}
@@ -416,31 +386,21 @@ def api_advanced_settings_patch(key):
     value = data.get('value', '')
 
     try:
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=5
-        )
-        # Transactional (no autocommit) so SET LOCAL audit.* applied by
-        # apply_audit_actor is in scope for the upsert. The nvr_settings
-        # audit trigger relies on the audit.* GUCs to stamp WHO.
-        cur = conn.cursor()
+        # Pool-backed transactional batch — `with conn:` commits on clean
+        # exit so SET LOCAL audit.* applied by apply_audit_actor is in
+        # scope for the upsert. The nvr_settings audit trigger relies on
+        # the audit.* GUCs to stamp WHO.
         from services.audit_actor import apply_audit_actor
-        apply_audit_actor(cur)
-        cur.execute(
-            """
-            INSERT INTO nvr_settings (key, value, updated_at)
-            VALUES (%s, %s, NOW())
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
-            """,
-            (key, value)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
+        with db_cursor() as cur:
+            apply_audit_actor(cur)
+            cur.execute(
+                """
+                INSERT INTO nvr_settings (key, value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW();
+                """,
+                (key, value)
+            )
 
         logger.info(f"[AdvancedSettings] '{key}' set by user {current_user.id}")
         return jsonify({'success': True, 'key': key, 'value': value}), 200

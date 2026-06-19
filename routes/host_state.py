@@ -30,10 +30,11 @@ import threading
 import time
 from typing import Any, Dict, Optional
 
-import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
+
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -331,21 +332,6 @@ def api_host_metrics_read(host_label: str):
     return jsonify({"host_label": host_label, "samples": samples})
 
 
-# --------------------------------------------------------------------------
-# DB helpers — host_settings CRUD
-# --------------------------------------------------------------------------
-def _db_conn():
-    """Direct psycopg2 connection — same pattern as routes/config.py."""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=3,
-    )
-
-
 def _client_ip() -> str:
     """Best-effort source IP for the current request, honoring X-Forwarded-For."""
     fwd = request.headers.get("X-Forwarded-For", "")
@@ -370,7 +356,7 @@ def _bind_devices_to_host(host_label: str) -> None:
     if not ip:
         return
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 """
                 UPDATE trusted_devices
@@ -397,9 +383,7 @@ def _upsert_and_get_host_settings(host_label: str) -> Dict[str, Any]:
     fires with whatever metrics the agent sent.
     """
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
                 INSERT INTO host_settings (host_label, last_seen)
@@ -442,9 +426,7 @@ def api_host_settings_get(host_label: str):
     with rows for hosts the user might never wire up.
     """
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT host_label,
@@ -528,9 +510,7 @@ def api_host_settings_put(host_label: str):
     values = list(fields.values())
 
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # Phase 2 audit: stash actor IDs on the session so the
             # AFTER UPDATE trigger on host_settings captures who did it.
             # Without this call the audit row gets NULL user_id/client_id
@@ -604,7 +584,7 @@ def api_host_whoami():
     # 1) Direct lookup via the device_token FK
     if device_token:
         try:
-            with _db_conn() as conn, conn.cursor() as cur:
+            with db_cursor() as cur:
                 cur.execute(
                     "SELECT host_label FROM trusted_devices WHERE device_token = %s",
                     (device_token,),
@@ -623,7 +603,7 @@ def api_host_whoami():
         ip = _client_ip()
         if ip:
             try:
-                with _db_conn() as conn, conn.cursor() as cur:
+                with db_cursor() as cur:
                     cur.execute(
                         """
                         SELECT host_label
@@ -671,9 +651,7 @@ def api_host_list():
     #    appear in the list with their persisted last_seen.
     rows: Dict[str, Dict[str, Any]] = {}
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 """
                 SELECT host_label,

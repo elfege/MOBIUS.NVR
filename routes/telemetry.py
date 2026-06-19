@@ -20,9 +20,7 @@ via the Data tab in the global settings modal.
 """
 
 import logging
-import os
 
-import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
@@ -30,22 +28,11 @@ from flask_login import login_required, current_user
 from routes.helpers import csrf_exempt
 from services import telemetry_settings as ts
 from services import telemetry_cleanup
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
 telemetry_bp = Blueprint('telemetry', __name__)
-
-
-def _db_conn():
-    """Direct psycopg2 connection — same pattern as services/telemetry_cleanup."""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=5,
-    )
 
 
 def _require_admin():
@@ -213,7 +200,7 @@ def api_telemetry_recent():
     params.append(limit)
 
     try:
-        with _db_conn() as conn, conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
         # Convert datetimes to isoformat for JSON.

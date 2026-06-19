@@ -28,16 +28,15 @@ setting_audit_log can be added.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 
 from routes.helpers import csrf_exempt
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -61,17 +60,6 @@ MAX_LIMIT = 1000
 
 # Valid origin values — must match the CHECK constraint in migration 036.
 VALID_ORIGINS = frozenset({"ui", "api", "system_auto", "trigger"})
-
-
-def _db_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=5,
-    )
 
 
 def _is_admin() -> bool:
@@ -138,7 +126,7 @@ def api_audit_batch():
     rejected: List[Dict[str, Any]] = []
 
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             for idx, ev in enumerate(events):
                 # Validation. Bad rows go into `rejected` so the client
                 # can stop retrying them, but a single bad row doesn't
@@ -348,9 +336,7 @@ def api_audit_log():
     where_sql = " AND ".join(where)
 
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(f"SELECT COUNT(*) AS n FROM setting_audit_log WHERE {where_sql}", params)
             total = cur.fetchone()["n"]
 

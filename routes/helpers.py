@@ -256,7 +256,7 @@ def _is_trusted_network_enabled() -> bool:
     Result is cached for 30 seconds to avoid hammering the DB on every
     request.  Falls back to False on any DB error.
     """
-    import psycopg2
+    from services.db import cursor as db_cursor
 
     now = _time.time()
     if (_trusted_network_cache['enabled'] is not None
@@ -264,19 +264,9 @@ def _is_trusted_network_enabled() -> bool:
         return _trusted_network_cache['enabled']
 
     try:
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=3
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT value FROM nvr_settings WHERE key='TRUSTED_NETWORK_ENABLED';")
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
+        with db_cursor() as cur:
+            cur.execute("SELECT value FROM nvr_settings WHERE key='TRUSTED_NETWORK_ENABLED';")
+            row = cur.fetchone()
         enabled = row[0].lower() == 'true' if row else False
     except Exception:
         enabled = False

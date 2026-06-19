@@ -37,15 +37,14 @@ violate or the INSERT raises).
 
 import json
 import logging
-import os
 import threading
 import time
 from typing import Any, Optional
 
-import psycopg2
 from psycopg2.extras import Json
 
 from services import telemetry_settings as ts
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -69,18 +68,6 @@ DEBOUNCE_MAX_KEYS        = 4096   # bound the debounce dict; LRU-style eviction
 # A degenerate flap on one camera occupies one entry, not 86,400.
 _debounce_lock = threading.Lock()
 _debounce_state: dict = {}
-
-
-def _db_conn():
-    """Direct psycopg2 connection — same pattern as audit_listener._db_conn()."""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=5,
-    )
 
 
 def _make_debounce_key(category: str, camera_id: Optional[str],
@@ -143,7 +130,7 @@ def emit(category: str,
             return False
 
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 "INSERT INTO telemetry_events "
                 "(category, subcategory, camera_id, severity, payload) "

@@ -37,10 +37,9 @@ gap by comparing detector logs to row count.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
-import psycopg2
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -56,23 +55,13 @@ _VALID_SOURCES = frozenset({
     "evidence",
 })
 
-
-def _db_conn():
-    """
-    Minimal direct connection. Same pattern as routes/host_state.py:_db_conn()
-    and routes/camera.py:_nickname_db_conn(). We deliberately don't reuse a
-    pool here because the call site is rare (one INSERT per motion event,
-    ~tens per camera per day at most) and a fresh connection avoids the
-    "stale connection after migration" failure mode that pools suffer.
-    """
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=3,
-    )
+# Historical note (2026-06-19): the original _db_conn() helper here
+# deliberately bypassed pooling out of concern for "stale connection after
+# migration" — a long-lived pool conn opened pre-schema-migration won't see
+# new columns. That concern is mitigated by start.sh: migrations run on
+# every boot BEFORE the Flask app starts taking requests, so pool conns are
+# always opened AFTER schema migrations land. Pool now used here for
+# consistency with the rest of the codebase.
 
 
 def record_motion_event(
@@ -132,7 +121,7 @@ def record_motion_event(
         return None
 
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO motion_events (
@@ -179,7 +168,7 @@ def link_recording_to_event(event_id: int, recording_id: int) -> bool:
     if not event_id or not recording_id:
         return False
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 "UPDATE motion_events SET recording_id = %s WHERE id = %s",
                 (recording_id, event_id),

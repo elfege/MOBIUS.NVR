@@ -22,28 +22,17 @@ the operator's chosen policy (e.g. "5 failures in 5 min auto-disables;
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any, Dict, List
 
-import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify
 from flask_login import current_user, login_required
 
+from services.db import cursor as db_cursor
+
 logger = logging.getLogger(__name__)
 
 onvif_health_bp = Blueprint("onvif_health", __name__)
-
-
-def _db_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=3,
-    )
 
 
 def _is_admin() -> bool:
@@ -77,9 +66,7 @@ def api_onvif_health_one(serial: str):
     if not _is_admin():
         return jsonify({"error": "admin only"}), 403
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"SELECT {_FIELDS} FROM cameras WHERE serial = %s",
                 (serial,),
@@ -100,9 +87,7 @@ def api_onvif_health_all():
     if not _is_admin():
         return jsonify({"error": "admin only"}), 403
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
                 f"""
                 SELECT {_FIELDS}

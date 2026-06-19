@@ -108,34 +108,24 @@ app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 def _get_or_create_secret_key():
     """
-    Retrieve NVR_SECRET_KEY from DB (nvr_settings table) via direct
-    psycopg2 connection (not PostgREST, which may not be ready at startup).
+    Retrieve NVR_SECRET_KEY from DB (nvr_settings table) via the central
+    pooled connection (NOT PostgREST, which may not be ready at startup).
     Falls back to env var, then generates a new one if neither exists.
     The key is persisted to DB so it survives container restarts without
     needing any secrets file on disk.
-    """
-    import psycopg2
 
-    _pg_host = os.getenv('POSTGRES_HOST', 'postgres')
-    _pg_port = os.getenv('POSTGRES_PORT', '5432')
-    _pg_db = os.getenv('POSTGRES_DB', 'nvr')
-    _pg_user = os.getenv('POSTGRES_USER', 'nvr_api')
-    _pg_pass = os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key')
+    The pool is lazily initialised on first call — if Postgres isn't up
+    yet, the inner try/except catches the failure and returns '' so the
+    caller can fall through to the env var / generated-key path.
+    """
+    from services.db import cursor as db_cursor
 
     def _db_query(sql, params=None):
-        """Run a SQL query via psycopg2 and return the first result value."""
+        """Run a SQL query via the pool and return the first result value."""
         try:
-            conn = psycopg2.connect(
-                host=_pg_host, port=_pg_port, dbname=_pg_db,
-                user=_pg_user, password=_pg_pass,
-                connect_timeout=10
-            )
-            conn.autocommit = True
-            cur = conn.cursor()
-            cur.execute(sql, params)
-            row = cur.fetchone()
-            cur.close()
-            conn.close()
+            with db_cursor() as cur:
+                cur.execute(sql, params)
+                row = cur.fetchone()
             return row[0] if row else ''
         except Exception as e:
             print(f"[SECRET_KEY] DB query failed: {e}")
@@ -318,20 +308,10 @@ def _is_trusted_network_enabled():
         return _trusted_network_cache['enabled']
 
     try:
-        import psycopg2
-        conn = psycopg2.connect(
-            host=os.getenv('POSTGRES_HOST', 'postgres'),
-            port=os.getenv('POSTGRES_PORT', '5432'),
-            dbname=os.getenv('POSTGRES_DB', 'nvr'),
-            user=os.getenv('POSTGRES_USER', 'nvr_api'),
-            password=os.getenv('POSTGRES_PASSWORD', 'nvr_internal_db_key'),
-            connect_timeout=3
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT value FROM nvr_settings WHERE key='TRUSTED_NETWORK_ENABLED';")
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
+        from services.db import cursor as db_cursor
+        with db_cursor() as cur:
+            cur.execute("SELECT value FROM nvr_settings WHERE key='TRUSTED_NETWORK_ENABLED';")
+            row = cur.fetchone()
         enabled = row[0].lower() == 'true' if row else False
     except Exception:
         enabled = False

@@ -28,24 +28,11 @@ observing real failure rates via the read endpoint.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Optional
 
-import psycopg2
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
-
-
-def _db_conn():
-    """Same pattern as the rest of the direct-psycopg2 callsites in this repo."""
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=3,
-    )
 
 
 # Truncate stored error messages to a reasonable size. Real listener errors
@@ -57,7 +44,7 @@ _MAX_ERROR_LEN = 500
 def record_subscribe_success(camera_id: str) -> None:
     """Reset failure_count, stamp last_success_ts, set state=healthy."""
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 """
                 UPDATE cameras
@@ -81,7 +68,7 @@ def record_subscribe_failure(camera_id: str, error_msg: Optional[str]) -> None:
     """
     msg = (error_msg or "")[:_MAX_ERROR_LEN]
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             cur.execute(
                 """
                 UPDATE cameras

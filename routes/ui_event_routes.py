@@ -33,16 +33,15 @@ from __future__ import annotations
 
 import json as _json
 import logging
-import os
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-import psycopg2
 import psycopg2.extras
 from flask import Blueprint, jsonify, request
 from flask_login import login_required, current_user
 
 from routes.helpers import csrf_exempt
+from services.db import cursor as db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -68,17 +67,6 @@ VALID_KINDS = frozenset({
     "click", "keystroke", "focus", "blur", "submit",
     "navigation", "modal_open", "modal_close", "scroll",
 })
-
-
-def _db_conn():
-    return psycopg2.connect(
-        host=os.getenv("POSTGRES_HOST", "postgres"),
-        port=os.getenv("POSTGRES_PORT", "5432"),
-        dbname=os.getenv("POSTGRES_DB", "nvr"),
-        user=os.getenv("POSTGRES_USER", "nvr_api"),
-        password=os.getenv("POSTGRES_PASSWORD", "nvr_internal_db_key"),
-        connect_timeout=5,
-    )
 
 
 def _is_admin() -> bool:
@@ -155,7 +143,7 @@ def api_ui_event_batch():
     rejected: List[Dict[str, Any]] = []
 
     try:
-        with _db_conn() as conn, conn.cursor() as cur:
+        with db_cursor() as cur:
             for idx, ev in enumerate(events):
                 if not isinstance(ev, dict):
                     rejected.append({"idx": idx, "reason": "not an object"})
@@ -326,9 +314,7 @@ def api_ui_event_log():
     where_sql = " AND ".join(where)
 
     try:
-        with _db_conn() as conn, conn.cursor(
-            cursor_factory=psycopg2.extras.RealDictCursor
-        ) as cur:
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(f"SELECT COUNT(*) AS n FROM ui_event_log WHERE {where_sql}", params)
             total = cur.fetchone()["n"]
 

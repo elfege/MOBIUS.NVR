@@ -17,17 +17,14 @@ import os
 # PostgREST connection URL (containerized service)
 POSTGREST_URL = os.getenv('NVR_POSTGREST_URL', 'http://postgrest:3001')
 
-# Direct PostgreSQL connection parameters (used as fallback when PostgREST is unavailable)
-_PG_HOST = os.environ.get('POSTGRES_HOST', 'postgres')
-_PG_PORT = int(os.environ.get('POSTGRES_PORT', '5432'))
-_PG_DB = os.environ.get('POSTGRES_DB', 'nvr')
-_PG_USER = os.environ.get('POSTGRES_USER', 'nvr_api')
-_PG_PASS = os.environ.get('POSTGRES_PASSWORD', '')
+# Direct PostgreSQL connection parameters now flow through services.db's pool,
+# which reads the same POSTGRES_* env vars. The module-level _PG_* constants
+# that used to live here were removed in the 2026-06-19 pool consolidation.
 
 
 def _direct_query(sql, params=None, fetch_one=False):
     """
-    Execute a direct SQL query against PostgreSQL using psycopg2.
+    Execute a direct SQL query against PostgreSQL via the pooled connection.
     Used as fallback when PostgREST is unavailable.
 
     Args:
@@ -39,21 +36,14 @@ def _direct_query(sql, params=None, fetch_one=False):
         dict or list: Query results as dict(s) with column names as keys, or None on error
     """
     try:
-        import psycopg2
         import psycopg2.extras
-        conn = psycopg2.connect(
-            host=_PG_HOST, port=_PG_PORT, dbname=_PG_DB,
-            user=_PG_USER, password=_PG_PASS, connect_timeout=5
-        )
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(sql, params)
-                if fetch_one:
-                    row = cur.fetchone()
-                    return dict(row) if row else None
-                return [dict(r) for r in cur.fetchall()]
-        finally:
-            conn.close()
+        from services.db import cursor as db_cursor
+        with db_cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            if fetch_one:
+                row = cur.fetchone()
+                return dict(row) if row else None
+            return [dict(r) for r in cur.fetchall()]
     except Exception as e:
         print(f"[User model] Direct SQL fallback failed: {e}")
         return None

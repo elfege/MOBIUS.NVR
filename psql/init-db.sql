@@ -150,28 +150,6 @@ CREATE INDEX idx_ptz_presets_camera ON ptz_presets(camera_serial);
 CREATE INDEX idx_ptz_presets_cached_at ON ptz_presets(cached_at);
 
 -- =============================================================================
--- PRESENCE TABLE
--- =============================================================================
-
-CREATE TABLE presence (
-    id BIGSERIAL PRIMARY KEY,
-    person_name VARCHAR(100) NOT NULL UNIQUE,
-    is_present BOOLEAN DEFAULT false,
-    hubitat_device_id VARCHAR(50),
-    last_changed_at TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_changed_by VARCHAR(50) DEFAULT 'manual'
-        CHECK (last_changed_by IN ('manual', 'hubitat', 'api'))
-);
-
-CREATE INDEX idx_presence_person_name ON presence(person_name);
-
-INSERT INTO presence (person_name, is_present) VALUES
-    ('Elfege', false),
-    ('Jessica', false)
-ON CONFLICT (person_name) DO NOTHING;
-
--- =============================================================================
 -- FILE OPERATIONS LOG TABLE
 -- =============================================================================
 
@@ -439,7 +417,6 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nvr_anon;
 
 GRANT SELECT, INSERT, UPDATE ON ptz_client_latency TO nvr_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ptz_presets TO nvr_anon;
-GRANT SELECT, INSERT, UPDATE, DELETE ON presence TO nvr_anon;
 GRANT SELECT, INSERT ON file_operations_log TO nvr_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON users TO nvr_anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON user_sessions TO nvr_anon;
@@ -458,7 +435,6 @@ ALTER TABLE recordings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE motion_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ptz_client_latency ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ptz_presets ENABLE ROW LEVEL SECURITY;
-ALTER TABLE presence ENABLE ROW LEVEL SECURITY;
 ALTER TABLE file_operations_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
@@ -474,7 +450,6 @@ CREATE POLICY "Allow all" ON recordings FOR ALL TO nvr_anon USING (true) WITH CH
 CREATE POLICY "Allow all" ON motion_events FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON ptz_client_latency FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON ptz_presets FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all" ON presence FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON file_operations_log FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON users FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all" ON user_sessions FOR ALL TO nvr_anon USING (true) WITH CHECK (true);
@@ -489,7 +464,7 @@ CREATE POLICY "Allow all" ON camera_credentials FOR ALL TO nvr_anon USING (true)
 -- INITIALIZATION COMPLETE
 -- =============================================================================
 -- Tables created: recordings, motion_events, ptz_client_latency, ptz_presets,
---   presence, file_operations_log, users, user_sessions, user_camera_preferences,
+--   file_operations_log, users, user_sessions, user_camera_preferences,
 --   user_camera_access, user_preferences, cameras, camera_state
 -- Columns added (012-014): cameras.video_fit_mode, user_preferences.default_video_fit,
 --   user_preferences.pinned_camera, user_preferences.pinned_windows

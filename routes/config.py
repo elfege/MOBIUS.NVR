@@ -311,8 +311,17 @@ def api_streaming_hubs_put():
     Bulk-update streaming hub for multiple cameras.
 
     Request body: {"cameras": {"SERIAL1": "go2rtc", "SERIAL2": "mediamtx", ...}}
-    Each value must be 'go2rtc' or 'mediamtx'.
+    Each value must be one of the canonical hubs in VALID_STREAMING_HUBS
+    (currently: 'mediamtx', 'go2rtc', 'neolink', 'native_mjpeg').
+
+    Pre-2026-06-20 this endpoint hard-coded the allow-list to
+    ('go2rtc', 'mediamtx') and silently rejected 'native_mjpeg' — which
+    meant operators couldn't switch broken-RTSP cameras (SV3C hi3510) to
+    snap-only mode from the General-tab bulk toggle, only from the
+    per-camera settings modal. Aligned with VALID_STREAMING_HUBS now.
     """
+    from services.streaming_hub import VALID_STREAMING_HUBS
+
     if current_user.role != 'admin':
         return jsonify({'error': 'Admin access required'}), 403
 
@@ -324,8 +333,8 @@ def api_streaming_hubs_put():
     updated = []
     errors = []
     for serial, hub in assignments.items():
-        if hub not in ('go2rtc', 'mediamtx'):
-            errors.append(f"{serial}: invalid hub '{hub}'")
+        if hub not in VALID_STREAMING_HUBS:
+            errors.append(f"{serial}: invalid hub '{hub}' (allowed: {', '.join(sorted(VALID_STREAMING_HUBS))})")
             continue
         success = shared.camera_repo.update_camera_setting(serial, 'streaming_hub', hub)
         if success:

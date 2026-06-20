@@ -223,3 +223,35 @@ entries:
       All three signals must be present together.
     test_file: tests/regression/test_snap_gate_code_present.py
     tags: [streaming, snap, publisher-state, ui-truth]
+
+  - id: stream-manager-native-mjpeg-guard
+    title: "stream_manager spawns FFmpeg against native_mjpeg cameras, violating Rule 11"
+    discovered: 2026-06-20
+    fixed_in: pending
+    symptom: |
+      A native_mjpeg camera (SV3C hi3510 chipset, broken RTSP) would have
+      a SECOND consumer opened against it if anything called
+      stream_manager.start_stream() — silently breaking Rule 11 (1 camera
+      = 1 input). The intended consumer for these cameras is the
+      SV3CMJPEGCaptureService (HTTP snapshot poller, refcounted frame
+      buffer); FFmpeg-against-RTSP either fails or steals the camera's
+      single available consumer slot.
+    root_cause: |
+      stream_manager.start_stream() had an explicit early-return for
+      go2rtc cameras (is_go2rtc_camera() guard at line 283) but no
+      counterpart for native_mjpeg. generate_streaming_configs.py
+      correctly excluded native_mjpeg cameras from MediaMTX / go2rtc
+      configs at startup, but the runtime stream_manager call had no
+      matching guard — so any code path calling start_stream() for one
+      would attempt FFmpeg-against-RTSP regardless of hub.
+    guard_strategy: |
+      Static scan of streaming/stream_manager.py: start_stream() must
+      contain BOTH an is_go2rtc_camera() guard AND an
+      is_native_mjpeg_camera() guard. If a future refactor strips one,
+      the test fires. A true end-to-end check (mock the FFmpeg spawn,
+      call start_stream with a native_mjpeg camera, assert no spawn) is
+      harder because the spawn happens deep in a chain of helpers — the
+      static guard catches the most common regression shape (somebody
+      simplifies the early-return block and drops one camera type).
+    test_file: tests/regression/test_stream_manager_streaming_hub_guards.py
+    tags: [streaming, native_mjpeg, rule-11, stream-manager]

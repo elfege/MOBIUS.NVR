@@ -280,10 +280,23 @@ class StreamManager:
         # go2rtc cameras: no FFmpeg needed for viewing. go2rtc is the single consumer
         # and serves WebRTC/HLS directly to browser. FFmpeg only runs separately for
         # recording (started by recording_service, not stream_manager).
-        from services.streaming_hub import is_go2rtc_camera
+        from services.streaming_hub import is_go2rtc_camera, is_native_mjpeg_camera
         if camera and is_go2rtc_camera(camera) and protocol in ('GO2RTC', 'WEBRTC', 'NEOLINK'):
             print(f"[GO2RTC] {camera_serial} uses go2rtc as streaming hub — no FFmpeg needed for viewing")
             return None  # Frontend uses go2rtc WebRTC directly, no HLS URL needed
+
+        # native_mjpeg cameras: snap-only mode for broken-RTSP cameras (SV3C
+        # hi3510 chipset, etc.). The /api/snap path routes through
+        # SV3CMJPEGCaptureService (single HTTP poller, refcounted frame
+        # buffer). Spawning FFmpeg here would open a SECOND consumer against
+        # the camera — violating Rule 11 (1 camera = 1 input).
+        # generate_streaming_configs.py already excludes these from MediaMTX /
+        # go2rtc configs at startup, but this guard closes the runtime gap
+        # if start_stream() is called for one regardless. Matches the go2rtc
+        # early-return pattern above.
+        if camera and is_native_mjpeg_camera(camera):
+            print(f"[NATIVE_MJPEG] {camera_serial} uses native MJPEG (snap-only) — no FFmpeg/RTSP spawned")
+            return None
 
         # For LL_HLS/NEOLINK/WEBRTC with dual-output: main stream is always available if sub is running
         # The single FFmpeg process publishes to both /camera and /camera_main

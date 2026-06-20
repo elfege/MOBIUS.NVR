@@ -1105,6 +1105,24 @@ def api_camera_settings_update(camera_serial):
                 requires_restart = True
                 logger.info(f"[Settings PUT] {camera_serial}: streaming_hub {old_hub} -> {new_hub} "
                             f"(config regeneration + restart required)")
+                # Immediate cleanup: stop any FFmpeg/MediaMTX-ingest process
+                # the OLD hub was running for this camera. This is especially
+                # important when switching TO `native_mjpeg` — that hub's
+                # contract is single-poller HTTP snapshot via
+                # SV3CMJPEGCaptureService, so leaving an FFmpeg pulling from
+                # the camera's RTSP would violate Rule 11 (1 camera = 1
+                # input). For mediamtx<->go2rtc transitions the stop also
+                # frees the now-obsolete FFmpeg slot ahead of the full
+                # container restart prompted by requires_restart.
+                try:
+                    from streaming.stream_manager import stream_manager
+                    stream_manager.stop_stream(camera_serial)
+                    logger.info(f"[Settings PUT] {camera_serial}: stopped stream for hub switch")
+                except Exception as e:
+                    # Don't fail the API call if stop_stream errors — the
+                    # config update itself is the contract; the restart will
+                    # take care of cleanup if the live stop didn't.
+                    logger.warning(f"[Settings PUT] {camera_serial}: stop_stream failed (will be cleaned up on restart): {e}")
 
         # ── tracking_owner: validate enum before write ──────────────────────
         # Values: 'native' (camera/Eufy tracks), 'nvr' (future NVR pipeline —

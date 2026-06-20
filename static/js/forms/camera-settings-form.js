@@ -94,6 +94,7 @@ export class RecordingSettingsForm {
         this.currentCameraName = cameraName;
         this._streamingHub = streamingHub;
         this._go2rtcSource = go2rtcSource;
+        this._cameraType = (cameraType || '').toLowerCase();
 
         const hasOnvif = cameraCapabilities.includes('ONVIF');
         const isReolink = cameraType && cameraType.toLowerCase() === 'reolink';
@@ -225,41 +226,27 @@ export class RecordingSettingsForm {
                         </div>
                     </div>
 
-                    ${go2rtcSource ? `
-                    <!-- Streaming Hub — only shown for cameras with a go2rtc_source configured -->
+                    <!-- Streaming Hub — always rendered; individual buttons gate per-camera.
+                         Pre-2026-06-20 the WHOLE section was hidden when go2rtc_source was
+                         missing. That hid the toggle for native_mjpeg too. Now: render the
+                         section, grey out only the genuinely incompatible button(s). -->
                     <div class="recording-form-section">
                         <h4><i class="fas fa-route"></i> Streaming Hub</h4>
                         <div class="recording-form-group">
                             <label>Active Hub</label>
                             <div style="display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
-                                <button type="button"
-                                        class="recording-btn hub-select-btn ${streamingHub === 'mediamtx' ? 'recording-btn-primary' : 'recording-btn-secondary'}"
-                                        data-hub="mediamtx"
-                                        ${window.USER_ROLE === 'admin' ? '' : 'disabled title="Admin only"'}>
-                                    <i class="fas fa-server"></i> MediaMTX
-                                </button>
-                                <button type="button"
-                                        class="recording-btn hub-select-btn ${streamingHub === 'go2rtc' ? 'recording-btn-primary' : 'recording-btn-secondary'}"
-                                        data-hub="go2rtc"
-                                        ${window.USER_ROLE === 'admin' ? '' : 'disabled title="Admin only"'}>
-                                    <i class="fas fa-bolt"></i> go2rtc
-                                </button>
-                                <button type="button"
-                                        class="recording-btn hub-select-btn ${streamingHub === 'native_mjpeg' ? 'recording-btn-primary' : 'recording-btn-secondary'}"
-                                        data-hub="native_mjpeg"
-                                        ${window.USER_ROLE === 'admin' ? '' : 'disabled title="Admin only"'}>
-                                    <i class="fas fa-images"></i> Native MJPEG
-                                </button>
+                                ${this._renderHubButton('mediamtx', 'fa-server', 'MediaMTX', streamingHub)}
+                                ${this._renderHubButton('go2rtc', 'fa-bolt', 'go2rtc', streamingHub)}
+                                ${this._renderHubButton('native_mjpeg', 'fa-images', 'Native MJPEG', streamingHub)}
                             </div>
                             <span class="form-description" style="margin-top: 8px; display: block;">
                                 <strong>MediaMTX:</strong> Camera → FFmpeg → MediaMTX → all consumers (default, multi-consumer safe).<br>
-                                <strong>go2rtc:</strong> Camera → go2rtc → browser (lower latency, single consumer via re-export).<br>
-                                <strong>Native MJPEG:</strong> for a camera whose RTSP is broken (bad wiring / weak PoE). Stops all RTSP streaming and grabs still pictures straight from the camera. Live view stays smooth; recording quality is reduced. Switching needs a quick restart.
+                                <strong>go2rtc:</strong> Camera → go2rtc → browser (lower latency, single consumer via re-export). Requires <em>go2rtc Source URL</em> below. Not compatible with Eufy cameras (eufy:// P2P producer is unreliable).<br>
+                                <strong>Native MJPEG:</strong> for a camera whose RTSP is broken (bad wiring / weak PoE / hi3510 chipset). Stops all RTSP streaming and grabs still pictures straight from the camera. Live view stays smooth; recording quality is reduced. Switching needs a quick restart.
                             </span>
                             <div id="streaming-hub-status" style="display: none; margin-top: 6px;"></div>
                         </div>
                     </div>
-                    ` : ''}
                 </div>
 
                 <!-- ============ TAB: Recording ============ -->
@@ -533,6 +520,91 @@ export class RecordingSettingsForm {
 
             </form>
         `;
+    }
+
+    // =========================================================================
+    //  STREAMING HUB — per-button gating + tooltip helpers
+    // =========================================================================
+
+    /**
+     * Decide whether a hub button should be disabled for this camera, and
+     * if so, what tooltip explains why. Returns `{ disabled, reason }`.
+     *
+     * Gating rules (operator directive 2026-06-20, memory:
+     *  project_eufy_go2rtc_incompatible_keep_both_hubs):
+     *   - non-admin: ALL buttons disabled with reason "Admin only"
+     *   - mediamtx: always available for admins (universal default)
+     *   - go2rtc: disabled when camera type == 'eufy'
+     *             (eufy:// P2P producer in go2rtc is unreliable — drops
+     *             session, leaves tile dead; Terrace Shed was the canary
+     *             that surfaced this in prod), OR when go2rtc_source is
+     *             empty (no source URL → go2rtc can't connect)
+     *   - native_mjpeg: always available for admins. Universal escape hatch
+     *             for broken-RTSP cameras (SV3C hi3510 + Reolink models on
+     *             flaky PoE both use this in prod). Operator decides per
+     *             camera; no type restriction.
+     *
+     * The reasons surface as native `title` tooltips on the button so the
+     * operator can hover-discover WHY an option is unavailable without
+     * having to dig through docs.
+     */
+    _hubButtonState(hubId) {
+        if (window.USER_ROLE !== 'admin') {
+            return { disabled: true, reason: 'Admin only' };
+        }
+        if (hubId === 'mediamtx') {
+            return { disabled: false, reason: '' };
+        }
+        if (hubId === 'go2rtc') {
+            if (this._cameraType === 'eufy') {
+                return {
+                    disabled: true,
+                    reason: 'Eufy cameras must use MediaMTX. go2rtc\'s eufy:// P2P producer drops sessions silently — tile would go dead. [memory: project_eufy_go2rtc_incompatible_keep_both_hubs]',
+                };
+            }
+            if (!this._go2rtcSource) {
+                return {
+                    disabled: true,
+                    reason: 'Configure go2rtc Source URL below first (this camera has none — go2rtc has nothing to connect to).',
+                };
+            }
+            return { disabled: false, reason: '' };
+        }
+        if (hubId === 'native_mjpeg') {
+            // Operator's call per-camera. Universal escape hatch — used in
+            // prod by both SV3C (hi3510 broken-RTSP) AND Reolink (Terrace
+            // South under flaky PoE) cameras. No type-based gating.
+            return { disabled: false, reason: '' };
+        }
+        // Unknown hub — fail closed so a typo in HTML can't accidentally
+        // emit a clickable button for an undefined hub.
+        return { disabled: true, reason: 'Unknown hub identifier' };
+    }
+
+    /**
+     * Render one hub-toggle button. Encapsulates the disabled-state +
+     * tooltip + active-state styling so the section template stays small.
+     */
+    _renderHubButton(hubId, faIcon, label, activeHub) {
+        const state = this._hubButtonState(hubId);
+        const isActive = activeHub === hubId;
+        // Disabled buttons keep their visual position in the row but lose
+        // pointer-events and gain low opacity via `disabled` (native
+        // browser style) + a fallback class for any CSS overrides.
+        const cls = [
+            'recording-btn',
+            'hub-select-btn',
+            isActive ? 'recording-btn-primary' : 'recording-btn-secondary',
+            state.disabled ? 'hub-select-btn-disabled' : '',
+        ].filter(Boolean).join(' ');
+        const attrs = [
+            `class="${cls}"`,
+            `data-hub="${hubId}"`,
+            state.disabled ? 'disabled' : '',
+            state.reason ? `title="${state.reason.replace(/"/g, '&quot;')}"` : '',
+            state.disabled ? `data-disabled-reason="${state.reason.replace(/"/g, '&quot;')}"` : '',
+        ].filter(Boolean).join(' ');
+        return `<button type="button" ${attrs}><i class="fas ${faIcon}"></i> ${label}</button>`;
     }
 
     // =========================================================================
@@ -1342,13 +1414,43 @@ export class RecordingSettingsForm {
             }
         });
 
-        // ── Streaming Hub toggle (only rendered when go2rtc_source is set) ──
-        // Use .off() first to prevent duplicate handlers from modal re-opens
+        // ── Streaming Hub toggle (always rendered; per-button gating) ──
+        // Use .off() first to prevent duplicate handlers from modal re-opens.
+        // Native `disabled` attribute on incompatible buttons stops clicks
+        // BEFORE this handler fires (browsers don't dispatch click on disabled
+        // <button>), so we don't need an explicit disabled-check here — but we
+        // DO need a confirm dialog for the to/from-native_mjpeg switches so
+        // the operator isn't surprised by the live-stream-stop side-effect.
         $(document).off('click.hubToggle').on('click.hubToggle', '.hub-select-btn', async function() {
             const hub = $(this).data('hub');
             const cameraId = self.currentCameraId;
             if (!cameraId) return;
             if (hub === self._streamingHub) return; // Already selected — no-op
+
+            // Switches to/from native_mjpeg are operator-visible state
+            // changes (live stream stops on entering, hub spins up on
+            // leaving). Confirm dialog gives a chance to back out — both
+            // directions warned per Phase 2 plan.
+            const oldHub = self._streamingHub;
+            if (hub === 'native_mjpeg') {
+                const ok = window.confirm(
+                    'Switch to snap-only mode (native MJPEG)?\n\n' +
+                    'This will STOP the live stream for this camera and kill its hub process.\n' +
+                    'The tile will show snapshots only (~1 fps).\n\n' +
+                    'Intended for cameras with broken RTSP (SV3C hi3510, Reolink on flaky PoE).\n\n' +
+                    'A container restart is required to fully apply the hub change.'
+                );
+                if (!ok) return;
+            } else if (oldHub === 'native_mjpeg') {
+                const ok = window.confirm(
+                    `Switch from snap-only mode back to ${hub}?\n\n` +
+                    'This will restart the hub process and open a new RTSP connection to the camera.\n' +
+                    'If RTSP is still broken on this camera, the live stream may not recover ' +
+                    '— you can switch back to snap-only.\n\n' +
+                    'A container restart is required to fully apply the hub change.'
+                );
+                if (!ok) return;
+            }
 
             // Swap active style immediately for responsiveness
             $('.hub-select-btn').removeClass('recording-btn-primary').addClass('recording-btn-secondary');

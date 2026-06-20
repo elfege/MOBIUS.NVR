@@ -617,6 +617,21 @@
     cursor: not-allowed;
 }
 
+/* Hub-toggle buttons that are incompatible with this camera (Phase 2
+   gating, 2026-06-20). Stronger visual cue than the bare :disabled
+   above — operator scans the row and instantly sees which hub options
+   are off-limits without having to hover for the title-tooltip. The
+   native `disabled` attribute still blocks clicks; this is pure visual
+   layered on top. */
+.recording-btn.hub-select-btn-disabled,
+.recording-btn.hub-select-btn-disabled:hover {
+    opacity: 0.35;
+    text-decoration: line-through;
+    cursor: not-allowed;
+    background: #2a2a2a !important;
+    border-color: #3a3a3a !important;
+}
+
 /* Alert Messages */
 .recording-alert {
     padding: 12px 16px;

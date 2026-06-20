@@ -748,3 +748,181 @@ def test_visibility_matrix_css_fullscreen_signal_lost(streams_page, icon_name):
             f"css-fullscreen+signal-lost: {icon_name} should be hidden (B2 policy, "
             f"css-fullscreen variant); effective opacity={eff_opacity}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Freeze-watchdog test — guards `static/js/streaming/freeze-watchdog.js`.
+#
+# The watchdog polls <video>.currentTime; if it stops advancing for N polls
+# in a row, the tile gets `.signal-lost`. When currentTime resumes, the class
+# is removed. This test injects a tile with a stubbed <video> whose
+# currentTime is FROZEN, attaches a watchdog with tightened thresholds (so
+# detection happens in ~300ms instead of ~16s), and asserts `.signal-lost`
+# appears within a wall-clock budget.
+#
+# Why this matters: the production HealthMonitor in health.js DOES check
+# currentTime, but its production thresholds total ~86s of detection lag
+# (warmupMs=60s + staleAfterMs=20s + sampleIntervalMs=6s, set by stream.js
+# from cameras.json / .env). The watchdog runs in parallel at a much faster
+# cadence to give the operator a visible signal within ~16s of freeze onset.
+#
+# This is the test that locks down Defect 1 / Defect 3 visibility detection
+# (memory: project_frozen_stream_no_buttons_ipad_health_monitor +
+#  project_black_frame_with_healthy_state_badges).
+# ---------------------------------------------------------------------------
+
+
+def test_freeze_watchdog_tags_signal_lost_when_currenttime_frozen(streams_page):
+    """Inject a tile + stubbed <video>, attach FreezeWatchdog with tight
+    timings (300ms total detection), assert `.signal-lost` is applied.
+
+    Then "unfreeze" by advancing currentTime and assert the class is removed.
+    """
+    page = streams_page
+
+    page.evaluate(
+        """
+        async () => {
+            // Wipe any prior injection
+            document.querySelectorAll('[data-matrix-injected]').forEach(n => n.remove());
+
+            // Build a minimal tile with a real <video> element. The video
+            // has no src — we don't need real media, just a node whose
+            // currentTime we can stub.
+            const wrapper = document.createElement('div');
+            wrapper.setAttribute('data-matrix-injected', '1');
+            const tile = document.createElement('div');
+            tile.className = 'stream-item';
+            tile.setAttribute('data-camera-serial', 'FREEZE_TEST_FAKE_CAM');
+            const video = document.createElement('video');
+            video.className = 'stream-video';
+            // Stash the stubbed currentTime on window so the cross-evaluate
+            // advance function can mutate it and the getter sees the new
+            // value. A closure would technically work too, but Playwright's
+            // `page.evaluate` boundaries make `window` more reliable.
+            window.__freezeStubCurrentTime = 1.234;
+            Object.defineProperty(video, 'currentTime', {
+                get: () => window.__freezeStubCurrentTime,
+                configurable: true,
+            });
+            Object.defineProperty(video, 'paused', { get: () => false, configurable: true });
+            Object.defineProperty(video, 'ended', { get: () => false, configurable: true });
+            tile.appendChild(video);
+            wrapper.appendChild(tile);
+            document.body.appendChild(wrapper);
+
+            const mod = await import('/static/js/streaming/freeze-watchdog.js');
+            const wd = mod.makeFreezeWatchdog({
+                pollIntervalMs: 50,
+                stallPollsToTrip: 2,
+                warmupMs: 100,
+            });
+            window.__testFreezeWatchdog = wd;
+            wd.attach('FREEZE_TEST_FAKE_CAM', video);
+        }
+        """
+    )
+
+    # Warmup (100ms) + 2 polls × 50ms = 200ms total. Budget 600ms wall-clock
+    # to absorb scheduling jitter on slow CI hosts.
+    page.wait_for_timeout(600)
+    has_signal_lost = page.evaluate(
+        "() => document.querySelector('[data-matrix-injected] .stream-item')"
+        ".classList.contains('signal-lost')"
+    )
+    assert has_signal_lost, (
+        "FreezeWatchdog should have tagged the tile with .signal-lost after "
+        "warmup + 2 stalled polls (~200ms). The tile's stubbed currentTime "
+        "never advanced; if this fails the watchdog isn't polling or isn't "
+        "applying the class. Check freeze-watchdog.js console output."
+    )
+
+    # Now "unfreeze" — simulate CONTINUOUS advancement like a real
+    # playing video. A one-shot += bump would advance once then re-stall
+    # (real video advances ~30fps; we mimic that with a 30ms interval).
+    # The watchdog's first progressed tick removes the class; subsequent
+    # progressed ticks keep stallCount=0 so it stays removed.
+    page.evaluate(
+        """() => {
+            window.__freezeStubAdvancer = setInterval(() => {
+                window.__freezeStubCurrentTime += 0.033;
+            }, 30);
+        }"""
+    )
+    page.wait_for_timeout(300)  # ~6 polls of watchdog, ~10 stub advances
+    still_lost = page.evaluate(
+        "() => document.querySelector('[data-matrix-injected] .stream-item')"
+        ".classList.contains('signal-lost')"
+    )
+    assert not still_lost, (
+        "FreezeWatchdog should have REMOVED .signal-lost once currentTime "
+        "advanced (delta=1.0 > epsilon=0.05). If this fails, the watchdog's "
+        "recovery path is broken — operator would see a tile stuck on dead "
+        "appearance even after the stream resumed."
+    )
+
+    # Cleanup so subsequent tests don't see the stub
+    page.evaluate(
+        """() => {
+            clearInterval(window.__freezeStubAdvancer);
+            window.__testFreezeWatchdog?.detach('FREEZE_TEST_FAKE_CAM');
+            delete window.__testFreezeWatchdog;
+            delete window.__freezeStubCurrentTime;
+            delete window.__freezeStubAdvancer;
+        }"""
+    )
+
+
+def test_freeze_watchdog_ignores_paused_stream(streams_page):
+    """If `<video>.paused` is true, the watchdog must NOT tag the tile.
+
+    A user-paused stream isn't 'frozen' — it's intentionally stopped.
+    Tagging it would lie about the publisher state.
+    """
+    page = streams_page
+
+    page.evaluate(
+        """
+        async () => {
+            document.querySelectorAll('[data-matrix-injected]').forEach(n => n.remove());
+            const wrapper = document.createElement('div');
+            wrapper.setAttribute('data-matrix-injected', '1');
+            const tile = document.createElement('div');
+            tile.className = 'stream-item';
+            tile.setAttribute('data-camera-serial', 'PAUSED_TEST_FAKE_CAM');
+            const video = document.createElement('video');
+            video.className = 'stream-video';
+            Object.defineProperty(video, 'currentTime', { get: () => 1.0, configurable: true });
+            Object.defineProperty(video, 'paused', { get: () => true, configurable: true });
+            Object.defineProperty(video, 'ended', { get: () => false, configurable: true });
+            tile.appendChild(video);
+            wrapper.appendChild(tile);
+            document.body.appendChild(wrapper);
+            const mod = await import('/static/js/streaming/freeze-watchdog.js');
+            const wd = mod.makeFreezeWatchdog({
+                pollIntervalMs: 50,
+                stallPollsToTrip: 2,
+                warmupMs: 100,
+            });
+            window.__testPausedWatchdog = wd;
+            wd.attach('PAUSED_TEST_FAKE_CAM', video);
+        }
+        """
+    )
+    # Same budget as the freeze test — would tag by now if the paused
+    # bail-out wasn't working.
+    page.wait_for_timeout(600)
+    is_tagged = page.evaluate(
+        "() => document.querySelector('[data-matrix-injected] .stream-item')"
+        ".classList.contains('signal-lost')"
+    )
+    assert not is_tagged, (
+        "FreezeWatchdog should NOT tag a paused stream as frozen. The "
+        "paused bail-out at freeze-watchdog.js _tick() guard should keep "
+        "stallCount at 0. If this fails, paused tiles will lie about being "
+        "dead."
+    )
+    page.evaluate(
+        "() => { window.__testPausedWatchdog?.detach('PAUSED_TEST_FAKE_CAM'); "
+        "delete window.__testPausedWatchdog; }"
+    )

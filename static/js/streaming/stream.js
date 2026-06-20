@@ -15,6 +15,7 @@
 
 import { PTZController } from '../controllers/ptz-controller.js';
 import { FLVStreamManager } from './flv-stream.js';
+import { makeFreezeWatchdog } from './freeze-watchdog.js';
 import { makeHealthMonitor } from './health.js';
 import { HLSStreamManager } from './hls-stream.js';
 import { MJPEGStreamManager } from './mjpeg-stream.js';
@@ -380,6 +381,15 @@ export class MultiStreamManager {
             console.log("UI HEALTH CHECK DISABLED");
         }
 
+        // Freeze watchdog — fast (2s poll), pure-visual `.signal-lost`
+        // toggle when <video>.currentTime stops advancing. Separate from
+        // HealthMonitor (which is slower + drives restart logic) because
+        // operator wants the tile to VISUALLY register frozen ~16s after
+        // freeze onset, not ~86s. See freeze-watchdog.js for the why.
+        // Honors the same `data-ui-health-monitor="false"` opt-out as
+        // HealthMonitor — handled inside attachFreezeWatchdog below.
+        this.freezeWatchdog = makeFreezeWatchdog();
+
         this.init();
     }
 
@@ -529,6 +539,12 @@ export class MultiStreamManager {
                 // Stop health monitor (no point checking dead streams)
                 if (this.health) {
                     this.trackers?.forEach((_, serial) => this.health.detach(serial));
+                }
+                // Stop freeze watchdog too — every tile we tore down
+                // above will be re-attached on wake via attachHealthMonitor.
+                if (this.freezeWatchdog) {
+                    this.freezeWatchdog.trackers.forEach((_, serial) =>
+                        this.freezeWatchdog.detach(serial));
                 }
                 // Stop camera state polling
                 this.cameraStateMonitor?.stop();
@@ -3488,6 +3504,15 @@ export class MultiStreamManager {
         } else if (streamType === 'WEBRTC' || streamType === 'GO2RTC') {
             const pc = this.webrtcManager?.activeStreams?.get?.(cameraId)?.pc || null;
             el._healthDetach = this.health.attachWebRTC(cameraId, el, pc);
+        }
+
+        // Freeze watchdog — additive to HealthMonitor. Only meaningful
+        // on <video> streams (MJPEG <img> has no currentTime). Honors
+        // the per-tile `data-ui-health-monitor="false"` opt-out so
+        // disabled tiles get neither restart logic nor visual signal.
+        const uiHealthAttr = $streamItem.data('ui-health-monitor');
+        if (uiHealthAttr !== false && uiHealthAttr !== 'false' && this.freezeWatchdog) {
+            el._freezeWatchdogDetach = this.freezeWatchdog.attach(cameraId, el);
         }
     }
 

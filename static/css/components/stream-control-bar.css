@@ -115,6 +115,30 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────
+   TOUCH DEVICES — never idle-fade in NON-GRID layouts (expanded / modal
+   / pinned-window / css-fullscreen). The 30s idle timer starts immediately
+   on attach; on a touch device there's no `mousemove` to keep it reset,
+   so the bar would fade out 30s after the operator opens an expanded
+   tile and they'd be locked out of every button (no way to fullscreen,
+   restart, change settings) until they happened to tap inside the tile
+   — which they can't intuit because the bar gives no hint it's there.
+   Operator directive 2026-06-21 ("THERE SHOULD BE NO CIRCUMSTANCES WHERE
+   THESE FUCKING BUTTONS DO NOT SHOW UP" — applied to the non-grid layouts
+   per the follow-up clarification that grid stays hidden on touch).
+   `@media (hover: none)` is the canonical no-hover-capability selector
+   (iPad Safari, iPhone Safari, Android Chrome). It does NOT match desktop
+   touch-monitors that ALSO have a mouse — those keep the desktop idle
+   behaviour because the operator can still revive the bar with the mouse. */
+@media (hover: none) {
+    .stream-item.expanded .stream-actions-bar.idle,
+    .stream-item.css-fullscreen .stream-actions-bar.idle,
+    .stream-item.pinned-window .stream-actions-bar.idle {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
    OVERLAY-OPEN — earlier this section hid the entire action bar when a
    PTZ or controls overlay was open. That ALSO hid the fullscreen-exit
    button, so once a user opened the controls overlay in fullscreen mode
@@ -163,6 +187,14 @@
 
 /* ────────────────────────────────────────────────────────────────────────
    GRID MODE — icons present but hidden by default; fade in on hover.
+   Operator directive 2026-06-21: KEEP grid hidden on touch — a wall of
+   tiny tiles cluttered with always-visible buttons would dominate the
+   surveillance view. Touch users go to expanded mode to interact.
+   The real bug was in expanded/fullscreen/pinned modes where the
+   30s idle-fade was killing the bar on touch devices (no mouse motion
+   to revive it). That's fixed by an `@media (hover: none)` block
+   further down that suppresses the .idle fade for touch in those
+   non-grid layouts.
    Proportionally smaller than expanded/pinned/fullscreen variants.
    ────────────────────────────────────────────────────────────────────── */
 .stream-item:not(.expanded):not(.css-fullscreen):not(.pinned-window) .stream-actions-bar {

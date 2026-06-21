@@ -23,6 +23,12 @@
     gap: 0.5rem;  /* Space between title and status */
     z-index: 10;
     /* Above video, below controls */
+    /* Promote to its own GPU compositor layer (2026-06-21) — same
+       reasoning as .stream-actions-bar in stream-control-bar.css: the
+       sibling <video> gets a GPU layer from digital-zoom's identity
+       transform, and without a layer of our own a frozen video frame
+       would paint over this title bar regardless of z-index. */
+    will-change: transform;
 }
 
 .stream-title {

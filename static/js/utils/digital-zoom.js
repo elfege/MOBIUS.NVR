@@ -649,6 +649,12 @@ export class DigitalZoomManager {
 
         // Combine scale and translate for pan
         // Note: translate values are in pixels, applied before scale
+        // The chrome (overlay + action bar) is promoted to its own GPU
+        // compositor layer in CSS (stream-control-bar.css + stream-overlay.css
+        // both use `will-change: transform`) so the chrome stays painted
+        // ABOVE this video layer even when the video freezes. Don't change
+        // this line — the fix lives in the CSS side to preserve hardware
+        // video decode performance regardless of zoom state.
         element.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.level})`;
 
         // Update cursor to indicate draggable when zoomed

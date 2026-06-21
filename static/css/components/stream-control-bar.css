@@ -31,6 +31,18 @@
     opacity: 1;
     transition: opacity 0.3s ease;
     pointer-events: auto;
+    /* Promote to its own GPU compositor layer (2026-06-21). The sibling
+       <video> element gets a compositor layer from digital-zoom.js setting
+       `transform: translate(...) scale(...)` (even at identity), which
+       puts hardware-decoded video frames on a GPU surface. Without an
+       equivalent promotion for the action bar, frozen video frames can
+       paint ABOVE this bar regardless of z-index — because compositor-
+       layer stacking trumps in-document z-index when one sibling is
+       composited and the other isn't. `will-change: transform` is the
+       hint to give the bar its own layer too; then z-index resolves the
+       layer order correctly. Hardware video decode performance is
+       unaffected — VAAPI/ANGLE still handle the frames on the video side. */
+    will-change: transform;
 }
 
 /* All buttons inside the bar adopt the same compact size and lose their

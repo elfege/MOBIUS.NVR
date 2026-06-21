@@ -255,3 +255,45 @@ entries:
       simplifies the early-return block and drops one camera type).
     test_file: tests/regression/test_stream_manager_streaming_hub_guards.py
     tags: [streaming, native_mjpeg, rule-11, stream-manager]
+
+  - id: test-stack-isolation-go2rtc-config-dir
+    title: "Test stack go2rtc shared production config dir, opening parasitic eufy:// P2P + onvif:// sessions on real cameras"
+    discovered: 2026-06-21
+    fixed_in: pending
+    symptom: |
+      Operator quote: "the fucking test container creates streams which
+      breaks rules and probably explain why terrace shed and hot tub are
+      consistently failing." Both cameras (Eufy, single-consumer P2P)
+      had been failing for ~4 days. The test stack had been up for that
+      whole time. Bringing the test stack down (`docker compose -p
+      nvr_test down`) immediately restored prod's P2P sessions for the
+      affected cameras.
+    root_cause: |
+      `docker-compose.yml` mounted `/dev/shm/nvr-go2rtc:/config` for the
+      go2rtc service — a HARDCODED host path. Both production and test
+      stacks (`-p nvr_test`) read from + wrote to the SAME host dir.
+      `scripts/generate_streaming_configs.py` also hardcoded that dir,
+      so whichever stack ran the script last clobbered the other's
+      config. In practice production's config (with `eufy://entrance_door`,
+      `onvif://...@192.168.10.x` lines) ended up in the shared dir.
+      Then the test go2rtc booted, read that config, and opened real
+      P2P / ONVIF sessions against production cameras — competing with
+      production's own go2rtc + Eufy bridge for the single-consumer
+      slots. Rule 11 (1 camera = 1 input) was being violated silently
+      every time the test stack was up.
+    guard_strategy: |
+      Static scan across 3 files. ALL THREE must reference the
+      parameterized env var; if any reverts to the hardcoded path the
+      contamination returns.
+        1. docker-compose.yml — the go2rtc service's `volumes:` block
+           must mount `${NVR_GO2RTC_CONFIG_DIR:-...}:/config`, NOT a
+           hardcoded literal.
+        2. scripts/generate_streaming_configs.py — `generate_go2rtc_config`
+           must read the config dir from `os.environ.get(
+           'NVR_GO2RTC_CONFIG_DIR', ...)`, NOT a hardcoded `shm_dir = `.
+        3. .env.test — must set `NVR_GO2RTC_CONFIG_DIR=` to a value
+           different from production's default (i.e. NOT
+           `/dev/shm/nvr-go2rtc`), so the test stack's compose env-file
+           override forces its own dir.
+    test_file: tests/regression/test_test_stack_isolation_go2rtc_config_dir.py
+    tags: [streaming, test-isolation, rule-11, eufy, go2rtc]

@@ -210,8 +210,18 @@ def _resolve_host_ip() -> str:
 
 
 def generate_go2rtc_config(cameras, creds, subs, project_dir):
-    """Generate go2rtc.yaml with only go2rtc-hub cameras."""
-    shm_dir = '/dev/shm/nvr-go2rtc'
+    """Generate go2rtc.yaml with only go2rtc-hub cameras.
+
+    Per-stack config dir (NVR_GO2RTC_CONFIG_DIR). Default
+    /dev/shm/nvr-go2rtc for production; the test stack overrides via
+    .env.test to /dev/shm/nvr_test-go2rtc. start.sh wires this through
+    so the running container reads from the same dir this script
+    writes to. Pre-2026-06-21 both stacks shared one dir → test go2rtc
+    inherited prod's eufy:// + onvif:// streams → silently opened a
+    second consumer on real cameras + Eufy P2P sessions, stealing
+    slots from prod. See docker-compose.yml volume comment.
+    """
+    shm_dir = os.environ.get('NVR_GO2RTC_CONFIG_DIR', '/dev/shm/nvr-go2rtc')
     os.makedirs(shm_dir, exist_ok=True)
     yaml_path = os.path.join(shm_dir, 'go2rtc.yaml')
 

@@ -185,11 +185,18 @@ mkdir -p logs streams config
 # with `restart: unless-stopped` before start.sh runs, it auto-creates missing
 # bind-mount targets as root:root. That later breaks the Python generator which
 # runs as this user. Normalize ownership here, unconditionally.
-mkdir -p /dev/shm/nvr-go2rtc 2>/dev/null || sudo mkdir -p /dev/shm/nvr-go2rtc
-if [[ ! -w /dev/shm/nvr-go2rtc ]] || [[ "$(stat -c '%u' /dev/shm/nvr-go2rtc)" != "$(id -u)" ]]; then
-	echo -e "${YELLOW}/dev/shm/nvr-go2rtc not owned by $USER — fixing${NC}"
-	sudo chown -R "$USER:$USER" /dev/shm/nvr-go2rtc
+# go2rtc config dir is per-stack (NVR_GO2RTC_CONFIG_DIR). Production default
+# is /dev/shm/nvr-go2rtc; the test stack overrides via .env.test to
+# /dev/shm/nvr_test-go2rtc. Both stacks need their own dir owned by the
+# current user so the Python config-generator (which runs as the user) can
+# write into it after docker auto-creates it as root.
+_NVR_GO2RTC_CONFIG_DIR="${NVR_GO2RTC_CONFIG_DIR:-/dev/shm/nvr-go2rtc}"
+mkdir -p "${_NVR_GO2RTC_CONFIG_DIR}" 2>/dev/null || sudo mkdir -p "${_NVR_GO2RTC_CONFIG_DIR}"
+if [[ ! -w "${_NVR_GO2RTC_CONFIG_DIR}" ]] || [[ "$(stat -c '%u' "${_NVR_GO2RTC_CONFIG_DIR}")" != "$(id -u)" ]]; then
+	echo -e "${YELLOW}${_NVR_GO2RTC_CONFIG_DIR} not owned by $USER — fixing${NC}"
+	sudo chown -R "$USER:$USER" "${_NVR_GO2RTC_CONFIG_DIR}"
 fi
+export NVR_GO2RTC_CONFIG_DIR="${_NVR_GO2RTC_CONFIG_DIR}"  # downstream Python reads this
 
 # Host IP for go2rtc WebRTC ICE candidates — browser needs this to reach media UDP port
 export NVR_HOST_IP=$(hostname -I | awk '{print $1}')
@@ -302,7 +309,7 @@ fi
 #   - live go2rtc.yaml is missing or empty (post-reboot tmpfs case)
 #
 # Otherwise the existing live config is preserved — regen is expensive and
-# invalidates any manual tweaks in /dev/shm/nvr-go2rtc/.
+# invalidates any manual tweaks in the per-stack go2rtc config dir.
 _REGEN_CONFIGS=false
 for _arg in "$@"; do
 	case "$_arg" in
@@ -310,10 +317,10 @@ for _arg in "$@"; do
 	esac
 done
 [[ "${NVR_FROM_DEPLOY:-}" == "1" ]] && _REGEN_CONFIGS=true
-[[ ! -s /dev/shm/nvr-go2rtc/go2rtc.yaml ]] && _REGEN_CONFIGS=true
+[[ ! -s "${_NVR_GO2RTC_CONFIG_DIR}/go2rtc.yaml" ]] && _REGEN_CONFIGS=true
 
 if $_REGEN_CONFIGS; then
-	# Ownership of /dev/shm/nvr-go2rtc is guaranteed by the early setup block above.
+	# Ownership of ${_NVR_GO2RTC_CONFIG_DIR} is guaranteed by the early setup block above.
 	echo -e "${CYAN}Regenerating streaming configs (MediaMTX + go2rtc + neolink)...${NC}"
 	if [[ -f scripts/generate_streaming_configs.py ]]; then
 		if ! venv/bin/python3 scripts/generate_streaming_configs.py; then

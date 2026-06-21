@@ -184,7 +184,14 @@ services:
         aliases:
           - nvr-go2rtc
     volumes:
-      - /dev/shm/nvr-go2rtc:/config
+      # Per-stack config dir. Production default is /dev/shm/nvr-go2rtc; the
+      # test stack overrides via NVR_GO2RTC_CONFIG_DIR=/dev/shm/nvr_test-go2rtc
+      # in .env.test so the two go2rtc containers never share a config file
+      # (and the test stack therefore never opens parasitic eufy:// P2P
+      # sessions on the operator's real Eufy account — the bug fixed
+      # 2026-06-21 that was silently stealing Hot Tub + Terrace Shed slots
+      # for 4 days).
+      - ${NVR_GO2RTC_CONFIG_DIR:-/dev/shm/nvr-go2rtc}:/config
     ports:
       - "${NVR_GO2RTC_API_PORT:-1984}:1984"              # Web UI and API
       - "${NVR_GO2RTC_RTSP_PORT:-8555}:8555"             # RTSP server

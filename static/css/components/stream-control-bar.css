@@ -115,23 +115,36 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   NON-GRID LAYOUTS — never idle-fade.
-   Applies to: .expanded (modal), .css-fullscreen, .pinned-window.
-   In these layouts the bar must STAY VISIBLE regardless of mouse-motion
-   timeouts — operator directive 2026-06-21 (verbatim): "THERE SHOULD BE
-   NO CIRCUMSTANCES WHERE THESE FUCKING BUTTONS DO NOT SHOW UP".
-   The previous iteration of this rule was @media (hover: none) (touch
-   only); operator screenshot from Chrome desktop showed the bar still
-   fading because Chrome HAS hover capability — so the rule needs to
-   apply universally in non-grid layouts, not just touch.
-   Grid mode is intentionally NOT in this list — operator's follow-up
-   clarification kept the grid hover-fade so a wall of tiny tiles
-   doesn't get cluttered with always-visible buttons. */
-.stream-item.expanded .stream-actions-bar.idle,
-.stream-item.css-fullscreen .stream-actions-bar.idle,
-.stream-item.pinned-window .stream-actions-bar.idle {
+   HOVER / FOCUS / TOUCH OVERRIDE — pure CSS, no JS dependency.
+   Operator directive 2026-06-21: "make that buttons disappear ONLY when
+   not hovering or touching." This is the contract: any active
+   interaction on the tile reveals the bar, regardless of any other
+   state (idle, signal-lost, layout, etc.).
+   Pure CSS so it cannot be defeated by a JS listener that never fires
+   (the previous behaviour relied on control-bar-idle.js removing the
+   .idle class on mousemove; if that listener didn't attach to a given
+   tile — e.g. modal re-render race — the .idle CSS would override even
+   while the cursor was on the tile). Now :hover wins outright.
+   :focus-within covers keyboard / accessibility / some touch cases.
+   :active covers the brief mousedown / touchdown window.
+   ──────────────────────────────────────────────────────────────────── */
+.stream-item:hover .stream-actions-bar,
+.stream-item:focus-within .stream-actions-bar,
+.stream-item:active .stream-actions-bar {
     opacity: 1 !important;
     pointer-events: auto !important;
+}
+
+/* Touch devices have no hover. They get the bar persistently visible in
+   non-grid layouts (the operator's earlier directive — grid stays
+   hidden on touch so tiny tiles don't get cluttered). */
+@media (hover: none) {
+    .stream-item.expanded .stream-actions-bar,
+    .stream-item.css-fullscreen .stream-actions-bar,
+    .stream-item.pinned-window .stream-actions-bar {
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
 }
 
 /* ────────────────────────────────────────────────────────────────────────

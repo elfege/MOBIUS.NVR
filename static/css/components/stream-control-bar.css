@@ -115,27 +115,23 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   TOUCH DEVICES — never idle-fade in NON-GRID layouts (expanded / modal
-   / pinned-window / css-fullscreen). The 30s idle timer starts immediately
-   on attach; on a touch device there's no `mousemove` to keep it reset,
-   so the bar would fade out 30s after the operator opens an expanded
-   tile and they'd be locked out of every button (no way to fullscreen,
-   restart, change settings) until they happened to tap inside the tile
-   — which they can't intuit because the bar gives no hint it's there.
-   Operator directive 2026-06-21 ("THERE SHOULD BE NO CIRCUMSTANCES WHERE
-   THESE FUCKING BUTTONS DO NOT SHOW UP" — applied to the non-grid layouts
-   per the follow-up clarification that grid stays hidden on touch).
-   `@media (hover: none)` is the canonical no-hover-capability selector
-   (iPad Safari, iPhone Safari, Android Chrome). It does NOT match desktop
-   touch-monitors that ALSO have a mouse — those keep the desktop idle
-   behaviour because the operator can still revive the bar with the mouse. */
-@media (hover: none) {
-    .stream-item.expanded .stream-actions-bar.idle,
-    .stream-item.css-fullscreen .stream-actions-bar.idle,
-    .stream-item.pinned-window .stream-actions-bar.idle {
-        opacity: 1 !important;
-        pointer-events: auto !important;
-    }
+   NON-GRID LAYOUTS — never idle-fade.
+   Applies to: .expanded (modal), .css-fullscreen, .pinned-window.
+   In these layouts the bar must STAY VISIBLE regardless of mouse-motion
+   timeouts — operator directive 2026-06-21 (verbatim): "THERE SHOULD BE
+   NO CIRCUMSTANCES WHERE THESE FUCKING BUTTONS DO NOT SHOW UP".
+   The previous iteration of this rule was @media (hover: none) (touch
+   only); operator screenshot from Chrome desktop showed the bar still
+   fading because Chrome HAS hover capability — so the rule needs to
+   apply universally in non-grid layouts, not just touch.
+   Grid mode is intentionally NOT in this list — operator's follow-up
+   clarification kept the grid hover-fade so a wall of tiny tiles
+   doesn't get cluttered with always-visible buttons. */
+.stream-item.expanded .stream-actions-bar.idle,
+.stream-item.css-fullscreen .stream-actions-bar.idle,
+.stream-item.pinned-window .stream-actions-bar.idle {
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 /* ────────────────────────────────────────────────────────────────────────

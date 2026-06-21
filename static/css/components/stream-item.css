@@ -591,3 +591,67 @@
 .stream-digital-zoom-reset-btn i {
     font-size: 1rem;
 }
+/* ============================================================================
+   SNAP-ONLY MODE BADGE (Phase 3, 2026-06-21)
+   Indicator on tiles in native_mjpeg streaming mode.
+   
+   Hidden by default; shown only when the .stream-item parent carries
+   data-streaming-hub="native_mjpeg". Attribute-selector based so no JS is
+   required — the value comes from the camera config rendered into the
+   template (templates/streams.html:438, info.streaming_hub).
+   
+   Why a badge at all: the operator's primary visibility into hub state
+   USED to be the settings modal toggle. From the tile alone there was no
+   way to tell "is this tile snap-only by design, or is its live stream
+   dead?" — both look like low-fps / stale-looking video. The badge
+   answers that at a glance.
+   
+   Position: top-left, low-opacity, persistent (not hover-only). Doesn't
+   compete with the status badges in the upper-right or the latency badge
+   in the bottom-left.
+   ============================================================================ */
+
+.snap-only-badge {
+    /* Hidden by default. The attribute-selector below un-hides it. */
+    display: none;
+}
+
+.stream-item[data-streaming-hub="native_mjpeg"] .snap-only-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    color: #ffd54f;          /* amber — distinguishes from green status badges */
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    opacity: 0.7;            /* low-key — operator notices on second glance, not first */
+    z-index: 10;             /* above stream-overlay (z-index undefined → renders later) */
+    pointer-events: auto;    /* tooltip needs hover */
+    cursor: help;
+}
+
+.stream-item[data-streaming-hub="native_mjpeg"] .snap-only-badge i {
+    font-size: 0.75rem;
+    color: #ffd54f;
+}
+
+/* Slightly stronger on hover so operator can confirm the tooltip target */
+.stream-item[data-streaming-hub="native_mjpeg"] .snap-only-badge:hover {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.75);
+}
+
+/* On a signal-lost tile the snap badge stays visible — the tile being
+   in snap-only mode is metadata, NOT a status signal. The B2 essentials
+   block (settings/power/playback/controls-toggle) handles the dead-tile
+   button visibility separately. */
+.stream-item[data-streaming-hub="native_mjpeg"].signal-lost .snap-only-badge {
+    opacity: 0.7;
+}

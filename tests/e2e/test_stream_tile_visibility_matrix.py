@@ -55,8 +55,12 @@ from playwright.sync_api import Page
 # treats their visibility as conditional on the camera-shape axis, not
 # the health axis.
 _TILE_HTML = """
-<div class="stream-item" data-camera-serial="MATRIX_TEST_FAKE_CAM" data-camera-name="Matrix">
+<div class="stream-item" data-camera-serial="MATRIX_TEST_FAKE_CAM" data-camera-name="Matrix" data-streaming-hub="mediamtx">
     <video class="stream-video"></video>
+    <div class="snap-only-badge" title="Snap-only mode (native MJPEG)">
+        <i class="fas fa-images"></i>
+        <span>SNAP</span>
+    </div>
     <div class="stream-actions-bar">
         <button class="stream-fullscreen-btn" title="Fullscreen"><i class="fas fa-expand"></i></button>
         <div class="volume-control-container">
@@ -925,4 +929,123 @@ def test_freeze_watchdog_ignores_paused_stream(streams_page):
     page.evaluate(
         "() => { window.__testPausedWatchdog?.detach('PAUSED_TEST_FAKE_CAM'); "
         "delete window.__testPausedWatchdog; }"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Snap-only-mode badge — Phase 3 of the SV3C native_mjpeg work.
+#
+# When a tile's `.stream-item` carries `data-streaming-hub="native_mjpeg"`,
+# a small SNAP badge surfaces in the upper-left corner so the operator
+# knows the tile is intentionally snapshot-only (~1 fps) — not a dead
+# live stream. Visibility is pure CSS attribute-selector (no JS); the
+# data-streaming-hub value comes from the camera config rendered into
+# the production template (templates/streams.html:438).
+#
+# These tests injects the fixture tile, switches its data-streaming-hub
+# attribute, and asserts the badge's effective opacity matches the
+# policy:
+#   - native_mjpeg  → badge visible (opacity > 0, display != 'none')
+#   - mediamtx      → badge hidden  (display: none)
+#   - go2rtc        → badge hidden  (display: none)
+# ---------------------------------------------------------------------------
+
+
+def _set_streaming_hub(page: Page, hub: str) -> None:
+    """Mutate the injected tile's data-streaming-hub attribute."""
+    page.evaluate(
+        f"""(() => {{
+            const tile = document.querySelector('[data-matrix-injected] .stream-item');
+            if (tile) tile.setAttribute('data-streaming-hub', {hub!r});
+        }})()"""
+    )
+
+
+def _badge_state(page: Page) -> dict:
+    """Read the snap-only badge's computed visibility state."""
+    return page.evaluate(
+        """() => {
+            const b = document.querySelector('[data-matrix-injected] .snap-only-badge');
+            if (!b) return { exists: false };
+            const cs = window.getComputedStyle(b);
+            return {
+                exists: true,
+                display: cs.display,
+                opacity: parseFloat(cs.opacity),
+                position: cs.position,
+            };
+        }"""
+    )
+
+
+def test_snap_only_badge_visible_when_streaming_hub_is_native_mjpeg(streams_page):
+    """The badge must surface (display != 'none', opacity > 0) when the
+    tile is in native_mjpeg mode. The operator-visible signal that this
+    tile is snap-only by design, not by failure."""
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=[])
+    _set_streaming_hub(page, "native_mjpeg")
+    state = _badge_state(page)
+    assert state["exists"], "snap-only-badge missing from tile fixture — template + matrix fixture out of sync"
+    assert state["display"] != "none", (
+        f"snap-only badge should be displayed in native_mjpeg mode, got display={state['display']!r}. "
+        "Check the attribute selector at stream-item.css "
+        '`.stream-item[data-streaming-hub="native_mjpeg"] .snap-only-badge` block.'
+    )
+    assert state["opacity"] > 0, (
+        f"snap-only badge displayed but opacity 0 (effectively invisible), got {state['opacity']}. "
+        "An ancestor opacity:0 rule is winning over the badge's own opacity setting."
+    )
+    assert state["position"] == "absolute", (
+        f"snap-only badge must be position:absolute so it doesn't push down the video area; "
+        f"got position={state['position']!r}"
+    )
+
+
+def test_snap_only_badge_hidden_when_streaming_hub_is_mediamtx(streams_page):
+    """The badge must NOT surface for the default mediamtx hub —
+    cluttering every tile with a SNAP label would defeat its purpose
+    of flagging the few cameras that ARE in snap-only mode."""
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=[])
+    _set_streaming_hub(page, "mediamtx")
+    state = _badge_state(page)
+    assert state["exists"], "snap-only-badge missing from tile fixture"
+    assert state["display"] == "none", (
+        f"snap-only badge should NOT be displayed for mediamtx hub, got display={state['display']!r}. "
+        "If you see this fail, the default `.snap-only-badge { display: none }` rule was overridden."
+    )
+
+
+def test_snap_only_badge_hidden_when_streaming_hub_is_go2rtc(streams_page):
+    """Same as mediamtx — go2rtc tiles must not show the SNAP badge."""
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=[])
+    _set_streaming_hub(page, "go2rtc")
+    state = _badge_state(page)
+    assert state["exists"], "snap-only-badge missing from tile fixture"
+    assert state["display"] == "none", (
+        f"snap-only badge should NOT be displayed for go2rtc hub, got display={state['display']!r}"
+    )
+
+
+def test_snap_only_badge_stays_visible_on_signal_lost_tile(streams_page):
+    """A camera in native_mjpeg mode that's ALSO signal-lost must STILL
+    show the badge — being in snap-only mode is camera-config metadata,
+    not a status signal. Operator policy 2026-06-21 (in CSS comment).
+    This guards against a future regression where signal-lost CSS
+    accidentally hides the badge."""
+    page = streams_page
+    _inject_tile_and_classes(page, extra_classes=["signal-lost"])
+    _set_streaming_hub(page, "native_mjpeg")
+    state = _badge_state(page)
+    assert state["exists"], "snap-only-badge missing from tile fixture"
+    assert state["display"] != "none", (
+        f"snap-only badge should remain visible on signal-lost native_mjpeg tiles, "
+        f"got display={state['display']!r}. The B2 essentials block only hides specific "
+        "action-bar buttons; it must not touch the snap-only badge."
+    )
+    assert state["opacity"] > 0, (
+        f"snap-only badge displayed but opacity 0 on signal-lost native_mjpeg tile; "
+        f"got opacity={state['opacity']}"
     )

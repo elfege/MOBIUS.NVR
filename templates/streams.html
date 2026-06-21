@@ -448,6 +448,16 @@
 
             <div class="stream-overlay">
                 <div class="stream-title">{{ info.name }}</div>
+                <!-- Snap-only mode indicator (Phase 3, 2026-06-21). Always present
+                     in the DOM; CSS attribute-selector on the .stream-item parent's
+                     data-streaming-hub controls visibility. Renders only when the
+                     camera is in native_mjpeg mode — the badge tells the operator
+                     this tile is intentionally snapshot-only (~1 fps), not a dead
+                     live stream. Tooltip explains the mode. -->
+                <div class="snap-only-badge" title="Snap-only mode (native MJPEG) — broken-RTSP camera; snapshot-polled at ~1fps">
+                    <i class="fas fa-images"></i>
+                    <span>SNAP</span>
+                </div>
                 <div class="stream-status">
                     <div class="stream-indicator loading">
                         <i class="fas fa-circle"></i>

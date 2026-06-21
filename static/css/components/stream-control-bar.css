@@ -147,16 +147,29 @@
     pointer-events: auto !important;
 }
 
-/* Touch devices have no hover. They get the bar persistently visible in
-   non-grid layouts (the operator's earlier directive — grid stays
-   hidden on touch so tiny tiles don't get cluttered). */
-@media (hover: none) {
-    .stream-item.expanded .stream-actions-bar,
-    .stream-item.css-fullscreen .stream-actions-bar,
-    .stream-item.pinned-window .stream-actions-bar {
-        opacity: 1 !important;
-        pointer-events: auto !important;
-    }
+/* Non-grid layouts (expanded / fullscreen / pinned) keep the action bar
+   PERSISTENTLY visible on ALL devices — not just touch.
+
+   ROOT CAUSE of the "no buttons on a still/frozen tile" bug, proven via CDP
+   2026-06-21 against the live server kiosk: control-bar-idle.js starts a 30s
+   "no mouse motion" timer on every tile and adds `.idle`; CSS above
+   (.stream-actions-bar.idle { opacity: 0 }) then fades the bar out. On a
+   DESKTOP kiosk the cursor never moves, so `.idle` is added and NEVER
+   cleared, and there's no :hover to override it — the bar is invisible in
+   every mode, including fullscreen, where the operator most needs it.
+
+   The previous fix wrapped this rule in `@media (hover: none)` (touch only).
+   But a desktop kiosk reports `hover: hover`, so the rule never matched and
+   the bar fell through to the idle fade. THAT media-query scoping was the
+   bug. Unscoped, this opacity:1 !important beats `.idle` (no !important) and
+   the grid hover-gate, so non-grid bars stay visible regardless of the idle
+   timer or pointer type. Grid mode stays intentionally hover-gated (operator
+   directive: keep the surveillance wall uncluttered). */
+.stream-item.expanded .stream-actions-bar,
+.stream-item.css-fullscreen .stream-actions-bar,
+.stream-item.pinned-window .stream-actions-bar {
+    opacity: 1 !important;
+    pointer-events: auto !important;
 }
 
 /* ────────────────────────────────────────────────────────────────────────

@@ -1172,6 +1172,21 @@
         // is updated, restore-on-reload still works).
         window.FULLSCREEN_REQUEST = {{ (fullscreen_serial or '')|tojson }};
     </script>
+    <script>
+        // Optional periodic full-page reload — an old bandaid that recovers
+        // streams that wedge over long uptimes. Controlled from Settings → View
+        // (localStorage). OFF by default so the app can be observed without it;
+        // the operator can enable it and set a custom interval (default 60 min).
+        // The timer is armed once at page load; changing the setting takes
+        // effect on the next load.
+        (function () {
+            if (localStorage.getItem('nvr_periodic_reload_enabled') !== 'true') return;
+            var mins = parseFloat(localStorage.getItem('nvr_periodic_reload_minutes'));
+            if (!isFinite(mins) || mins <= 0) mins = 60;
+            mins = Math.max(1, Math.min(1440, mins)); // clamp 1 min – 24 h
+            setTimeout(function () { window.location.reload(); }, mins * 60 * 1000);
+        })();
+    </script>
     <script type="module">
         // Phase 2 audit-outbox: start the periodic flusher for browser-side
         // audit events. Trigger-based audit covers server mutations; this

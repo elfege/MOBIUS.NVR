@@ -252,6 +252,20 @@ export class SettingsUI {
             localStorage.setItem('quietStatusMessages', $(e.currentTarget).is(':checked') ? 'true' : 'false');
         });
 
+        // Periodic auto-reload (Settings → View). Per-device via localStorage;
+        // read at page load by the inline arm-timer script in streams.html.
+        // Off by default; takes effect on the next page load.
+        this.$content.on('change', '#periodic-reload-toggle', (e) => {
+            localStorage.setItem('nvr_periodic_reload_enabled',
+                $(e.currentTarget).is(':checked') ? 'true' : 'false');
+        });
+        this.$content.on('change', '#periodic-reload-minutes', (e) => {
+            let v = parseInt($(e.currentTarget).val(), 10) || 60;
+            v = Math.max(1, Math.min(1440, v));   // clamp 1 min – 24 h
+            $(e.currentTarget).val(v);
+            localStorage.setItem('nvr_periodic_reload_minutes', String(v));
+        });
+
         // Navmap size slider — saved to localStorage, read by _showFullscreenMap()
         this.$content.on('input', '#navmap-size-slider', (e) => {
             const pct = parseInt($(e.currentTarget).val());
@@ -511,6 +525,27 @@ export class SettingsUI {
                 </div>
                 <div class="setting-description">
                     Size of the minimap overlay shown when navigating cameras in fullscreen. Default: 20%.
+                </div>
+            </div>
+
+            <div class="setting-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-sync"></i> Periodic Auto-Reload</div>
+                    <div class="setting-control" style="display:flex;align-items:center;gap:10px;">
+                        <input type="number" id="periodic-reload-minutes" min="1" max="1440" step="1"
+                               value="${parseInt(localStorage.getItem('nvr_periodic_reload_minutes') || '60')}"
+                               style="width:64px;padding:.3rem;border-radius:4px;border:1px solid rgba(255,255,255,.15);background:#1a1f29;color:#e8eef7;">
+                        <span style="opacity:.7;font-size:.85em;">min</span>
+                        <label class="setting-toggle">
+                            <input type="checkbox" id="periodic-reload-toggle" ${localStorage.getItem('nvr_periodic_reload_enabled') === 'true' ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    Reload the whole page on a timer — an old bandaid that recovers streams which wedge over
+                    long uptimes. <strong>Off by default.</strong> When on, the page reloads every N minutes
+                    (default 60). Takes effect on the next page load.
                 </div>
             </div>
 

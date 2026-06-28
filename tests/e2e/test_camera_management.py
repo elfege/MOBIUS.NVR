@@ -3,14 +3,15 @@ tests/e2e/test_camera_management.py — CAMERA surface backfill (Phase D).
 
 Reference-doc reality check
 ---------------------------
-The CAM.ADD.OK / CAM.DELETE rows in the reference doc are documented as
-"via UI (or cameras.json seed at startup)" — meaning the actual
-contract is FILE+RESTART, not a single API. There is no POST /api/cameras
-endpoint to add a camera, no DELETE /api/cameras/<id> to remove one.
-What exists is:
+CAM.ADD is now a real API: POST /api/cameras (added 2026-06-27) inserts a
+camera row, stores encrypted credentials, and reloads the live camera repo —
+covered by the CAM.ADD tests at the bottom of this file. (DELETE
+/api/cameras/<id> still does not exist; removal remains a DB/file op.) The
+file-seed path also still exists:
 
   - cameras.json on disk holds the seed; sync_cameras_json_to_db()
-    copies it into the cameras table at startup
+    copies it into the cameras table at startup (and NEVER deletes DB rows,
+    so an API-added camera survives restarts)
   - The 4-place camera-field regression test (test_camera_field_4_place_rule)
     pins the column-write ↔ column-read contract that survives this
     sync
@@ -80,6 +81,90 @@ def seed_camera(db_conn, seed_test_admin, worker_tag):
 # All test functions take `seed_camera` (the fixture) and dereference the
 # yielded value as `seed_camera` — the cam_serial value is the fixture's
 # yield, not a module-level constant. No further changes needed below.
+
+
+# ---------------------------------------------------------------------------
+# CAM.ADD — POST /api/cameras  (added 2026-06-27)
+#   CAM.ADD.OK           POST /api/cameras                     DB row + encrypted creds
+#   CAM.ADD.EUFY_REJECT  POST /api/cameras type=eufy           400 (P2P → Eufy Bridge)
+#   CAM.ADD.MISSING      POST /api/cameras missing serial      400 negative-shape
+#   CAM.ADD.DUPLICATE    POST /api/cameras existing serial     409 conflict
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def add_camera_serial(db_conn, worker_tag):
+    """Serial for the add-camera tests; row + credentials cleaned up after."""
+    serial = f"E2E_ADDCAM_{worker_tag}"
+    with db_conn.cursor() as cur:
+        cur.execute("DELETE FROM camera_credentials WHERE credential_key = %s", (serial,))
+        cur.execute("DELETE FROM cameras WHERE serial = %s", (serial,))
+    yield serial
+    with db_conn.cursor() as cur:
+        cur.execute("DELETE FROM camera_credentials WHERE credential_key = %s", (serial,))
+        cur.execute("DELETE FROM cameras WHERE serial = %s", (serial,))
+
+
+def test_add_camera_creates_row_and_credentials(admin_client, db_conn, add_camera_serial):
+    """CAM.ADD.OK — inserts the row with defaults applied + stores creds."""
+    resp = admin_client.post("/api/cameras", json={
+        "serial": add_camera_serial,
+        "name": "E2E Added Cam",
+        "type": "amcrest",
+        "host": "10.0.0.99",
+        "username": "e2euser",
+        "password": "e2epass",
+    })
+    assert resp.status_code == 200, f"{resp.status_code} {resp.text[:200]}"
+    assert resp.json().get("success") is True
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT name, type, host, stream_type, streaming_hub "
+            "FROM cameras WHERE serial = %s",
+            (add_camera_serial,),
+        )
+        row = cur.fetchone()
+    assert row is not None, "camera row was not created"
+    name, ctype, host, stream_type, hub = row
+    assert (name, ctype, host) == ("E2E Added Cam", "amcrest", "10.0.0.99")
+    assert stream_type == "LL_HLS"   # default applied
+    assert hub == "mediamtx"          # default applied
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM camera_credentials "
+            "WHERE credential_key = %s AND credential_type = 'camera'",
+            (add_camera_serial,),
+        )
+        assert cur.fetchone()[0] == 1, "encrypted credentials were not stored"
+
+
+def test_add_camera_rejects_eufy(admin_client, add_camera_serial):
+    """CAM.ADD.EUFY_REJECT — eufy is P2P (Bridge), must be 400."""
+    resp = admin_client.post("/api/cameras", json={
+        "serial": add_camera_serial, "name": "Nope", "type": "eufy",
+    })
+    assert resp.status_code == 400, f"{resp.status_code} {resp.text[:200]}"
+    body = resp.text.lower()
+    assert "eufy" in body or "bridge" in body
+
+
+def test_add_camera_requires_core_fields(admin_client):
+    """CAM.ADD.MISSING — missing serial → 400 (no row created)."""
+    resp = admin_client.post("/api/cameras", json={"name": "no serial", "type": "amcrest"})
+    assert resp.status_code == 400, f"{resp.status_code} {resp.text[:200]}"
+
+
+def test_add_camera_duplicate_conflict(admin_client, add_camera_serial):
+    """CAM.ADD.DUPLICATE — adding an existing serial → 409."""
+    first = admin_client.post("/api/cameras", json={
+        "serial": add_camera_serial, "name": "First", "type": "amcrest",
+    })
+    assert first.status_code == 200, first.text[:200]
+    dup = admin_client.post("/api/cameras", json={
+        "serial": add_camera_serial, "name": "Dup", "type": "sv3c",
+    })
+    assert dup.status_code == 409, f"{dup.status_code} {dup.text[:200]}"
 
 
 # ---------------------------------------------------------------------------

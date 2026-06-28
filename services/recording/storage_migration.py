@@ -151,10 +151,32 @@ class StorageMigrationService:
         usage = self.get_disk_usage(path)
         free_percent = usage.get('free_percent', 100)
 
+        # Trigger 1 — percent-free threshold (the historical behavior).
         needs_action = free_percent < min_free
+
+        # Trigger 2 — byte cap. The Storage UI promises: "Set max storage to 0
+        # for unlimited (uses % threshold only)". Honor that contract here.
+        # When a max-size cap is configured (> 0) and the tier's USED bytes
+        # exceed it, migrate/clean regardless of free %. 0 = cap disabled, so
+        # only Trigger 1 applies. Before 2026-06-27 these caps were dead config
+        # — written by the form, read by nothing — so the tooltip was a lie and
+        # setting a cap did nothing. This wires the cap to the actual gate that
+        # both migration ('recent') and cleanup ('archive') flow through.
+        max_mb = (self.config.get_max_recent_storage_mb() if tier == 'recent'
+                  else self.config.get_max_archive_storage_mb())
+        if max_mb and max_mb > 0:
+            used_bytes = usage.get('used_bytes', 0)
+            cap_bytes = max_mb * 1024 * 1024
+            if used_bytes > cap_bytes:
+                needs_action = True
+                logger.warning(
+                    f"{tier.upper()} storage {used_bytes / 1024 / 1024:.0f} MB "
+                    f"exceeds max cap {max_mb} MB — capacity-triggered cleanup")
+
         if needs_action:
             logger.warning(f"{tier.upper()} storage at {100 - free_percent:.1f}% capacity "
-                          f"(free: {free_percent:.1f}%, min: {min_free}%)")
+                          f"(free: {free_percent:.1f}%, min: {min_free}%, "
+                          f"max_cap: {max_mb or 'unlimited'} MB)")
 
         return needs_action, free_percent
 

@@ -234,6 +234,11 @@ class RecordingConfig:
             'age_threshold_days': 3,
             'archive_retention_days': 90,
             'min_free_space_percent': 20,
+            # Byte-size caps per tier, in MB. 0 = unlimited (cap disabled; only
+            # the % free-space threshold applies). These drive capacity-based
+            # migration/cleanup in check_capacity_trigger — see storage_migration.
+            'max_recent_storage_mb': 0,
+            'max_archive_storage_mb': 0,
             'schedule_cron': '0 3 * * *',
             'run_on_startup': False
         }
@@ -255,6 +260,25 @@ class RecordingConfig:
     def get_min_free_space_percent(self) -> int:
         """Get minimum free space percentage before capacity-triggered migration."""
         return self.get_migration_config().get('min_free_space_percent', 20)
+
+    def get_max_recent_storage_mb(self) -> int:
+        """Max size cap (MB) for the RECENT tier.
+
+        0 = unlimited: the byte cap is disabled and only the % free-space
+        threshold (min_free_space_percent) drives capacity-based migration.
+        When > 0, the RECENT tier migrates to archive once its used bytes
+        exceed this cap — see StorageMigrationService.check_capacity_trigger.
+        """
+        return int(self.get_migration_config().get('max_recent_storage_mb', 0) or 0)
+
+    def get_max_archive_storage_mb(self) -> int:
+        """Max size cap (MB) for the ARCHIVE tier.
+
+        0 = unlimited: the byte cap is disabled and only the % free-space
+        threshold drives capacity-based cleanup. When > 0, the ARCHIVE tier is
+        cleaned once its used bytes exceed this cap.
+        """
+        return int(self.get_migration_config().get('max_archive_storage_mb', 0) or 0)
 
     def get_parallel_workers(self) -> int:
         """Get number of parallel workers for migration operations."""

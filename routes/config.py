@@ -464,6 +464,107 @@ def api_cameras():
     })
 
 
+@config_bp.route('/api/cameras/scan-lan', methods=['POST'])
+@login_required
+def api_cameras_scan_lan():
+    """Basic LAN camera discovery (admin only) — listing/detection, no add.
+
+    Self-configuring: the cameras already known to the NVR live on the LAN, so
+    we derive the /24 subnet(s) from their host IPs and TCP-probe every host on
+    those subnets for camera-defining ports (RTSP 554/8554, ONVIF 8000; HTTP 80
+    is noted as supplementary but is NOT sufficient on its own — too noisy, every
+    router/printer answers on 80). Discovery only: nothing is written to the DB.
+
+    Why derive the subnet from camera IPs instead of the host's own interface:
+    this service runs in a container whose own address is a Docker-bridge IP
+    (172.x), not the camera LAN. The known cameras' IPs are the reliable anchor
+    for "which network are the cameras on".
+
+    Returns JSON: {
+        subnet:  "<LAN_IP>/24" | null,
+        devices: [{ ip, ports: [..], http: bool, already_known: bool }],
+        scanned: <hosts probed>
+    }
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    import ipaddress
+    import socket
+    from concurrent.futures import ThreadPoolExecutor
+
+    CAMERA_PORTS = (554, 8554, 8000)   # RTSP, RTSP-alt, ONVIF — camera-defining
+    HTTP_PORT = 80                      # supplementary signal only
+    CONNECT_TIMEOUT = 0.4              # seconds per TCP connect attempt
+    MAX_HOSTS = 1024                   # safety ceiling across all derived subnets
+
+    # Derive the subnets to scan + the set of IPs already configured.
+    known_ips = set()
+    subnets = set()
+    for cam in shared.camera_repo.get_all_cameras():
+        host = str(cam.get('host') or '').strip()
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            continue  # hostname (not an IP) — can't derive a /24 from it
+        known_ips.add(str(ip))
+        subnets.add(ipaddress.ip_network(f"{ip}/24", strict=False))
+
+    if not subnets:
+        return jsonify({
+            'subnet': None, 'devices': [], 'scanned': 0,
+            'note': 'No camera IP addresses are known, so no subnet could be derived to scan.'
+        })
+
+    # Bounded target list across all derived subnets.
+    targets = []
+    for net in sorted(subnets, key=str):
+        for ip in net.hosts():
+            targets.append(str(ip))
+            if len(targets) >= MAX_HOSTS:
+                break
+        if len(targets) >= MAX_HOSTS:
+            break
+
+    def _port_open(ip, port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(CONNECT_TIMEOUT)
+        try:
+            return s.connect_ex((ip, port)) == 0
+        except OSError:
+            return False
+        finally:
+            s.close()
+
+    def _probe(ip):
+        open_cam = [p for p in CAMERA_PORTS if _port_open(ip, p)]
+        if not open_cam:
+            return None  # not camera-like; HTTP-only hosts are skipped (noise)
+        return {
+            'ip': ip,
+            'ports': open_cam,
+            'http': _port_open(ip, HTTP_PORT),
+            'already_known': ip in known_ips,
+        }
+
+    devices = []
+    with ThreadPoolExecutor(max_workers=64) as pool:
+        for result in pool.map(_probe, targets):
+            if result:
+                devices.append(result)
+
+    # New devices first, then ascending numeric IP.
+    devices.sort(key=lambda d: (d['already_known'], tuple(int(o) for o in d['ip'].split('.'))))
+    subnet_label = ', '.join(str(s) for s in sorted(subnets, key=str))
+    logger.info(f"LAN camera scan: {len(devices)} camera-like device(s) on {subnet_label} "
+                f"({len(targets)} hosts probed)")
+    return jsonify({
+        'subnet': subnet_label,
+        'devices': devices,
+        'scanned': len(targets),
+    })
+
+
 # NOTE: /api/cameras/<camera_id>, /api/cameras/force-sync, /api/cameras/data-source,
 # /api/mediamtx/path-status, and /api/mediamtx/create-path are registered in
 # routes/camera.py to avoid duplicate endpoint errors.

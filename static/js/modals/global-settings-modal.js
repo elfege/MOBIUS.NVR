@@ -9,6 +9,7 @@ import { evidenceTab } from '../settings/evidence-collection.js';
 import { eufyBridgeTab } from '../settings/eufy-bridge.js';
 import { performanceThrottle } from '../settings/performance-throttle.js';
 import { dataTab } from '../settings/data-tab.js';
+import { camerasTab } from '../settings/cameras-tab.js';
 import { auditLogModal } from './audit-log-modal.js';
 
 /**
@@ -152,6 +153,15 @@ export class SettingsUI {
                     this.$content.find('.settings-tab-panel[data-tab-panel="data"]')
                 );
                 dataTab.load();
+            }
+            if (tab === 'cameras') {
+                // Idempotent wire + live load every time the tab is opened so the
+                // list reflects the latest DB state (a camera could have been
+                // renamed / re-hubbed elsewhere since the modal opened).
+                camerasTab.init(
+                    this.$content.find('.settings-tab-panel[data-tab-panel="cameras"]')
+                );
+                camerasTab.load();
             }
         });
 
@@ -401,6 +411,7 @@ export class SettingsUI {
             <button class="settings-tab-btn" data-tab="performance">
                 <i class="fas fa-tachometer-alt"></i> Performance
             </button>
+            ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="cameras"><i class="fas fa-video"></i> Cameras</button>' : ''}
             ${(window.USER_ROLE === 'admin' && window.EVIDENCE_ENABLED) ? '<button class="settings-tab-btn" data-tab="evidence"><i class="fas fa-shield-alt"></i> Collect Evidence</button>' : ''}
             ${(window.USER_ROLE === 'admin' && window.EUFY_BRIDGE_AVAILABLE) ? '<button class="settings-tab-btn" data-tab="eufy-bridge"><i class="fas fa-plug"></i> Eufy Bridge</button>' : ''}
             ${window.USER_ROLE === 'admin' ? '<button class="settings-tab-btn" data-tab="storage"><i class="fas fa-hdd"></i> Storage</button>' : ''}
@@ -503,6 +514,30 @@ export class SettingsUI {
                 </div>
             </div>
 
+        </div>
+
+        <!-- ── Cameras tab (admin only) ──────────────────────────────── -->
+        <div class="settings-tab-panel" data-tab-panel="cameras">
+            <div class="setting-row">
+                <div class="setting-top">
+                    <div class="setting-label"><i class="fas fa-video"></i> Cameras</div>
+                    <div class="setting-control" style="display:flex;gap:8px;">
+                        <button id="cameras-refresh-btn" class="setting-btn setting-btn-secondary" type="button">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                        <button id="cameras-scan-lan-btn" class="setting-btn setting-btn-primary" type="button">
+                            <i class="fas fa-search"></i> Scan LAN
+                        </button>
+                    </div>
+                </div>
+                <div class="setting-description">
+                    Every camera the NVR knows about (the authoritative DB list — includes
+                    cameras hidden from the grid). <strong>Scan LAN</strong> probes the local
+                    network the cameras live on for camera-like devices not yet added.
+                </div>
+            </div>
+            <div id="cameras-tab-list"><div style="padding:1rem;opacity:.7;">Loading…</div></div>
+            <div id="cameras-scan-results" style="display:none;margin-top:1rem;"></div>
         </div>
 
         <!-- ── Fullscreen tab ──────────────────────────────────────── -->

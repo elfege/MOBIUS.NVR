@@ -81,7 +81,7 @@ export const camerasTab = {
         );
         const rows = sorted.map(c => `
             <tr style="border-bottom:1px solid rgba(255,255,255,.07);">
-                <td style="padding:.5rem .6rem;font-weight:500;">${esc(c.nickname || c.name || '—')}</td>
+                <td style="padding:.5rem .6rem;font-weight:500;">${esc(c.name || c.nickname || '—')}</td>
                 <td style="padding:.5rem .6rem;font-family:monospace;font-size:.8em;opacity:.85;">${esc(c.serial)}</td>
                 <td style="padding:.5rem .6rem;">${esc(c.type || '—')}</td>
                 <td style="padding:.5rem .6rem;">${esc(c.stream_type || '—')}</td>

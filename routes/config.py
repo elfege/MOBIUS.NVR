@@ -493,7 +493,11 @@ def api_cameras_scan_lan():
     import socket
     from concurrent.futures import ThreadPoolExecutor
 
-    CAMERA_PORTS = (554, 8554, 8000)   # RTSP, RTSP-alt, ONVIF — camera-defining
+    # 8554 is deliberately EXCLUDED: it is the NVR's own MediaMTX / go2rtc RTSP
+    # relay port, not a camera port. Including it surfaced the NVR host(s)
+    # themselves as "devices" in the scan (operator 2026-06-27). Real cameras
+    # answer on 554 (RTSP) or 8000 (ONVIF).
+    CAMERA_PORTS = (554, 8000)         # RTSP, ONVIF — camera-defining
     HTTP_PORT = 80                      # supplementary signal only
     CONNECT_TIMEOUT = 0.4              # seconds per TCP connect attempt
     MAX_HOSTS = 1024                   # safety ceiling across all derived subnets

@@ -1172,12 +1172,6 @@
         // is updated, restore-on-reload still works).
         window.FULLSCREEN_REQUEST = {{ (fullscreen_serial or '')|tojson }};
     </script>
-    <script>
-        // reload every hour
-        setTimeout(() => {
-            window.location.reload()
-        }, 60 * 60 * 1000)
-    </script>
     <script type="module">
         // Phase 2 audit-outbox: start the periodic flusher for browser-side
         // audit events. Trigger-based audit covers server mutations; this

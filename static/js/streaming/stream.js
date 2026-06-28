@@ -2347,9 +2347,42 @@ export class MultiStreamManager {
         const hdCameras = this._getHDCameras();
         console.log(`[StartAll] Hidden cameras: ${hiddenCameras.length}, HD cameras: ${hdCameras.length}`);
 
-        // Sequential loading with delays to prevent resource exhaustion
-        // This applies to all UIs (desktop, mobile, iOS) for consistent behavior
         let startedCount = 0;
+
+        // DESKTOP FAST PATH (2026-06-27): non-portable devices have no
+        // simultaneous-decode limit worth throttling for (WebRTC/HLS), so the
+        // sequential 300ms-per-camera loop below only made desktop page loads
+        // slow — N cameras ≈ N × (handshake + 300ms), ~10-15s for a 16-cam wall.
+        // Fire all starts in PARALLEL instead. The sequential path is preserved
+        // for iOS / portable, where Safari's ~4-8 video-decode hard limit
+        // genuinely needs the stagger (that's why this was sequential at all —
+        // it just got over-generalized to "all UIs" in c628655f).
+        if (!isPortableDevice()) {
+            const starts = [];
+            $streamItems.each((_, el) => {
+                const $item = $(el);
+                const cameraId = $item.data('camera-serial');
+                if ($item.hasClass('server-hidden')) return;
+                if (hiddenCameras.includes(cameraId)) { $item.hide(); return; }
+                const isHD = hdCameras.includes(cameraId);
+                if (isHD) $item.addClass('hd-mode');
+                starts.push(
+                    this.startStream(cameraId, $item, $item.data('camera-type'),
+                        $item.data('stream-type'), isHD ? 'main' : 'sub')
+                        .then(() => { startedCount++; })
+                        .catch((error) => {
+                            console.error(`[StartAll] ✗ Stream failed: ${cameraId}`, error);
+                            this.setStreamStatus($item, 'error', 'Failed to load');
+                        })
+                );
+            });
+            await Promise.allSettled(starts);
+            this._updateGridLayoutForVisibleCameras();
+            console.log(`[StartAll] ✓✓✓ ${startedCount} STREAMS (parallel desktop) COMPLETE ✓✓✓`);
+            return;
+        }
+
+        // Sequential loading with delays — iOS / portable only (decode-limit safe).
         for (let index = 0; index < $streamItems.length; index++) {
             const $item = $($streamItems[index]);
             const cameraId = $item.data('camera-serial');

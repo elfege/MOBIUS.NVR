@@ -77,7 +77,7 @@ class DeviceManagementModal {
             this.renderDeviceList(devices);
         } catch (error) {
             console.error('[DeviceModal] Error loading devices:', error);
-            this.$deviceList.html('<div class="error-message">Failed to load devices</div>');
+            this.$deviceList.html('<div class="error-message">Failed to load clients</div>');
         }
     }
 
@@ -88,7 +88,7 @@ class DeviceManagementModal {
      */
     renderDeviceList(devices) {
         if (!devices || devices.length === 0) {
-            this.$deviceList.html('<div class="no-devices-message">No devices registered</div>');
+            this.$deviceList.html('<div class="no-devices-message">No clients registered</div>');
             return;
         }
 
@@ -113,7 +113,7 @@ class DeviceManagementModal {
                         <div class="device-header">
                             <span class="device-status-dot ${isOnline ? 'online' : 'offline'}"></span>
                             <span class="device-name">${this.escapeHtml(displayName)}</span>
-                            ${isThisDevice ? '<span class="device-this-badge">This device</span>' : ''}
+                            ${isThisDevice ? '<span class="device-this-badge">This client</span>' : ''}
                             ${device.is_trusted ? '<span class="device-trusted-badge">Trusted</span>' : ''}
                         </div>
                         <div class="device-details">

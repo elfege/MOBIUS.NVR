@@ -651,6 +651,104 @@ def api_cameras_create():
     return jsonify({'success': True, 'serial': serial, 'name': name})
 
 
+@config_bp.route('/api/cameras/test-connection', methods=['POST'])
+@login_required
+def api_cameras_test_connection():
+    """Test a camera's reachability + ONVIF credentials WITHOUT adding it (admin).
+
+    Two side-effect-free, time-boxed checks (no DB write):
+      1. Reachability — TCP connect to RTSP 554 and the ONVIF port (if given).
+      2. Auth + identity — ONVIF GetDeviceInformation with the supplied creds.
+         On success it also returns the camera's serial / model / manufacturer,
+         which the Add form can use to pre-fill (feeds the scan-enrichment goal).
+
+    RTSP credential validation for non-ONVIF cameras is not done here — the RTSP
+    path + credential resolution is per-vendor and pulls creds from the DB by
+    serial (useless before the camera exists). ONVIF is the universal auth probe;
+    cameras without ONVIF get reachability only.
+
+    Body JSON: { host, onvif_port?, username?, password? }
+    Returns:   { host, reachable, authenticated, serial, model, manufacturer, detail }
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    host = (data.get('host') or '').strip()
+    username = data.get('username') or ''
+    password = data.get('password') or ''
+    if not host:
+        return jsonify({'error': 'host is required to test the connection'}), 400
+
+    import socket
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+
+    raw_port = data.get('onvif_port')
+    try:
+        onvif_port = int(raw_port) if str(raw_port).strip() not in ('', 'None', '0') else None
+    except (ValueError, TypeError):
+        onvif_port = None
+
+    result = {
+        'host': host, 'reachable': False, 'authenticated': None,
+        'serial': None, 'model': None, 'manufacturer': None, 'detail': '',
+    }
+
+    def _tcp(port, timeout=2.0):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        try:
+            return s.connect_ex((host, port)) == 0
+        except OSError:
+            return False
+        finally:
+            s.close()
+
+    rtsp_open = _tcp(554)
+    onvif_open = bool(onvif_port) and _tcp(onvif_port)
+    result['reachable'] = rtsp_open or onvif_open
+    if not result['reachable']:
+        ports = '554' + (f'/{onvif_port}' if onvif_port else '')
+        result['detail'] = f'No TCP response on {host}:{ports} — host unreachable or ports closed.'
+        return jsonify(result)
+
+    # ONVIF auth + identity probe (needs an ONVIF port + credentials).
+    if onvif_port and username and password:
+        def _onvif_probe():
+            from onvif import ONVIFCamera
+            from services.onvif.onvif_client import ONVIFClient
+            cam = ONVIFCamera(host, onvif_port, username, password,
+                              wsdl_dir=ONVIFClient.WSDL_DIR, no_cache=True)
+            info = cam.create_devicemgmt_service().GetDeviceInformation()
+            return {
+                'serial': getattr(info, 'SerialNumber', None),
+                'model': getattr(info, 'Model', None),
+                'manufacturer': getattr(info, 'Manufacturer', None),
+            }
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                info = pool.submit(_onvif_probe).result(timeout=7)
+            result.update(info)
+            result['authenticated'] = True
+            label = ' '.join(x for x in (result['manufacturer'], result['model']) if x)
+            result['detail'] = 'ONVIF authenticated — credentials valid.' + (f' ({label})' if label else '')
+        except FutureTimeout:
+            result['detail'] = 'Reachable, but the ONVIF check timed out (no response in 7s).'
+        except Exception as e:
+            msg = str(e).lower()
+            if any(k in msg for k in ('not authorized', 'unauthorized', '401', 'auth', 'sender not authorized')):
+                result['authenticated'] = False
+                result['detail'] = 'Reachable, but ONVIF authentication FAILED — check the username/password.'
+            else:
+                result['detail'] = f'Reachable; ONVIF check inconclusive: {str(e)[:160]}'
+    else:
+        opened = 'RTSP 554' if rtsp_open else f'ONVIF {onvif_port}'
+        result['detail'] = (f'Host reachable ({opened} open). '
+                            'Provide an ONVIF port + credentials to verify authentication.')
+
+    return jsonify(result)
+
+
 # NOTE: /api/cameras/<camera_id>, /api/cameras/force-sync, /api/cameras/data-source,
 # /api/mediamtx/path-status, and /api/mediamtx/create-path are registered in
 # routes/camera.py to avoid duplicate endpoint errors.

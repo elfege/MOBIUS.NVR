@@ -46,6 +46,7 @@ export const camerasTab = {
         $panel.on('click', '#cameras-scan-lan-btn', () => this.scanLan());
         $panel.on('click', '#cameras-add-btn', () => this.showAddForm());
         $panel.on('click', '#cameras-add-cancel', () => this.hideAddForm());
+        $panel.on('click', '#cameras-add-test', () => this.testConnection());
         $panel.on('submit', '#cameras-add-form-el', (e) => { e.preventDefault(); this.submitAddForm(); });
         // "Add" button next to a scanner-discovered NEW device → prefill host.
         $panel.on('click', '.cameras-scan-add-btn', (e) => {
@@ -229,6 +230,7 @@ export const camerasTab = {
             <div id="cameras-add-msg" style="margin-top:.6rem;font-size:.85em;min-height:1.1em;"></div>
             <div style="display:flex;gap:8px;margin-top:.5rem;">
                 <button type="submit" class="setting-btn setting-btn-primary"><i class="fas fa-check"></i> Add</button>
+                <button type="button" id="cameras-add-test" class="setting-btn setting-btn-secondary"><i class="fas fa-plug"></i> Test</button>
                 <button type="button" id="cameras-add-cancel" class="setting-btn setting-btn-secondary">Cancel</button>
             </div>
             <div style="margin-top:.5rem;font-size:.75em;opacity:.6;">
@@ -236,6 +238,54 @@ export const camerasTab = {
                 Serial is the camera's canonical ID — find it on the device label or vendor app.
             </div>
         </form>`;
+    },
+
+    /**
+     * Test reachability + ONVIF credentials for the entered host WITHOUT adding.
+     * Shows ✓ (authenticated) / ✗ (auth failed or unreachable) / ◐ (reachable,
+     * auth not verified) + reason. On ONVIF success, pre-fills the serial if
+     * empty (the camera reports its own serial via GetDeviceInformation).
+     */
+    async testConnection() {
+        const $form = this.$panel.find('#cameras-add-form-el');
+        const $msg = this.$panel.find('#cameras-add-msg');
+        const val = (n) => String($form.find(`[name="${n}"]`).val() || '').trim();
+        const host = val('host');
+        if (!host) {
+            $msg.html('<span style="color:#dc3545;">Enter a Host / IP to test.</span>');
+            return;
+        }
+        const $btn = this.$panel.find('#cameras-add-test');
+        $btn.prop('disabled', true).text('Testing…');
+        $msg.html('<span style="opacity:.7;">Testing connection…</span>');
+        try {
+            const res = await fetch('/api/cameras/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    host,
+                    onvif_port: val('onvif_port'),
+                    username: val('username'),
+                    password: val('password')
+                })
+            });
+            const d = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+            let color, icon;
+            if (d.authenticated === true) { color = '#28a745'; icon = '✓'; }
+            else if (d.authenticated === false) { color = '#dc3545'; icon = '✗'; }
+            else if (d.reachable) { color = '#ff9800'; icon = '◐'; }
+            else { color = '#dc3545'; icon = '✗'; }
+            $msg.html(`<span style="color:${color};">${icon} ${esc(d.detail || '')}</span>`);
+            // ONVIF reported a serial — pre-fill it if the operator hasn't typed one.
+            if (d.serial && !val('serial')) {
+                $form.find('[name="serial"]').val(d.serial);
+            }
+        } catch (e) {
+            $msg.html(`<span style="color:#dc3545;">Test failed: ${esc(e.message || e)}</span>`);
+        } finally {
+            $btn.prop('disabled', false).html('<i class="fas fa-plug"></i> Test');
+        }
     },
 
     /** POST the form to /api/cameras, then refresh the list on success. */

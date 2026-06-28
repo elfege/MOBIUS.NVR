@@ -56,7 +56,9 @@ export const camerasTab = {
             const res = await fetch('/api/cameras', { headers: { Accept: 'application/json' } });
             if (!res.ok) throw new Error('HTTP ' + res.status);
             const data = await res.json();
-            this._renderList($list, (data && data.all) || []);
+            // /api/cameras returns `all` as a dict keyed by serial (not an array).
+            const all = (data && data.all) || {};
+            this._renderList($list, Array.isArray(all) ? all : Object.values(all));
         } catch (e) {
             $list.html(
                 `<div style="padding:1rem;color:#dc3545;">Failed to load cameras: ${esc(e.message || e)}</div>`

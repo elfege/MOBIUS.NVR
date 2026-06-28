@@ -501,7 +501,8 @@ def api_cameras_scan_lan():
     # Derive the subnets to scan + the set of IPs already configured.
     known_ips = set()
     subnets = set()
-    for cam in shared.camera_repo.get_all_cameras():
+    # get_all_cameras() returns Dict[serial -> config]; iterate the configs.
+    for cam in shared.camera_repo.get_all_cameras().values():
         host = str(cam.get('host') or '').strip()
         try:
             ip = ipaddress.ip_address(host)

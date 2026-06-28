@@ -44,6 +44,13 @@ export const camerasTab = {
         // Delegated handlers survive re-renders of the list container.
         $panel.on('click', '#cameras-refresh-btn', () => this.load());
         $panel.on('click', '#cameras-scan-lan-btn', () => this.scanLan());
+        $panel.on('click', '#cameras-add-btn', () => this.showAddForm());
+        $panel.on('click', '#cameras-add-cancel', () => this.hideAddForm());
+        $panel.on('submit', '#cameras-add-form-el', (e) => { e.preventDefault(); this.submitAddForm(); });
+        // "Add" button next to a scanner-discovered NEW device → prefill host.
+        $panel.on('click', '.cameras-scan-add-btn', (e) => {
+            this.showAddForm({ host: String($(e.currentTarget).data('ip') || '') });
+        });
     },
 
     /**
@@ -156,6 +163,8 @@ export const camerasTab = {
                 <td style="padding:.4rem .6rem;">${d.already_known
                     ? '<span style="opacity:.6;">known</span>'
                     : '<span style="color:#28a745;">new</span>'}</td>
+                <td style="padding:.4rem .6rem;">${d.already_known ? ''
+                    : `<button type="button" class="cameras-scan-add-btn setting-btn setting-btn-primary" data-ip="${esc(d.ip)}" style="padding:.2rem .6rem;font-size:.85em;"><i class="fas fa-plus"></i> Add</button>`}</td>
             </tr>`).join('');
         $res.html(`
             <div style="margin:.5rem 0;opacity:.7;font-size:.85em;">${found.length} device${found.length === 1 ? '' : 's'} responded${subnet}</div>
@@ -166,12 +175,100 @@ export const camerasTab = {
                         <th style="padding:.4rem .6rem;">Vendor</th>
                         <th style="padding:.4rem .6rem;">Open ports</th>
                         <th style="padding:.4rem .6rem;">Status</th>
+                        <th style="padding:.4rem .6rem;"></th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
             <div style="margin-top:.5rem;opacity:.6;font-size:.8em;">
-                Discovery only — adding a found device to the NVR isn't wired yet.
+                Click <strong>Add</strong> on a <span style="color:#28a745;">new</span> device to register it
+                (it pre-fills the host — you supply the serial, name, vendor and credentials).
             </div>`);
+    },
+
+    // ── Add Camera form ──────────────────────────────────────────────────────
+
+    /** Render + reveal the add-camera form, optionally pre-filled (e.g. from a scan). */
+    showAddForm(prefill = {}) {
+        const $form = this.$panel.find('#cameras-add-form');
+        $form.html(this._renderAddForm(prefill)).show();
+        $form.find('#cam-add-serial').trigger('focus');
+        if ($form[0]) $form[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+
+    hideAddForm() {
+        this.$panel.find('#cameras-add-form').hide().empty();
+    },
+
+    /**
+     * Build the add-camera form. Vendor is limited to RTSP/ONVIF types the
+     * create endpoint accepts; Eufy (P2P) is intentionally excluded.
+     */
+    _renderAddForm(p = {}) {
+        const v = (k) => esc(p[k] || '');
+        const inp = 'padding:.4rem;border-radius:4px;border:1px solid rgba(255,255,255,.15);background:#1a1f29;color:#e8eef7;width:100%;';
+        const lbl = 'display:flex;flex-direction:column;gap:.2rem;font-size:.8em;opacity:.9;';
+        const o = (val, label, sel) => `<option value="${esc(val)}"${(sel || '') === val ? ' selected' : ''}>${esc(label)}</option>`;
+        const t = p.type || 'amcrest';
+        const st = p.stream_type || 'LL_HLS';
+        const hub = p.streaming_hub || 'mediamtx';
+        return `
+        <form id="cameras-add-form-el" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:1rem;">
+            <div style="font-weight:600;margin-bottom:.75rem;"><i class="fas fa-plus"></i> Add Camera</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.6rem .9rem;">
+                <label style="${lbl}">Serial *<input id="cam-add-serial" name="serial" required value="${v('serial')}" style="${inp}"></label>
+                <label style="${lbl}">Name *<input name="name" required value="${v('name')}" style="${inp}"></label>
+                <label style="${lbl}">Vendor *<select name="type" style="${inp}">${o('amcrest', 'Amcrest', t)}${o('sv3c', 'SV3C', t)}${o('reolink', 'Reolink', t)}${o('unifi', 'UniFi', t)}</select></label>
+                <label style="${lbl}">Host / IP<input name="host" value="${v('host')}" placeholder="192.168.10.x" style="${inp}"></label>
+                <label style="${lbl}">ONVIF port<input name="onvif_port" type="number" value="${v('onvif_port')}" placeholder="8000" style="${inp}"></label>
+                <label style="${lbl}">Stream type<select name="stream_type" style="${inp}">${o('LL_HLS', 'LL-HLS', st)}${o('HLS', 'HLS', st)}${o('WEBRTC', 'WebRTC', st)}${o('GO2RTC', 'go2rtc', st)}${o('MJPEG', 'MJPEG', st)}</select></label>
+                <label style="${lbl}">Hub<select name="streaming_hub" style="${inp}">${o('mediamtx', 'MediaMTX', hub)}${o('go2rtc', 'go2rtc', hub)}${o('native_mjpeg', 'native_mjpeg', hub)}</select></label>
+                <label style="${lbl}">Username<input name="username" autocomplete="off" value="${v('username')}" style="${inp}"></label>
+                <label style="${lbl}">Password<input name="password" type="password" autocomplete="new-password" style="${inp}"></label>
+            </div>
+            <div id="cameras-add-msg" style="margin-top:.6rem;font-size:.85em;min-height:1.1em;"></div>
+            <div style="display:flex;gap:8px;margin-top:.5rem;">
+                <button type="submit" class="setting-btn setting-btn-primary"><i class="fas fa-check"></i> Add</button>
+                <button type="button" id="cameras-add-cancel" class="setting-btn setting-btn-secondary">Cancel</button>
+            </div>
+            <div style="margin-top:.5rem;font-size:.75em;opacity:.6;">
+                Eufy cameras are added via the <strong>Eufy Bridge</strong> tab (P2P, not RTSP).
+                Serial is the camera's canonical ID — find it on the device label or vendor app.
+            </div>
+        </form>`;
+    },
+
+    /** POST the form to /api/cameras, then refresh the list on success. */
+    async submitAddForm() {
+        const $form = this.$panel.find('#cameras-add-form-el');
+        const $msg = this.$panel.find('#cameras-add-msg');
+        const val = (n) => String($form.find(`[name="${n}"]`).val() || '').trim();
+        const payload = {
+            serial: val('serial'), name: val('name'), type: val('type'),
+            host: val('host'), onvif_port: val('onvif_port'),
+            stream_type: val('stream_type'), streaming_hub: val('streaming_hub'),
+            username: val('username'), password: val('password')
+        };
+        if (!payload.serial || !payload.name || !payload.type) {
+            $msg.html('<span style="color:#dc3545;">Serial, name and vendor are required.</span>');
+            return;
+        }
+        const $submit = $form.find('button[type="submit"]');
+        $submit.prop('disabled', true).text('Adding…');
+        $msg.html('<span style="opacity:.7;">Adding camera…</span>');
+        try {
+            const res = await fetch('/api/cameras', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || ('HTTP ' + res.status));
+            this.hideAddForm();
+            this.load();
+        } catch (e) {
+            $msg.html(`<span style="color:#dc3545;">Failed: ${esc(e.message || e)}</span>`);
+            $submit.prop('disabled', false).html('<i class="fas fa-check"></i> Add');
+        }
     }
 };

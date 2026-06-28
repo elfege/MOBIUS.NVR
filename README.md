@@ -21,7 +21,7 @@ The database is the runtime source of truth. `cameras.json` is just a seed file 
 - **Health Monitoring**: Backend watchdog with exponential backoff + frontend blank-frame/stale-frame detection
 - **Per-User Preferences**: Stream type, display order, camera visibility, grid layout mode, video fit — all per-user in DB
 - **Grid Layout Modes**: Uniform, last-row stretch, auto-fit, masonry — with 3 video fit options (cover/contain/fill)
-- **Camera Management UI** (admin): **Settings → Cameras** lists every configured camera (name, serial, type, stream type, hub, host) from the DB-authoritative source, plus a basic **LAN scan** that probes the camera subnet for RTSP/ONVIF devices not yet added (discovery only — derives the subnet from known camera IPs)
+- **Camera Management UI** (admin): **Settings → Cameras** lists every configured camera (name, serial, type, stream type, hub, host) from the DB-authoritative source; **adds** new RTSP/ONVIF cameras (amcrest/sv3c/reolink/unifi — inserts the row, stores encrypted credentials, goes live immediately; Eufy uses the Eufy Bridge); and runs a basic **LAN scan** that probes the camera subnet for RTSP/ONVIF devices not yet added, with an **Add** button on each discovered device (discovery derives the subnet from known camera IPs)
 - **User Authentication**: Login with bcrypt, per-user camera access control, trusted network auto-login, viewer role
 - **Monitor Standby Detection**: Page Visibility API tears down streams when tab hidden, auto-reloads on wake
 - **Host-Agent (per-kiosk)**: Optional Linux-only systemd user daemon (`services/host_agent/`) reports DPMS / CPU / GPU to the NVR every 5s. Solves the X11 Chrome bug where DPMS-off does not fire `visibilitychange`, and feeds a per-machine performance throttle that demotes one tile at a time when sustained CPU load exceeds a configurable threshold. Settings live in `host_settings` (per-host_label) and are tunable from Settings → Performance with no agent restart. Portable devices use the `/light` endpoint instead — iOS/Android OS-level power management is already adequate.
@@ -267,6 +267,7 @@ services:
 | `/api/camera/state/<camera_id>` | GET | Camera health state (availability, backoff, errors) |
 | `/api/camera/states` | GET | Batch health state for all cameras |
 | `/api/cameras` | GET | List all cameras (DB-authoritative: all / ptz / streaming) |
+| `/api/cameras` | POST | Admin: add a camera (RTSP/ONVIF vendors — amcrest/sv3c/reolink/unifi). Inserts the row, stores encrypted credentials, reloads the live repo. Eufy is P2P (use the Eufy Bridge) |
 | `/api/cameras/scan-lan` | POST | Admin: discover camera-like devices on the LAN (RTSP/ONVIF port probe of the subnet derived from known camera IPs; discovery only) |
 
 ### Recording

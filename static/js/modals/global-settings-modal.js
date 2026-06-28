@@ -525,7 +525,10 @@ export class SettingsUI {
                         <button id="cameras-refresh-btn" class="setting-btn setting-btn-secondary" type="button">
                             <i class="fas fa-sync-alt"></i> Refresh
                         </button>
-                        <button id="cameras-scan-lan-btn" class="setting-btn setting-btn-primary" type="button">
+                        <button id="cameras-add-btn" class="setting-btn setting-btn-primary" type="button">
+                            <i class="fas fa-plus"></i> Add Camera
+                        </button>
+                        <button id="cameras-scan-lan-btn" class="setting-btn setting-btn-secondary" type="button">
                             <i class="fas fa-search"></i> Scan LAN
                         </button>
                     </div>
@@ -536,6 +539,7 @@ export class SettingsUI {
                     network the cameras live on for camera-like devices not yet added.
                 </div>
             </div>
+            <div id="cameras-add-form" style="display:none;margin-bottom:1rem;"></div>
             <div id="cameras-tab-list"><div style="padding:1rem;opacity:.7;">Loading…</div></div>
             <div id="cameras-scan-results" style="display:none;margin-top:1rem;"></div>
         </div>

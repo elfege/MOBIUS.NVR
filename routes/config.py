@@ -570,6 +570,87 @@ def api_cameras_scan_lan():
     })
 
 
+@config_bp.route('/api/cameras', methods=['POST'])
+@login_required
+def api_cameras_create():
+    """Add a new camera (admin only).
+
+    Inserts a row into `cameras`, stores encrypted credentials (if supplied) via
+    the credential service, and reloads the in-memory camera repo so the camera
+    is live immediately. The camera is DB-only and PERSISTS across restarts —
+    camera_config_sync never deletes DB cameras absent from cameras.json (it only
+    warns; see services/camera_config_sync.py header).
+
+    Scope: RTSP/ONVIF vendors (amcrest, sv3c, reolink, unifi). Eufy is rejected —
+    those are eufy:// P2P and are added via the Eufy Bridge tab, not an RTSP form.
+
+    Body JSON: { serial, name, type, host?, onvif_port?, stream_type?,
+                 streaming_hub?, username?, password? }
+    """
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Admin access required'}), 403
+
+    data = request.get_json(silent=True) or {}
+    serial = (data.get('serial') or '').strip()
+    name = (data.get('name') or '').strip()
+    vendor = (data.get('type') or '').strip().lower()
+    host = (data.get('host') or '').strip()
+    stream_type = (data.get('stream_type') or 'LL_HLS').strip()
+    hub = (data.get('streaming_hub') or 'mediamtx').strip()
+    username = data.get('username') or ''
+    password = data.get('password') or ''
+
+    if not serial or not name or not vendor:
+        return jsonify({'error': 'serial, name and type are required'}), 400
+
+    ALLOWED = {'amcrest', 'sv3c', 'reolink', 'unifi'}
+    if vendor not in ALLOWED:
+        return jsonify({'error': (
+            f'Unsupported vendor "{vendor}". Eufy cameras are added via the Eufy '
+            f'Bridge tab (P2P, not RTSP). Supported here: {", ".join(sorted(ALLOWED))}.'
+        )}), 400
+
+    raw_port = data.get('onvif_port')
+    try:
+        onvif_port = int(raw_port) if str(raw_port).strip() not in ('', 'None', '0') else None
+    except (ValueError, TypeError):
+        onvif_port = None
+
+    # Insert the camera row (db_cursor commits on clean exit).
+    try:
+        with db_cursor() as cur:
+            cur.execute("SELECT 1 FROM cameras WHERE serial = %s", (serial,))
+            if cur.fetchone():
+                return jsonify({'error': f'A camera with serial {serial} already exists'}), 409
+            cur.execute(
+                """INSERT INTO cameras
+                       (serial, camera_id, name, type, host, stream_type, streaming_hub, onvif_port)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (serial, serial, name, vendor, host or None, stream_type, hub, onvif_port)
+            )
+    except Exception as e:
+        logger.error(f"Add camera failed (insert) for {serial}: {e}")
+        return jsonify({'error': f'Database insert failed: {e}'}), 500
+
+    # Store encrypted credentials, if supplied. Non-fatal if it fails — the row
+    # exists and the operator can re-enter credentials later.
+    if username and password:
+        try:
+            from services.credentials.credential_db_service import store_credential
+            store_credential(serial, username, password, vendor, 'camera', label=name)
+        except Exception as e:
+            logger.warning(f"Camera {serial} inserted but credential store failed: {e}")
+
+    # Pick the new camera up into the live repo immediately.
+    try:
+        shared.camera_repo.reload()
+    except Exception as e:
+        logger.warning(f"camera_repo.reload() after add failed: {e}")
+
+    logger.info(f"Camera added: {serial} ({vendor}) '{name}' host={host or '-'}")
+    return jsonify({'success': True, 'serial': serial, 'name': name})
+
+
 # NOTE: /api/cameras/<camera_id>, /api/cameras/force-sync, /api/cameras/data-source,
 # /api/mediamtx/path-status, and /api/mediamtx/create-path are registered in
 # routes/camera.py to avoid duplicate endpoint errors.

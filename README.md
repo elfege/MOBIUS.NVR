@@ -2,6 +2,8 @@
 
 ### Your cameras. Your footage. Your server. One app.
 
+**`v6.18.0`** · 6 camera brands · 274 automated tests · actively developed
+
 **MOBIUS.NVR** is a self-hosted network video recorder that unifies every camera in your home or business — across brands — into a single, fast, private surveillance system you actually own.
 
 No cloud subscriptions. No per-camera fees. No footage sitting on someone else's servers.
@@ -24,6 +26,20 @@ Continuous and motion-triggered recording with a scrubbable timeline, instant pl
 
 **Evidence-grade when it counts.**
 Tooling to capture, preserve, and export footage with chain-of-custody — for when "I have it on camera" needs to hold up.
+
+---
+
+## By the numbers
+
+| | |
+|---|---|
+| **Current release** | `v6.18.0` — actively developed (1,250+ commits) |
+| **Cameras unified** | 6 brands — Eufy · Reolink · UniFi · Amcrest · SV3C · ONVIF |
+| **Codebase** | ~123,000 lines of tested code (Python backend + React-Native app) |
+| **Quality gate** | 274 automated tests across 44 suites, run on every release |
+| **Proven at scale** | live on a 16-camera deployment, 24/7 |
+
+*Figures refresh automatically on each release.*
 
 ---
 

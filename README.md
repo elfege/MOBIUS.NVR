@@ -1,58 +1,87 @@
 # MOBIUS.NVR
 
-### Your cameras. Your footage. Your server. One app.
+**A vendor-agnostic Network Video Recorder — one interface for every camera on the property.**
 
-**`v6.18.0`** · 6 camera brands · 274 automated tests · actively developed
+MOBIUS.NVR unifies mixed-brand IP camera fleets behind a single web application:
+live low-latency video, PTZ control, motion detection, continuous and
+motion-triggered recording, and per-user preferences — regardless of which
+manufacturer sits behind each tile.
 
-**MOBIUS.NVR** is a self-hosted network video recorder that unifies every camera in your home or business — across brands — into a single, fast, private surveillance system you actually own.
-
-No cloud subscriptions. No per-camera fees. No footage sitting on someone else's servers.
-
----
-
-## Why MOBIUS.NVR
-
-**One app for every brand.**
-Eufy, Reolink, UniFi, Amcrest, SV3C, and any ONVIF-compliant camera — mixed freely and managed from one screen. Stop juggling a different app for every vendor.
-
-**Own your footage.**
-Everything runs on your hardware. Your video never leaves your network unless *you* send it — no monthly cloud bill, no data mining, no lock-in.
-
-**Watch from anywhere.**
-Low-latency live viewing, PTZ control, zoom, and two-way audio — on your phone, tablet, browser, or a wall of kiosks. One codebase, every screen.
-
-**Never miss the moment.**
-Continuous and motion-triggered recording with a scrubbable timeline, instant playback, and stream-health monitoring that detects freezes and self-heals.
-
-**Evidence-grade when it counts.**
-Tooling to capture, preserve, and export footage with chain-of-custody — for when "I have it on camera" needs to hold up.
+[**elfegesystems.com**](https://elfegesystems.com) · [**Contact**](https://elfegesystems.com/contact) · [elfege@elfege.com](mailto:elfege@elfege.com)
 
 ---
 
-## By the numbers
+## The problem
 
-| | |
-|---|---|
-| **Current release** | `v6.18.0` — actively developed (1,250+ commits) |
-| **Cameras unified** | 6 brands — Eufy · Reolink · UniFi · Amcrest · SV3C · ONVIF |
-| **Codebase** | ~123,000 lines of tested code (Python backend + React-Native app) |
-| **Quality gate** | 274 automated tests across 44 suites, run on every release |
-| **Proven at scale** | live on a 16-camera deployment, 24/7 |
+Camera hardware is a patchwork. A single site accumulates cameras from different
+manufacturers over years, and each speaks its own dialect — different streaming
+protocols, different PTZ command sets, different quirks in how (and whether) it
+exposes a second stream. The usual result is one vendor app per brand, no shared
+recording policy, and a live view that only works well in the vendor's own
+walled garden.
 
-*Figures refresh automatically on each release.*
+MOBIUS.NVR removes the vendor from the equation. You stop caring which brand is
+behind each tile.
+
+## What it does
+
+**One interface, many vendors.** Cameras from several major and budget brands —
+plus any standards-compliant ONVIF device — present in a single grid. The RTSP
+path for a generic ONVIF camera is discovered automatically rather than
+hardcoded, and streams are made browser-safe (transcoded only when the codec
+requires it).
+
+**Latency you can choose.** Per-camera streaming from sub-second WebRTC through
+low-latency HLS to lightweight snapshot polling for constrained mobile grids,
+so a control-room wall and a phone on cellular each get an appropriate mode.
+
+**Recording that fits the site.** Continuous, motion-triggered, and manual
+recording with timeline playback, tiered storage, and retention policy.
+
+**PTZ, audio, and motion across brands.** Pan/tilt/zoom, two-way audio, and
+motion detection are normalized across vendor command sets behind one set of
+controls.
+
+**Runtime configuration as data.** The system's tunable values — thresholds,
+labels, display tokens, per-user preferences — live in the database and can be
+changed live, without redeploying, and are audited when they change.
+
+**Health that self-heals.** A backend watchdog and a frontend freeze detector
+based on decoded-frame progress catch the "connected but frozen" failure that a
+naive uptime check misses, and recover the stream automatically.
+
+**Private by design.** Credentials are encrypted at rest, access is per-user, and
+the whole system runs on infrastructure the operator controls.
+
+## Who it is for
+
+**Engineering teams evaluating a build.** MOBIUS.NVR is a working example of a
+hard systems problem solved end to end: real-time multi-protocol media, a
+database-as-source-of-truth architecture, self-healing health monitoring, and a
+data-driven configuration model. If your team is weighing a custom video or
+real-time-media capability, it is a concrete reference for what that looks like
+in production.
+
+**Recruiters and hiring teams.** This is a production system maintained by a
+single engineer — spanning media streaming, backend services, a browser
+front-end, database design, and deployment. It runs continuously against real
+hardware, not as a demo.
+
+## Status
+
+MOBIUS.NVR is in continuous production use, running a mixed-vendor camera fleet
+across multiple streaming protocols. It is developed by Elfege Systems LLC and
+offered commercially; the source and its history are maintained privately.
+
+## Commercial and licensing enquiries
+
+Licensing, deployment, integration, and consulting:
+
+**[elfegesystems.com](https://elfegesystems.com)** · [**Get in touch**](https://elfegesystems.com/contact) · [elfege@elfege.com](mailto:elfege@elfege.com)
+
+Use of this software is governed by the terms in [LICENSE](LICENSE) — commercial
+use requires a paid license.
 
 ---
 
-## Built for real deployments
-
-Multi-camera video walls, PTZ presets, per-camera streaming tuning, storage management, motion detection, and role-based access — engineered to run 24/7 on modest hardware and scale to a whole property.
-
-Part of the **MOBIUS.** ecosystem.
-
----
-
-**MOBIUS.NVR** is a product of **Elfège Systems**.
-
-**Learn more, request a demo, or get in touch → [elfegesystems.com](https://elfegesystems.com)**
-
-*The source for this project is private; this page is its public home.*
+*MOBIUS.NVR is developed by Elfege Systems LLC as part of the MOBIUS ecosystem.*

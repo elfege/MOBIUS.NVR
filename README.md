@@ -73,6 +73,19 @@ MOBIUS.NVR is in continuous production use, running a mixed-vendor camera fleet
 across multiple streaming protocols. It is developed by Elfege Systems LLC and
 offered commercially; the source and its history are maintained privately.
 
+## By the numbers
+
+<!-- STATS:START -->
+| | |
+|---|---|
+| **Current release** | `v6.20.0` — actively developed (1323 commits) |
+| **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
+| **Codebase** | ~118k lines (Python backend + React-Native app) |
+| **Quality gate** | 293 automated tests across 45 suites, run on every release |
+
+<sub>Figures regenerated from the private repository on each release.</sub>
+<!-- STATS:END -->
+
 ## Commercial and licensing enquiries
 
 Licensing, deployment, integration, and consulting:

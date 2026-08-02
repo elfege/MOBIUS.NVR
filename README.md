@@ -53,6 +53,13 @@ changed live, without redeploying, and are audited when they change.
 based on decoded-frame progress catch the "connected but frozen" failure that a
 naive uptime check misses, and recover the stream automatically.
 
+**Resource accounting you can trust.** CPU and memory are measured per camera,
+not just per machine, by attributing every media process to the camera it serves.
+A metric that cannot be measured says so in words rather than reporting a
+plausible-looking zero. Machines running a video wall report their own load
+through a guided, one-screen agent setup, which is what makes automatic
+load-shedding possible when a wall is under pressure.
+
 **Private by design.** Credentials are encrypted at rest, access is per-user, and
 the whole system runs on infrastructure the operator controls.
 
@@ -81,9 +88,9 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v6.20.1` — actively developed (1325 commits) |
+| **Current release** | `v6.21.0` — actively developed (1331 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
-| **Codebase** | ~119k lines (Python backend + React-Native app) |
+| **Codebase** | ~122k lines (Python backend + React-Native app) |
 | **Quality gate** | 293 automated tests across 45 suites, run on every release |
 
 <sub>Figures regenerated from the private repository on each release.</sub>

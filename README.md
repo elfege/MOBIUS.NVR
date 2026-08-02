@@ -40,7 +40,10 @@ recording with timeline playback, tiered storage, and retention policy.
 
 **PTZ, audio, and motion across brands.** Pan/tilt/zoom, two-way audio, and
 motion detection are normalized across vendor command sets behind one set of
-controls.
+controls. Listen and talk state follow the camera, not the window: mute a
+stream or open a talk channel anywhere and every view of that camera agrees,
+with microphone gain and the camera's own speaker level adjustable in place
+while you are talking.
 
 **Runtime configuration as data.** The system's tunable values — thresholds,
 labels, display tokens, per-user preferences — live in the database and can be
@@ -78,9 +81,9 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v6.20.0` — actively developed (1323 commits) |
+| **Current release** | `v6.20.1` — actively developed (1325 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
-| **Codebase** | ~118k lines (Python backend + React-Native app) |
+| **Codebase** | ~119k lines (Python backend + React-Native app) |
 | **Quality gate** | 293 automated tests across 45 suites, run on every release |
 
 <sub>Figures regenerated from the private repository on each release.</sub>

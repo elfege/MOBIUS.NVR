@@ -43,7 +43,12 @@ motion detection are normalized across vendor command sets behind one set of
 controls. Listen and talk state follow the camera, not the window: mute a
 stream or open a talk channel anywhere and every view of that camera agrees,
 with microphone gain and the camera's own speaker level adjustable in place
-while you are talking.
+while you are talking. Zoom is capability-aware: a camera declared to have a
+zoom lens spends scroll-wheel and pinch gestures on its own optics first and
+continues digitally once the lens stops moving or stops answering, while every
+other camera — including the many that pan and tilt but do not zoom — zooms
+digitally from the first gesture, without limit and relative to the current
+view.
 
 **Runtime configuration as data.** The system's tunable values — thresholds,
 labels, display tokens, per-user preferences — live in the database and can be
@@ -88,7 +93,7 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v6.21.0` — actively developed (1331 commits) |
+| **Current release** | `v6.22.0` — actively developed (1334 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
 | **Codebase** | ~122k lines (Python backend + React-Native app) |
 | **Quality gate** | 293 automated tests across 45 suites, run on every release |

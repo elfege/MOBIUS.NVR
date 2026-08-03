@@ -54,6 +54,15 @@ view.
 labels, display tokens, per-user preferences — live in the database and can be
 changed live, without redeploying, and are audited when they change.
 
+**Settings that know where they belong.** A layout is a property of the screen,
+not of the person looking at it, so the grid arrangement, video fit, hidden
+cameras, page density and menu chrome are bound to the MACHINE by default: a
+lobby wall panel and an office desk keep their own layouts, and each survives a
+browser cache clear because it is held on the server rather than in the browser.
+Where any individual setting lives is itself an administrator-owned policy — one
+checkbox per setting promotes it to follow a user's account across every machine
+instead, and every open screen refreshes the moment that choice changes.
+
 **Health that self-heals.** A backend watchdog and a frontend freeze detector
 based on decoded-frame progress catch the "connected but frozen" failure that a
 naive uptime check misses, and recover the stream automatically.
@@ -93,9 +102,9 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v6.22.1` — actively developed (1336 commits) |
+| **Current release** | `v6.23.0` — actively developed (1338 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
-| **Codebase** | ~122k lines (Python backend + React-Native app) |
+| **Codebase** | ~123k lines (Python backend + React-Native app) |
 | **Quality gate** | 293 automated tests across 45 suites, run on every release |
 
 <sub>Figures regenerated from the private repository on each release.</sub>

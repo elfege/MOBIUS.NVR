@@ -74,6 +74,20 @@ plausible-looking zero. Machines running a video wall report their own load
 through a guided, one-screen agent setup, which is what makes automatic
 load-shedding possible when a wall is under pressure.
 
+**Microphones are opt-in, one camera at a time.** Camera audio can be offered to
+a voice assistant as a distributed microphone array — but never by default and
+never by inference. Every camera starts off and stays off until an administrator
+turns it on, one camera at a time, on a screen whose first line is the list of
+rooms currently listening, named in full — and that list is not the screen's own
+tally, it is the exact list the assistant itself reads, so the two cannot drift
+into disagreeing about whose microphone is on. The default is enforced in the
+database schema rather than in application code, so a camera added by any path —
+the add-camera screen, a bulk import, a hand-written SQL insert — arrives silent. A
+camera is never pre-enabled because it looks capable: the system reports honestly
+that its audio detection describes how the NVR is currently configured, not what
+hardware exists, and lets the operator decide anyway. Every change of state is
+recorded in the settings audit trail with who made it and when.
+
 **Private by design.** Credentials are encrypted at rest, access is per-user, and
 the whole system runs on infrastructure the operator controls.
 
@@ -102,10 +116,10 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v6.23.0` — actively developed (1338 commits) |
+| **Current release** | `v6.24.0` — actively developed (1410 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
-| **Codebase** | ~123k lines (Python backend + React-Native app) |
-| **Quality gate** | 293 automated tests across 45 suites, run on every release |
+| **Codebase** | ~130k lines (Python backend + React-Native app) |
+| **Quality gate** | 450 automated tests across 65 suites, run on every release |
 
 <sub>Figures regenerated from the private repository on each release.</sub>
 <!-- STATS:END -->

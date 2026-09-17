@@ -116,10 +116,10 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v7.4.0` — actively developed (1433 commits) |
+| **Current release** | `v7.5.0` — actively developed (1434 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
-| **Codebase** | ~132k lines (Python backend + React-Native app) |
-| **Quality gate** | 603 automated tests across 93 suites, run on every release |
+| **Codebase** | ~135k lines (Python backend + React-Native app) |
+| **Quality gate** | 665 automated tests across 98 suites, run on every release |
 
 <sub>Figures regenerated from the private repository on each release.</sub>
 <!-- STATS:END -->

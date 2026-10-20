@@ -63,6 +63,21 @@ Where any individual setting lives is itself an administrator-owned policy — o
 checkbox per setting promotes it to follow a user's account across every machine
 instead, and every open screen refreshes the moment that choice changes.
 
+**One Settings window, over the live wall.** Settings open as a single large
+window on top of the camera wall instead of replacing it, with one tab per group
+of settings (View, Fullscreen, Streaming, Audio, Performance, and, for
+administrators, Cameras, Tests, Storage, Network, Logs, Data and Diagnostics).
+Each setting is a labelled row with its control and a plain-language
+explanation; every label, explanation and colour is database text an operator
+can reword live. A change applies to the wall beneath immediately. Changing the
+global video fit resets this screen's per-camera fits so the new choice applies
+to every tile; when an administrator has made the fit account-wide, it also
+resets the per-camera fits saved for the account. Re-selecting the fit already
+in use changes nothing. The window works from the keyboard (Tab, the arrow keys
+across the tabs, Space and Enter, Esc to close the topmost layer) and announces
+each switch's and tab's state to screen readers. Old bookmarks to the settings
+page still open this window, on the requested tab.
+
 **Health that self-heals.** A backend watchdog and a frontend freeze detector
 based on decoded-frame progress catch the "connected but frozen" failure that a
 naive uptime check misses, and recover the stream automatically.
@@ -112,10 +127,10 @@ offered commercially; the source and its history are maintained privately.
 <!-- STATS:START -->
 | | |
 |---|---|
-| **Current release** | `v7.7.7` — actively developed (1490 commits) |
+| **Current release** | `v7.8.0` — actively developed (1494 commits) |
 | **Cameras unified** | 6 vendor families — Eufy · Reolink · UniFi · Amcrest · SV3C · generic ONVIF |
-| **Codebase** | ~135k lines (Python backend + React-Native app) |
-| **Quality gate** | 913 automated tests across 119 suites, run on every release |
+| **Codebase** | ~138k lines (Python backend + React-Native app) |
+| **Quality gate** | 957 automated tests across 122 suites, run on every release |
 
 <sub>Figures regenerated from the private repository on each release.</sub>
 <!-- STATS:END -->
